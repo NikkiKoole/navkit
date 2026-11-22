@@ -1191,7 +1191,7 @@ void NeedsTick(void) {
 
         // Drain hunger
         if (hungerEnabled) {
-            m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
+            m->hunger -= RatePerGameSecond(MoverHungerDrainPerGH(i)) * dt;
             if (m->hunger < 0.0f) m->hunger = 0.0f;
 
             // Starvation death (survival mode only)
@@ -1214,7 +1214,7 @@ void NeedsTick(void) {
 
         // Drain thirst
         if (thirstEnabled) {
-            m->thirst -= RatePerGameSecond(balance.thirstDrainPerGH) * dt;
+            m->thirst -= RatePerGameSecond(MoverThirstDrainPerGH(i)) * dt;
             if (m->thirst < 0.0f) m->thirst = 0.0f;
 
             // Dehydration death (survival mode only)

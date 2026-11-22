@@ -53,6 +53,7 @@ static void SetupClean(void) {
     gameSpeed = 1.0f;
     daysPerSeason = 7;
     dayNumber = 8;
+    timeOfDay = 12.0f;   // midday: these stories are about energy, not the day rhythm (lying in while dark)
     // Set comfortable ambient temp so body temp doesn't drift during sleep/energy tests
     for (int y = 0; y < 10; y++)
         for (int x = 0; x < 10; x++)
@@ -646,6 +647,127 @@ describe(furniture_rest_seeking) {
 // =============================================================================
 
 // Helper: set up a mover at comfortable body temp with cold ambient
+// =============================================================================
+// Story: soft day rhythm. Night never makes anyone more tired; darkness keeps a
+//        rested mover in bed, and an idle mover in the dark goes to bed early.
+// =============================================================================
+
+static int SetupSleeperInBed(float hour, float energy) {
+    SetupClean();
+    timeOfDay = hour;
+    int mi = SetupMover(5, 5);
+    int fi = SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, 0);
+    furniture[fi].occupant = mi;
+    movers[mi].freetimeState = FREETIME_RESTING;
+    movers[mi].needTarget = fi;
+    movers[mi].energy = energy;
+    movers[mi].hunger = 0.8f;
+    movers[mi].bodyTemp = balance.bodyTempNormal;
+    return mi;
+}
+
+describe(day_rhythm) {
+    it("a rested mover lies in while it is dark") {
+        int mi = SetupSleeperInBed(2.0f, 0.85f);
+        for (int i = 0; i < 300; i++) SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+        expect(MoverLyingIn(mi));
+    }
+
+    it("a rested mover gets up when it is light") {
+        int mi = SetupSleeperInBed(12.0f, 0.85f);
+        SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+    }
+
+    it("with the day rhythm off, a rested mover gets up in the dark") {
+        int mi = SetupSleeperInBed(2.0f, 0.85f);
+        sleepRhythmEnabled = false;
+        SimNeedsTick();
+        sleepRhythmEnabled = true;
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+    }
+
+    it("critical hunger gets a mover out of bed even in the dark") {
+        int mi = SetupSleeperInBed(2.0f, 0.85f);
+        movers[mi].hunger = balance.hungerCriticalThreshold - 0.01f;
+        SimNeedsTick();
+        expect(movers[mi].freetimeState != FREETIME_RESTING);
+    }
+
+    it("being a bit hungry is not enough to get up in the dark") {
+        int mi = SetupSleeperInBed(2.0f, 0.85f);
+        movers[mi].hunger = balance.hungerSeekThreshold - 0.05f;
+        SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+    }
+
+    it("night does not make anyone more tired") {
+        SetupClean();
+        int a = SetupMover(3, 3);
+        timeOfDay = 2.0f;
+        for (int i = 0; i < 600; i++) { movers[a].hunger = 1.0f; NeedsTick(); }
+        float nightEnergy = movers[a].energy;
+        SetupClean();
+        int b = SetupMover(3, 3);
+        timeOfDay = 12.0f;
+        for (int i = 0; i < 600; i++) { movers[b].hunger = 1.0f; NeedsTick(); }
+        expect(nightEnergy == movers[b].energy);
+    }
+
+    it("an idle mover in the dark, not fresh, goes to bed after a while") {
+        SetupClean();
+        timeOfDay = 22.0f;
+        int mi = SetupMover(3, 3);
+        movers[mi].energy = balance.idleBedEnergy - 0.1f;   // above the tired threshold
+        int ticks = (int)(GameHoursToGameSeconds(balance.idleBedDelayGH) / TICK_DT) + 2;
+        SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_NONE);   // not straight away
+        for (int i = 0; i < ticks && movers[mi].freetimeState == FREETIME_NONE; i++) {
+            movers[mi].hunger = 1.0f;
+            SimNeedsTick();
+        }
+        expect(movers[mi].freetimeState == FREETIME_RESTING || movers[mi].freetimeState == FREETIME_SEEKING_REST);
+    }
+
+    it("an idle mover stays up in the dark when fresh, in daylight, or with work") {
+        float hours[3] = {22.0f, 12.0f, 22.0f};
+        float energy[3] = {balance.idleBedEnergy + 0.1f, balance.idleBedEnergy - 0.1f, balance.idleBedEnergy - 0.1f};
+        for (int k = 0; k < 3; k++) {
+            SetupClean();
+            timeOfDay = hours[k];
+            int mi = SetupMover(3, 3);
+            movers[mi].energy = energy[k];
+            if (k == 2) movers[mi].currentJobId = 0;   // fake job
+            int ticks = (int)(GameHoursToGameSeconds(balance.idleBedDelayGH) / TICK_DT) * 2;
+            for (int i = 0; i < ticks; i++) { movers[mi].hunger = 1.0f; SimNeedsTick(); }
+            expect(movers[mi].freetimeState == FREETIME_NONE);
+        }
+    }
+
+    it("hunger and thirst drain at sleepMetabolismMult while resting") {
+        int mi = SetupSleeperInBed(2.0f, 0.3f);
+        int awake = SetupMover(7, 7);
+        movers[awake].hunger = 0.8f;
+        movers[awake].currentJobId = 0;   // fake job so it doesn't go looking for anything
+        for (int i = 0; i < 600; i++) NeedsTick();
+        float sleptLoss = 0.8f - movers[mi].hunger;
+        float awakeLoss = 0.8f - movers[awake].hunger;
+        expect(fabsf(sleptLoss - awakeLoss * balance.sleepMetabolismMult) < 0.001f);
+        expect(sleptLoss < awakeLoss);
+
+        bool wasThirst = thirstEnabled;
+        thirstEnabled = true;
+        movers[mi].thirst = movers[awake].thirst = 0.8f;
+        for (int i = 0; i < 600; i++) NeedsTick();
+        thirstEnabled = wasThirst;
+        float sleptThirst = 0.8f - movers[mi].thirst;
+        float awakeThirst = 0.8f - movers[awake].thirst;
+        expect(fabsf(sleptThirst - awakeThirst * balance.sleepMetabolismMult) < 0.001f);
+        expect(sleptThirst < awakeThirst);
+    }
+}
+
 static void SetupBodyTempTest(int* mi, float ambientTemp) {
     SetupClean();
     // Override ambient temp on all cells
@@ -1058,6 +1180,7 @@ int main(int argc, char* argv[]) {
     test(starvation_wakes_sleeper);
     test(full_day_cycle);
     test(furniture_rest_seeking);
+    test(day_rhythm);
     test(body_temperature);
     test(death_releases_reservations);
 

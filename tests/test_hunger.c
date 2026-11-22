@@ -662,6 +662,25 @@ describe(eating_consumption) {
         expect(movers[mi].needTarget == -1);
     }
 
+    it("a tired mover who finishes eating goes to rest before any job is handed out") {
+        SetupClean();
+        int mi = SetupMover(5, 5);
+        int spIdx = CreateStockpile(5, 5, 1, 2, 2);
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                               5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_BERRIES);
+        PlaceItemInStockpile(spIdx, 5, 5, itemIdx);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        movers[mi].hunger = 0.2f;
+        movers[mi].energy = balance.energyTiredThreshold - 0.05f;   // tired, not exhausted
+        ProcessFreetimeNeeds();
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_EATING);
+        for (int i = 0; i < 1000 && movers[mi].freetimeState == FREETIME_EATING; i++) ProcessFreetimeNeeds();
+        // Same tick as the meal ends, before AssignJobs: already on the way to rest.
+        // (Bug: it was FREETIME_NONE here, AssignJobs gave it work and it worked on tired.)
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_REST || movers[mi].freetimeState == FREETIME_RESTING);
+    }
+
     it("eating restores correct nutrition amount") {
         SetupClean();
         int mi = SetupMover(5, 5);

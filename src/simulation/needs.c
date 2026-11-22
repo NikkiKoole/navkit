@@ -84,6 +84,31 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
     return bestIdx;
 }
 
+// ---- Soft day rhythm (see needs.h) ----
+bool sleepRhythmEnabled = true;
+static float idleTime[MAX_MOVERS];   // game seconds idle (no job, no need); not saved, rebuilds
+
+bool IsSkyDark(void) {
+    return timeOfDay < GetSeasonalDawn() || timeOfDay >= GetSeasonalDusk();
+}
+
+// A need that gets a mover out of bed even in the dark
+static bool SleeperMustGetUp(const Mover* m) {
+    return (hungerEnabled && m->hunger < balance.hungerCriticalThreshold) ||
+           (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) ||
+           (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) ||
+           (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold);
+}
+
+static bool LyingIn(const Mover* m) {
+    return sleepRhythmEnabled && IsSkyDark() && !SleeperMustGetUp(m);
+}
+
+bool MoverLyingIn(int moverIdx) {
+    const Mover* m = &movers[moverIdx];
+    return m->freetimeState == FREETIME_RESTING && m->energy >= balance.energyWakeThreshold && LyingIn(m);
+}
+
 // Seeking counts needProgress up to a timeout (foodSeekTimeoutGH etc.). That timeout is for
 // targets that can't be reached, not for distance: at the start of a seek, needProgress is
 // set below zero by the time the walk itself should take, so a far target gets the same
@@ -564,6 +589,9 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         m->needTarget = -1;
     }
 
+    if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0) idleTime[moverIdx] += gameDeltaTime;
+    else idleTime[moverIdx] = 0.0f;
+
     switch (m->freetimeState) {
         case FREETIME_NONE: {
             // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
@@ -611,6 +639,14 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             } else if (bodyTempEnabled && m->bodyTemp < balance.mildColdThreshold && m->currentJobId < 0) {
                 // CHILLY — seek warmth (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartWarmthSearch(m, moverIdx);
+            } else if (sleepRhythmEnabled && energyEnabled && m->currentJobId < 0 &&
+                       m->energy < balance.idleBedEnergy && IsSkyDark() &&
+                       idleTime[moverIdx] >= GameHoursToGameSeconds(balance.idleBedDelayGH)) {
+                // NOTHING TO DO, DARK, NOT FRESH — might as well go to bed (day rhythm)
+                if (m->needSearchCooldown <= 0.0f) {
+                    EventLog("Mover %d goes to bed early: dark and nothing to do, energy=%.0f%%", moverIdx, m->energy * 100.0f);
+                    StartRestSearch(m, moverIdx);
+                }
             }
             break;
         }
@@ -778,8 +814,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             m->energy += rate * gameDeltaTime;
             if (m->energy > 1.0f) m->energy = 1.0f;
 
-            // Wake condition: energy recovered enough
-            if (m->energy >= balance.energyWakeThreshold) {
+            // Wake condition: energy recovered enough, and not lying in until it gets light
+            if (m->energy >= balance.energyWakeThreshold && !LyingIn(m)) {
                 EventLog("Mover %d woke up, energy=%.0f%%", moverIdx, m->energy * 100.0f);
                 // Mood: sleep quality moodlet
                 if (m->needTarget < 0) {
@@ -1092,6 +1128,18 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     }
 }
 
+static float SleepMetabolism(int moverIdx) {
+    return movers[moverIdx].freetimeState == FREETIME_RESTING ? balance.sleepMetabolismMult : 1.0f;
+}
+
+float MoverHungerDrainPerGH(int moverIdx) {
+    return balance.hungerDrainPerGH * SleepMetabolism(moverIdx);
+}
+
+float MoverThirstDrainPerGH(int moverIdx) {
+    return balance.thirstDrainPerGH * SleepMetabolism(moverIdx);
+}
+
 float MoverEnergyDrainPerGH(int moverIdx) {
     Mover* m = &movers[moverIdx];
     float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
@@ -1105,6 +1153,11 @@ void ProcessFreetimeNeeds(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
+        int before = m->freetimeState;
         ProcessMoverFreetime(m, i);
+        // A need just ended (ate, drank, woke, gave up a search): weigh the other needs
+        // now, before AssignJobs hands out work. Otherwise a tired mover who just ate got
+        // a job in the same tick and the "tired, idle: go to bed" check never saw it idle.
+        if (before != FREETIME_NONE && m->freetimeState == FREETIME_NONE) ProcessMoverFreetime(m, i);
     }
 }

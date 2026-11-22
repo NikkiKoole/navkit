@@ -87,6 +87,11 @@ typedef struct {
 
     // === MULTIPLIERS (for system interactions) ===
     float carryingEnergyMult;       // 1.1 (energy drains faster while carrying an item)
+    float sleepMetabolismMult;      // 0.5 (hunger and thirst drain slower while resting: they last the night)
+
+    // === SLEEP RHYTHM (soft: from darkness and idleness, never from the clock) ===
+    float idleBedEnergy;            // 0.5 (idle in the dark below this energy: go to bed)
+    float idleBedDelayGH;           // 0.25 (idle this long first)
     float hungerSpeedPenaltyMin;    // 0.5
     float hungerPenaltyThreshold;   // 0.2
 

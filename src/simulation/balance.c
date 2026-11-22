@@ -72,6 +72,11 @@ void InitBalance(void) {
 
     // Multipliers
     balance.carryingEnergyMult    = 1.1f;
+    balance.sleepMetabolismMult   = 0.5f;
+
+    // Sleep rhythm
+    balance.idleBedEnergy         = 0.5f;
+    balance.idleBedDelayGH        = 0.25f;
     balance.hungerSpeedPenaltyMin = 0.5f;
     balance.hungerPenaltyThreshold = 0.2f;
 

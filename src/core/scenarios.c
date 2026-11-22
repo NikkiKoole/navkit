@@ -14,6 +14,8 @@
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../core/sim_manager.h"
+#include "../simulation/needs.h"
+#include <string.h>
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -352,6 +354,85 @@ static void SetupTrainLong(void) {
 }
 
 // ---------------------------------------------------------------------------
+// dayrhythm: 8 movers, 8 beds, a stockpile of dried berries (doesn't spoil), endless walls
+// to mine. Headless prints, per day, how many movers are in bed at 03:00 and at 13:00 and
+// how many walls were mined: the soft day rhythm (setting sleepRhythm, see needs.h) should
+// give ~all in bed at night and ~none at midday, without costing work. Compare with
+// --set sleepRhythm 0. scenarioMovers > 0 limits the walls (0 walls: nothing to do).
+// ---------------------------------------------------------------------------
+#define DR_MAX_DAYS 32
+static int drBed3[DR_MAX_DAYS], drBed13[DR_MAX_DAYS], drMined[DR_MAX_DAYS], drFood[DR_MAX_DAYS], drMovers;
+static float drPrevHour;
+
+static int DayRhythmWallsLeft(void) {
+    int n = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            if (DESIGNATION(x, y, 1).type == DESIGNATION_MINE) n++;
+    return n;
+}
+
+static void SetupDayRhythm(void) {
+    hungerEnabled = true; energyEnabled = true;
+    thirstEnabled = false; bladderEnabled = false; bodyTempEnabled = false;
+    dayLength = 120.0f;
+    int maxWalls = scenarioMovers > 0 ? scenarioMovers : 1000000;
+    int cx = gridWidth / 2;
+    for (int i = 0; i < 8; i++) SpawnFurniture(cx - 8 + i * 2, 2, 1, FURNITURE_PLANK_BED, MAT_OAK);
+    CreateStockpile(cx - 3, 5, 1, 6, 3);
+    for (int i = 0; i < 18; i++) {
+        int idx = SpawnItem((cx - 3 + i % 6) * CELL_SIZE + 4, (5 + i / 6) * CELL_SIZE + 4, 1, ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    int n = 0;
+    for (int y = 10; y < gridHeight - 2 && n < maxWalls; y += 2)
+        for (int x = 2; x < gridWidth - 2 && n < maxWalls; x += 2) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+            DesignateMine(x, y, 1);
+            n++;
+        }
+    BuildEntrances(); BuildGraph();
+    for (int i = 0; i < 8; i++) SpawnMoverAt(cx - 4 + i, 8, 1);
+    currentViewZ = 1;
+    memset(drBed3, 0, sizeof(drBed3)); memset(drBed13, 0, sizeof(drBed13));
+    for (int d = 0; d < DR_MAX_DAYS; d++) drMined[d] = -1;
+    drMovers = 8;
+    drPrevHour = timeOfDay;
+}
+
+static void DayRhythmTickStats(void) {
+    int day = dayNumber % DR_MAX_DAYS;
+    for (int k = 0; k < 2; k++) {
+        float h = k == 0 ? 3.0f : 13.0f;
+        if (drPrevHour < h && timeOfDay >= h) {
+            int inBed = 0;
+            for (int i = 0; i < moverCount; i++)
+                if (movers[i].active && (movers[i].freetimeState == FREETIME_RESTING ||
+                                         movers[i].freetimeState == FREETIME_SEEKING_REST)) inBed++;
+            if (k == 0) drBed3[day] = inBed;
+            else {
+                drBed13[day] = inBed;
+                drMined[day] = DayRhythmWallsLeft();
+                drFood[day] = 0;
+                for (int i = 0; i < itemHighWaterMark; i++)
+                    if (items[i].active && items[i].type == ITEM_DRIED_BERRIES) drFood[day] += items[i].stackCount;
+            }
+        }
+    }
+    drPrevHour = timeOfDay;
+}
+
+static void DayRhythmPrintStats(void) {
+    printf("Day rhythm %s: movers in bed at 03:00 / 13:00, walls and food left at 13:00\n",
+           sleepRhythmEnabled ? "ON" : "OFF");
+    for (int d = 0; d < DR_MAX_DAYS; d++) {
+        if (drMined[d] < 0) continue;
+        printf("  day %2d: %d/%d at 03:00, %d/%d at 13:00, walls left %d, food left %d\n",
+               d, drBed3[d], drMovers, drBed13[d], drMovers, drMined[d], drFood[d]);
+    }
+}
+
 // worksplit: two clusters of work far apart (job distance weighting)
 // ---------------------------------------------------------------------------
 // West cluster A: logs on the ground + a log stockpile (hauling). East cluster B:
@@ -640,6 +721,8 @@ static const Scenario scenarios[] = {
                    "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
+    {"dayrhythm",  "8 movers, beds, dried berries, endless mining: who is in bed at 03:00 and 13:00 (setting sleepRhythm)",
+                   NULL,        SetupDayRhythm, DayRhythmTickStats, DayRhythmPrintStats, NULL, 64, 64},
     {"worksplit",  "Haul work west, mine work east, movers at both: compare jobDistanceWeight 0 vs > 0",
                    NULL,        SetupWorkSplit, WorkSplitTickStats, WorkSplitPrintStats, NULL, 48, 40},
     {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",

@@ -405,6 +405,16 @@ static const Setting settings[] = {
       "Energy drain multiplier while carrying an item (hauling, delivering, crafting inputs)."),
     SET_BALANCE("hungerSpeedMin", "Hunger Speed Min", "Mover Balance/Multipliers", hungerSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
       "Minimum speed multiplier when starving."),
+    SET_BALANCE("sleepMetabolism", "Sleep Metabolism", "Mover Balance/Multipliers", sleepMetabolismMult, 0.05f, 0.0f, 1.0f,
+      "Hunger and thirst drain multiplier while resting (0.5: a meal and a drink last the night)."),
+
+    // --- Mover balance: sleep rhythm ---
+    SET_BOOL("sleepRhythm", "Day Rhythm", "Mover Balance/Sleep Rhythm", sleepRhythmEnabled,
+      "Movers stay in bed while it is dark (unless a need is critical) and go to bed when it is dark and there is nothing to do. Night never makes anyone more tired."),
+    SET_BALANCE("idleBedEnergy", "Idle Bed Energy", "Mover Balance/Sleep Rhythm", idleBedEnergy, 0.05f, 0.0f, 1.0f,
+      "In the dark with nothing to do, a mover below this energy goes to bed."),
+    SET_BALANCE("idleBedDelay", "Idle Bed Delay (GH)", "Mover Balance/Sleep Rhythm", idleBedDelayGH, 0.05f, 0.0f, 4.0f,
+      "Game hours a mover is idle in the dark before going to bed."),
 
     // --- Mover balance: body temperature ---
     SET_BALANCE("bodyCoolingRate", "Cooling Rate", "Mover Balance/Body Temperature", bodyTempCoolingRatePerGH, 0.5f, 0.5f, 20.0f,

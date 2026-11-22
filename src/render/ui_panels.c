@@ -1068,6 +1068,12 @@ void DrawUI(void) {
             DrawSettingsGroup("Mover Balance/Body Temperature", ix, &y);
             y += 22;
 
+            y += 4;
+            DrawTextShadow("Sleep Rhythm:", ix, y, 14, GRAY);
+            y += 18;
+            DrawSettingsGroup("Mover Balance/Sleep Rhythm", ix, &y);
+            y += 22;
+
             // Derived rates (read-only)
             y += 4;
             DrawTextShadow("Derived Rates (per game-hour):", ix, y, 14, GRAY);

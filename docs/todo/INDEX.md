@@ -26,7 +26,7 @@
 - `village-next-steps.md` — Bridge from survival to settlement: room quality, mood, distance weighting, elevators, occupations, furniture (6-step build order)
 - `09-onboarding-and-progression.md` — Starting scenarios, progressive need unlocks, difficulty tuning
 - `11-stockpile-filter-redesign.md` — Hierarchical filter UI for growing item count
-- `schedule-system.md` — Clock-driven daily routines (work/meal/leisure/sleep blocks) layered on existing job system
+- `schedule-system.md` — Clock-driven daily routines (work/meal/leisure/sleep blocks) layered on existing job system; soft day rhythm (lying in while dark, early night when idle, sleep metabolism) done
 - `transient-state-save.md` — Known save/load gaps (designation progress lost, etc.)
 - `jobs/instant-reassignment.md` — Assign next job immediately on completion instead of waiting for AssignJobs()
 - `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (6k lines, ~85 functions)

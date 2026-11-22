@@ -649,6 +649,7 @@ describe(mood_eating_triggers) {
 describe(mood_sleep_triggers) {
     it("sleeping on ground gives SLEPT_ON_GROUND moodlet") {
         SetupClean();
+        timeOfDay = 12.0f;  // daytime: no lying in until dawn
         int mi = SetupMover(5, 5);
         Mover* m = &movers[mi];
         m->hunger = 1.0f;
@@ -676,6 +677,7 @@ describe(mood_sleep_triggers) {
 
     it("sleeping in plank bed gives SLEPT_WELL moodlet") {
         SetupClean();
+        timeOfDay = 12.0f;  // daytime: no lying in until dawn
         int mi = SetupMover(5, 5);
         Mover* m = &movers[mi];
         m->hunger = 1.0f;
@@ -714,6 +716,7 @@ describe(mood_sleep_triggers) {
 
     it("sleeping on leaf pile gives SLEPT_POORLY moodlet") {
         SetupClean();
+        timeOfDay = 12.0f;  // daytime: no lying in until dawn
         int mi = SetupMover(5, 5);
         Mover* m = &movers[mi];
         m->hunger = 1.0f;
@@ -744,6 +747,7 @@ describe(mood_sleep_triggers) {
 
     it("hardy mover gets weaker ground sleep penalty") {
         SetupClean();
+        timeOfDay = 12.0f;  // daytime: no lying in until dawn
         // Normal mover
         int mi_normal = SetupMover(3, 3);
         movers[mi_normal].hunger = 1.0f;
@@ -860,7 +864,9 @@ describe(mood_drink_triggers) {
                 SimNeedsTick();
             }
 
-            expect(m->freetimeState == FREETIME_NONE);
+            // Done drinking. Still thirsty after one natural drink (0.1 + 0.2 < seek 0.4),
+            // so the mover may already be off for the next one in the same tick.
+            expect(m->freetimeState != FREETIME_DRINKING_NATURAL);
             expect(HasMoodlet(m, MOODLET_DRANK_DIRTY_WATER));
             expect(!HasMoodlet(m, MOODLET_DRANK_GOOD));
         }

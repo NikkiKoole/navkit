@@ -1,12 +1,42 @@
 # Schedule System
 
-> Status: spec
+> Status: partial (soft day rhythm done 2026-11-22; clock blocks below are still a spec)
 
 > Clock-driven daily routines layered on top of the existing need/job system. The shift from "do whatever's urgent" to "it's 8am, time for work."
 
 ## Current System
 
 Pure need/queue driven. `AssignJobs()` scans all idle movers, WorkGivers find best (mover, task) pairs, mover works until done or need interrupts. No concept of time-of-day — a mover will mine at 3am if there's mining to do.
+
+## Done: Soft Day Rhythm (2026-11-22)
+
+Design call: the rhythm must be soft but real, and night must **not** make anyone more
+tired (no clock-driven energy drain). It comes from world facts instead. Setting
+`sleepRhythm` (on by default), code in `src/simulation/needs.c` (see `needs.h`):
+
+- **Lying in**: a mover in bed doesn't get up while it is dark (seasonal dawn/dusk),
+  unless a need is critical (starving, dehydrating, desperate bladder, freezing).
+- **Early night**: idle (no job, no need) for `idleBedDelayGH` (0.25) in the dark with
+  energy below `idleBedEnergy` (0.5): go to bed.
+- **Sleep metabolism**: hunger and thirst drain at `sleepMetabolismMult` (0.5) while
+  resting, so a meal lasts the night. Without it hunger woke sleepers most nights and
+  the rhythm drifted.
+- When a need ends (ate, drank, woke), the other needs are weighed again in the same
+  tick, before AssignJobs: a tired mover who just ate goes to bed instead of back to work.
+
+Lying in can only make waking later, never earlier, so the anchor is dawn: a working
+mover wakes at dawn, works ~14 game hours until exhausted, sleeps ~7, and is still in bed
+when it is dark. Measured with scenario `dayrhythm` (8 movers, endless mining, dried
+berries, dayLength 120, 14 days; movers in bed at 03:00 / 13:00 per day):
+
+| | in bed at 03:00 | in bed at 13:00 | walls mined in 14 days |
+|---|---|---|---|
+| rhythm off, sleepMetabolism 1 | 0-5 of 8, drifting | 0-6 of 8 | 395 (food ran out day 13) |
+| rhythm on | 5-8 of 8 | 0-2 of 8 | 490 |
+
+Not done / next: going back to bed after waking at night for a drink; light at the
+mover's cell (a lit room) instead of the sky; night owl / early bird traits as an offset
+on lying in; City 1999 needs opening hours and spawn curves, not per-mover blocks.
 
 ## Village System: Schedule-Driven with Need Interrupts
 

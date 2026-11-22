@@ -121,7 +121,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
     // Hunger
     {
         const char* label = HungerLabel(m->hunger, &tone);
-        float hoursToStarve = (balance.hungerDrainPerGH > 0) ? m->hunger / balance.hungerDrainPerGH : 999.0f;
+        float hungerPerGH = MoverHungerDrainPerGH((int)(m - movers));
+        float hoursToStarve = (hungerPerGH > 0) ? m->hunger / hungerPerGH : 999.0f;
         DescAdd(d, tone, "Hunger: %.0f%% (%s) — starving in %.1fh", m->hunger * 100.0f, label, hoursToStarve);
         if (m->freetimeState == FREETIME_SEEKING_FOOD) DescAdd(d, DESC_WARN, "  Seeking food...");
         else if (m->freetimeState == FREETIME_EATING)
@@ -131,7 +132,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
     // Thirst
     {
         const char* label = ThirstLabel(m->thirst, &tone);
-        float hoursToDehydrate = (balance.thirstDrainPerGH > 0) ? m->thirst / balance.thirstDrainPerGH : 999.0f;
+        float thirstPerGH = MoverThirstDrainPerGH((int)(m - movers));
+        float hoursToDehydrate = (thirstPerGH > 0) ? m->thirst / thirstPerGH : 999.0f;
         DescAdd(d, tone, "Thirst: %.0f%% (%s) — dehydrating in %.1fh", m->thirst * 100.0f, label, hoursToDehydrate);
         if (m->freetimeState == FREETIME_SEEKING_DRINK) DescAdd(d, DESC_WARN, "  Seeking drink...");
         else if (m->freetimeState == FREETIME_DRINKING)
@@ -169,6 +171,7 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
                 float hoursToRested = (balance.energyWakeThreshold - m->energy) / recoveryPerGH;
                 if (hoursToRested > 0) snprintf(proj, sizeof(proj), " — rested in %.1fh (%s)", hoursToRested, restOn);
             }
+            if (MoverLyingIn((int)(m - movers))) snprintf(proj, sizeof(proj), " — lying in until it gets light");
         } else {
             float drainPerGH = MoverEnergyDrainPerGH((int)(m - movers));
             if (drainPerGH > 0) {
