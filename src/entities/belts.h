@@ -5,9 +5,10 @@
 // game seconds and only into a free cell, so a blocked end backs the line up.
 //
 // In: an empty belt takes an unreserved ground item lying on its cell; the first belt of a
-// line (nothing feeds it) also takes a whole stack from a stockpile slot right behind it.
+// line (nothing feeds it) also takes a whole stack from the stockpile behind it (any slot).
 // Out: past the last belt, a stockpile ahead takes the load into any slot that accepts it;
-// no stockpile: it is dropped on the ground ahead if no ground item lies there. Else it waits. Items on a belt are ITEM_ON_BELT: not in the item spatial grid, so no job sees them.
+// no stockpile: it is dropped on the ground ahead if no ground item lies there. Else it waits.
+// Items on a belt are ITEM_ON_BELT: not in the item spatial grid, so no job sees them.
 //
 // Not saved yet (spike): belts vanish on load and items on them stay where they were.
 #ifndef BELTS_H
