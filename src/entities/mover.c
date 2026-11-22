@@ -2046,8 +2046,13 @@ void UpdateMovers(void) {
                             m->z = (float)(mz - 1);
                         }
                     }
-                } else if (!CellBlocksMovement(GRID(newCellX, newCellY, mz)) && 
-                           !IsCellWalkableAt(mz, newCellY, newCellX)) {
+                } else if (!CellBlocksMovement(GRID(newCellX, newCellY, mz)) &&
+                           !IsCellWalkableAt(mz, newCellY, newCellX) &&
+                           // Air above a ramp is only a way down when the path goes down:
+                           // cutting a corner over a ramp's top on the upper level used to
+                           // drop movers back onto the ramp, repath, climb, drop... forever
+                           !(mz > 0 && CellIsDirectionalRamp(GRID(newCellX, newCellY, mz-1)) &&
+                             target.z >= mz)) {
                     // Moving into non-blocking, non-walkable cell (e.g., air without solid below)
                     // Check if there's a ramp below - if so, this is a ramp descent, not a fall
                     bool hasRampBelow = (mz > 0) && CellIsDirectionalRamp(GRID(newCellX, newCellY, mz-1));
