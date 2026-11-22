@@ -214,7 +214,8 @@ static void print_mover(int idx) {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
                                  "SEEKING_WARMTH", "WARMING", "SEEKING_DRINK", "DRINKING",
                                  "SEEKING_NATURAL_WATER", "DRINKING_NATURAL",
-                                 "SEEKING_TOILET", "USING_TOILET", "SEEKING_BUSH", "USING_BUSH"};
+                                 "SEEKING_TOILET", "USING_TOILET", "SEEKING_BUSH", "USING_BUSH",
+                                 "SEEKING_TAP", "DRINKING_TAP"};
         int fs = m->freetimeState;
         int ftCount = (int)(sizeof(ftNames)/sizeof(ftNames[0]));
         printf("Freetime state: %s (%d)\n", (fs >= 0 && fs < ftCount) ? ftNames[fs] : "?", fs);

@@ -229,18 +229,15 @@ static void StartWarmthSearch(Mover* m, int moverIdx) {
 
 // --- Bladder seeking ---
 
-// Find nearest toilet furniture (same pattern as rest seeking)
-static int FindNearestToilet(float x, float y, int z) {
+// Find nearest free furniture of a type on this z (toilet, tap)
+static int FindNearestFreeFurniture(FurnitureType type, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e12f;
     for (int i = 0; i < MAX_FURNITURE; i++) {
-        if (!furniture[i].active) continue;
-        if (furniture[i].type != FURNITURE_TOILET) continue;
-        if (furniture[i].z != z) continue;
-        if (furniture[i].occupant != -1) continue;
-        float fx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f;
-        float fy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f;
-        float dx = fx - x, dy = fy - y;
+        if (!furniture[i].active || furniture[i].type != type) continue;
+        if (furniture[i].z != z || furniture[i].occupant != -1) continue;
+        float dx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f - x;
+        float dy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f - y;
         float distSq = dx * dx + dy * dy;
         if (distSq < bestDistSq) {
             bestDistSq = distSq;
@@ -295,7 +292,7 @@ static void StartBladderSearch(Mover* m, int moverIdx) {
     int cz = (int)m->z;
 
     // Priority 1: toilet furniture
-    int toiletIdx = FindNearestToilet(m->x, m->y, cz);
+    int toiletIdx = FindNearestFreeFurniture(FURNITURE_TOILET, m->x, m->y, cz);
     if (toiletIdx >= 0) {
         furniture[toiletIdx].occupant = moverIdx;
         m->freetimeState = FREETIME_SEEKING_TOILET;
@@ -435,7 +432,28 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
         return;
     }
 
-    // No items — try natural water
+    // No drinks stored — a tap (clean, never runs dry)
+    int tapIdx = FindNearestFreeFurniture(FURNITURE_TAP, m->x, m->y, (int)m->z);
+    if (tapIdx >= 0) {
+        furniture[tapIdx].occupant = moverIdx;
+        EventLog("Mover %d SEEKING_TAP furniture=%d", moverIdx, tapIdx);
+        m->freetimeState = FREETIME_SEEKING_TAP;
+        m->needTarget = tapIdx;
+        m->goal = (Point){furniture[tapIdx].x, furniture[tapIdx].y, furniture[tapIdx].z};
+        StartSeekClock(m);
+        m->needsRepath = true;
+        return;
+    }
+
+    // Every tap on this level in use: wait a moment and try again, rather than walking to the pond
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) {
+            m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+            return;
+        }
+    }
+
+    // No tap — try natural water
     int waterX, waterY, waterZ, standX, standY, standZ;
     if (FindNearestWaterCell(m->x, m->y, (int)m->z, &waterX, &waterY, &waterZ, &standX, &standY, &standZ)) {
         EventLog("Mover %d SEEKING_NATURAL_WATER at (%d,%d,%d) stand (%d,%d,%d)", moverIdx, waterX, waterY, waterZ, standX, standY, standZ);
@@ -545,6 +563,12 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS && items[m->needTarget].reservedBy == moverIdx) {
             ReleaseItemReservation(m->needTarget);
         }
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
+    // Cancel tap use if thirst disabled
+    if (!thirstEnabled && (m->freetimeState == FREETIME_SEEKING_TAP || m->freetimeState == FREETIME_DRINKING_TAP)) {
+        ReleaseFurniture(m->needTarget, moverIdx);
         m->freetimeState = FREETIME_NONE;
         m->needTarget = -1;
     }
@@ -1035,6 +1059,51 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         }
 
         // --- Bladder states ---
+
+        case FREETIME_SEEKING_TAP: {
+            int fi = m->needTarget;
+            if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active ||
+                furniture[fi].type != FURNITURE_TAP || furniture[fi].occupant != moverIdx) {
+                if (fi >= 0 && fi < MAX_FURNITURE) ReleaseFurniture(fi, moverIdx);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                break;
+            }
+            int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+            if ((int)m->z == furniture[fi].z && abs(mx - furniture[fi].x) <= 1 && abs(my - furniture[fi].y) <= 1) {
+                EventLog("Mover %d DRINKING_TAP at furniture %d", moverIdx, fi);
+                m->freetimeState = FREETIME_DRINKING_TAP;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+                ReleaseFurniture(fi, moverIdx);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_DRINKING_TAP: {
+            m->timeWithoutProgress = 0.0f;
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(balance.drinkingDurationGH)) {
+                // A cup of clean water: as much as a water item, no dirty-water mood
+                m->thirst += GetItemHydration(ITEM_WATER);
+                if (m->thirst > 1.0f) m->thirst = 1.0f;
+                EventLog("Mover %d drank at tap %d, thirst=%.0f%%", moverIdx, m->needTarget, m->thirst * 100.0f);
+                ReleaseFurniture(m->needTarget, moverIdx);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
 
         case FREETIME_SEEKING_TOILET: {
             int fi = m->needTarget;

@@ -20,6 +20,7 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_TOILET]     = { "Toilet",     0.0f,    false, 11, CAP_NONE },
     // Not blocking (a blocking cell would drop out of its room), but costly to cross
     [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE },
+    [FURNITURE_TAP]        = { "Tap",        0.0f,    false, 11, CAP_WATER_SOURCE },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,

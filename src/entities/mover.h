@@ -57,6 +57,8 @@ typedef enum {
     FREETIME_USING_TOILET,          // Using toilet (brief timer)
     FREETIME_SEEKING_BUSH,          // Walking to outdoor tree/bush for relief
     FREETIME_USING_BUSH,            // Relieving behind bush (brief timer)
+    FREETIME_SEEKING_TAP,           // Walking to a tap (append only: saves store the number)
+    FREETIME_DRINKING_TAP,          // Drinking at a tap
 } FreetimeState;
 
 

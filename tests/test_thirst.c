@@ -9,6 +9,8 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
 #include "../src/entities/containers.h"
+#include "../src/entities/furniture.h"
+#include "../src/simulation/mood.h"
 #include "../src/simulation/needs.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/water.h"
@@ -41,6 +43,7 @@ static void SetupClean(void) {
     ClearWorkshops();
     ClearJobs();
     ClearWater();
+    ClearFurniture();
     InitDesignations();
     InitBalance();
     hungerEnabled = false;
@@ -483,6 +486,88 @@ describe(natural_water_fallback) {
 }
 
 // =============================================================================
+// Tap: clean water that doesn't run out
+// =============================================================================
+
+describe(tap_water) {
+    it("a thirsty mover with no drinks stored goes to the tap, not the pond") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].thirst = balance.thirstSeekThreshold - 0.01f;
+        WATER_MUT(8, 8, 1).level = 5;
+        int tap = SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_TAP);
+        expect(movers[mi].needTarget == tap);
+        expect(furniture[tap].occupant == mi);
+    }
+
+    it("stored drinks come before the tap") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].thirst = balance.thirstSeekThreshold - 0.01f;
+        SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+    }
+
+    it("drinking at the tap gives a cup of water, no dirty-water mood, and frees the tap") {
+        SetupClean();
+        int mi = SetupMover(4, 4);
+        int tap = SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        movers[mi].thirst = 0.2f;
+        ProcessFreetimeNeeds();   // seek; already there
+        ProcessFreetimeNeeds();   // arrive
+        expect(movers[mi].freetimeState == FREETIME_DRINKING_TAP);
+        int ticks = (int)(GameHoursToGameSeconds(balance.drinkingDurationGH) / TICK_DT) + 2;
+        for (int i = 0; i < ticks && movers[mi].freetimeState == FREETIME_DRINKING_TAP; i++) ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+        expect(fabsf(movers[mi].thirst - (0.2f + GetItemHydration(ITEM_WATER))) < 0.01f);
+        expect(furniture[tap].occupant == -1);
+        expect(!HasMoodlet(&movers[mi], MOODLET_DRANK_DIRTY_WATER));
+    }
+
+    it("a tap in use is not taken by a second mover") {
+        SetupClean();
+        int a = SetupMover(1, 1);
+        int b = SetupMover(2, 1);
+        movers[a].thirst = movers[b].thirst = balance.thirstSeekThreshold - 0.01f;
+        SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        ProcessFreetimeNeeds();
+        expect(movers[a].freetimeState == FREETIME_SEEKING_TAP);
+        expect(movers[b].freetimeState != FREETIME_SEEKING_TAP);
+    }
+
+    it("with the only tap in use, a mover waits for it instead of walking to the pond") {
+        SetupClean();
+        int a = SetupMover(1, 1);
+        int b = SetupMover(2, 1);
+        movers[a].thirst = movers[b].thirst = balance.thirstSeekThreshold - 0.01f;
+        WATER_MUT(8, 8, 1).level = 5;
+        SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        ProcessFreetimeNeeds();
+        expect(movers[a].freetimeState == FREETIME_SEEKING_TAP);
+        expect(movers[b].freetimeState == FREETIME_NONE);
+        expect(movers[b].needSearchCooldown > 0.0f);
+    }
+
+    it("the tap is released when thirst is switched off mid-way") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        int tap = SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        movers[mi].thirst = balance.thirstSeekThreshold - 0.01f;
+        ProcessFreetimeNeeds();
+        expect(furniture[tap].occupant == mi);
+        thirstEnabled = false;
+        ProcessFreetimeNeeds();
+        thirstEnabled = true;
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+        expect(furniture[tap].occupant == -1);
+    }
+}
+
+// =============================================================================
 // Fill Water Pot Job
 // =============================================================================
 
@@ -712,6 +797,7 @@ int main(int argc, char* argv[]) {
     test(drink_from_container);
     test(drink_priority);
     test(natural_water_fallback);
+    test(tap_water);
     test(fill_water_pot);
     test(beverage_recipes);
     test(thirst_hunger_coexistence);

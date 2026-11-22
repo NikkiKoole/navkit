@@ -22,6 +22,7 @@ typedef enum {
     FURNITURE_CHAIR,
     FURNITURE_TOILET,
     FURNITURE_TABLE,       // append only: saves store the type number
+    FURNITURE_TAP,         // clean water without end (no plumbing yet)
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 

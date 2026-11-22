@@ -256,6 +256,9 @@ static void StartDollhouse(void) {
     // Place furniture — Bathroom
     SpawnFurniture(ox + 8, oy + 1, z, FURNITURE_TOILET, MAT_GRANITE);
 
+    // Tap in the kitchen, next to the counter: clean water that doesn't run out
+    SpawnFurniture(ox + 4, oy + 3, z, FURNITURE_TAP, MAT_GRANITE);
+
     // Place furniture — Bedroom
     SpawnFurniture(ox + 7, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
     SpawnFurniture(ox + 8, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);

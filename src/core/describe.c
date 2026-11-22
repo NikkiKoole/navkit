@@ -139,6 +139,10 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         else if (m->freetimeState == FREETIME_DRINKING)
             DescAdd(d, DESC_WATER, "  Drinking (%.0f%%)",
                     (m->needProgress / GameHoursToGameSeconds(balance.drinkingDurationGH)) * 100.0f);
+        else if (m->freetimeState == FREETIME_SEEKING_TAP) DescAdd(d, DESC_WARN, "  Going to the tap...");
+        else if (m->freetimeState == FREETIME_DRINKING_TAP)
+            DescAdd(d, DESC_WATER, "  Drinking at the tap (%.0f%%)",
+                    (m->needProgress / GameHoursToGameSeconds(balance.drinkingDurationGH)) * 100.0f);
         else if (m->freetimeState == FREETIME_SEEKING_NATURAL_WATER) DescAdd(d, DESC_WARN, "  Seeking natural water...");
         else if (m->freetimeState == FREETIME_DRINKING_NATURAL)
             DescAdd(d, DESC_WATER, "  Drinking from water (%.0f%%)",

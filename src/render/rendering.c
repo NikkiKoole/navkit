@@ -2426,10 +2426,11 @@ static void DrawFurniture(void) {
             case FURNITURE_CHAIR:      sprite = SPRITE_chair;       break;
             case FURNITURE_TOILET:     sprite = SPRITE_toilet;      break;
             case FURNITURE_TABLE:      sprite = SPRITE_table;       break;
+            case FURNITURE_TAP:        sprite = SPRITE_counter;     break;   // placeholder, tinted blue
             default:                   sprite = SPRITE_generic;     break;
         }
 
-        Color tint = WHITE;
+        Color tint = (f->type == FURNITURE_TAP) ? (Color){150, 200, 255, 255} : WHITE;
         Color lightTint = GetLightColor(f->x, f->y, f->z, skyColor);
         tint = MultiplyColor(tint, lightTint);
 
@@ -3371,6 +3372,7 @@ static void DrawFrontView(void) {
                 case FURNITURE_CHAIR:      fSprite = SPRITE_chair;       break;
                 case FURNITURE_TOILET:     fSprite = SPRITE_toilet;      break;
                 case FURNITURE_TABLE:      fSprite = SPRITE_table;       break;
+                case FURNITURE_TAP:        fSprite = SPRITE_counter;     break;   // placeholder
                 default:                   fSprite = SPRITE_generic;     break;
             }
             Rectangle dest = {fScreenX, fScreenY, size, size};
