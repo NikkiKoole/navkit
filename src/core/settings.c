@@ -27,45 +27,47 @@
 // Live tooltips: settings whose tooltip shows derived values (game-hours, tiles/s)
 // ---------------------------------------------------------------------------
 
-static float GameHours(float gameSeconds) { return gameSeconds / (dayLength / 24.0f); }
-static float BaseTilesPerSecond(void) { return balance.baseMoverSpeed / (float)CELL_SIZE; }
+// Most intervals are in game hours (GH); show what that is in real seconds at the current
+// day length. Movement is scaled to game hours too (speed is px/s at dayLength 60).
+static float RealSeconds(float gameHours) { return gameHours * dayLength / 24.0f; }
+static float BaseTilesPerGameHour(void) { return balance.baseMoverSpeed / (float)CELL_SIZE * 2.5f; }
+static float BaseTilesPerRealSecond(void) { return balance.baseMoverSpeed / (float)CELL_SIZE * (60.0f / dayLength); }
 
 static const char* DescWaterEvap(void) {
-    return TextFormat("Puddles evaporate every %.1f game-seconds (%.2f game-hours).",
-                      waterEvapInterval, GameHours(waterEvapInterval));
+    return TextFormat("Puddles evaporate every %.1f game hours (%.0f real s at this day length).",
+                      waterEvapInterval, RealSeconds(waterEvapInterval));
 }
 static const char* DescSpeedShallow(void) {
-    return TextFormat("Mover speed in shallow water: %.0f%% (%.1f tiles/gs).",
-                      waterSpeedShallow * 100.0f, BaseTilesPerSecond() * waterSpeedShallow);
+    return TextFormat("Mover speed in shallow water: %.0f%% (%.0f tiles per game hour).",
+                      waterSpeedShallow * 100.0f, BaseTilesPerGameHour() * waterSpeedShallow);
 }
 static const char* DescSpeedMedium(void) {
-    return TextFormat("Mover speed in medium water: %.0f%% (%.1f tiles/gs).",
-                      waterSpeedMedium * 100.0f, BaseTilesPerSecond() * waterSpeedMedium);
+    return TextFormat("Mover speed in medium water: %.0f%% (%.0f tiles per game hour).",
+                      waterSpeedMedium * 100.0f, BaseTilesPerGameHour() * waterSpeedMedium);
 }
 static const char* DescSpeedDeep(void) {
-    return TextFormat("Mover speed in deep water: %.0f%% (%.1f tiles/gs).",
-                      waterSpeedDeep * 100.0f, BaseTilesPerSecond() * waterSpeedDeep);
+    return TextFormat("Mover speed in deep water: %.0f%% (%.0f tiles per game hour).",
+                      waterSpeedDeep * 100.0f, BaseTilesPerGameHour() * waterSpeedDeep);
 }
 static const char* DescSpeedMud(void) {
-    return TextFormat("Mover speed on mud: %.0f%% (%.1f tiles/gs).",
-                      mudSpeedMultiplier * 100.0f, BaseTilesPerSecond() * mudSpeedMultiplier);
+    return TextFormat("Mover speed on mud: %.0f%% (%.0f tiles per game hour).",
+                      mudSpeedMultiplier * 100.0f, BaseTilesPerGameHour() * mudSpeedMultiplier);
 }
 static const char* DescFireSpread(void) {
-    return TextFormat("Fire tries to spread every %.1f game-seconds (%.1f attempts/gs).",
+    return TextFormat("Fire tries to spread every %.2f game hours (%.0f attempts per game hour).",
                       fireSpreadInterval, 1.0f / fireSpreadInterval);
 }
 static const char* DescFireFuel(void) {
-    float woodBurnGS = 10.0f * fireFuelInterval;   // wood fuel ~10
-    return TextFormat("Fuel consumed every %.1f game-seconds.\nWood wall burns for ~%.0fs (~%.1f game-hours).",
-                      fireFuelInterval, woodBurnGS, GameHours(woodBurnGS));
+    float woodBurnGH = 10.0f * fireFuelInterval;   // wood fuel ~10
+    return TextFormat("Fuel consumed every %.2f game hours.\nWood wall burns for ~%.1f game hours.",
+                      fireFuelInterval, woodBurnGH);
 }
 static const char* DescFireWater(void) {
     return TextFormat("Fire spreads %.1fx slower near water (%d%% chance reduction).",
                       100.0f / (float)fireWaterReduction, fireWaterReduction);
 }
 static const char* DescSmokeDissipation(void) {
-    return TextFormat("Smoke fully clears in %.1f game-seconds (%.2f game-hours).",
-                      smokeDissipationTime, GameHours(smokeDissipationTime));
+    return TextFormat("Smoke clears one level per %.1f game hours.", smokeDissipationTime);
 }
 static const char* DescSmokeGeneration(void) {
     return TextFormat("Smoke per tick = fire level / %d. A level-6 fire produces %d smoke.",
@@ -83,12 +85,12 @@ static const char* DescStoneInsulation(void) {
 }
 
 static const char* DescWeatherMin(void) {
-    return TextFormat("Shortest weather spell: %.0f game-seconds (%.1f game-hours).",
-                      weatherMinDuration, GameHours(weatherMinDuration));
+    return TextFormat("Shortest weather spell: %.0f game hours (%.1f days).",
+                      weatherMinDuration, weatherMinDuration / 24.0f);
 }
 static const char* DescWeatherMax(void) {
-    return TextFormat("Longest weather spell: %.0f game-seconds (%.1f game-hours).",
-                      weatherMaxDuration, GameHours(weatherMaxDuration));
+    return TextFormat("Longest weather spell: %.0f game hours (%.1f days).",
+                      weatherMaxDuration, weatherMaxDuration / 24.0f);
 }
 static const char* DescSnowAccumulation(void) {
     return TextFormat("Snow builds at %.2f levels/gh. Full cover (7) in ~%.0f game-hours.",
@@ -99,12 +101,13 @@ static const char* DescSnowMelting(void) {
                       snowMeltingRate, snowMeltingRate > 0 ? 7.0f / snowMeltingRate : 999.0f);
 }
 static const char* DescGameSpeed(void) {
-    return TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s",
-                      gameSpeed, gameSpeed, gameSpeed == 0.0f ? " (PAUSED)" : "");
+    return TextFormat("Simulation speed multiplier. At %.1fx a game hour takes %.1f real seconds.%s",
+                      gameSpeed, gameSpeed > 0 ? RealSeconds(1.0f) / gameSpeed : 0.0f, gameSpeed == 0.0f ? " (PAUSED)" : "");
 }
 static const char* DescDayLength(void) {
     float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
-    return TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
+    return TextFormat("Real seconds per game day at 1x (a game hour = %.0f s).\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
+                      RealSeconds(1.0f),
                       dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
                       gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f,
                       realDuration < 60 ? "seconds" : "minutes");
@@ -122,13 +125,14 @@ static const char* DescSeasonalAmplitude(void) {
                       baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude);
 }
 static const char* DescBaseSpeed(void) {
-    return TextFormat("Base mover speed in pixels/sec. = %.1f tiles/game-sec.", BaseTilesPerSecond());
+    return TextFormat("Base mover speed (px/s at day length 60). = %.0f tiles per game hour;\non screen now %.1f tiles/s.",
+                      BaseTilesPerGameHour(), BaseTilesPerRealSecond());
 }
 static const char* DescSpeedVariance(void) {
-    return TextFormat("Random speed spread per mover: +/-%.0f%%. Range: %.1f - %.1f tiles/game-sec.",
+    return TextFormat("Random speed spread per mover: +/-%.0f%%. Range: %.0f - %.0f tiles per game hour.",
                       balance.moverSpeedVariance * 100.0f,
-                      BaseTilesPerSecond() * (1.0f - balance.moverSpeedVariance),
-                      BaseTilesPerSecond() * (1.0f + balance.moverSpeedVariance));
+                      BaseTilesPerGameHour() * (1.0f - balance.moverSpeedVariance),
+                      BaseTilesPerGameHour() * (1.0f + balance.moverSpeedVariance));
 }
 
 // ---------------------------------------------------------------------------
@@ -231,8 +235,8 @@ static const Setting settings[] = {
       "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends."),
     SET_BOOL("waterEvaporation", "Evaporation", "Simulation/Water", waterEvaporationEnabled,
       "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics."),
-    SET_FLOAT("waterEvapInterval", "Evap Interval (s)", "Simulation/Water", waterEvapInterval, 1.0f, 1.0f, 120.0f,
-      "Game-seconds between evaporation attempts for level-1 water.", DescWaterEvap),
+    SET_FLOAT("waterEvapInterval", "Evap Interval (GH)", "Simulation/Water", waterEvapInterval, 0.5f, 0.5f, 120.0f,
+      "Game hours between evaporation attempts for level-1 water.", DescWaterEvap),
     SET_FLOAT("waterSpeedShallow", "Speed: Shallow (1-2)", "Simulation/Water/Advanced", waterSpeedShallow, 0.05f, 0.1f, 1.0f,
       "Mover speed multiplier in level 1-2 water.", DescSpeedShallow),
     SET_FLOAT("waterSpeedMedium", "Speed: Medium (3-4)", "Simulation/Water/Advanced", waterSpeedMedium, 0.05f, 0.1f, 1.0f,
@@ -247,10 +251,10 @@ static const Setting settings[] = {
     // --- Fire ---
     SET_BOOL("fire", "Enabled", "Simulation/Fire", fireEnabled,
       "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke."),
-    SET_FLOAT("fireSpread", "Spread Interval (s)", "Simulation/Fire", fireSpreadInterval, 0.1f, 0.1f, 10.0f,
-      "Game-seconds between fire spread attempts.", DescFireSpread),
-    SET_FLOAT("fireFuel", "Fuel Interval (s)", "Simulation/Fire", fireFuelInterval, 0.1f, 0.1f, 10.0f,
-      "Game-seconds between fuel consumption.", DescFireFuel),
+    SET_FLOAT("fireSpread", "Spread Interval (GH)", "Simulation/Fire", fireSpreadInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours between fire spread attempts.", DescFireSpread),
+    SET_FLOAT("fireFuel", "Fuel Interval (GH)", "Simulation/Fire", fireFuelInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours between fuel consumption.", DescFireFuel),
     SET_INT("fireWaterReduction", "Water Reduction %", "Simulation/Fire", fireWaterReduction, 1.0f, 1, 100,
       "Spread chance near water, in percent of normal.", DescFireWater),
     SET_INT("fireSpreadBase", "Base Chance %", "Simulation/Fire/Advanced", fireSpreadBase, 1.0f, 0, 50,
@@ -261,18 +265,18 @@ static const Setting settings[] = {
     // --- Smoke ---
     SET_BOOL("smoke", "Enabled", "Simulation/Smoke", smokeEnabled,
       "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates."),
-    SET_FLOAT("smokeRise", "Rise Interval (s)", "Simulation/Smoke", smokeRiseInterval, 0.01f, 0.01f, 2.0f,
-      "Game-seconds for smoke to rise one Z-level.", NULL),
-    SET_FLOAT("smokeDissipation", "Dissipation Time", "Simulation/Smoke", smokeDissipationTime, 0.1f, 0.5f, 30.0f,
-      "Game-seconds for smoke to fully clear.", DescSmokeDissipation),
+    SET_FLOAT("smokeRise", "Rise Interval (GH)", "Simulation/Smoke", smokeRiseInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours for smoke to rise one Z-level.", NULL),
+    SET_FLOAT("smokeDissipation", "Dissipation (GH)", "Simulation/Smoke", smokeDissipationTime, 0.1f, 0.5f, 30.0f,
+      "Game hours for smoke to clear one level.", DescSmokeDissipation),
     SET_INT("smokeGeneration", "Generation Rate", "Simulation/Smoke", smokeGenerationRate, 1.0f, 1, 10,
       "Smoke per tick = fire level / this.", DescSmokeGeneration),
 
     // --- Steam ---
     SET_BOOL("steam", "Enabled", "Simulation/Steam", steamEnabled,
       "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled."),
-    SET_FLOAT("steamRise", "Rise Interval (s)", "Simulation/Steam", steamRiseInterval, 0.01f, 0.01f, 2.0f,
-      "Game-seconds for steam to rise one Z-level.", NULL),
+    SET_FLOAT("steamRise", "Rise Interval (GH)", "Simulation/Steam", steamRiseInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours for steam to rise one Z-level.", NULL),
     SET_INT("steamCondensationTemp", "Condensation Temp", "Simulation/Steam/Advanced", steamCondensationTemp, 5.0f, 0, 100,
       "Steam condenses to water below this temperature (C).", NULL),
     SET_INT("steamGenerationTemp", "Generation Temp", "Simulation/Steam/Advanced", steamGenerationTemp, 5.0f, 80, 150,
@@ -289,10 +293,10 @@ static const Setting settings[] = {
       "Surface temperature in C (0 = freeze, 20 = room temp, 100 = boiling).", NULL),
     SET_INT("depthDecay", "Depth Decay", "Simulation/Temperature", ambientDepthDecay, 1.0f, 0, 20,
       "Temperature drop per Z-level underground (C).", DescDepthDecay),
-    SET_FLOAT("heatTransferInterval", "Transfer Interval (s)", "Simulation/Temperature", heatTransferInterval, 0.1f, 0.1f, 60.0f,
-      "Game-seconds between heat spreading steps. Lower = faster heat flow.", NULL),
-    SET_FLOAT("tempDecayInterval", "Decay Interval (s)", "Simulation/Temperature", tempDecayInterval, 0.1f, 0.1f, 60.0f,
-      "Game-seconds between decay-toward-ambient steps. Lower = faster cooling.", NULL),
+    SET_FLOAT("heatTransferInterval", "Transfer Interval (GH)", "Simulation/Temperature", heatTransferInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours between heat spreading steps. Lower = faster heat flow.", NULL),
+    SET_FLOAT("tempDecayInterval", "Decay Interval (GH)", "Simulation/Temperature", tempDecayInterval, 0.01f, 0.01f, 2.0f,
+      "Game hours between decay-toward-ambient steps. Lower = faster cooling.", NULL),
     SET_INT("woodInsulation", "Wood Insulation %", "Simulation/Temperature/Advanced", insulationTier1Rate, 1.0f, 1, 100,
       "Percent of heat that passes through wood.", DescWoodInsulation),
     SET_INT("stoneInsulation", "Stone Insulation %", "Simulation/Temperature/Advanced", insulationTier2Rate, 1.0f, 1, 100,
@@ -314,15 +318,15 @@ static const Setting settings[] = {
     SET_BOOL("weather", "Weather Enabled", "Weather & Time/Weather", weatherEnabled,
       "Weather changes over time (clear, cloudy, rain, storms, snow)."),
     SET_FLOAT("weatherMinDuration", "Min Duration", "Weather & Time/Weather", weatherMinDuration, 1.0f, 5.0f, 300.0f,
-      "Shortest weather spell (game-seconds).", DescWeatherMin),
+      "Shortest weather spell (game hours).", DescWeatherMin),
     SET_FLOAT("weatherMaxDuration", "Max Duration", "Weather & Time/Weather", weatherMaxDuration, 1.0f, 10.0f, 600.0f,
-      "Longest weather spell (game-seconds).", DescWeatherMax),
+      "Longest weather spell (game hours).", DescWeatherMax),
     SET_FLOAT("rainWetnessInterval", "Rain Wetness Interval", "Weather & Time/Weather", rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-      "Game-seconds between ground wetness increments during rain.", NULL),
+      "Game hours between ground wetness increments during rain.", NULL),
     SET_FLOAT("heavyRainWetnessInterval", "Heavy Rain Interval", "Weather & Time/Weather", heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-      "Game-seconds between ground wetness increments during heavy rain.", NULL),
+      "Game hours between ground wetness increments during heavy rain.", NULL),
     SET_FLOAT("lightningInterval", "Lightning Interval", "Weather & Time/Weather", lightningInterval, 1.0f, 0.5f, 30.0f,
-      "Game-seconds between lightning strikes in thunderstorms.", NULL),
+      "Game hours between lightning strikes in thunderstorms.", NULL),
     SET_FLOAT("snowAccumulation", "Snow Accumulation", "Weather & Time/Weather", snowAccumulationRate, 0.01f, 0.01f, 1.0f,
       "Snow levels gained per game-hour while snowing.", DescSnowAccumulation),
     SET_FLOAT("snowMelting", "Snow Melting", "Weather & Time/Weather", snowMeltingRate, 0.01f, 0.01f, 0.5f,
@@ -332,7 +336,7 @@ static const Setting settings[] = {
     SET_FLOAT("speed", "Game Speed", "Weather & Time/Time", gameSpeed, 0.1f, 0.0f, 100.0f,
       "Simulation speed multiplier (0 = paused).", DescGameSpeed),
     SET_FLOAT("dayLen", "Day Length", "Weather & Time/Time", dayLength, 10.0f, 10.0f, 3600.0f,
-      "Game-seconds per full day.", DescDayLength),
+      "Real seconds per game day at 1x speed.", DescDayLength),
     SET_BOOL("fixedTime", "Fixed Timestep", "Weather & Time/Time", useFixedTimestep,
       "Fixed 60Hz ticks (deterministic). Off = variable timestep (smoother, less deterministic)."),
 
@@ -487,8 +491,8 @@ static const Setting settings[] = {
       "Wear below which dirt regrows grass.", DescDirtToGrass),
     SET_INT("wearDecayRate", "Decay Rate", "World/Entropy/Advanced", wearDecayRate, 1.0f, 1, 100,
       "Wear recovered per decay step.", NULL),
-    SET_FLOAT("wearRecoveryInterval", "Recovery Interval (s)", "World/Entropy/Advanced", wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
-      "Game-seconds between wear decay steps.", NULL),
+    SET_FLOAT("wearRecoveryInterval", "Recovery Interval (GH)", "World/Entropy/Advanced", wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
+      "Game hours between wear decay steps.", NULL),
 
     // --- Pathfinding ---
     SET_CHOICE("pathAlgo", "Algo", "Pathfinding", pathAlgorithm, algorithmNames, 2,
@@ -656,5 +660,11 @@ void Settings_RegisterConsoleVars(void) {
         // A choice is an int index for the console (range 0..optionCount-1)
         CVarType t = s->type == SETTING_BOOL ? CVAR_BOOL : s->type == SETTING_FLOAT ? CVAR_FLOAT : CVAR_INT;
         Console_RegisterVarEx(s->name, s->ptr, t, s->min, s->max, s->help, s->onChange);
+        // A default outside its own range gets clamped the first time anyone touches the
+        // slider or uses --set (fire and heat intervals were, by 1.25-2.5x)
+        if ((s->type == SETTING_FLOAT || s->type == SETTING_INT) &&
+            (SettingValue(s) < s->min || SettingValue(s) > s->max))
+            TraceLog(LOG_WARNING, "setting %s: default %g is outside its range %g..%g",
+                     s->name, SettingValue(s), s->min, s->max);
     }
 }

@@ -18,7 +18,7 @@ typedef enum { SETTING_BOOL, SETTING_INT, SETTING_FLOAT, SETTING_CHOICE } Settin
 
 typedef struct {
     const char* name;      // console/--set name, e.g. "fireSpread"
-    const char* label;     // sidebar label, e.g. "Spread Interval (s)"
+    const char* label;     // sidebar label, e.g. "Spread Interval (GH)"
     const char* group;     // sidebar group path, e.g. "Simulation/Fire"
     SettingType type;
     void* ptr;             // bool*, int* or float* (matches type)
