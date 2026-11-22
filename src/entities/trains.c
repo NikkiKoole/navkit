@@ -621,7 +621,7 @@ float WalkTripSeconds(int moverIdx) {
 // (a loop once round, a shuttle out and back) gives the line's stops in the order
 // trains reach them. A node is "a train of line L at stop k of its cycle" (a
 // shuttle's middle stop is two nodes, one per direction). Edges: ride on to the
-// next stop of the cycle, or get off and walk at most TRAIN_TRANSFER_WALK cells to
+// next stop of the cycle, or get off and walk at most TRAIN_TRANSFER_WALK cells (any level) to
 // a node of another line. A trip is a Dijkstra search from the stops near the mover
 // (walk + the real wait for the next train there) to the stops near its goal (walk
 // out). Later waits are estimates: the station's measured wait, else half the gap
@@ -629,6 +629,7 @@ float WalkTripSeconds(int moverIdx) {
 // junctions (10% random turns), so a line with junctions is only roughly right.
 
 #define TRANSIT_MAX_NODES 256
+#define TRANSIT_ACCESS_DZ 12   // stations this many levels above/below count (walks by the pathfinder)
 #define TRANSIT_MAX_LINES 32
 #define TRANSIT_MAX_CHANGES 4096
 
@@ -719,21 +720,38 @@ static void TransitBuild(void) {
         }
         transitLineCount++;
     }
-    // Changes: to another line's stop a short walk away
+    // Changes: to another line's stop within TRAIN_TRANSFER_WALK cells of walking, by
+    // the pathfinder (so a change can go up or down ramps to a line on another level).
+    // One bounded search per station, from its boarding cell.
+    static float changeWalk[MAX_STATIONS][MAX_STATIONS];   // cells, -1 = too far / no way
+    for (int a = 0; a < stationCount; a++) {
+        NavPoint targets[MAX_STATIONS];
+        int stationOf[MAX_STATIONS], n = 0;
+        for (int b = 0; b < stationCount; b++) {
+            changeWalk[a][b] = -1.0f;
+            if (b == a || !stations[a].active || !stations[b].active) continue;
+            if (abs(stations[b].z - stations[a].z) > TRANSIT_ACCESS_DZ) continue;
+            int bx, by;
+            GetNearestPlatformCell(b, stations[a].platX, stations[a].platY, &bx, &by);
+            if (abs(bx - stations[a].platX) + abs(by - stations[a].platY) > TRAIN_TRANSFER_WALK) continue;
+            targets[n] = (NavPoint){bx, by, stations[b].z};
+            stationOf[n++] = b;
+        }
+        if (n == 0) continue;
+        int costs[MAX_STATIONS];
+        NavCostsToTargets(NavGame(), (NavPoint){stations[a].platX, stations[a].platY, stations[a].z},
+                          targets, n, 10 * TRAIN_TRANSFER_WALK, costs);
+        for (int k = 0; k < n; k++)
+            if (costs[k] >= 0) changeWalk[a][stationOf[k]] = costs[k] / 10.0f;
+    }
     for (int a = 0; a < transitNodeCount; a++) {
         TransitNode* na = &transitNodes[a];
         na->changeStart = transitChangeCount;
-        const TrainStation* sa = &stations[na->station];
         for (int b = 0; b < transitNodeCount && transitChangeCount < TRANSIT_MAX_CHANGES; b++) {
             const TransitNode* nb = &transitNodes[b];
             if (nb->line == na->line) continue;
-            const TrainStation* sb = &stations[nb->station];
-            if (sb->z != sa->z) continue;
-            int bx, by, ax, ay;
-            GetNearestPlatformCell(nb->station, sa->platX, sa->platY, &bx, &by);
-            GetNearestPlatformCell(na->station, bx, by, &ax, &ay);
-            float walk = CellsBetween(ax, ay, bx, by);
-            if (walk > TRAIN_TRANSFER_WALK) continue;
+            float walk = changeWalk[na->station][nb->station];
+            if (walk < 0.0f) continue;
             transitChanges[transitChangeCount++] = (TransitChange){ b, walk };
         }
         na->changeCount = transitChangeCount - na->changeStart;
@@ -801,7 +819,6 @@ int TrainPlannedRoute(int moverIdx, int* lines, int maxLines) {
 // TRANSPORT_STATION_RADIUS across and TRANSIT_ACCESS_DZ levels; -1 otherwise.
 // toStation false: from the platform to the point (searched from the point: walking
 // is near enough symmetric).
-#define TRANSIT_ACCESS_DZ 12
 static void TransitAccessSeconds(Point p, float pace, float* outSec) {
     NavPoint targets[MAX_STATIONS];
     int stationOf[MAX_STATIONS], n = 0;

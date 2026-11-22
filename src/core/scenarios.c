@@ -1163,50 +1163,62 @@ static void CarveAir(int x0, int y0, int x1, int y1, int z) {   // only dirt, in
                 GRID(x, y, z) = CELL_AIR;
 }
 
-// Three ramps from the tunnel at (x, y) up to the street, rising towards (dx, dy).
-// Returns the street cell where it comes out.
-static Point RampToStreet(int x, int y, int dx, int dy) {
+// Ramps from (x, y, zFrom) up to zTo, one level per cell, rising towards (dx, dy).
+// Returns the cell at zTo where it comes out.
+static Point RampUp(int x, int y, int dx, int dy, int zFrom, int zTo) {
     CellType ramp = dy < 0 ? CELL_RAMP_N : dy > 0 ? CELL_RAMP_S : dx > 0 ? CELL_RAMP_E : CELL_RAMP_W;
-    for (int k = 0; k < SUBWAY_STREET - SUBWAY_TUNNEL; k++) {
-        int z = SUBWAY_TUNNEL + k;
-        GRID(x + k * dx, y + k * dy, z) = ramp;
-        SetWallMaterial(x + k * dx, y + k * dy, z, MAT_DIRT);
+    for (int k = 0; k < zTo - zFrom; k++) {
+        GRID(x + k * dx, y + k * dy, zFrom + k) = ramp;
+        SetWallMaterial(x + k * dx, y + k * dy, zFrom + k, MAT_DIRT);
     }
-    int k = SUBWAY_STREET - SUBWAY_TUNNEL;
-    return (Point){x + k * dx, y + k * dy, SUBWAY_STREET};
+    int k = zTo - zFrom;
+    return (Point){x + k * dx, y + k * dy, zTo};
 }
 
-// A stop's hall: platforms, the cells between the two tracks and two cells beyond,
-// with lamps along both outer walls
-static void SubwayHall(int at, int c, int gap, bool alongX) {
-    if (alongX) CarveAir(at - 4, c - 3, at + 3, c + gap + 3, SUBWAY_TUNNEL);
-    else        CarveAir(c - 3, at - 4, c + gap + 3, at + 3, SUBWAY_TUNNEL);
+static Point RampToStreet(int x, int y, int dx, int dy) {
+    return RampUp(x, y, dx, dy, SUBWAY_TUNNEL, SUBWAY_STREET);
+}
+
+// A stop's hall at level z: platforms, the cells between the two tracks and two
+// cells beyond, with lamps along both outer walls
+static void SubwayHallAt(int at, int c, int gap, bool alongX, int z) {
+    if (alongX) CarveAir(at - 4, c - 3, at + 3, c + gap + 3, z);
+    else        CarveAir(c - 3, at - 4, c + gap + 3, at + 3, z);
     for (int k = -4; k <= 3; k += 7) {
         int a = at + k;
-        if (alongX) { AddLightSource(a, c - 3, SUBWAY_TUNNEL, 255, 235, 190, 12);
-                      AddLightSource(a, c + gap + 3, SUBWAY_TUNNEL, 255, 235, 190, 12); }
-        else        { AddLightSource(c - 3, a, SUBWAY_TUNNEL, 255, 235, 190, 12);
-                      AddLightSource(c + gap + 3, a, SUBWAY_TUNNEL, 255, 235, 190, 12); }
+        if (alongX) { AddLightSource(a, c - 3, z, 255, 235, 190, 12);
+                      AddLightSource(a, c + gap + 3, z, 255, 235, 190, 12); }
+        else        { AddLightSource(c - 3, a, z, 255, 235, 190, 12);
+                      AddLightSource(c + gap + 3, a, z, 255, 235, 190, 12); }
     }
 }
 
-static void LightPassage(int x0, int y0, int x1, int y1) {
+static void SubwayHall(int at, int c, int gap, bool alongX) { SubwayHallAt(at, c, gap, alongX, SUBWAY_TUNNEL); }
+
+static void LightPassageAt(int x0, int y0, int x1, int y1, int z) {
     for (int y = y0 + 2; y <= y1; y += 7)
         for (int x = x0 + 2; x <= x1; x += 7)
-            if (GRID(x, y, SUBWAY_TUNNEL) == CELL_AIR) AddLightSource(x, y, SUBWAY_TUNNEL, 255, 235, 190, 10);
+            if (GRID(x, y, z) == CELL_AIR) AddLightSource(x, y, z, 255, 235, 190, 10);
 }
 
-static void SetupSubway(void) {
-    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2, gap = 3;
-    for (int z = 1; z < SUBWAY_STREET; z++)
-        for (int y = 0; y < H; y++)
-            for (int x = 0; x < W; x++) {
+static void LightPassage(int x0, int y0, int x1, int y1) { LightPassageAt(x0, y0, x1, y1, SUBWAY_TUNNEL); }
+
+// Solid dirt from z=1 up to below the street, grass on top
+static void SolidGroundBelow(int streetZ) {
+    for (int z = 1; z < streetZ; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
                 GRID(x, y, z) = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallNatural(x, y, z);
             }
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++) SetVegetation(x, y, SUBWAY_STREET - 1, VEG_GRASS_TALLER);
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) SetVegetation(x, y, streetZ - 1, VEG_GRASS_TALLER);
+}
+
+static void SetupSubway(void) {
+    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2, gap = 3;
+    SolidGroundBelow(SUBWAY_STREET);
 
     layZ = SUBWAY_TUNNEL;
     const int ex0 = 20, ex1 = W - 21, ey = cy - 1;
@@ -1265,6 +1277,92 @@ static void SetupSubway(void) {
                           TrackLineCount(), stationCount, SUBWAY_TUNNEL, n), GREEN);
 }
 
+// ---------------------------------------------------------------------------
+// subway-deep: two lines at different depths that cross, change by ramps
+// ---------------------------------------------------------------------------
+
+// Street at z=6. An east-west line at z=3 and a north-south line at z=1 that runs
+// under it. Their centre stops sit near the crossing: from the deep line's hall a
+// passage and two ramps lead up to the shallow line's hall (a change across two
+// levels). Outer stops have ramps to the street (3 steps from the shallow line, 5
+// from the deep one). Movers at the four ends: east-west or north-south is one line,
+// west to north and the like needs the change.
+#define DEEP_STREET 6
+#define DEEP_EW 3
+#define DEEP_NS 1
+
+static void SetupSubwayDeep(void) {
+    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2, gap = 3;
+    SolidGroundBelow(DEEP_STREET);
+    const int ex0 = 20, ex1 = W - 21, ey = cy - 1;     // shallow: rows ey, ey+gap
+    const int nx = cx + 20, ny0 = 20, ny1 = H - 21;    // deep: columns nx, nx+gap
+    const int eCentre = cx - 14, nCentre = cy + 14;
+    layZ = DEEP_EW;
+    LayLoopLine(ex0, ex1, ey, gap, true);
+    const int ew[3] = {ex0 + 20, eCentre, ex1 - 20};
+    for (int k = 0; k < 3; k++) { LayLoopStop(ew[k], ey, gap, true); SubwayHallAt(ew[k], ey, gap, true, DEEP_EW); }
+    layZ = DEEP_NS;
+    LayLoopLine(ny0, ny1, nx, gap, false);
+    const int ns[3] = {ny0 + 20, nCentre, ny1 - 20};
+    for (int k = 0; k < 3; k++) { LayLoopStop(ns[k], nx, gap, false); SubwayHallAt(ns[k], nx, gap, false, DEEP_NS); }
+    layZ = 1;
+
+    // The change: deep hall -> passage west at z=1 -> two ramps north -> passage at z=3
+    // -> the shallow centre hall
+    const int rx = eCentre + 6;
+    CarveAir(rx, nCentre - 2, nx - 4, nCentre + 1, DEEP_NS);
+    LightPassageAt(rx, nCentre - 2, nx - 4, nCentre + 1, DEEP_NS);
+    Point top = RampUp(rx, nCentre - 3, 0, -1, DEEP_NS, DEEP_EW);
+    CarveAir(eCentre + 2, ey + gap + 4, rx + 1, top.y, DEEP_EW);
+    LightPassageAt(eCentre + 2, ey + gap + 4, rx + 1, top.y, DEEP_EW);
+
+    // To the street
+    Point west  = RampUp(ew[0], ey - 4, 0, -1, DEEP_EW, DEEP_STREET);
+    Point east  = RampUp(ew[2], ey + gap + 4, 0, 1, DEEP_EW, DEEP_STREET);
+    Point north = RampUp(nx + gap + 4, ns[0], 1, 0, DEEP_NS, DEEP_STREET);
+    Point south = RampUp(nx - 4, ns[2], -1, 0, DEEP_NS, DEEP_STREET);
+    RebuildStations();
+
+    for (int k = 0; k < 2; k++) {
+        SpawnTrainHeading(ex0 + 30 + k * (ex1 - ex0) / 2, ey, DEEP_EW, 3, 1, 0);
+        SpawnTrainHeading(ex1 - 30 - k * (ex1 - ex0) / 2, ey + gap, DEEP_EW, 3, -1, 0);
+        SpawnTrainHeading(nx + gap, ny0 + 10 + k * (ny1 - ny0) / 2, DEEP_NS, 3, 0, 1);
+        SpawnTrainHeading(nx, ny1 - 10 - k * (ny1 - ny0) / 2, DEEP_NS, 3, 0, -1);
+    }
+    BuildEntrances();
+    BuildGraph();
+
+    if (trainSpeed == TRAIN_DEFAULT_SPEED) trainSpeed = 50.0f;   // unless --set trainSpeed chose one
+    transferDistricts[0] = (Point){west.x, west.y - 12, DEEP_STREET};
+    transferDistricts[1] = (Point){east.x, east.y + 12, DEEP_STREET};
+    transferDistricts[2] = (Point){north.x + 12, north.y, DEEP_STREET};
+    transferDistricts[3] = (Point){south.x - 12, south.y, DEEP_STREET};
+    MetroResetStats();
+    moverGoalPicker = TransferGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 40;
+    for (int i = 0; i < n; i++) {
+        Point d = transferDistricts[i % 4];
+        SpawnMoverAt(d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), DEEP_STREET);
+    }
+    currentViewZ = DEEP_STREET;
+    AddMessage(TextFormat("Deep subway: east-west line at z%d, north-south at z%d under it, %d movers on the street (z%d)",
+                          DEEP_EW, DEEP_NS, n, DEEP_STREET), GREEN);
+}
+
+static bool SubwayDeepCheck(char* why, int whyLen) {
+    if (TrackLineCount() != 2) {
+        snprintf(why, (size_t)whyLen, "expected 2 lines, found %d", TrackLineCount());
+        return false;
+    }
+    if (useTrainTransfers && trainTransferPlans == 0) {
+        snprintf(why, (size_t)whyLen, "no trip planned a change between the levels (%d rides)", metroRides);
+        return false;
+    }
+    return true;
+}
+
 static bool SubwayCheck(char* why, int whyLen) {
     if (TrackLineCount() != 3) {
         snprintf(why, (size_t)whyLen, "expected 3 lines, found %d", TrackLineCount());
@@ -1310,6 +1408,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupTransfer, MetroTickStats, TransferPrintStats, TransferCheck, 512, 320},
     {"subway",     "The transfer network in a tunnel two levels under the street: ramps down, halls, changes underground, 40 movers",
                    NULL,        SetupSubway, MetroTickStats, TransferPrintStats, SubwayCheck, 512, 320},
+    {"subway-deep", "Two lines at different depths, one crossing under the other; change by ramps between levels, 40 movers",
+                   NULL,        SetupSubwayDeep, MetroTickStats, TransferPrintStats, SubwayDeepCheck, 512, 320},
     {"transit-chain", "Six lines in a staircase: end to end is five changes of line, 48 movers",
                    NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
 };

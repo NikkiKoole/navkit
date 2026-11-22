@@ -51,6 +51,7 @@ done <<'EOF'
 67  | 0 | --scenario transfer
 57  | 0 | --scenario transit-chain
 62  | 0 | --scenario subway
+57  | 0 | --scenario subway-deep
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit

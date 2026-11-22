@@ -17,7 +17,7 @@
 #define TRANSPORT_FAR_THRESHOLD 40
 #define TRANSPORT_STATION_RADIUS 20
 #define TRANSPORT_WAIT_TIMEOUT 60.0f
-#define TRAIN_TRANSFER_WALK 15   // most cells walked between two lines' platforms to change
+#define TRAIN_TRANSFER_WALK 50   // most cells walked (pathfinder cost, any level) between two lines' platforms to change
 
 typedef enum { CART_MOVING, CART_DOORS_OPEN } TrainCartState;
 
