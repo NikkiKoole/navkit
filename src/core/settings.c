@@ -669,8 +669,14 @@ void Settings_RegisterConsoleVars(void) {
         // A choice is an int index for the console (range 0..optionCount-1)
         CVarType t = s->type == SETTING_BOOL ? CVAR_BOOL : s->type == SETTING_FLOAT ? CVAR_FLOAT : CVAR_INT;
         Console_RegisterVarEx(s->name, s->ptr, t, s->min, s->max, s->help, s->onChange);
-        // A default outside its own range gets clamped the first time anyone touches the
-        // slider or uses --set (fire and heat intervals were, by 1.25-2.5x)
+    }
+}
+
+void Settings_WarnOutOfRange(void) {
+    // A default outside its own range gets clamped the first time anyone touches the
+    // slider or uses --set (fire and heat intervals were, by 1.25-2.5x)
+    for (int i = 0; i < SETTING_COUNT; i++) {
+        const Setting* s = &settings[i];
         if ((s->type == SETTING_FLOAT || s->type == SETTING_INT) &&
             (SettingValue(s) < s->min || SettingValue(s) > s->max))
             TraceLog(LOG_WARNING, "setting %s: default %g is outside its range %g..%g",

@@ -44,4 +44,8 @@ const char* SettingTooltip(const Setting* s);
 // Register every row as a console variable (with range + help).
 void Settings_RegisterConsoleVars(void);
 
+// Warn about settings whose current value lies outside their range. Call after the
+// defaults are set (after InitBalance), not at registration (the console registers early).
+void Settings_WarnOutOfRange(void);
+
 #endif

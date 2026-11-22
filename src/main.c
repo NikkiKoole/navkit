@@ -22,6 +22,7 @@
 #include "core/describe.h"
 #include "core/sim_step.h"
 #include "core/day_budget.h"
+#include "core/settings.h"
 #include "core/selection.h"
 #include "render/inspector.h"
 #include "render/world_batch.h"
@@ -910,6 +911,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             for (int x = 0; x < gridWidth; x++)
                 GRID(x, y, z) = CELL_AIR;
     InitBalance();
+    Settings_WarnOutOfRange();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
     InitSimActivity();
@@ -1434,6 +1436,7 @@ int main(int argc, char** argv) {
             for (int x = 0; x < gridWidth; x++)
                 GRID(x, y, z) = CELL_AIR;
     InitBalance();
+    Settings_WarnOutOfRange();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
     InitSimActivity();
