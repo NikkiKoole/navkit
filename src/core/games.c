@@ -141,6 +141,7 @@ static void StartSurvival(void) {
     bladderEnabled = false;   // set explicitly: dollhouse leaves it on
     moodEnabled = true;       // startup default
     toolRequirementsEnabled = true;
+    jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
     gameOverTriggered = false;
     survivalStartTime = 0.0;
     survivalDuration = 0.0;
@@ -319,6 +320,7 @@ static void StartDollhouse(void) {
     moodEnabled = true;
     bodyTempEnabled = false; // no weather in dollhouse for now
     toolRequirementsEnabled = false;
+    jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
     gameOverTriggered = false;
 }
 
@@ -338,6 +340,7 @@ static void StartSandbox(void) {
     bodyTempEnabled = false;
     moodEnabled = true;                      // startup default
     toolRequirementsEnabled = false;
+    jobDistanceWeight = 0.0f;                // strict job priority order
     gameOverTriggered = false;
     currentViewZ = 1;
     followMoverIdx = -1;

@@ -352,9 +352,11 @@ static const Setting settings[] = {
     SET_FLOAT("moverSpeedVariance", "Speed Variance", "Mover Balance", balance.moverSpeedVariance, 0.05f, 0.0f, 0.5f,
       "Random speed spread per new mover (+/- fraction).", DescSpeedVariance),
     SET_FLOAT("jobDistanceWeight", "Job Distance Weight", "Mover Balance", jobDistanceWeight, 0.01f, 0.0f, 2.0f,
-      "How much distance counts against job priority, in priority levels per cell (each job phase is one level: "
-      "hauling, mining, farming, ...). 0.1 = a job one level lower wins if it is 10 cells closer; "
-      "0 = strict priority order (nearest within one type).", NULL),
+      "How much distance counts against job priority, in priority levels per cell. Levels: stockpile "
+      "maintenance 0, crafting 1, hunting 2, hauling 3, mining/building/gathering 4, farming 5 "
+      "(clothing and water pots: no limit). One level is worth 1/weight cells: at 0.2 one level = 5 cells, "
+      "maintenance vs farming = 25 cells, so a job one level lower wins if it is 5 cells closer. "
+      "0 = strict priority order (nearest within one type). Dollhouse and survival start at 0.2.", NULL),
 
     // --- Mover balance: day budget (game-hours) ---
     SET_BALANCE("workHoursPerDay", "Work Hours/Day", "Mover Balance/Day Budget", workHoursPerDay, 0.5f, 1.0f, 24.0f,

@@ -23,7 +23,7 @@
 // ---------------------------------------------------------------------------
 typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ;
-    float dayLength, baseMoverSpeed;
+    float dayLength, baseMoverSpeed, jobDistanceWeight;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -47,7 +47,7 @@ static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ,
-                                           dayLength, balance.baseMoverSpeed};
+                                           dayLength, balance.baseMoverSpeed, jobDistanceWeight};
         haveSavedSettings = true;
         return;
     }
@@ -58,6 +58,7 @@ static void SnapshotOrRestoreSettings(void) {
     preferDifferentZ = savedSettings.preferDiffZ;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
+    jobDistanceWeight = savedSettings.jobDistanceWeight;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
