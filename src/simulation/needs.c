@@ -407,6 +407,17 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
     m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
 }
 
+// Lie down and rest right here, on the ground.
+static void StartGroundRest(Mover* m, int moverIdx) {
+    EventLog("Mover %d RESTING on ground", moverIdx);
+    m->freetimeState = FREETIME_RESTING;
+    m->needTarget = -1;
+    m->needProgress = 0.0f;
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    m->goal = (Point){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+}
+
 static void StartRestSearch(Mover* m, int moverIdx) {
     // Scan furniture pool for best unoccupied furniture
     // Prefer highest restRate, weight by distance
@@ -450,13 +461,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
         m->needsRepath = true;
     } else {
         // No furniture available — ground rest at current position
-        EventLog("Mover %d RESTING on ground", moverIdx);
-        m->freetimeState = FREETIME_RESTING;
-        m->needTarget = -1;
-        m->needProgress = 0.0f;
-        m->pathLength = 0;
-        m->pathIndex = -1;
-        m->goal = (Point){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), mz};
+        StartGroundRest(m, moverIdx);
     }
 }
 
@@ -476,6 +481,17 @@ static bool IsRawFood(ItemType type) {
 // Classify drink for moodlets: tea/juice = good, plain water = neutral
 static bool IsGoodDrink(ItemType type) {
     return type == ITEM_HERBAL_TEA || type == ITEM_BERRY_JUICE;
+}
+
+// A critical need takes the mover off its job only when it looks for help right now.
+// During the search cooldown (the last search found nothing) it keeps working: taking the
+// job away anyway left the mover standing still, getting the job back from AssignJobs and
+// losing it again every tick (and critical needs reset the cooldown on every unassign, so
+// with no food around they also searched every item every tick).
+static void CriticalNeed(Mover* m, int moverIdx, void (*startSearch)(Mover*, int)) {
+    if (m->needSearchCooldown > 0.0f) return;
+    if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+    startSearch(m, moverIdx);
 }
 
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
@@ -540,33 +556,26 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     JobType jt = jobs[m->currentJobId].type;
                     jobProducesFood = (jt == JOBTYPE_HARVEST_BERRY);
                 }
-                if (m->currentJobId >= 0 && !jobProducesFood) {
-                    UnassignJob(m, moverIdx);
-                    m->needSearchCooldown = 0.0f; // critical — search immediately
-                }
-                if (!jobProducesFood && m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+                if (!jobProducesFood) CriticalNeed(m, moverIdx, StartFoodSearch);
             } else if (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) {
                 // DEHYDRATING — unassign job, seek drink urgently
-                if (m->currentJobId >= 0) {
-                    UnassignJob(m, moverIdx);
-                    m->needSearchCooldown = 0.0f;
-                }
-                if (m->needSearchCooldown <= 0.0f) StartDrinkSearch(m, moverIdx);
+                CriticalNeed(m, moverIdx, StartDrinkSearch);
             } else if (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) {
                 // DESPERATE — unassign job, seek toilet/bush urgently
-                if (m->currentJobId >= 0) {
-                    UnassignJob(m, moverIdx);
-                    m->needSearchCooldown = 0.0f;
-                }
-                if (m->needSearchCooldown <= 0.0f) StartBladderSearch(m, moverIdx);
+                CriticalNeed(m, moverIdx, StartBladderSearch);
             } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
-                // EXHAUSTED — unassign job (preserves designation progress), seek rest
-                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
-                if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
+                // EXHAUSTED — unassign job (preserves designation progress), seek rest. If the
+                // last rest search failed (cooldown, e.g. the bed was out of reach), the
+                // mover can't go on: it lies down where it stands.
+                if (m->needSearchCooldown > 0.0f) {
+                    if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
+                    StartGroundRest(m, moverIdx);
+                } else {
+                    CriticalNeed(m, moverIdx, StartRestSearch);
+                }
             } else if (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold) {
                 // FREEZING — unassign job, seek warmth urgently
-                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
-                if (m->needSearchCooldown <= 0.0f) StartWarmthSearch(m, moverIdx);
+                CriticalNeed(m, moverIdx, StartWarmthSearch);
             } else if (hungerEnabled && m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);

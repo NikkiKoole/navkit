@@ -763,6 +763,72 @@ describe(eating_consumption) {
     }
 }
 
+// A fake haul job on job slot 0 for mover mi (no targets: unassigning it is harmless)
+static void GiveFakeHaulJob(int mi) {
+    Job* j = &jobs[0];
+    memset(j, 0, sizeof(*j));
+    j->active = true;
+    j->type = JOBTYPE_HAUL;
+    j->assignedMover = mi;
+    j->step = STEP_MOVING_TO_WORK;
+    j->targetItem = j->targetStockpile = j->targetBlueprint = j->targetWorkshop = -1;
+    j->targetMineX = j->targetMineY = j->targetMineZ = -1;
+    j->carryingItem = j->targetItem2 = j->targetItem3 = j->fuelItem = j->toolItem = -1;
+    j->targetAnimalIdx = -1;
+    movers[mi].currentJobId = 0;
+    jobHighWaterMark = 1;
+    activeJobCount = 1;
+}
+
+// Bug: a critical need dropped the job every tick even while its search was on cooldown;
+// AssignJobs gave the job back, so the mover stood still taking and losing a job each tick.
+describe(critical_need_search_cooldown) {
+    it("starving mover whose food search is on cooldown keeps its job") {
+        SetupClean();
+        ClearJobs();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.05f;
+        movers[mi].needSearchCooldown = 5.0f;   // last search found nothing
+        GiveFakeHaulJob(mi);
+
+        ProcessFreetimeNeeds();
+        expect(movers[mi].currentJobId == 0);
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+    }
+
+    it("starving mover with no food drops the job once, then works until the next search") {
+        SetupClean();
+        ClearJobs();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.05f;
+        GiveFakeHaulJob(mi);
+
+        ProcessFreetimeNeeds();                       // searches: drops job, finds nothing
+        expect(movers[mi].currentJobId == -1);
+        expect(movers[mi].needSearchCooldown > 0.0f);
+
+        GiveFakeHaulJob(mi);                          // AssignJobs hands out work again
+        ProcessFreetimeNeeds();
+        expect(movers[mi].currentJobId == 0);          // kept: no search this tick
+    }
+
+    it("exhausted mover whose rest search is on cooldown lies down where it stands") {
+        SetupClean();
+        ClearJobs();
+        energyEnabled = true;
+        int mi = SetupMover(3, 3);
+        movers[mi].hunger = 1.0f;
+        movers[mi].energy = 0.05f;
+        movers[mi].needSearchCooldown = 5.0f;   // e.g. the bed was out of reach
+        GiveFakeHaulJob(mi);
+
+        ProcessFreetimeNeeds();
+        expect(movers[mi].currentJobId == -1);
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+        expect(movers[mi].needTarget == -1);      // ground, no furniture
+    }
+}
+
 describe(eating_starving_unassigns_job) {
     it("starving mover unassigns current job") {
         SetupClean();
@@ -1167,6 +1233,7 @@ int main(int argc, char* argv[]) {
     test(eating_food_search);
     test(eating_food_competition);
     test(eating_consumption);
+    test(critical_need_search_cooldown);
     test(eating_starving_unassigns_job);
     test(unassign_job_pickup);
     test(drying_rack_berries);
