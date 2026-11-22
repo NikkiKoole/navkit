@@ -17,6 +17,7 @@
 #include "../simulation/mood.h"
 #include "../core/sim_manager.h"
 #include "../entities/trains.h"
+#include "../entities/belts.h"
 #include "../simulation/balance.h"
 #include <math.h>
 
@@ -1899,6 +1900,43 @@ static void DrawTrackLines(void) {
             }
             DrawCircleV(mid, thick * 0.5f, c);
         }
+}
+
+// Conveyor belts (spike): a dark strip with chevrons that crawl in the belt's direction
+static void DrawBelts(void) {
+    if (beltCount == 0) return;
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    // Chevron phase in cells: moves at the belt's speed, wraps every half cell
+    float phase = fmodf((float)gameTime * beltSpeed * (60.0f / dayLength), 0.5f);
+    Color bed = (Color){ 52, 50, 48, 255 }, rim = (Color){ 30, 28, 26, 255 }, mark = (Color){ 150, 140, 110, 255 };
+    for (int i = 0; i < beltCount; i++) {
+        const Belt* b = &belts[i];
+        if (!b->active || b->z != viewZ) continue;
+        float sx = offset.x + b->x * CELL_SIZE * zoom, sy = offset.y + b->y * CELL_SIZE * zoom;
+        if (sx < -size || sy < -size || sx > sw || sy > sh) continue;
+        int dx, dy;
+        BeltDirDelta(b->dir, &dx, &dy);
+        float inset = size * 0.08f;
+        DrawRectangleRec((Rectangle){ sx + inset, sy + inset, size - 2 * inset, size - 2 * inset }, bed);
+        DrawRectangleLinesEx((Rectangle){ sx + inset, sy + inset, size - 2 * inset, size - 2 * inset },
+                             fmaxf(1.0f, size * 0.04f), rim);
+        // Two chevrons per cell, pointing along (dx, dy)
+        float cx = sx + size * 0.5f, cy = sy + size * 0.5f;
+        float px = (float)-dy, py = (float)dx;   // perpendicular
+        float w = size * 0.28f, back = size * 0.14f, thick = fmaxf(1.0f, size * 0.06f);
+        for (int k = 0; k < 2; k++) {
+            float t = (phase + k * 0.5f - 0.25f) * size;   // -0.25..0.75 cell along the belt
+            if (t > size * 0.4f) t -= size;                 // keep inside the cell
+            if (t < -size * 0.4f) continue;
+            Vector2 tip = { cx + dx * t, cy + dy * t };
+            Vector2 a = { tip.x - dx * back + px * w, tip.y - dy * back + py * w };
+            Vector2 c = { tip.x - dx * back - px * w, tip.y - dy * back - py * w };
+            DrawLineEx(a, tip, thick, mark);
+            DrawLineEx(c, tip, thick, mark);
+        }
+    }
 }
 
 static void DrawTrains(void) {

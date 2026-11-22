@@ -5,6 +5,7 @@
 #include "../entities/items.h"
 #include "../entities/animals.h"
 #include "../entities/trains.h"
+#include "../entities/belts.h"
 #include "../entities/jobs.h"
 #include "../world/designations.h"
 #include "../simulation/needs.h"
@@ -27,6 +28,10 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Trains);
     TrainsTick(dt);
     PROFILE_END(Trains);
+
+    PROFILE_BEGIN(Belts);
+    BeltsTick(dt);
+    PROFILE_END(Belts);
 
     PROFILE_BEGIN(Designations);
     DesignationsTick(dt);

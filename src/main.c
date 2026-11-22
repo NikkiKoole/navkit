@@ -787,6 +787,7 @@ void DrawAgents(void);
 void DrawMovers(void);
 void DrawAnimals(void);
 void DrawTrains(void);
+void DrawBelts(void);
 void DrawJobLines(void);
 void DrawItems(void);
 void DrawLightSources(void);
@@ -1796,6 +1797,7 @@ int main(int argc, char** argv) {
         }
         DrawPath();
         DrawAgents();
+        DrawBelts();
         if (showItems) {
             WorldBatchBegin();
             DrawItems();

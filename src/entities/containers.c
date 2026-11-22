@@ -146,6 +146,7 @@ bool IsItemAccessible(int itemIdx) {
         if (!items[current].active) return false;
         if (items[current].reservedBy != -1) return false;
         if (items[current].state == ITEM_CARRIED) return false;
+        if (items[current].state == ITEM_ON_BELT) return false;
         current = items[current].containedIn;
     }
     return true;

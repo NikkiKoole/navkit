@@ -89,7 +89,8 @@ typedef enum {
     ITEM_ON_GROUND,
     ITEM_CARRIED,
     ITEM_IN_STOCKPILE,
-    ITEM_IN_CONTAINER     // inside another item
+    ITEM_IN_CONTAINER,    // inside another item
+    ITEM_ON_BELT          // riding a conveyor belt (belts.c): no job may take it
 } ItemState;
 
 // Item condition (spoilage progression)

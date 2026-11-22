@@ -58,6 +58,7 @@
 #include "entities/furniture.c"
 #include "entities/animals.c"
 #include "entities/trains.c"
+#include "entities/belts.c"
 #include "entities/service.c"
 #include "entities/ladders.c"
 #include "entities/mover.c"

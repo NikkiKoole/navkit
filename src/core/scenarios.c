@@ -13,6 +13,8 @@
 #include "../simulation/rooms.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
+#include "../entities/belts.h"
+#include "../entities/containers.h"
 #include "../core/sim_manager.h"
 #include "../simulation/needs.h"
 #include <string.h>
@@ -98,6 +100,7 @@ void ScenarioResetWorld(const char* terrain) {
     ClearMovers();
     ClearAnimals();
     ClearTrains();
+    ClearBelts();
     ClearItems();
     ClearStockpiles();
     ClearWorkshops();
@@ -1375,6 +1378,89 @@ static bool SubwayCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// belt: conveyor spike (docs/todo/world/conveyors.md). Logs lie round stockpile A
+// (west); two movers haul them in. A belt starts on A's east edge, snakes east and
+// ends at stockpile B; its first cell pulls whole stacks out of A, its last puts them
+// into B's slots (a third mover stands by). A crate of berries rides along.
+// ---------------------------------------------------------------------------
+static int beltLogsAtStart = 0;
+
+static void BeltRun(int x0, int y0, int x1, int y1, BeltDir dir) {
+    int dx, dy;
+    BeltDirDelta(dir, &dx, &dy);
+    for (int x = x0, y = y0; ; x += dx, y += dy) {
+        PlaceBelt(x, y, 1, dir);
+        if (x == x1 && y == y1) break;
+    }
+}
+
+static void SetupBelt(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    int spA = CreateStockpile(3, 7, 1, 4, 4);       // x 3..6, y 7..10
+    int spB = CreateStockpile(42, 7, 1, 4, 4);      // x 42..45
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(spA, (ItemType)t, t == ITEM_LOG);
+    SetStockpileMaxContainers(spB, 2);   // B takes anything, the crate too
+
+    // Line: (7,9) east to (20,9), south to (20,16), east to (34,16), north to (34,9),
+    // east to (41,9); drops on (42,9) = B's west edge
+    BeltRun(7, 9, 19, 9, BELT_E);
+    BeltRun(20, 9, 20, 15, BELT_S);
+    BeltRun(20, 16, 33, 16, BELT_E);
+    BeltRun(34, 16, 34, 10, BELT_N);
+    BeltRun(34, 9, 41, 9, BELT_E);
+
+    // Logs to haul into A
+    int logs = 0;
+    for (int tries = 0; logs < 40 && tries < 2000; tries++) {
+        int x = GetRandomValue(1, 14), y = GetRandomValue(1, 22);
+        if (BeltAt(x, y, 1) >= 0 || IsPositionInStockpile(x * CELL_SIZE + 4, y * CELL_SIZE + 4, 1, NULL)) continue;
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_LOG);
+        logs++;
+    }
+    beltLogsAtStart = logs;
+
+    // A crate dropped on the belt: the belt picks it up from its cell, contents ride inside
+    int chest = SpawnItem(12 * CELL_SIZE + CELL_SIZE * 0.5f, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_CHEST);
+    for (int k = 0; k < 3; k++) {
+        int b = SpawnItem(12 * CELL_SIZE + CELL_SIZE * 0.5f, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_BERRIES);
+        if (chest >= 0 && b >= 0 && CanPutItemInContainer(b, chest)) PutItemInContainer(b, chest);
+    }
+
+    SpawnMoverAt(8, 4, 1);
+    SpawnMoverAt(9, 4, 1);
+    SpawnMoverAt(40, 13, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Belt: %d logs to haul into the west stockpile; the belt carries them east", logs), GREEN);
+}
+
+static int BeltCountLogsIn(int x0, int y0, int x1, int y1) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || items[i].type != ITEM_LOG) continue;
+        int x = (int)(items[i].x / CELL_SIZE), y = (int)(items[i].y / CELL_SIZE);
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1) n += items[i].stackCount;
+    }
+    return n;
+}
+
+static void BeltPrintStats(void) {
+    int riding = 0;
+    for (int b = 0; b < beltCount; b++) if (belts[b].active && belts[b].item >= 0) riding++;
+    printf("Belt: %d belt cells, %d loads put on, %d dropped off, %d riding now\n",
+           beltCount, beltItemsIn, beltItemsOut, riding);
+    printf("Logs: %d at start, %d in/around A (west), %d in/around B (east)\n",
+           beltLogsAtStart, BeltCountLogsIn(0, 0, 15, 23), BeltCountLogsIn(41, 0, 47, 23));
+}
+
+static bool BeltCheck(char* why, int whyLen) {
+    if (beltItemsOut < 2) {
+        snprintf(why, (size_t)whyLen, "belt delivered %d loads (want >= 2)", beltItemsOut);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1412,6 +1498,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupSubwayDeep, MetroTickStats, TransferPrintStats, SubwayDeepCheck, 512, 320},
     {"transit-chain", "Six lines in a staircase: end to end is five changes of line, 48 movers",
                    NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
+    {"belt",       "Conveyor spike: movers stock a log pile, a belt carries the stacks (and a crate) to a second pile, 3 movers",
+                   NULL,        SetupBelt, NULL, BeltPrintStats, BeltCheck, 48, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

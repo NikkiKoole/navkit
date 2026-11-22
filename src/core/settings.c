@@ -15,6 +15,7 @@
 #include "../entities/animals.h"
 #include "../entities/items.h"
 #include "../entities/trains.h"
+#include "../entities/belts.h"
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
 #include "../world/pathfinding.h"
@@ -569,6 +570,10 @@ static const Setting settings[] = {
       "Movers form a visible queue line at stations instead of spreading out."),
     SET_BOOL("useTrainTransfers", "Transfers", "Entities/Trains", useTrainTransfers,
       "Trip choice may plan a change of line: ride one line, walk to another line's platform, ride on. Off = one line per trip (a mover may still change by chance after a ride)."),
+
+    // --- Belts ---
+    SET_FLOAT("beltSpeed", "Speed (cells/s)", "Entities/Belts", beltSpeed, 0.1f, 0.1f, 20.0f,
+      "Conveyor belt speed in cells per second (at dayLength 60, like trains). One item per cell.", NULL),
 
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
