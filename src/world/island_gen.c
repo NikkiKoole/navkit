@@ -30,6 +30,7 @@
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
 #include "../simulation/plants.h"
+#include "../entities/items.h"
 #include "../game_state.h"
 #include <math.h>
 #include <string.h>
@@ -194,11 +195,24 @@ enum { IS_SEA, IS_LAKE, IS_RIVER, IS_BEACH, IS_MARSH, IS_ROCK, IS_MOOR, IS_FORES
 static const char* isCoverNames[IS_COVER_COUNT] = {
     "sea", "lake", "river", "beach", "marsh", "rock", "moor", "forest", "scrub", "grass"};
 
+// Where a game starts on the island: the beach cell nearest fresh water (a river mouth or a
+// lake by the shore), recorded by GenerateIsland. Walk-level cell; x = -1 if there is none.
+static int islandLandX = -1, islandLandY = -1, islandLandZ = -1;
+
+bool islandSkipBoulders = false;   // tests: terrain without the one-cell boulders on it
+
+bool IslandLandingSpot(int* x, int* y, int* z) {
+    if (islandLandX < 0) return false;
+    *x = islandLandX; *y = islandLandY; *z = islandLandZ;
+    return true;
+}
+
 void GenerateIsland(void) {
     InitGrid();
     SeedTerrain();
     InitPerlin((int)worldSeed);
 
+    islandLandX = islandLandY = islandLandZ = -1;
     const BiomePreset* bp = &biomePresets[selectedBiome];
     baseSurfaceTemp = bp->baseSurfaceTemp;
     seasonalAmplitude = bp->seasonalAmplitude;
@@ -608,6 +622,78 @@ void GenerateIsland(void) {
         TraceLog(LOG_INFO, "GenerateIsland: cover (of land):%s", buf);
         (void)seaCells;
     }
+
+    // Loose stuff to start with: boulders and rocks on stony ground, pebbles on gravel beaches,
+    // sticks and deadfall logs under trees, dried grass on dry open ground. Never on a ramp
+    // end (seen[]) or in water.
+    int boulders = 0, rocks = 0, sticks = 0, logs = 0, dryGrass = 0;
+    for (int y = 1; y < H - 1; y++) {
+        for (int x = 1; x < W - 1; x++) {
+            int i = y * W + x;
+            if (waterTop[i] >= 0 || seen[i]) continue;
+            int bz = top[i], wz = bz + 1;
+            if (wz >= gridDepth || GRID(x, y, wz) != CELL_AIR || !CellIsSolid(GRID(x, y, bz))) continue;
+            float cx = x * CELL_SIZE + CELL_SIZE / 2.0f, cy = y * CELL_SIZE + CELL_SIZE / 2.0f;
+            float roll = GetRandomValue(0, 9999) / 10000.0f;
+            float boulderChance = cover[i] == IS_ROCK ? 0.015f : cover[i] == IS_MOOR ? 0.006f :
+                                  cover[i] == IS_SCRUB ? 0.003f : cover[i] == IS_GRASS ? 0.001f : 0.0f;
+            boulderChance *= bp->boulderDensity;
+            if (islandSkipBoulders) boulderChance = 0.0f;
+            if (roll < boulderChance) {
+                GRID(x, y, wz) = CELL_WALL;
+                SetWallMaterial(x, y, wz, bp->stoneType);
+                boulders++;
+                continue;
+            }
+            roll = GetRandomValue(0, 9999) / 10000.0f;
+            // rocks: stony cover, gravel, and debris next to a boulder
+            bool byBoulder = false;
+            for (int d = 0; d < 4 && !byBoulder; d++) {
+                int nx = x + isDX[d], ny = y + isDY[d];
+                byBoulder = CellIsSolid(GRID(nx, ny, wz)) && IsStoneMaterial(GetWallMaterial(nx, ny, wz));
+            }
+            float rockChance = byBoulder ? 0.15f : cover[i] == IS_ROCK ? 0.03f :
+                               GetWallMaterial(x, y, bz) == MAT_GRAVEL ? 0.02f :
+                               cover[i] == IS_MOOR || cover[i] == IS_SCRUB ? 0.004f : 0.0f;
+            if (roll < rockChance) {
+                SpawnItemWithMaterial(cx, cy, (float)wz, ITEM_ROCK, (uint8_t)bp->stoneType);
+                rocks++;
+                continue;
+            }
+            int nearTrees = 0;
+            MaterialType treeMat = MAT_OAK;
+            for (int dy = -2; dy <= 2; dy++)
+                for (int dx = -2; dx <= 2; dx++) {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+                    int tz = top[ny * W + nx] + 1;
+                    if (tz < gridDepth && GRID(nx, ny, tz) == CELL_TREE_TRUNK) { nearTrees++; treeMat = GetWallMaterial(nx, ny, tz); }
+                }
+            if (nearTrees > 0) {
+                if (roll < 0.003f) { SpawnItemWithMaterial(cx, cy, (float)wz, ITEM_LOG, (uint8_t)treeMat); logs++; }
+                else if (roll < 0.025f) { SpawnItem(cx, cy, (float)wz, ITEM_STICKS); sticks++; }
+            } else if ((cover[i] == IS_SCRUB || cover[i] == IS_GRASS) && roll < 0.012f) {
+                SpawnItem(cx, cy, (float)wz, ITEM_DRIED_GRASS);
+                dryGrass++;
+            }
+        }
+    }
+
+    // Landing spot: the beach cell nearest fresh water (tmp = distance to river or lake)
+    {
+        float best = 1e30f;
+        for (int y = 1; y < H - 1; y++)
+            for (int x = 1; x < W - 1; x++) {
+                int i = y * W + x;
+                if (cover[i] != IS_BEACH || seen[i]) continue;
+                int wz = top[i] + 1;
+                if (wz >= gridDepth || GRID(x, y, wz) != CELL_AIR) continue;
+                float score = tmp[i] + 0.001f * (float)((i * 2654435761u) >> 24);   // ties: hash, not scan order
+                if (score < best) { best = score; islandLandX = x; islandLandY = y; islandLandZ = wz; }
+            }
+    }
+    TraceLog(LOG_INFO, "GenerateIsland: %d boulders, %d rocks, %d sticks, %d logs, %d dried grass; landing (%d,%d,z%d)",
+             boulders, rocks, sticks, logs, dryGrass, islandLandX, islandLandY, islandLandZ);
 
     // ISLAND_MAP=file.png: a top-down map (cover colours, hillshade, darker per level of
     // water depth) for judging the generator without the game's renderer

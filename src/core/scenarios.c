@@ -598,9 +598,10 @@ static void SetupWorld(void) {
     AddMessage(TextFormat("World: %d movers on %dx%d", spawned, gridWidth, gridHeight), GREEN);
 }
 
-// island: how much of the dry ground surface movers can reach from the main region (the
-// generator's own component report counts every walkable scrap, e.g. on tree tops)
-static void IslandPrintStats(void) {
+// Natural terrain (island, world, hubs): how much of the dry ground surface movers can reach
+// from the main region (the generators' own component report counts every walkable scrap,
+// e.g. on tree tops)
+static void DryGroundPrintStats(void) {
     Point anchor = GetMainRegionAnchor();
     int dry = 0, reach = 0;
     for (int y = 0; y < gridHeight; y++)
@@ -615,7 +616,7 @@ static void IslandPrintStats(void) {
                 if (anchor.x >= 0 && IsReachable(anchor, (Point){x, y, z})) reach++;
                 break;
             }
-    printf("island: dry ground surface %d cells, reachable from the main region %d (%.1f%%)\n",
+    printf("dry ground: surface %d cells, reachable from the main region %d (%.1f%%)\n",
            dry, reach, dry ? 100.0 * reach / dry : 0.0);
 }
 
@@ -1290,11 +1291,11 @@ static const Scenario scenarios[] = {
     {"train-long", "Long platforms, three stations, 4-car train, 4 movers",
                    "TrainLong", SetupTrainLong, NULL, NULL, NULL, 0, 0},
     {"hubs",       "128x128 hills, 200 movers shuttling between 6 hubs: pathfinding load",
-                   "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
+                   "Hills",     SetupHubs,     NULL, DryGroundPrintStats, NULL, 128, 128},
     {"world",      "Hills with soils and water, 100 wandering movers; scenarioSize sets the map (for --profile)",
-                   "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
+                   "HillsSoilsWater", SetupWorld, NULL, DryGroundPrintStats, NULL, 256, 256},
     {"island",     "A finite island grown from a seed (drainage, rivers, lakes, sea, cover), 100 wandering movers; scenarioSize sets the map",
-                   "Island",    SetupWorld, NULL, IslandPrintStats, NULL, 256, 256},
+                   "Island",    SetupWorld, NULL, DryGroundPrintStats, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"dayrhythm",  "8 movers, beds, dried berries, endless mining: who is in bed at 03:00 and 13:00 (setting sleepRhythm)",

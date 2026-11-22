@@ -25,6 +25,8 @@ void GenerateHills(void);         // Natural hills/mountains using Perlin height
 void GenerateHillsSoils(void);    // Hills with soil bands (clay/gravel/sand/peat)
 void GenerateHillsSoilsWater(void); // Hills + soils + rivers/lakes
 void GenerateIsland(void);        // Finite island: drainage, rivers, lakes, sea, cover (island_gen.c)
+bool IslandLandingSpot(int* x, int* y, int* z); // after GenerateIsland: beach cell nearest fresh water (walk level)
+extern bool islandSkipBoulders;   // GenerateIsland places no boulders (tests)
 void GenerateCraftingTest(void);  // Crafting system test scenario
 void GenerateTrainTest(void);      // Train station transport test scenario
 void GenerateTrainTestLong(void);  // Long platforms + multi-car train test

@@ -462,6 +462,7 @@ describe(island_generator) {
 
     it("should never step dry ground more than one level between neighbours (ramps can climb it)") {
         uint64_t origSeed = worldSeed;
+        islandSkipBoulders = true;   // a boulder is a one-cell wall on the ground, not a step
         gridDepth = 16;                              // before init: it sizes the levels
         InitGridWithSizeAndChunkSize(128, 128, 16, 16);
         int cliffs = 0;
@@ -481,6 +482,7 @@ describe(island_generator) {
                 }
         }
         expect(cliffs == 0);
+        islandSkipBoulders = false;
         worldSeed = origSeed;
     }
 

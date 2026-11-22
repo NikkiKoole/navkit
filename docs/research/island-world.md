@@ -70,8 +70,12 @@ Gets the "grown, not drawn" feel without fighting the scale. Keep route C as a l
 scenario **island** (`--scenario island`, `scenarioSize` sets the map). Built: shape, relief,
 priority-flood drainage, valleys carved along rivers, a slope cap, sea / lakes / rivers as real
 water, rain shadow, cover (beach, marsh, rock, moor, forest, scrub, grassland), trees and berry
-bushes by cover, ramps. Not yet: settlements, paths, buildings (islandstudio rungs 2b-3), loose
-items (rocks, sticks) for survival, a game entry in `games.c`.
+bushes by cover, ramps, loose items (boulders and rocks on stony ground, pebbles on gravel
+beaches, sticks and logs under trees, dried grass). **Game "island"** (`--game island`, play HUD,
+dev UI Games list): survival rules, 256x256, 3 settlers ashore at `IslandLandingSpot()` (the
+beach cell nearest fresh water), fog of war, survival's starting supplies; no intro cutscene
+(survival's text is about a lone settler). Not wanted yet: settlements and paths (paths should
+come from trampling, `groundwear`), buildings.
 
 - **Map dump**: `ISLAND_MAP=map.png ./build/bin/path --headless --seed 3 --scenario island --ticks 0`
   writes a top-down cover map (the game's renderer dims deep levels, so it is hard to judge from).
@@ -89,6 +93,10 @@ items (rocks, sticks) for survival, a game entry in `games.c`.
 - **Water**: 1.7 ms/tick at 256 (like the `world` scenario). Dry ground shrinks ~7% in the first
   3000 ticks as rivers spread over their valley floors, then ~1% more by 12000.
 - The hills "fix tiny pockets" pass is skipped: it filled tree tops and islets with granite.
+- The shared `ShouldPlaceRampAt` blobs were checked on the other natural terrains
+  (`DryGroundPrintStats`, now on the world and hubs scenarios too): hubs 99.6-100%, world
+  95-98% (98.6-98.8% at 1024) reachable, so they were left alone; only the island's big smooth
+  terraces got sealed off. Loose end: world seed 4 drops to 81% at `rampDensity 1`.
 - **Drainage is randomised steepest descent** ("Rho8": a strictly lower neighbour picked at
   random, weighted by drop per distance). Plain D8 (the neighbour the flood came from) made
   streams on smooth slopes run in ruler-straight 45-degree lines.

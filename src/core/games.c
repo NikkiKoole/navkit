@@ -5,6 +5,8 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../world/designations.h"
+#include "../world/terrain.h"
+#include "../world/pathfinding.h"
 #include "../simulation/plants.h"
 #include "../simulation/farming.h"
 #include "../simulation/floordirt.h"
@@ -29,9 +31,86 @@
 #include "../core/input_mode.h"
 #include "../ui/cutscene.h"
 #include <strings.h>
+#include <stdlib.h>
 #include <time.h>
 
 void SpawnMoversDemo(int count);   // main.c
+
+// ---------------------------------------------------------------------------
+// Shared by the wilderness games (survival, island)
+// ---------------------------------------------------------------------------
+
+// After a generator built the map: every system that sizes itself from the map, then the
+// HPA* graph. Water/sim counters are rebuilt AFTER generation to keep the placed water.
+static void InitWorldAfterGeneration(void) {
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    InitDesignations();
+    RebuildSimActivityCounts();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InitLighting();
+    BuildEntrances();
+    BuildGraph();
+}
+
+// 5 berries, 5 sticks and a clay pot of water around (sx, sy, sz)
+static void SpawnStartingSupplies(float sx, float sy, float sz) {
+    // 5 berries (immediate food)
+    for (int i = 0; i < 5; i++) {
+        SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE, sz, ITEM_BERRIES);
+    }
+
+    // 5 sticks (basic crafting material)
+    for (int i = 0; i < 5; i++) {
+        SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE * 2, sz, ITEM_STICKS);
+    }
+
+    // 1 clay pot filled with water
+    int potIdx = SpawnItem(sx + CELL_SIZE * 3, sy + CELL_SIZE, sz, ITEM_CLAY_POT);
+    if (potIdx >= 0) {
+        int fillCount = 5; // clay pot maxContents
+        for (int i = 0; i < fillCount; i++) {
+            int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
+            if (waterIdx >= 0) {
+                PutItemInContainer(waterIdx, potIdx);
+            }
+        }
+    }
+}
+
+// Survival rules and pace: time from zero, a 6-minute day, needs and death on (fog of war
+// is set up by each game around its settlers)
+static void SetSurvivalRules(void) {
+    ResetTime();
+    // A 6-minute day, walking 3x the old 400 px/s: same speed on screen as a 2-minute day
+    // at 400, but per game hour movers cover 3x the ground (--day-budget: walking halves)
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 1200.0f;
+    // Update already-spawned movers to new speed
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) {
+            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
+        }
+    }
+    gameMode = GAME_MODE_SURVIVAL;
+    hungerEnabled = true;
+    energyEnabled = true;
+    bodyTempEnabled = true;
+    thirstEnabled = true;
+    bladderEnabled = false;   // set explicitly: dollhouse leaves it on
+    moodEnabled = true;       // startup default
+    toolRequirementsEnabled = true;
+    jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
+    gameOverTriggered = false;
+    survivalStartTime = 0.0;
+    survivalDuration = 0.0;
+}
 
 // ---------------------------------------------------------------------------
 // survival: one settler on 128x128 hills, fog of war, death by hunger/thirst/cold
@@ -57,21 +136,7 @@ static void StartSurvival(void) {
     GenerateCurrentTerrain();
     hillsSkipBuildings = false;
 
-    // Init all systems — water/sim counters rebuilt AFTER generation to preserve placed water
-    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-    InitDesignations();
-    RebuildSimActivityCounts();
-    InitFire();
-    InitSmoke();
-    InitSteam();
-    InitTemperature();
-    InitGroundWear();
-    InitFloorDirt();
-    InitSnow();
-    InitLighting();
-    BuildEntrances();
-    BuildGraph();
+    InitWorldAfterGeneration();
 
     // Spawn 1 mover at a walkable cell
     SpawnMoversDemo(1);
@@ -87,32 +152,7 @@ static void StartSurvival(void) {
     }
 
     // Spawn starting supplies near the mover
-    if (moverCount > 0) {
-        Mover* m = &movers[0];
-        float sx = m->x, sy = m->y, sz = m->z;
-
-        // 5 berries (immediate food)
-        for (int i = 0; i < 5; i++) {
-            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE, sz, ITEM_BERRIES);
-        }
-
-        // 5 sticks (basic crafting material)
-        for (int i = 0; i < 5; i++) {
-            SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE * 2, sz, ITEM_STICKS);
-        }
-
-        // 1 clay pot filled with water
-        int potIdx = SpawnItem(sx + CELL_SIZE * 3, sy + CELL_SIZE, sz, ITEM_CLAY_POT);
-        if (potIdx >= 0) {
-            int fillCount = 5; // clay pot maxContents
-            for (int i = 0; i < fillCount; i++) {
-                int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
-                if (waterIdx >= 0) {
-                    PutItemInContainer(waterIdx, potIdx);
-                }
-            }
-        }
-    }
+    if (moverCount > 0) SpawnStartingSupplies(movers[0].x, movers[0].y, movers[0].z);
 
     // Center camera on the mover and follow it, zoomed out to see the surroundings
     zoom = 0.5f;
@@ -124,30 +164,77 @@ static void StartSurvival(void) {
         followMoverIdx = 0;
     }
 
-    ResetTime();
-    // A 6-minute day, walking 3x the old 400 px/s: same speed on screen as a 2-minute day
-    // at 400, but per game hour movers cover 3x the ground (--day-budget: walking halves)
-    dayLength = 360.0f;
-    balance.baseMoverSpeed = 1200.0f;
-    // Update already-spawned movers to new speed
-    for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active) {
-            movers[i].speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
-        }
-    }
-    gameMode = GAME_MODE_SURVIVAL;
-    hungerEnabled = true;
-    energyEnabled = true;
-    bodyTempEnabled = true;
-    thirstEnabled = true;
-    bladderEnabled = false;   // set explicitly: dollhouse leaves it on
-    moodEnabled = true;       // startup default
-    toolRequirementsEnabled = true;
-    jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
-    gameOverTriggered = false;
-    survivalStartTime = 0.0;
-    survivalDuration = 0.0;
+    SetSurvivalRules();
     PlaySurvivalIntroCutscene();
+}
+
+// ---------------------------------------------------------------------------
+// island: a few settlers wash ashore on a finite island (src/world/island_gen.c)
+// ---------------------------------------------------------------------------
+
+#define ISLAND_SIZE     256
+#define ISLAND_SETTLERS 3
+
+static int TerrainIndexByName(const char* name) {
+    for (int i = 0; i < terrainCount; i++) if (strcasecmp(terrainNames[i], name) == 0) return i;
+    return 0;
+}
+
+// The walkable cell nearest (want) that movers can get from to the rest of the island,
+// searched in growing squares; any reachable cell if there is none within 48 cells
+static Point IslandStartCell(Point want, Point anchor) {
+    if (want.x >= 0) {
+        for (int r = 0; r <= 48; r++)
+            for (int dy = -r; dy <= r; dy++)
+                for (int dx = -r; dx <= r; dx++) {
+                    if (abs(dx) != r && abs(dy) != r) continue;   // ring only
+                    int x = want.x + dx, y = want.y + dy;
+                    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+                    for (int z = want.z - 1; z <= want.z + 2; z++) {
+                        if (z < 1 || z >= gridDepth || !IsCellWalkableAt(z, y, x)) continue;
+                        Point p = {x, y, z};
+                        if (anchor.x < 0 || IsReachable(anchor, p)) return p;
+                    }
+                }
+    }
+    return GetRandomWalkableCellReachableFrom(anchor);
+}
+
+static void StartIsland(void) {
+    if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+    InitGridWithSizeAndChunkSize(ISLAND_SIZE, ISLAND_SIZE, 16, 16);
+    ClearAnimals();
+    ClearFurniture();
+    InitPlants();
+    ClearFarming();
+    currentTerrain = TerrainIndexByName("Island");
+    GenerateCurrentTerrain();
+    InitWorldAfterGeneration();
+
+    // Ashore on the beach nearest fresh water (a river mouth), side by side
+    Point want = {-1, -1, -1};
+    int lx, ly, lz;
+    if (IslandLandingSpot(&lx, &ly, &lz)) want = (Point){lx, ly, lz};
+    Point anchor = GetMainRegionAnchor();
+    Point start = IslandStartCell(want, anchor);
+    CLEAR_GRID_LAYER(unexploredGrid, 1);   // fog of war: all unexplored
+    for (int i = 0; i < ISLAND_SETTLERS && start.x >= 0; i++) {
+        Point p = IslandStartCell((Point){start.x + (i % 2 ? i : -i), start.y, start.z}, anchor);
+        if (p.x < 0) p = start;
+        SpawnMoverAt(p.x, p.y, p.z);
+        RevealAroundPoint(p.x, p.y, p.z, balance.spawnVisionRadius);
+    }
+    if (moverCount > 0) SpawnStartingSupplies(movers[0].x, movers[0].y, movers[0].z);
+
+    zoom = 0.5f;
+    if (moverCount > 0) {
+        Mover* m = &movers[0];
+        currentViewZ = (int)m->z;
+        offset.x = GetScreenWidth() / 2.0f - m->x * zoom;
+        offset.y = GetScreenHeight() / 2.0f - m->y * zoom;
+        followMoverIdx = 0;
+    }
+    SetSurvivalRules();
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +491,8 @@ static const GameDef games[] = {
                   StartSurvival,  false, TOOLS(survivalTools)},
     {"dollhouse", "Dollhouse", "Two people in a small apartment: needs and mood, nobody dies",
                   StartDollhouse, true,  TOOLS(dollhouseTools)},
+    {"island",    "Island",    "Three settlers wash ashore on an island grown from the seed: rivers, forest, moor; survival rules",
+                  StartIsland,    false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  TOOLS(sandboxTools)},
 };
