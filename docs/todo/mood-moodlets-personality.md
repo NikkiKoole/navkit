@@ -73,12 +73,20 @@ Room detection system (`rooms.h`/`rooms.c`) with flood-fill per z-level, room ty
 
 All data exists in weather.c. Triggers go in `UpdateContinuousMoodlets()` or a new periodic check.
 
-- [ ] **Rained on** (-1, while active) — `IsExposedToSky(cx,cy,cz) && (weatherType == RAIN || HEAVY_RAIN)`
-- [ ] **Caught in storm** (-2, 2h) — `IsExposedToSky && weatherType == THUNDERSTORM`
-- [ ] **Enjoying the sun** (+1, 2h) — `IsExposedToSky && weatherType == CLEAR && daytime`
-- [ ] **Snow** (+1 or -1, trait-dependent) — exposed during WEATHER_SNOW
+- [x] **Rained on** (-1, 0.5h, refreshed while it rains) — `IsExposedToSky(cx,cy,cz) && (weatherType == RAIN || HEAVY_RAIN)` (2026-11-22)
+- [x] **Caught in storm** (-2, 2h) — `IsExposedToSky && weatherType == THUNDERSTORM` (replaces rained on)
+- [x] **Enjoying the sun** (+1, 2h) — `IsExposedToSky && weatherType == CLEAR && 7:00-19:00`; rain removes it
+- [ ] **Snow** (+1 or -1, trait-dependent) — exposed during WEATHER_SNOW (not yet)
+
+Done as one periodic check per mover (every ~0.25 game-hours, spread by mover index) in
+`UpdateWeatherAndDirtMoodlets`. Traits: Outdoorsy rain x0.3 / storm x0.5 / sun x1.5, Hardy
+rain x0.5. Note: the weather simulation is off unless turned on (`set weather 1` or dev UI
+"Weather Enabled"; `InitWeather()` is never called), so these only show with weather on.
 
 ### Phase 5: Light moodlets (new triggers, existing data)
+
+Wait for schedules (sleep/wake): without them movers work at night and "worked in the dark"
+would fire for everyone every night. Or limit it to indoors.
 
 `GetLightColor()` exists per cell. Check at job completion or periodically.
 
@@ -87,8 +95,8 @@ All data exists in weather.c. Triggers go in `UpdateContinuousMoodlets()` or a n
 
 ### Phase 6: Environment moodlets (new triggers, existing data)
 
-- [ ] **Filthy surroundings** (-1, 2h) — mover on cell with high `floorDirtGrid` value
-- [ ] **Ate stale food** (-1, 6h) — `item.condition == CONDITION_STALE` at eating completion
+- [x] **Filthy surroundings** (-1, 2h) — floor dirt under the mover >= 80 (cleaners start at 30); Hardy x0.5
+- [x] **Ate stale food** (-1, 6h) — `item.condition >= CONDITION_STALE` at eating completion; Picky Eater x1.5
 - [ ] **Varied diet** (+1, 12h) — ate 3+ different food types recently (needs small tracking array)
 - [ ] **Monotonous diet** (-1, 12h) — ate same food type 3 times in a row
 

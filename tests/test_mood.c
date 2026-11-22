@@ -17,6 +17,7 @@ static bool test_verbose = false;
 #include "../src/simulation/balance.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/weather.h"
+#include "../src/simulation/floordirt.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/water.h"
 #include "../src/world/designations.h"
@@ -1252,6 +1253,144 @@ describe(scenery_moodlets) {
     }
 }
 
+// =============================================================================
+// Weather, dirt and stale food moodlets (phases 4 and 6)
+// =============================================================================
+static Mover* SetupOutdoorMover(void) {
+    SetupClean();
+    weatherEnabled = true;
+    floorDirtEnabled = true;
+    weatherState.current = WEATHER_CLOUDY;
+    timeOfDay = 12.0f;
+    int mi = SetupMover(5, 5);
+    Mover* m = &movers[mi];
+    m->hunger = 1.0f; m->thirst = 1.0f; m->energy = 1.0f; m->bodyTemp = 37.0f;
+    m->traits[0] = TRAIT_NONE;
+    m->traits[1] = TRAIT_NONE;
+    return m;
+}
+
+static float MoodletValue(Mover* m, MoodletType type) {
+    for (int i = 0; i < m->moodletCount; i++)
+        if (m->moodlets[i].type == type) return m->moodlets[i].value;
+    return 0.0f;
+}
+
+describe(mood_weather_dirt_triggers) {
+    it("rain under open sky gives 'rained on'") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_RAIN;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_RAINED_ON));
+    }
+
+    it("rain under a roof does not") {
+        Mover* m = SetupOutdoorMover();
+        SET_FLOOR(5, 5, 3);   // a floor/roof two levels up
+        weatherState.current = WEATHER_HEAVY_RAIN;
+        TickMood(2);
+        expect(!HasMoodlet(m, MOODLET_RAINED_ON));
+    }
+
+    it("'rained on' wears off after shelter (short duration)") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_RAIN;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_RAINED_ON));
+        weatherState.current = WEATHER_CLOUDY;
+        TickMood((int)(GameHoursToGameSeconds(0.6f) / TICK_DT));
+        expect(!HasMoodlet(m, MOODLET_RAINED_ON));
+    }
+
+    it("a thunderstorm gives 'caught in a storm'") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_THUNDERSTORM;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_CAUGHT_IN_STORM));
+        expect(!HasMoodlet(m, MOODLET_RAINED_ON));
+    }
+
+    it("clear weather in daytime gives 'enjoying the sun', not at night") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_CLEAR;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_ENJOYING_SUN));
+
+        m = SetupOutdoorMover();
+        weatherState.current = WEATHER_CLEAR;
+        timeOfDay = 23.0f;
+        TickMood(2);
+        expect(!HasMoodlet(m, MOODLET_ENJOYING_SUN));
+    }
+
+    it("rain ends 'enjoying the sun'") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_CLEAR;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_ENJOYING_SUN));
+        weatherState.current = WEATHER_RAIN;
+        TickMood((int)(GameHoursToGameSeconds(0.3f) / TICK_DT));
+        expect(!HasMoodlet(m, MOODLET_ENJOYING_SUN));
+        expect(HasMoodlet(m, MOODLET_RAINED_ON));
+    }
+
+    it("weather off: no weather moodlets") {
+        Mover* m = SetupOutdoorMover();
+        weatherEnabled = false;
+        weatherState.current = WEATHER_THUNDERSTORM;
+        TickMood(2);
+        expect(!HasMoodlet(m, MOODLET_CAUGHT_IN_STORM));
+        weatherEnabled = true;
+    }
+
+    it("outdoorsy movers mind the rain less") {
+        Mover* m = SetupOutdoorMover();
+        weatherState.current = WEATHER_RAIN;
+        TickMood(2);
+        float plain = MoodletValue(m, MOODLET_RAINED_ON);
+        m = SetupOutdoorMover();
+        m->traits[0] = TRAIT_OUTDOORSY;
+        weatherState.current = WEATHER_RAIN;
+        TickMood(2);
+        float outdoorsy = MoodletValue(m, MOODLET_RAINED_ON);
+        expect(plain < 0.0f);
+        expect(outdoorsy < 0.0f && outdoorsy > plain);
+    }
+
+    it("a very dirty floor gives 'filthy surroundings', a bit of dirt does not") {
+        Mover* m = SetupOutdoorMover();
+        FLOOR_DIRT(5, 5, 1) = 40;
+        TickMood(2);
+        expect(!HasMoodlet(m, MOODLET_FILTHY));
+
+        m = SetupOutdoorMover();
+        FLOOR_DIRT(5, 5, 1) = 120;
+        TickMood(2);
+        expect(HasMoodlet(m, MOODLET_FILTHY));
+        FLOOR_DIRT(5, 5, 1) = 0;
+    }
+
+    it("eating stale food gives 'ate stale food', fresh food does not") {
+        for (int stale = 0; stale <= 1; stale++) {
+            SetupClean();
+            int mi = SetupMover(5, 5);
+            Mover* m = &movers[mi];
+            m->hunger = 0.1f; m->energy = 1.0f; m->thirst = 1.0f;
+            m->traits[0] = TRAIT_NONE;
+            m->traits[1] = TRAIT_NONE;
+            int itemIdx = PlaceFoodInStockpile(5, 5, ITEM_BERRIES);
+            items[itemIdx].condition = stale ? CONDITION_STALE : CONDITION_FRESH;
+
+            for (int i = 0; i < 300 && m->freetimeState != FREETIME_EATING; i++) SimNeedsTick();
+            int eatTicks = (int)(GameHoursToGameSeconds(balance.eatingDurationGH) / TICK_DT) + 10;
+            for (int i = 0; i < eatTicks; i++) SimNeedsTick();
+
+            expect(m->freetimeState == FREETIME_NONE);
+            expect(HasMoodlet(m, MOODLET_ATE_STALE_FOOD) == (stale == 1));
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1270,6 +1409,7 @@ int main(int argc, char* argv[]) {
     test(mood_full_day_story);
     test(scenery_beauty_count);
     test(scenery_moodlets);
+    test(mood_weather_dirt_triggers);
 
     return summary();
 }

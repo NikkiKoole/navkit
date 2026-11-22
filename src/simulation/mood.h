@@ -19,7 +19,7 @@ typedef enum {
     // Eating
     MOODLET_ATE_GOOD_FOOD,       // +2  cooked meat, bread, cooked lentils, roasted root
     MOODLET_ATE_RAW_FOOD,        // -1  raw berries, raw root, raw meat, dried berries
-    MOODLET_ATE_AT_TABLE,        // +2  ate in room with chair (future: table)
+    MOODLET_ATE_AT_TABLE,        // +2  ate in a room with a table + chair next to it
     MOODLET_ATE_WITHOUT_TABLE,   // -3  ate standing/outdoors
 
     // Sleeping
@@ -49,6 +49,13 @@ typedef enum {
     // Bladder
     MOODLET_NO_TOILET,       // -2  relieved in the open / indoors
     MOODLET_NO_PRIVACY,      // -1  relieved outdoors behind bush
+
+    // Weather / environment (append only: saves store the type number)
+    MOODLET_RAINED_ON,       // -1  under open sky in rain (while it lasts)
+    MOODLET_CAUGHT_IN_STORM, // -2  under open sky in a thunderstorm
+    MOODLET_ENJOYING_SUN,    // +1  under open sky, clear weather, daytime
+    MOODLET_FILTHY,          // -1  standing on a very dirty floor
+    MOODLET_ATE_STALE_FOOD,  // -1  ate food that was stale (or worse)
 
     MOODLET_TYPE_COUNT
 } MoodletType;

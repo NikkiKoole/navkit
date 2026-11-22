@@ -15,6 +15,8 @@
 #include "../core/time.h"
 #include "../core/event_log.h"
 #include "rooms.h"
+#include "weather.h"
+#include "floordirt.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +47,11 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_HOT_MEAL]          = { "Hot meal",            1.0f,  4.0f },
     [MOODLET_NO_TOILET]         = { "Had to go in the open", -2.0f, 4.0f },
     [MOODLET_NO_PRIVACY]        = { "No privacy",         -1.0f,  2.0f },
+    [MOODLET_RAINED_ON]         = { "Rained on",          -1.0f,  0.5f },  // refreshed while it rains
+    [MOODLET_CAUGHT_IN_STORM]   = { "Caught in a storm",  -2.0f,  2.0f },
+    [MOODLET_ENJOYING_SUN]      = { "Enjoying the sun",    1.0f,  2.0f },
+    [MOODLET_FILTHY]            = { "Filthy surroundings", -1.0f, 2.0f },
+    [MOODLET_ATE_STALE_FOOD]    = { "Ate stale food",     -1.0f,  6.0f },
 };
 
 // --- Trait definitions ---
@@ -61,6 +68,8 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
             [MOODLET_COLD]            = 0.5f,
             [MOODLET_SLEPT_WELL]      = 0.5f,  // doesn't appreciate luxury as much
             [MOODLET_WARM_AND_COZY]   = 0.5f,
+            [MOODLET_RAINED_ON]       = 0.5f,
+            [MOODLET_FILTHY]          = 0.5f,
         }
     },
 
@@ -71,6 +80,7 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
             [MOODLET_ATE_RAW_FOOD]      = 2.0f,  // hates raw food
             [MOODLET_ATE_AT_TABLE]      = 1.5f,
             [MOODLET_ATE_WITHOUT_TABLE] = 1.5f,
+            [MOODLET_ATE_STALE_FOOD]    = 1.5f,
         }
     },
 
@@ -83,6 +93,9 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
             [MOODLET_DRANK_DIRTY_WATER] = 0.5f,  // river water is fine
             [MOODLET_PLEASANT_VIEW]     = 1.5f,  // really appreciates nature
             [MOODLET_BLEAK_SURROUNDINGS]= 1.5f,  // hates being indoors/barren
+            [MOODLET_RAINED_ON]         = 0.3f,  // doesn't mind the rain
+            [MOODLET_CAUGHT_IN_STORM]   = 0.5f,
+            [MOODLET_ENJOYING_SUN]      = 1.5f,
         }
     },
 
@@ -342,6 +355,7 @@ bool sceneryEnabled = true;
 static float sceneryCheckTimer[MAX_MOVERS];   // countdown to next beauty scan
 static float bleakAccumulator[MAX_MOVERS];    // game-seconds spent with zero beauty
 static float roomCheckTimer[MAX_MOVERS];      // countdown to next room quality check
+static float outdoorCheckTimer[MAX_MOVERS];   // countdown to next weather / dirt check
 
 #define SCENERY_CHECK_INTERVAL_GH 0.5f  // check every ~0.5 game-hours
 #define SCENERY_RADIUS 6
@@ -352,6 +366,7 @@ void InitSceneryState(void) {
     memset(sceneryCheckTimer, 0, sizeof(sceneryCheckTimer));
     memset(bleakAccumulator, 0, sizeof(bleakAccumulator));
     memset(roomCheckTimer, 0, sizeof(roomCheckTimer));
+    memset(outdoorCheckTimer, 0, sizeof(outdoorCheckTimer));
 }
 
 // Count beauty sources (trees, water, plants) within radius of a cell.
@@ -457,6 +472,46 @@ static void UpdateRoomMoodlets(Mover* m, int moverIdx, float dt) {
 // --- Continuous moodlet triggers ---
 // These fire every tick based on current state (not events).
 
+// --- Weather and dirt moodlets (periodic) ---
+
+#define OUTDOOR_CHECK_INTERVAL_GH 0.25f
+#define FILTHY_DIRT_THRESHOLD 80        // well above DIRT_CLEAN_THRESHOLD: nobody is cleaning
+#define SUN_HOURS_START 7.0f
+#define SUN_HOURS_END   19.0f
+
+static void UpdateWeatherAndDirtMoodlets(Mover* m, int moverIdx, float dt) {
+    outdoorCheckTimer[moverIdx] -= dt;
+    if (outdoorCheckTimer[moverIdx] > 0.0f) return;
+    // 0.8x-1.2x the interval by mover index, so movers drift apart instead of all
+    // checking in the same tick (they all start at 0)
+    float spread = 0.8f + 0.4f * (float)(moverIdx % 16) / 15.0f;
+    outdoorCheckTimer[moverIdx] = GameHoursToGameSeconds(OUTDOOR_CHECK_INTERVAL_GH) * spread;
+
+    int cx = (int)(m->x / CELL_SIZE);
+    int cy = (int)(m->y / CELL_SIZE);
+    int cz = (int)m->z;
+    if (cx < 0 || cy < 0 || cz < 0 || cx >= gridWidth || cy >= gridHeight || cz >= gridDepth) return;
+
+    // Weather: only under open sky (a roof, floor or rock above shelters)
+    if (weatherEnabled && IsExposedToSky(cx, cy, cz)) {
+        WeatherType w = weatherState.current;
+        if (w == WEATHER_THUNDERSTORM) {
+            AddMoodlet(m, MOODLET_CAUGHT_IN_STORM);
+            RemoveMoodlet(m, MOODLET_ENJOYING_SUN);
+        } else if (w == WEATHER_RAIN || w == WEATHER_HEAVY_RAIN) {
+            AddMoodlet(m, MOODLET_RAINED_ON);
+            RemoveMoodlet(m, MOODLET_ENJOYING_SUN);
+        } else if (w == WEATHER_CLEAR && timeOfDay >= SUN_HOURS_START && timeOfDay < SUN_HOURS_END) {
+            AddMoodlet(m, MOODLET_ENJOYING_SUN);
+        }
+    }
+
+    // Dirt: the floor under the mover (only constructed floors collect dirt)
+    if (floorDirtEnabled && FLOOR_DIRT(cx, cy, cz) >= FILTHY_DIRT_THRESHOLD) {
+        AddMoodlet(m, MOODLET_FILTHY);
+    }
+}
+
 static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
     // Cold moodlet: active while body temp below mild threshold
     if (bodyTempEnabled && m->bodyTemp < balance.mildColdThreshold) {
@@ -469,6 +524,9 @@ static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
 
     // Room quality (periodic)
     UpdateRoomMoodlets(m, moverIdx, dt);
+
+    // Rain, storm, sun, dirty floor (periodic)
+    UpdateWeatherAndDirtMoodlets(m, moverIdx, dt);
 }
 
 // --- Trait assignment ---

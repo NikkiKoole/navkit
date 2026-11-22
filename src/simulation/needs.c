@@ -649,6 +649,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 ItemType foodType = items[ti].type;
                 if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
                 else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
+                if (items[ti].condition >= CONDITION_STALE) AddMoodlet(m, MOODLET_ATE_STALE_FOOD);
 
                 // Mood: ate at table vs without table. A table counts with a chair next
                 // to it (a dining set) in the room where the mover eats. Movers eat where
