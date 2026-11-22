@@ -129,7 +129,10 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     }
     
     CellType cellBelow = GRID(x, y, z-1);
-    return CellIsSolid(cellBelow);
+    if (CellIsSolid(cellBelow)) return true;
+
+    // Ice: deep frozen water below holds you (FreezeWater/ThawWater tell the pathfinder)
+    return WATER(x, y, z-1).isFrozen && WATER(x, y, z-1).level >= WATER_BLOCKS_MOVEMENT;
 }
 
 static inline bool IsCellWalkableAt(int z, int y, int x) {

@@ -4,6 +4,7 @@
 #include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/simulation/water.h"
+#include "../src/world/pathfinding.h"
 #include "../src/simulation/temperature.h"
 #include <stdlib.h>
 #include <string.h>
@@ -1298,6 +1299,40 @@ describe(water_freezing) {
         waterEvaporationEnabled = true;
     }
     
+    it("should let movers walk on deep ice, and not after it thaws") {
+        // z0 solid ground, a pond cell at z1 (deep water), walking happens on top at z2
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            "floor:2\n"
+            ".....\n"
+            ".....\n";
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitWater();
+        InitTemperature();
+        CLEAR_FLOOR(2, 1, 1);
+        CLEAR_FLOOR(2, 1, 2);
+        SetWaterLevel(2, 1, 1, WATER_MAX_LEVEL);
+
+        expect(!IsCellWalkableAt(1, 1, 2));          // deep water: not walkable
+        expect(!IsCellWalkableAt(2, 1, 2));          // nothing to stand on above it
+
+        unsigned before = walkabilityChangeCount;
+        FreezeWater(2, 1, 1);
+        expect(IsCellWalkableAt(2, 1, 2));           // on top of the ice
+        expect(!IsCellWalkableAt(1, 1, 2));          // not inside it
+        expect(walkabilityChangeCount != before);    // the pathfinder was told
+
+        before = walkabilityChangeCount;
+        ThawWater(2, 1, 1);
+        expect(!IsCellWalkableAt(2, 1, 2));
+        expect(walkabilityChangeCount != before);
+    }
+
     it("should preserve water level when frozen") {
         InitTestGridFromAscii(
             "....\n");

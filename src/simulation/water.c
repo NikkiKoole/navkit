@@ -741,6 +741,8 @@ void FreezeWater(int x, int y, int z) {
     cell->stable = true;  // Frozen water doesn't need processing
     cell->pressureDirty = 1;
     DestabilizeWater(x, y, z);  // But neighbors might be affected
+    // Deep ice can be walked on: the cell above became walkable
+    if (cell->level >= WATER_BLOCKS_MOVEMENT && z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
 }
 
 // Thaw frozen water
@@ -755,6 +757,8 @@ void ThawWater(int x, int y, int z) {
     cell->stable = false;  // Water can flow again
     cell->pressureDirty = 1;
     DestabilizeWater(x, y, z);
+    // The ice is gone: the cell above isn't walkable any more
+    if (cell->level >= WATER_BLOCKS_MOVEMENT && z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
 }
 
 // Update water freezing and boiling based on temperature
