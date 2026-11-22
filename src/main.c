@@ -21,6 +21,7 @@
 #include "core/games.h"
 #include "core/describe.h"
 #include "core/sim_step.h"
+#include "core/day_budget.h"
 #include "core/selection.h"
 #include "render/inspector.h"
 #include "render/world_batch.h"
@@ -94,7 +95,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest", "TrainLong", "MoodTest"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest", "TrainTest", "TrainLong", "MoodTest", "Island"};
 const int terrainCount = (int)(sizeof(terrainNames) / sizeof(terrainNames[0]));
 
 MaterialType currentTreeType = MAT_OAK;
@@ -558,6 +559,7 @@ void GenerateCurrentTerrain(void) {
         case 21: GenerateTrainTest(); break;
         case 22: GenerateTrainTestLong(); break;
         case 23: GenerateMoodTest(); break;
+        case 24: GenerateIsland(); break;
     }
     SyncMaterialsToTerrain();
 }
@@ -950,6 +952,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     ApplySetArgs(argc, argv);
     bool doProfile = false;
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--profile") == 0) doProfile = true;
+    bool doDayBudget = false;   // --day-budget: where the movers' days go (src/core/day_budget.c)
+    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--day-budget") == 0) doDayBudget = true;
     double setupMs = 0;
     if (scenarioName) {
         double setupStart = WallMs();
@@ -984,6 +988,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int i = 0; i < moverCount; i++) lastGoal[i] = movers[i].goal;
     int arrivals = 0;
 
+    if (doDayBudget) DayBudgetBegin();
+
     // Run simulation
     clock_t startClock = clock();
     for (int t = 0; t < ticks; t++) {
@@ -1000,6 +1006,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             lastGoal[i] = mv->goal;
         }
         if (scenario && scenario->tickStats) scenario->tickStats();
+        if (doDayBudget) DayBudgetTick();
         double tickTime = (GetTime() - tickStart) * 1000.0;
         if (tickTime > 100.0) {
             TraceLog(LOG_WARNING, "SLOW TICK %d: %.1fms", t, tickTime);
@@ -1111,6 +1118,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         printf("\n=== SCENARIO: %s ===\n", scenario->name);
         scenario->printStats();
     }
+    if (doDayBudget) DayBudgetPrint();
 
     // --check: red flags -> FAIL and exit code 1 (make scenarios-check)
     //   always: no mover stuck (> 2 s without progress), no more movers in

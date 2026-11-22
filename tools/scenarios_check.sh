@@ -44,6 +44,7 @@ done <<'EOF'
 9   | 0 | --scenario train-long
 60  | 0 | --set scenarioMovers 16 --scenario train-long
 750 | 0 | --scenario hubs
+250 | 0 | --scenario island
 94  | 0 | --scenario train-double
 87  | 0 | --set trainSpeed 9 --scenario train-double
 21  | 0 | --scenario worksplit

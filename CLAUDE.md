@@ -241,6 +241,11 @@ hooks for headless runs (ladders uses them for queue length).
 ./build/bin/path --headless --scenario <name> --ticks 100   # see Scenarios
 ```
 
+`--day-budget` (any headless run) prints where the movers' days go: game hours per mover per
+day sleeping, working, walking to work, walking to needs (split by food/drink/toilet/bed),
+eating, drinking, toilet, idle, plus meals/drinks/jobs per day (`src/core/day_budget.c`).
+Use it before and after a balance change, e.g. `--scenario dayrhythm --ticks 50400 --day-budget`.
+
 ## Checking rendering changes
 
 `--screenshot file.png` (GUI) keeps the sim paused, centres the camera for the current zoom,

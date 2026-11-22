@@ -16,6 +16,7 @@
 #include "world/grid.c"
 #include "world/biome.c"
 #include "world/terrain.c"
+#include "world/island_gen.c"     // uses terrain.c statics
 // nav library (algorithms) + game host contract, then the game-side layer
 #define NAV_HOST_HEADER "../src/world/nav_host.h"
 #include "../nav/nav.c"
@@ -82,6 +83,7 @@
 #include "core/settings.c"
 #include "core/describe.c"
 #include "core/sim_step.c"
+#include "core/day_budget.c"
 
 // Rendering
 #include "render/world_batch.c"

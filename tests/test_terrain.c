@@ -400,6 +400,130 @@ describe(caves_keep_surface_support) {
 }
 
 // =============================================================================
+// Island generator (src/world/island_gen.c)
+// =============================================================================
+
+// z of the ground in a column: the highest wall or ramp (not a tree on it)
+static int IslandGroundTop(int x, int y) {
+    for (int z = gridDepth - 1; z >= 0; z--) {
+        CellType c = GRID(x, y, z);
+        if (c == CELL_WALL || CellIsRamp(c)) return z;
+    }
+    return -1;
+}
+
+// Tree roots replace the ground cell or lie on top of it, so a column with a tree in it has
+// no reliable ground height
+static bool IslandColumnHasTree(int x, int y) {
+    for (int z = 0; z < gridDepth; z++) {
+        CellType c = GRID(x, y, z);
+        if (c >= CELL_SAPLING && c <= CELL_TREE_LEAVES) return true;
+    }
+    return false;
+}
+
+static unsigned IslandChecksum(void) {
+    unsigned h = 2166136261u;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                h = (h ^ (unsigned)GRID(x, y, z)) * 16777619u;
+                h = (h ^ (unsigned)GetWaterLevel(x, y, z)) * 16777619u;
+            }
+    return h;
+}
+
+describe(island_generator) {
+    it("should make an island: sea at the frame, land in the middle, rivers") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;                              // before init: it sizes the levels
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        for (uint64_t seed = 1; seed <= 4; seed++) {
+            worldSeed = seed;
+            GenerateIsland();
+            int land = 0, river = 0, frameDry = 0;
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    int t = IslandGroundTop(x, y);
+                    bool wet = t + 1 < gridDepth && GetWaterLevel(x, y, t + 1) > 0;
+                    bool frame = x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1;
+                    if (frame && !wet) frameDry++;
+                    if (!wet) land++;
+                    else if (t + 1 > 3) river++;            // water above the sea surface
+                }
+            int pct = 100 * land / (gridWidth * gridHeight);
+            if (test_verbose) printf("seed %d: land %d%% river/lake cells %d\n", (int)seed, pct, river);
+            expect(frameDry == 0);
+            expect(pct >= 15 && pct <= 65);
+            expect(river > 20);
+        }
+        worldSeed = origSeed;
+    }
+
+    it("should never step dry ground more than one level between neighbours (ramps can climb it)") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;                              // before init: it sizes the levels
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        int cliffs = 0;
+        for (uint64_t seed = 1; seed <= 4; seed++) {
+            worldSeed = seed;
+            GenerateIsland();
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x + 1 < gridWidth; x++) {
+                    if (IslandColumnHasTree(x, y) || IslandColumnHasTree(x + 1, y)) continue;
+                    int a = IslandGroundTop(x, y), b = IslandGroundTop(x + 1, y);
+                    if (GetWaterLevel(x, y, a + 1) > 0 || GetWaterLevel(x + 1, y, b + 1) > 0) continue;
+                    if (abs(a - b) > 1) {
+                        if (test_verbose && cliffs < 12)
+                            printf("cliff seed %d at %d,%d: z%d vs z%d\n", (int)seed, x, y, a, b);
+                        cliffs++;
+                    }
+                }
+        }
+        expect(cliffs == 0);
+        worldSeed = origSeed;
+    }
+
+    it("should give the same island for the same seed") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;                              // before init: it sizes the levels
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        worldSeed = 7;
+        GenerateIsland();
+        unsigned a = IslandChecksum();
+        worldSeed = 8;
+        GenerateIsland();
+        unsigned b = IslandChecksum();
+        worldSeed = 7;
+        GenerateIsland();
+        expect(IslandChecksum() == a);
+        expect(a != b);
+        worldSeed = origSeed;
+    }
+
+    it("should leave no tree or bush floating") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;                              // before init: it sizes the levels
+        InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+        worldSeed = 3;
+        GenerateIsland();
+        int floating = 0, trees = 0;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    CellType c = GRID(x, y, z), below = GRID(x, y, z - 1);
+                    bool base = (c == CELL_TREE_TRUNK && below != CELL_TREE_TRUNK) || c == CELL_BUSH;
+                    if (!base) continue;
+                    if (c == CELL_TREE_TRUNK) trees++;
+                    if (!CellIsSolid(below)) floating++;
+                }
+        expect(trees > 50);
+        expect(floating == 0);
+        worldSeed = origSeed;
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -413,6 +537,7 @@ int main(int argc, char* argv[]) {
     test(ramp_north_duplicate_prevention);
     test(connectivity_fix_preserves_largest);
     test(caves_keep_surface_support);
+    test(island_generator);
 
     return summary();
 }

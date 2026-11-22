@@ -594,6 +594,27 @@ static void SetupWorld(void) {
     AddMessage(TextFormat("World: %d movers on %dx%d", spawned, gridWidth, gridHeight), GREEN);
 }
 
+// island: how much of the dry ground surface movers can reach from the main region (the
+// generator's own component report counts every walkable scrap, e.g. on tree tops)
+static void IslandPrintStats(void) {
+    Point anchor = GetMainRegionAnchor();
+    int dry = 0, reach = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            for (int t = gridDepth - 2; t >= 0; t--) {       // terrain top: natural wall or ramp
+                CellType c = GRID(x, y, t);
+                if (c != CELL_WALL && !CellIsRamp(c)) continue;
+                int z = CellIsRamp(c) ? t : t + 1;
+                if (GetWaterLevel(x, y, z) > 0) break;       // under water
+                if (GRID(x, y, z) == CELL_TREE_TRUNK || !IsCellWalkableAt(z, y, x)) break;
+                dry++;
+                if (anchor.x >= 0 && IsReachable(anchor, (Point){x, y, z})) reach++;
+                break;
+            }
+    printf("island: dry ground surface %d cells, reachable from the main region %d (%.1f%%)\n",
+           dry, reach, dry ? 100.0 * reach / dry : 0.0);
+}
+
 static void SetupHubs(void) {
     // Hubs: walkable cells in the biggest reachability region, spread out (a
     // jittered grid over the map, each snapped to the nearest good cell)
@@ -719,6 +740,8 @@ static const Scenario scenarios[] = {
                    "Hills",     SetupHubs,     NULL, NULL, NULL, 128, 128},
     {"world",      "Hills with soils and water, 100 wandering movers; scenarioSize sets the map (for --profile)",
                    "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
+    {"island",     "A finite island grown from a seed (drainage, rivers, lakes, sea, cover), 100 wandering movers; scenarioSize sets the map",
+                   "Island",    SetupWorld, NULL, IslandPrintStats, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"dayrhythm",  "8 movers, beds, dried berries, endless mining: who is in bed at 03:00 and 13:00 (setting sleepRhythm)",
