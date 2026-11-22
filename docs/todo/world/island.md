@@ -1,4 +1,10 @@
-# Island Studio in navkit? (research, 2026-11-22)
+# Island: a finite island grown from a seed
+
+> Status: partial (updated 2026-11-23). Built: terrain "Island" (`src/world/island_gen.c`),
+> scenario `island`, game `island` (survival rules, 3 settlers). Not wanted yet: settlements and
+> paths (paths should come from trampling). Started as research into dreamengine's Island Studio
+> (2026-11-22), kept below; status and measurements in "Status" at the end.
+
 
 Read-only look at dreamengine's Island Studio (`dreamengine/tools/carts/islandstudio.c`, design in
 `dreamengine/docs/design/island-studio.md` and `island-buildings.md`) and what navkit would need

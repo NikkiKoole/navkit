@@ -1,7 +1,7 @@
 // island_gen.c - "Island" terrain: a finite island grown, not drawn.
 //
 // A port, at navkit scale, of the first two rungs of dreamengine's islandstudio
-// (dreamengine/docs/design/island-studio.md). Research: docs/research/island-world.md.
+// (dreamengine/docs/design/island-studio.md). Doc: docs/todo/world/island.md.
 //
 //   1. shape:   distance from the centre through a domain warp, radius varying by direction
 //   2. relief:  rolling hills + ridged mountains in an interior mask

@@ -1,3 +1,5 @@
+> **Historical (last updated 2026-03-31).** Don't plan from this; current work is in `docs/todo/INDEX.md` ("Recently active" at the top).
+
 # NavKit Master TODO List
 
 *Last updated: 2026-03-31*

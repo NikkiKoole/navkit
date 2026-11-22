@@ -1,6 +1,25 @@
 # Todo Index
 
-> One-line summaries of everything in `docs/todo/`, grouped by status. Updated 2026-03-31.
+> One-line summaries of everything in `docs/todo/`, grouped by status, plus `docs/research/`.
+> Start with **Recently active**: what is being worked on now. Each session keeps its own line
+> there up to date when it finishes something (newest first; drop lines older than ~2 weeks into
+> their section below). Last tidied 2026-11-23.
+
+## Recently active
+
+- **2026-11-23 Conveyor belts** — `world/conveyors.md`: spike done (scenario `belt`), items and crates between stockpiles; stockpile transfer points (`StockpileTakeStack` / `StockpilePutLoad`)
+- **2026-11-23 Trains** — `world/trains.md`: coloured lines, trip choice over a transit graph (any number of changes), subway across levels (scenarios `metro`, `transfer`, `subway`, `subway-deep`); research `../research/metro.md`
+- **2026-11-23 Island** — `world/island.md`: terrain + game `island` (survival rules, 3 settlers ashore by a river mouth); sizes 256-1024
+- **2026-11-23 Taller worlds** — `architecture/chunked-world-plan.md` "Taller worlds: block palettes": a much higher world costs little more (memory follows the surface); decision point 4
+- **2026-11-23 Game hours everywhere** — building times, animal timers, food cooling, dev sidebar intervals in game hours (no doc; commits a0b9be1c, 0c3ef6a7, 2ba49ddf)
+- **2026-11-22 Day rhythm and needs** — `schedule-system.md`: soft rhythm (lie in while dark, early nights, sleep metabolism), 6-minute day with 3x walking, `--day-budget` tool (see root `CLAUDE.md`), tap furniture, tables, job distance weighting
+- **2026-11-22 Mover stuck fixes** (no doc, `mover.c`): tunnel-yield jam (aa24841), deep ice walkable (f04d21a), ramp-top loop (d48c3f6), death releases bed/food (68b8976), final waypoint must be in the goal cell (c840424); new spawns only where they can reach the main area (5f201cd)
+- **2026-11-22 Big maps, 5000 movers** — `architecture/chunked-world-plan.md` (end): yield cache, stranded spawns, steady state; next step only against a real-play target
+- **2026-11-22 City 1999 (vision)** — `../vision/city-1999.md`: ownership, inventory, bins, coins, keys, two milestones
+- **2026-11-22 Vehicles (research)** — `../research/vehicles.md`
+- **2026-11-21 Rendering** — `architecture/rendering-optimization-candidates.md`: instanced world batch, per-column visibility, chunk cache design (parked); `--screenshot` (root `CLAUDE.md`)
+
+Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and `-- docs` for doc changes).
 
 ---
 
@@ -19,6 +38,7 @@
 - `mood-moodlets-personality.md` — Mood system foundation shipped (mood.h/c, 5 traits, squared-curve, 31 tests). 8 phases: wire into game, hook needs triggers, weather/light/dirt/food/activity/room moodlets, more traits
 - `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer
 - `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel
+- `world/island.md` — Finite island grown from a seed (drainage, rivers, cover, loose items); terrain, scenario and game `island`; next: measure a lived-in island
 - `world/trains.md` — Horizontal multi-stop transport: track, stations, mover boarding, auto-decision (phases 1–4 done, phase 5 partial)
 
 ## Specs (ready to build)
@@ -70,7 +90,7 @@
 
 ## Research & Reference
 
-- `00-priority-order.md` — Master priority list for survival mode feature roadmap
+- `00-priority-order.md` — Master priority list for survival mode feature roadmap (historical: Feb 2026)
 - `gameplay/workshops-master.md` — Living doc tracking workshop additions, source-sink-feedback principles
 - `gameplay/balance-and-rate-tuning.md` — Guide for tuning interconnected rate-based systems
 - ~~`gameplay/primitives-missing.md`~~ — moved to done/ (all primitive items implemented)
@@ -86,6 +106,20 @@
 - `sounds/sound-and-mind-birdsong-sex.md` — Evolving song for mate choice
 - `sounds/sound-concept-generator.md` — Tool to prevent concept gaps when adding items/jobs
 - `sounds/sound-needs-emotions-groundwork.md` — Minimal needs + derived emotions for communication
+
+## Research findings (`docs/research/`)
+
+Measured findings and broad research; not plans by themselves.
+
+- `../research/vehicles.md` — Vehicles: how other colony games do them, what fits (incl. pushables: sledge = wheelbarrow = cart); no plan picked (2026-11-22)
+- `../research/metro.md` — Metro, tram, underground brainstorm (2026-11-22; trains work continues in `world/trains.md`)
+- `../research/many-destinations-navigation.md` — Thousands of agents, many destinations: full vs hierarchical flow fields vs HPA* (2026-11-19)
+- `../research/crowd-avoidance-comparison.md` — Which local avoidance for big crowds on flow fields (2026-11-19)
+- `../research/3d-crowd-bottlenecks.md` — Ladder bottlenecks and queue-aware routing in 3D (2026-11-19)
+- `../research/nav-fuzz-findings.md` — What fuzzing the nav library found and fixed (2026-11-19)
+- `../research/df-tile-reference.md` — Dwarf Fortress tile system reference (Feb 2026)
+- `../research/reverse-time-feature.md` — Rewind feature research (Feb 2026)
+- `../reference/` — Older analyses (Feb 2026): gap matrix and implementation order vs vision docs, rendering performance
 
 ## Discussions with AI
 

@@ -1,3 +1,5 @@
+> **Historical (last updated 2026-02-13).** Don't plan from this; current work is in `docs/todo/INDEX.md` ("Recently active" at the top).
+
 # Blind Spots & Fresh Todo Ideas
 
 *Generated 2026-02-13 after comprehensive codebase and documentation analysis*

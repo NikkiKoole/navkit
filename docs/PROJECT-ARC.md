@@ -1,3 +1,5 @@
+> **Historical (last updated 2026-03-31).** Don't plan from this; current work is in `docs/todo/INDEX.md` ("Recently active" at the top).
+
 # NavKit Project Arc
 
 > Where we came from, where we are, where we're going.
