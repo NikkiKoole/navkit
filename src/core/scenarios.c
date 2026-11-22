@@ -723,6 +723,186 @@ static void TrainDoublePrintStats(void) {
                StationBoardings(i));
 }
 
+// ---------------------------------------------------------------------------
+// metro: four coloured lines (each connected piece of track is one line)
+// ---------------------------------------------------------------------------
+
+// A circle line round the city (two trains), an east-west shuttle through the
+// middle, and north-south shuttles above and below it. Colours follow the order
+// the lines are found (top row first): circle Red, north Blue, east-west Green,
+// south Yellow. Lines meet at interchanges: platforms of two lines a few cells
+// apart (circle north + north shuttle, centre + both shuttles, circle south +
+// south shuttle). A mover picks one
+// line per ride; after getting off it plans again and may take another line.
+// Each station has a district a few cells off its platform (stations must be within
+// TRANSPORT_STATION_RADIUS of a mover and its goal to be considered).
+
+// Lay track along a polyline of axis-aligned legs; closed = back to the first point
+static void LayTrack(const Point* pts, int n, bool closed) {
+    int legs = closed ? n : n - 1;
+    for (int k = 0; k < legs; k++) {
+        Point a = pts[k], b = pts[(k + 1) % n];
+        int sx = (b.x > a.x) - (b.x < a.x), sy = (b.y > a.y) - (b.y < a.y);
+        uint8_t fwd = sx > 0 ? TRACK_E : sx < 0 ? TRACK_W : sy > 0 ? TRACK_S : TRACK_N;
+        uint8_t back = sx > 0 ? TRACK_W : sx < 0 ? TRACK_E : sy > 0 ? TRACK_N : TRACK_S;
+        for (int x = a.x, y = a.y; ; x += sx, y += sy) {
+            GRID(x, y, 1) = CELL_TRACK;
+            if (x != b.x || y != b.y) TRACK_CONN(x, y, 1) |= fwd;
+            if (x != a.x || y != a.y) TRACK_CONN(x, y, 1) |= back;
+            if (x == b.x && y == b.y) break;
+        }
+    }
+}
+
+static void LayPlatform(int x, int y, int len, bool alongX) {
+    for (int i = 0; i < len; i++)
+        GRID(alongX ? x + i : x, alongX ? y : y + i, 1) = CELL_PLATFORM;
+}
+
+#define METRO_DISTRICTS MAX_STATIONS
+static Point metroDistricts[METRO_DISTRICTS];
+static int metroDistrictCount;
+
+static bool MetroGoalPicker(int moverIdx, Point* goal) {
+    const Mover* m = &movers[moverIdx];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+    for (int tries = 0; tries < 8; tries++) {
+        Point d = metroDistricts[GetRandomValue(0, metroDistrictCount - 1)];
+        if (abs(d.x - cx) + abs(d.y - cy) < 30) continue;   // another district
+        *goal = (Point){d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1};
+        return true;
+    }
+    return false;
+}
+
+static void MetroResetStats(void);
+
+static void SetupMetro(void) {
+    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2;
+    // Circle line
+    const int rx0 = 20, ry0 = 20, rx1 = W - 21, ry1 = H - 21;
+    Point red[4] = {{rx0, ry0, 1}, {rx1, ry0, 1}, {rx1, ry1, 1}, {rx0, ry1, 1}};
+    LayTrack(red, 4, true);
+    LayPlatform(cx - 3, ry0 + 1, 6, true);     // north (inside the ring)
+    LayPlatform(rx1 - 1, cy - 3, 6, false);    // east
+    LayPlatform(cx - 3, ry1 - 1, 6, true);     // south
+    LayPlatform(rx0 + 1, cy - 3, 6, false);    // west
+    // East-west shuttle through the middle
+    Point blue[2] = {{rx0 + 10, cy, 1}, {rx1 - 10, cy, 1}};
+    LayTrack(blue, 2, false);
+    LayPlatform(rx0 + 10, cy - 1, 6, true);    // west end
+    LayPlatform(cx - 3, cy - 1, 6, true);      // centre
+    LayPlatform(rx1 - 15, cy - 1, 6, true);    // east end
+    // North shuttle: from the Red north stop down to the Blue centre stop
+    Point green[2] = {{cx, ry0 + 7, 1}, {cx, cy - 7, 1}};
+    LayTrack(green, 2, false);
+    LayPlatform(cx + 1, ry0 + 7, 6, false);    // top (Red north interchange)
+    LayPlatform(cx + 1, cy - 12, 6, false);    // bottom (Blue centre interchange)
+    // South shuttle: from the Blue centre stop down to the Red south stop
+    Point yellow[2] = {{cx, cy + 7, 1}, {cx, ry1 - 7, 1}};
+    LayTrack(yellow, 2, false);
+    LayPlatform(cx + 1, cy + 7, 6, false);     // top (Blue centre interchange)
+    LayPlatform(cx + 1, ry1 - 12, 6, false);   // bottom (Red south interchange)
+    RebuildStations();
+
+    SpawnTrainHeading(rx0 + 5, ry0, 1, 4, 1, 0);    // circle, clockwise
+    SpawnTrainHeading(rx1 - 5, ry1, 1, 4, -1, 0);   // circle, opposite side of the ring
+    SpawnTrainHeading(cx + 10, cy, 1, 3, 1, 0);      // east-west
+    SpawnTrainHeading(cx, ry0 + 12, 1, 2, 0, 1);     // north
+    SpawnTrainHeading(cx, cy + 12, 1, 2, 0, 1);      // south
+    BuildEntrances();
+    BuildGraph();
+
+    // A district per station: 8 cells off the middle of its platform, away from the track
+    metroDistrictCount = 0;
+    for (int i = 0; i < stationCount; i++) {
+        const TrainStation* st = &stations[i];
+        int awayX = st->platX - st->trackX, awayY = st->platY - st->trackY;
+        int mid = st->platformCellCount / 2;
+        int dx = st->platformCells[mid][0] + awayX * 8, dy = st->platformCells[mid][1] + awayY * 8;
+        if (dx < 6) dx = 6;
+        if (dy < 6) dy = 6;
+        if (dx > W - 7) dx = W - 7;
+        if (dy > H - 7) dy = H - 7;
+        metroDistricts[metroDistrictCount++] = (Point){dx, dy, 1};
+    }
+    MetroResetStats();
+    moverGoalPicker = MetroGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 48;
+    for (int i = 0; i < n; i++) {
+        Point d = metroDistricts[i % metroDistrictCount];
+        SpawnMoverAt(d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1);
+    }
+    currentViewZ = 1;
+    AddMessage(TextFormat("Metro: %d lines, %d stations, %d movers", TrackLineCount(), stationCount, n), GREEN);
+}
+
+// Transfers: a mover boards a train of another line within 60 s of leaving one
+static int metroLastLine[MAX_MOVERS];
+static double metroLastRideEnd[MAX_MOVERS];
+static bool metroWasRiding[MAX_MOVERS];
+static int metroTransfers, metroRides;
+
+static void MetroResetStats(void) {
+    for (int i = 0; i < MAX_MOVERS; i++) { metroLastLine[i] = -1; metroLastRideEnd[i] = -1e9; metroWasRiding[i] = false; }
+    metroTransfers = metroRides = 0;
+}
+
+static void MetroTickStats(void) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        bool riding = m->active && m->transportState == TRANSPORT_RIDING;
+        if (riding && !metroWasRiding[i]) {
+            int line = TrainLine(m->transportTrainIdx);
+            metroRides++;
+            if (metroLastLine[i] >= 0 && line != metroLastLine[i] && gameTime - metroLastRideEnd[i] < 60.0)
+                metroTransfers++;
+            metroLastLine[i] = line;
+        } else if (!riding && metroWasRiding[i]) {
+            metroLastRideEnd[i] = gameTime;
+        }
+        metroWasRiding[i] = riding;
+    }
+}
+
+static void MetroPrintStats(void) {
+    printf("Lines: %d\n", TrackLineCount());
+    for (int line = 0; line < TrackLineCount(); line++) {
+        int st = 0, boarded = 0, tr = 0;
+        for (int i = 0; i < stationCount; i++)
+            if (StationLine(i) == line) { st++; boarded += StationBoardings(i); }
+        for (int t = 0; t < MAX_TRAINS; t++)
+            if (TrainLine(t) == line) tr++;
+        printf("  %-7s line: %d stations, %d trains, %d boarded\n", TrackLineName(line), st, tr, boarded);
+        for (int i = 0; i < stationCount; i++)
+            if (StationLine(i) == line)
+                printf("    station %d: track (%d,%d), %d boarded\n", i, stations[i].trackX, stations[i].trackY,
+                       StationBoardings(i));
+    }
+    printf("Train trips chosen: %d (faster than walking by estimate: %d)\n", trainDecisions, trainDecisionsFaster);
+    printf("Rides: %d, transfers (another line within 60 s): %d\n", metroRides, metroTransfers);
+}
+
+static bool MetroCheck(char* why, int whyLen) {
+    if (TrackLineCount() != 4) {
+        snprintf(why, (size_t)whyLen, "expected 4 lines, found %d", TrackLineCount());
+        return false;
+    }
+    for (int i = 0; i < stationCount; i++)
+        if (StationLine(i) < 0) {
+            snprintf(why, (size_t)whyLen, "station %d is on no line", i);
+            return false;
+        }
+    for (int t = 0; t < MAX_TRAINS; t++)
+        if (trains[t].active && TrainLine(t) < 0) {
+            snprintf(why, (size_t)whyLen, "train %d is on no line", t);
+            return false;
+        }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -750,6 +930,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupWorkSplit, WorkSplitTickStats, WorkSplitPrintStats, NULL, 48, 40},
     {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",
                    NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
+    {"metro",      "Four coloured lines (circle, east-west, two north-south) with interchanges, 48 movers",
+                   NULL,        SetupMetro, MetroTickStats, MetroPrintStats, MetroCheck, 320, 240},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

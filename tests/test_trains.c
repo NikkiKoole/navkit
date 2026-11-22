@@ -1419,6 +1419,49 @@ describe(track_connections) {
     }
 }
 
+describe(track_lines) {
+    it("each connected piece of track is its own line; stations and trains know theirs") {
+        SetupClean();
+        PlaceTrackLine(2, 20, 5, 1);
+        PlaceTrackLine(2, 20, 15, 1);
+        PlacePlatform(10, 6, 1);
+        PlacePlatform(10, 16, 1);
+        RebuildStations();
+        expect(TrackLineCount() == 2);
+        int a = TrackLineAt(2, 5, 1), b = TrackLineAt(20, 15, 1);
+        expect(a >= 0 && b >= 0 && a != b);
+        expect(TrackLineAt(20, 5, 1) == a);
+        expect(TrackLineAt(3, 6, 1) == -1);   // not track
+        expect(StationLine(GetStationAt(10, 5, 1)) == a);
+        expect(StationLine(GetStationAt(10, 15, 1)) == b);
+        int t = SpawnTrain(5, 15, 1);
+        expect(TrainLine(t) == b);
+    }
+
+    it("track side by side without a connection stays two lines; joining makes one") {
+        SetupClean();
+        PlaceTrackLine(2, 20, 5, 1);
+        PlaceTrackLine(2, 20, 6, 1);   // touching, but no N/S connection
+        RebuildStations();
+        expect(TrackLineCount() == 2);
+        TRACK_CONN(20, 5, 1) |= TRACK_S;   // a corner joins them
+        TRACK_CONN(20, 6, 1) |= TRACK_N;
+        RebuildStations();
+        expect(TrackLineCount() == 1);
+        expect(TrackLineAt(2, 5, 1) == TrackLineAt(2, 6, 1));
+    }
+
+    it("ClearTrains forgets the lines") {
+        SetupClean();
+        PlaceTrackLine(2, 20, 5, 1);
+        RebuildStations();
+        expect(TrackLineCount() == 1);
+        ClearTrains();
+        expect(TrackLineCount() == 0);
+        expect(TrackLineAt(5, 5, 1) == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1440,6 +1483,7 @@ int main(int argc, char* argv[]) {
     test(station_lines);
     test(queue_positions);
     test(track_connections);
+    test(track_lines);
 
     return summary();
 }

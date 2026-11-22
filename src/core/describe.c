@@ -856,6 +856,7 @@ void DescribeStation(int idx, DescLines* out) {
     if (idx < 0 || idx >= stationCount || !stations[idx].active) return;
     const TrainStation* st = &stations[idx];
     DescAdd(out, DESC_INFO, "Station #%d", idx);
+    if (TrackLineCount() > 1) DescAdd(out, DESC_NORMAL, "%s line", TrackLineName(StationLine(idx)));
     DescAdd(out, DESC_NORMAL, "Track: (%d, %d, %d)", st->trackX, st->trackY, st->z);
     DescAdd(out, DESC_NORMAL, "Platform: %d cell%s", st->platformCellCount, st->platformCellCount != 1 ? "s" : "");
     DescAdd(out, st->waitingCount > 0 ? DESC_MILD : DESC_NORMAL, "Waiting: %d", st->waitingCount);

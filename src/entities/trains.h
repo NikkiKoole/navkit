@@ -79,6 +79,17 @@ int  SpawnTrain(int x, int y, int z);
 int  SpawnTrainWithCars(int x, int y, int z, int carCount);
 int  SpawnTrainHeading(int x, int y, int z, int carCount, int dx, int dy);   // runs toward (dx, dy) first
 
+// Lines: each connected piece of track is one line (derived, not saved).
+// RebuildStations also rebuilds the lines.
+#define TRACK_LINE_COLORS 8
+void RebuildTrackLines(void);
+int  TrackLineCount(void);
+int  TrackLineAt(int x, int y, int z);   // -1 = no track
+int  StationLine(int stationIdx);
+int  TrainLine(int trainIdx);
+const char* TrackLineName(int line);    // "Red", "Blue", ...
+void TrackLineRGB(int line, unsigned char* r, unsigned char* g, unsigned char* b);
+
 // Station management
 void RebuildStations(void);
 int  GetStationAt(int x, int y, int z);

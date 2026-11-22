@@ -1802,6 +1802,7 @@ int main(int argc, char** argv) {
             WorldBatchEnd();
         }
         DrawLightSources();
+        DrawTrackLines();
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();

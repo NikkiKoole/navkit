@@ -1850,6 +1850,56 @@ static void DrawAnimals(void) {
     }
 }
 
+static Color TrackLineColor(int line) {
+    unsigned char r, g, b;
+    TrackLineRGB(line, &r, &g, &b);
+    return (Color){ r, g, b, 255 };
+}
+
+// Coloured lines: a stripe along each track cell's connections and a tint on
+// its stations' platforms. Only when there is more than one line, so a world
+// with one track looks as before. Drawn under movers.
+static void DrawTrackLines(void) {
+    if (TrackLineCount() < 2) return;
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    float thick = fmaxf(1.0f, size * 0.18f);
+    for (int s = 0; s < stationCount; s++) {
+        const TrainStation* st = &stations[s];
+        if (!st->active || st->z != z) continue;
+        Color c = TrackLineColor(StationLine(s));
+        c.a = 90;
+        for (int p = 0; p < st->platformCellCount; p++) {
+            float sx = offset.x + st->platformCells[p][0] * size;
+            float sy = offset.y + st->platformCells[p][1] * size;
+            if (sx < -size || sy < -size || sx > GetScreenWidth() || sy > GetScreenHeight()) continue;
+            DrawRectangle((int)sx, (int)sy, (int)ceilf(size), (int)ceilf(size), c);
+        }
+    }
+    int x0 = (int)floorf(-offset.x / size) - 1, y0 = (int)floorf(-offset.y / size) - 1;
+    int x1 = x0 + (int)(GetScreenWidth() / size) + 3, y1 = y0 + (int)(GetScreenHeight() / size) + 3;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > gridWidth) x1 = gridWidth;
+    if (y1 > gridHeight) y1 = gridHeight;
+    static const int dx[] = { 0, 1, 0, -1 }, dy[] = { -1, 0, 1, 0 };
+    static const uint8_t dirBit[] = { TRACK_N, TRACK_E, TRACK_S, TRACK_W };
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            if (GRID(x, y, z) != CELL_TRACK) continue;
+            Color c = TrackLineColor(TrackLineAt(x, y, z));
+            c.a = 200;
+            Vector2 mid = { offset.x + (x + 0.5f) * size, offset.y + (y + 0.5f) * size };
+            uint8_t conn = TRACK_CONN(x, y, z);
+            for (int d = 0; d < 4; d++) {
+                if (!(conn & dirBit[d])) continue;
+                Vector2 end = { mid.x + dx[d] * size * 0.5f, mid.y + dy[d] * size * 0.5f };
+                DrawLineEx(mid, end, thick, c);
+            }
+            DrawCircleV(mid, thick * 0.5f, c);
+        }
+}
+
 static void DrawTrains(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -1879,6 +1929,9 @@ static void DrawTrains(void) {
         if (sx < minScreenX || sx > maxScreenX || sy < minScreenY || sy > maxScreenY) continue;
 
         Color trainColor = WHITE;
+        // Several lines: each car gets a border in its line's colour (drawn behind it)
+        bool lineBorder = TrackLineCount() > 1;
+        Color borderColor = lineBorder ? TrackLineColor(TrainLine(i)) : BLANK;
         if (t->z < viewZ) {
             trainColor = MultiplyColor(trainColor, GetDepthTint(t->z, viewZ));
             trainColor = FloorDarkenTint(trainColor);
@@ -1899,6 +1952,9 @@ static void DrawTrains(void) {
         else if (dx == 0 && dy == 1) rotation = 270;  // South
 
         float trainSize = size * 0.9f;
+        float borderSize = trainSize * 1.25f;
+        if (lineBorder) DrawRectangle((int)(sx - borderSize / 2), (int)(sy - borderSize / 2),
+                                      (int)ceilf(borderSize), (int)ceilf(borderSize), borderColor);
         Rectangle src = SpriteGetRect(SPRITE_train_loc);
         Rectangle dest = { sx, sy, trainSize, trainSize };
         Vector2 origin = { trainSize / 2, trainSize / 2 };
@@ -1936,6 +1992,8 @@ static void DrawTrains(void) {
             else if (cdx == 0 && cdy == 1) carRot = 270;
 
             Color carColor = trainColor;
+            if (lineBorder) DrawRectangle((int)(csx - borderSize / 2), (int)(csy - borderSize / 2),
+                                          (int)ceilf(borderSize), (int)ceilf(borderSize), borderColor);
             Rectangle cartSrc = SpriteGetRect(SPRITE_train_cart);
             Rectangle cartDest = { csx, csy, trainSize, trainSize };
             Vector2 cartOrigin = { trainSize / 2, trainSize / 2 };

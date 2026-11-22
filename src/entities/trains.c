@@ -41,6 +41,110 @@ void InitTrains(void) {
     ClearTrains();
 }
 
+// ============================================================================
+// Lines: each connected piece of track is one line with its own colour.
+// Derived from the grid (never saved), rebuilt with the stations. Trains
+// follow track, so a train only ever serves the stations of its own line.
+// ============================================================================
+
+typedef struct { int key; int line; } TrackLineCell;   // key = (z*H + y)*W + x
+static TrackLineCell* trackLineCells = NULL;
+static int trackLineCellCount = 0, trackLineCellCap = 0;
+static int trackLineCount = 0;
+
+static const char* trackLineNames[TRACK_LINE_COLORS] = {
+    "Red", "Blue", "Green", "Yellow", "Purple", "Orange", "Cyan", "Pink",
+};
+
+static int TrackLineIndex(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return -1;
+    int key = (z * gridHeight + y) * gridWidth + x;
+    int lo = 0, hi = trackLineCellCount - 1;   // cells are added in key order
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (trackLineCells[mid].key == key) return mid;
+        if (trackLineCells[mid].key < key) lo = mid + 1; else hi = mid - 1;
+    }
+    return -1;
+}
+
+void RebuildTrackLines(void) {
+    trackLineCellCount = 0;
+    trackLineCount = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                if (GRID(x, y, z) != CELL_TRACK) continue;
+                if (trackLineCellCount == trackLineCellCap) {
+                    int cap = trackLineCellCap ? trackLineCellCap * 2 : 1024;
+                    TrackLineCell* grown = realloc(trackLineCells, cap * sizeof(TrackLineCell));
+                    if (!grown) return;
+                    trackLineCells = grown;
+                    trackLineCellCap = cap;
+                }
+                trackLineCells[trackLineCellCount++] = (TrackLineCell){ (z * gridHeight + y) * gridWidth + x, -1 };
+            }
+    if (trackLineCellCount == 0) return;
+    // Flood fill along the connections each cell has (the ones trains follow)
+    static const int dx[] = { 0, 1, 0, -1 }, dy[] = { -1, 0, 1, 0 };
+    static const uint8_t dirBit[] = { TRACK_N, TRACK_E, TRACK_S, TRACK_W };
+    int* stack = malloc(trackLineCellCount * sizeof(int));
+    if (!stack) return;
+    for (int i = 0; i < trackLineCellCount; i++) {
+        if (trackLineCells[i].line >= 0) continue;
+        int line = trackLineCount++;
+        int top = 0;
+        stack[top++] = i;
+        trackLineCells[i].line = line;
+        while (top > 0) {
+            int c = stack[--top];
+            int key = trackLineCells[c].key;
+            int x = key % gridWidth, y = (key / gridWidth) % gridHeight, z = key / (gridWidth * gridHeight);
+            uint8_t conn = TRACK_CONN(x, y, z);
+            for (int d = 0; d < 4; d++) {
+                if (!(conn & dirBit[d])) continue;
+                int n = TrackLineIndex(x + dx[d], y + dy[d], z);
+                if (n < 0 || trackLineCells[n].line >= 0) continue;
+                trackLineCells[n].line = line;
+                stack[top++] = n;
+            }
+        }
+    }
+    free(stack);
+}
+
+int TrackLineCount(void) { return trackLineCount; }
+
+int TrackLineAt(int x, int y, int z) {
+    int i = TrackLineIndex(x, y, z);
+    return i >= 0 ? trackLineCells[i].line : -1;
+}
+
+int StationLine(int stationIdx) {
+    if (stationIdx < 0 || stationIdx >= stationCount || !stations[stationIdx].active) return -1;
+    const TrainStation* s = &stations[stationIdx];
+    return TrackLineAt(s->trackX, s->trackY, s->z);
+}
+
+int TrainLine(int trainIdx) {
+    if (trainIdx < 0 || trainIdx >= MAX_TRAINS || !trains[trainIdx].active) return -1;
+    const Train* t = &trains[trainIdx];
+    return TrackLineAt(t->cellX, t->cellY, t->z);
+}
+
+const char* TrackLineName(int line) {
+    return line < 0 ? "No line" : trackLineNames[line % TRACK_LINE_COLORS];
+}
+
+void TrackLineRGB(int line, unsigned char* r, unsigned char* g, unsigned char* b) {
+    static const unsigned char rgb[TRACK_LINE_COLORS][3] = {
+        {230, 41, 55}, {40, 110, 230}, {30, 180, 70}, {245, 205, 30},
+        {150, 70, 200}, {245, 130, 20}, {30, 200, 210}, {240, 110, 180},
+    };
+    int i = line < 0 ? 0 : line % TRACK_LINE_COLORS;
+    *r = rgb[i][0]; *g = rgb[i][1]; *b = rgb[i][2];
+}
+
 void ClearTrains(void) {
     trackDistReady = false;   // runtime trip estimates start over
     trainDecisions = trainDecisionsFaster = 0;
@@ -60,6 +164,8 @@ void ClearTrains(void) {
         stations[i].waitingCount = 0;
     }
     stationCount = 0;
+    trackLineCellCount = 0;   // lines come back with RebuildStations
+    trackLineCount = 0;
 }
 
 int SpawnTrain(int x, int y, int z) {
@@ -238,6 +344,8 @@ void RebuildStations(void) {
             }
         }
     }
+
+    RebuildTrackLines();
 
     // Eject waiters from stations that no longer exist
     for (int oi = 0; oi < oldCount; oi++) {
