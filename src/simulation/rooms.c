@@ -137,13 +137,27 @@ static void ClassifyRoom(DetectedRoom *room) {
         room->type = ROOM_TYPE_BARRACKS;
     } else if (room->bedCount == 1) {
         room->type = ROOM_TYPE_BEDROOM;
-    } else if (room->chairCount > 0) {
+    } else if (room->diningSetCount > 0) {
         room->type = ROOM_TYPE_DINING;
     } else if (room->stockpileCellCount > 0) {
         room->type = ROOM_TYPE_STORAGE;
     } else {
         room->type = ROOM_TYPE_GENERIC;
     }
+}
+
+// A dining set: a table with a chair on one of its 4 side cells, in the same room
+static bool TableHasChairInRoom(int x, int y, int z, uint16_t roomId) {
+    static const int dx[] = {1, -1, 0, 0};
+    static const int dy[] = {0, 0, 1, -1};
+    for (int d = 0; d < 4; d++) {
+        int nx = x + dx[d], ny = y + dy[d];
+        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+        if (ROOM(nx, ny, z) != roomId) continue;
+        int fi = GetFurnitureAt(nx, ny, z);
+        if (fi >= 0 && furniture[fi].type == FURNITURE_CHAIR) return true;
+    }
+    return false;
 }
 
 // --- Quality scoring ---
@@ -245,6 +259,10 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             }
             if (IsBedFurniture(ft)) room->bedCount++;
             if (ft == FURNITURE_CHAIR) room->chairCount++;
+            if (ft == FURNITURE_TABLE) {
+                room->tableCount++;
+                if (TableHasChairInRoom(cx, cy, z, roomId)) room->diningSetCount++;
+            }
         }
 
         // Stockpile check (inline to avoid dependency on main.c)

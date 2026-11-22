@@ -248,8 +248,9 @@ static void StartDollhouse(void) {
     BuildGraph();
 
     // Place furniture — Kitchen
-    SpawnFurniture(ox + 2, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
-    SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair at table
+    SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair, table, chair
+    SpawnFurniture(ox + 4, oy + 1, z, FURNITURE_TABLE, MAT_OAK);
+    SpawnFurniture(ox + 5, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);
 
     // Place furniture — Bathroom
     SpawnFurniture(ox + 8, oy + 1, z, FURNITURE_TOILET, MAT_GRANITE);

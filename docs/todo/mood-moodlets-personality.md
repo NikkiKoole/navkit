@@ -33,7 +33,7 @@
 ### Phase 2: Hook existing moodlet triggers into needs.c ✅
 
 - [x] **Eating completion**: good food (cooked meat/bread/lentils/roasted root) → ATE_GOOD_FOOD, raw food → ATE_RAW_FOOD
-- [x] **Eating location**: room with chair → ATE_AT_TABLE (+2, 6h), otherwise → ATE_WITHOUT_TABLE (-3, 6h)
+- [x] **Eating location**: room with a dining set (table + chair next to it; was: any chair) → ATE_AT_TABLE (+2, 6h), otherwise → ATE_WITHOUT_TABLE (-3, 6h)
 - [x] **Sleep completion**: ground → SLEPT_ON_GROUND, leaf/grass pile → SLEPT_POORLY, plank bed → SLEPT_WELL
 - [x] **Warmth completion**: warmed up at fire → WARM_AND_COZY
 - [x] **Drinking completion**: tea/juice → DRANK_GOOD, natural water → DRANK_DIRTY_WATER
@@ -105,8 +105,8 @@ Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 
 - [ ] **Nice room** (+1, 4h) — spent time in room with quality > threshold
 - [ ] **Ugly room** (-1, 4h) — spent time in low-quality room
-- [ ] **Ate at table** (+2, 6h) — ate in room with table+chair (needs FURNITURE_TABLE)
-- [ ] **Ate without table** (-3, 6h) — ate standing/outdoors/no table
+- [x] **Ate at table** (+2, 6h) — ate in a room with a dining set: FURNITURE_TABLE with a chair on a side cell (2026-11-22). Room-based because movers eat where the food lies; with sit-then-eat (dollhouse Phase 3c) it can become "sat at that table"
+- [x] **Ate without table** (-3, 6h) — ate standing/outdoors/no table
 
 ### Phase 9: More personality traits
 

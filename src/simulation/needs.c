@@ -650,15 +650,17 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
                 else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
 
-                // Mood: ate at table vs without table
-                // Check if mover is in a room with a chair (future: require table furniture)
+                // Mood: ate at table vs without table. A table counts with a chair next
+                // to it (a dining set) in the room where the mover eats. Movers eat where
+                // the food lies, so the room is the test for now; once they carry food to
+                // a seat (sit-then-eat), it can become "sat at that table".
                 {
                     int cx = (int)(m->x / CELL_SIZE);
                     int cy = (int)(m->y / CELL_SIZE);
                     int cz = (int)m->z;
                     uint16_t rid = GetRoomAt(cx, cy, cz);
                     DetectedRoom* room = GetRoom(rid);
-                    if (room && room->chairCount > 0) {
+                    if (room && room->diningSetCount > 0) {
                         AddMoodlet(m, MOODLET_ATE_AT_TABLE);
                     } else {
                         AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);

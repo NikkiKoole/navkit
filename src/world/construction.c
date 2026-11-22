@@ -1086,6 +1086,25 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = -1,
         .materialFromSlot = -1,
     },
+    // Furniture, appended (saves store recipe indices)
+    [CONSTRUCTION_TABLE] = {
+        .name = "Table",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_PLANKS }},
+                .altCount = 1,
+                .count = 3,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // wood of the planks
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

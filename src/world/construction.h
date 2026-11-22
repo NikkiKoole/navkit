@@ -106,6 +106,7 @@ typedef enum {
     CONSTRUCTION_MORTAR_WALL,            // 1 stage: 3 mortar + 2 rocks
     CONSTRUCTION_WORKSHOP_STOVE,         // 1 stage: 4 bricks + 2 clay
     CONSTRUCTION_WORKSHOP_COUNTER,       // 1 stage: 3 planks
+    CONSTRUCTION_TABLE,                  // 1 stage: 3 planks (furniture; append only, saves store the index)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

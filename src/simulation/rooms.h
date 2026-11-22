@@ -26,7 +26,7 @@ typedef enum {
     ROOM_TYPE_WORKSHOP,    // has crafting workshop
     ROOM_TYPE_BARRACKS,    // 2+ beds
     ROOM_TYPE_BEDROOM,     // 1 bed
-    ROOM_TYPE_DINING,      // has chair (future: table+chair)
+    ROOM_TYPE_DINING,      // has a dining set (table with a chair next to it)
     ROOM_TYPE_STORAGE,     // has stockpile
     ROOM_TYPE_COUNT
 } RoomType;
@@ -41,6 +41,8 @@ typedef struct {
     // Furniture/content counts (for type classification)
     int bedCount;
     int chairCount;
+    int tableCount;
+    int diningSetCount;          // tables with a chair on a side cell in the same room
     int cookingWorkshopCount;
     int craftingWorkshopCount;
     int stockpileCellCount;

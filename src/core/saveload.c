@@ -590,6 +590,7 @@ void RebuildPostLoadState(void) {
     
     // Rebuild furniture move cost grid and clear stale occupants
     RebuildFurnitureMoveCostGrid();
+    RebuildCapabilityGrid();   // not saved: prep surfaces of tables, counters, ...
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (furniture[i].active && furniture[i].occupant >= 0) {
             if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {

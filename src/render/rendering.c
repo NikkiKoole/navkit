@@ -2425,6 +2425,7 @@ static void DrawFurniture(void) {
             case FURNITURE_PLANK_BED:  sprite = SPRITE_bed;         break;
             case FURNITURE_CHAIR:      sprite = SPRITE_chair;       break;
             case FURNITURE_TOILET:     sprite = SPRITE_toilet;      break;
+            case FURNITURE_TABLE:      sprite = SPRITE_table;       break;
             default:                   sprite = SPRITE_generic;     break;
         }
 
@@ -3369,6 +3370,7 @@ static void DrawFrontView(void) {
                 case FURNITURE_PLANK_BED:  fSprite = SPRITE_bed;         break;
                 case FURNITURE_CHAIR:      fSprite = SPRITE_chair;       break;
                 case FURNITURE_TOILET:     fSprite = SPRITE_toilet;      break;
+                case FURNITURE_TABLE:      fSprite = SPRITE_table;       break;
                 default:                   fSprite = SPRITE_generic;     break;
             }
             Rectangle dest = {fScreenX, fScreenY, size, size};

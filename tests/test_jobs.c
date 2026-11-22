@@ -12,6 +12,7 @@
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
+#include "../src/entities/furniture.h"
 #include "../src/world/designations.h"
 #include "../src/simulation/trees.h"
 #include "../src/simulation/balance.h"
@@ -14588,6 +14589,33 @@ describe(construction_cancellation) {
     }
 }
 
+describe(table_construction) {
+    it("a table blueprint takes 3 planks and becomes a table of their wood") {
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n"
+            "......\n");
+        ClearMovers();
+        ClearItems();
+        ClearFurniture();
+        InitDesignations();
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_TABLE);
+        expect(r != NULL);
+        expect(r->buildCategory == BUILD_FURNITURE);
+        expect(r->stages[0].inputs[0].alternatives[0].itemType == ITEM_PLANKS);
+        expect(r->stages[0].inputs[0].count == 3);
+
+        int bpIdx = CreateRecipeBlueprint(2, 1, 0, CONSTRUCTION_TABLE);
+        expect(bpIdx >= 0);
+        FillBlueprintStage(bpIdx, MAT_PINE);
+        CompleteBlueprint(bpIdx);
+        int fi = GetFurnitureAt(2, 1, 0);
+        expect(fi >= 0);
+        expect(furniture[fi].type == FURNITURE_TABLE);
+        expect(furniture[fi].material == MAT_PINE);
+    }
+}
+
 // =============================================================================
 // Job distance weighting (setting jobDistanceWeight): distance counts against
 // the phase priority. Layout: a mover at (0,0) next to a wall designated for
@@ -14849,6 +14877,7 @@ int main(int argc, char* argv[]) {
 
     // Distance against priority in job assignment
     test(job_distance_weighting);
+    test(table_construction);
     
     return summary();
 }

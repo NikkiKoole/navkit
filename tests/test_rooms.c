@@ -16,6 +16,7 @@ static bool test_verbose = false;
 #include "../src/simulation/rooms.h"
 #include "../src/simulation/lighting.h"
 #include "../src/simulation/mood.h"
+#include "../src/simulation/needs.h"
 #include "../src/simulation/balance.h"
 #include "../src/world/designations.h"
 #include "../src/core/time.h"
@@ -238,7 +239,7 @@ describe(test_rooms) {
         expect(r->type == ROOM_TYPE_BARRACKS);
     }
 
-    it("room with only a chair is a dining room") {
+    it("room with only a chair is not a dining room (needs a table next to it)") {
         SetupFlatGround(16, 16);
         BuildWalledRoom(3, 3, 7, 7);
         PlaceDoor(5, 7);
@@ -247,7 +248,9 @@ describe(test_rooms) {
 
         DetectedRoom* r = GetRoom(GetRoomAt(5, 5, 1));
         expect(r != NULL);
-        expect(r->type == ROOM_TYPE_DINING);
+        expect(r->chairCount == 1);
+        expect(r->diningSetCount == 0);
+        expect(r->type != ROOM_TYPE_DINING);
     }
 
     it("room with stockpile is storage") {
@@ -469,10 +472,129 @@ describe(test_rooms) {
     }
 }
 
+// =============================================================================
+// Tables: dining sets (table + chair on a side cell), prep surface, eating mood
+// =============================================================================
+static void SetupEater(int cx, int cy) {
+    hungerEnabled = true;
+    moodEnabled = true;
+    gameDeltaTime = TICK_DT;
+    gameSpeed = 1.0f;
+    dayLength = 60.0f;
+    int idx = moverCount++;
+    Point goal = {cx, cy, 1};
+    InitMover(&movers[idx], cx * CELL_SIZE + CELL_SIZE * 0.5f, cy * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+    movers[idx].hunger = 0.2f;
+    movers[idx].currentJobId = -1;
+    movers[idx].needSearchCooldown = 0.0f;
+    int sp = CreateStockpile(cx, cy, 1, 1, 1);
+    int it = SpawnItem(cx * CELL_SIZE + CELL_SIZE * 0.5f, cy * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_BERRIES);
+    PlaceItemInStockpile(sp, cx, cy, it);
+    items[it].state = ITEM_IN_STOCKPILE;
+}
+
+static void EatUntilDone(void) {
+    for (int i = 0; i < 400 && (movers[0].freetimeState != FREETIME_NONE || i < 2); i++)
+        ProcessFreetimeNeeds();
+}
+
+describe(dining_table) {
+    it("a table with a chair on a side cell is a dining set; the room is a dining room") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        PlaceDoor(5, 8);
+        SpawnFurniture(5, 5, 1, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(6, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        UpdateRooms();
+
+        DetectedRoom* r = GetRoom(GetRoomAt(5, 5, 1));
+        expect(r != NULL);
+        expect(r->tableCount == 1);
+        expect(r->diningSetCount == 1);
+        expect(r->type == ROOM_TYPE_DINING);
+    }
+
+    it("a table alone, or with only a diagonal chair, is not a dining set") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        PlaceDoor(5, 8);
+        SpawnFurniture(5, 5, 1, FURNITURE_TABLE, MAT_OAK);
+        UpdateRooms();
+        expect(GetRoom(GetRoomAt(5, 5, 1))->diningSetCount == 0);
+
+        SpawnFurniture(6, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+        UpdateRooms();
+        DetectedRoom* r = GetRoom(GetRoomAt(5, 5, 1));
+        expect(r->tableCount == 1);
+        expect(r->diningSetCount == 0);
+    }
+
+    it("a table adds to room quality like other furniture") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 7, 7);
+        PlaceDoor(5, 7);
+        UpdateRooms();
+        float before = GetRoom(GetRoomAt(5, 5, 1))->quality;
+        SpawnFurniture(5, 5, 1, FURNITURE_TABLE, MAT_OAK);
+        UpdateRooms();
+        expect(GetRoom(GetRoomAt(5, 5, 1))->quality > before);
+    }
+
+    it("a table is a prep surface (capability) and stops being one when removed") {
+        SetupFlatGround(16, 16);
+        expect(!HasNearbyCapability(8, 8, 1, CAP_PREP_SURFACE, 2));
+        int t = SpawnFurniture(9, 8, 1, FURNITURE_TABLE, MAT_OAK);
+        expect(HasNearbyCapability(8, 8, 1, CAP_PREP_SURFACE, 2));
+        expect(!GetFurnitureDef(FURNITURE_TABLE)->blocking);
+        RemoveFurniture(t);
+        expect(!HasNearbyCapability(8, 8, 1, CAP_PREP_SURFACE, 2));
+    }
+
+    it("RebuildCapabilityGrid restores tables and counters (the grid is not saved)") {
+        SetupFlatGround(16, 16);
+        SpawnFurniture(3, 3, 1, FURNITURE_TABLE, MAT_OAK);
+        CreateWorkshop(10, 10, 1, WORKSHOP_COUNTER);
+        CLEAR_GRID_LAYER(capabilityGrid, 0);   // what a load leaves
+        expect(!HasNearbyCapability(3, 3, 1, CAP_PREP_SURFACE, 0));
+        RebuildCapabilityGrid();
+        expect(HasNearbyCapability(3, 3, 1, CAP_PREP_SURFACE, 0));
+        expect(HasNearbyCapability(10, 10, 1, CAP_PREP_SURFACE, 1));
+    }
+
+    it("eating in a room with a dining set gives 'ate at table'") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        PlaceDoor(5, 8);
+        SpawnFurniture(4, 4, 1, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(5, 4, 1, FURNITURE_CHAIR, MAT_OAK);
+        SetupEater(6, 6);
+        UpdateRooms();
+        EatUntilDone();
+        expect(movers[0].hunger > 0.2f);
+        expect(HasMoodlet(&movers[0], MOODLET_ATE_AT_TABLE));
+        expect(!HasMoodlet(&movers[0], MOODLET_ATE_WITHOUT_TABLE));
+    }
+
+    it("eating in a room with chairs but no table gives 'ate without table'") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        PlaceDoor(5, 8);
+        SpawnFurniture(4, 4, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(5, 4, 1, FURNITURE_CHAIR, MAT_OAK);
+        SetupEater(6, 6);
+        UpdateRooms();
+        EatUntilDone();
+        expect(movers[0].hunger > 0.2f);
+        expect(HasMoodlet(&movers[0], MOODLET_ATE_WITHOUT_TABLE));
+        expect(!HasMoodlet(&movers[0], MOODLET_ATE_AT_TABLE));
+    }
+}
+
 int main(int argc, char *argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
 
     test(test_rooms);
+    test(dining_table);
     return summary();
 }

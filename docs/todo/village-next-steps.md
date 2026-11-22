@@ -228,12 +228,12 @@ Each new furniture type is: enum entry + FurnitureDef row + construction recipe 
 | Grass pile | low | no | yes |
 | Plank bed | high | yes | yes |
 | Chair | 0 | no | yes |
+| Table | 0 | no (move cost 16) | yes (2026-11-22): 3 planks, prep surface, table + chair = dining set |
 
 Candidates for next batch (prioritized by room quality impact):
 
 | Type | Effect | Recipe | Notes |
 |------|--------|--------|-------|
-| Table | meal quality bonus (eat at table vs standing) | planks | pairs with chair, prerequisite for "sit down meal" |
 | Shelf | storage display (cosmetic) or small stockpile | planks | room quality bonus for having storage |
 | Rug | floor quality override (covers dirt) | cloth/hide | cleaning alternative — rug over dirty floor |
 | Lamp stand | light source (block light) without wall torch | planks + glass | from loop closers — glass exists |

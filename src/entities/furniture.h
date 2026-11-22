@@ -21,6 +21,7 @@ typedef enum {
     FURNITURE_PLANK_BED,
     FURNITURE_CHAIR,
     FURNITURE_TOILET,
+    FURNITURE_TABLE,       // append only: saves store the type number
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
@@ -55,6 +56,7 @@ int GetFurnitureAt(int x, int y, int z);
 void ReleaseFurniture(int furnitureIdx, int moverIdx);
 void ReleaseFurnitureForMover(int moverIdx);
 void RebuildFurnitureMoveCostGrid(void);
+void RebuildCapabilityGrid(void);   // from furniture + workshops (after a load)
 
 // Capability queries — stations/furniture provide capabilities to nearby workshops
 bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius);

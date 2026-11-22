@@ -1,5 +1,6 @@
 #include "furniture.h"
 #include "mover.h"
+#include "workshops.h"
 #include "../world/pathfinding.h"
 #include "../simulation/rooms.h"
 #include <string.h>
@@ -16,6 +17,8 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, false, 12, CAP_NONE },
     [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11, CAP_NONE },
     [FURNITURE_TOILET]     = { "Toilet",     0.0f,   false, 11, CAP_NONE },
+    // Not blocking (a blocking cell would drop out of its room), but costly to cross
+    [FURNITURE_TABLE]      = { "Table",      0.0f,   false, 16, CAP_PREP_SURFACE },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,
@@ -147,6 +150,23 @@ void RebuildFurnitureMoveCostGrid(void) {
 }
 
 // --- Capability grid ---
+
+// The capability grid is not saved: rebuild it from what provides capabilities
+// (furniture on its cell, workshops on their work tile), e.g. after a load.
+void RebuildCapabilityGrid(void) {
+    if (!capabilityGrid) return;
+    CLEAR_GRID_LAYER(capabilityGrid, 0);
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active) continue;
+        uint8_t caps = furnitureDefs[furniture[i].type].capabilities;
+        if (caps) SetCapability(furniture[i].x, furniture[i].y, furniture[i].z, caps);
+    }
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        if (!workshops[w].active) continue;
+        uint8_t caps = workshopDefs[workshops[w].type].capabilities;
+        if (caps) SetCapability(workshops[w].workTileX, workshops[w].workTileY, workshops[w].z, caps);
+    }
+}
 
 void SetCapability(int x, int y, int z, uint8_t capBits) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;

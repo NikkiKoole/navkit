@@ -2813,6 +2813,7 @@ void CompleteBlueprint(int blueprintIdx) {
         else if (bp->recipeIndex == CONSTRUCTION_GRASS_PILE) ft = FURNITURE_GRASS_PILE;
         else if (bp->recipeIndex == CONSTRUCTION_PLANK_BED) ft = FURNITURE_PLANK_BED;
         else if (bp->recipeIndex == CONSTRUCTION_CHAIR) ft = FURNITURE_CHAIR;
+        else if (bp->recipeIndex == CONSTRUCTION_TABLE) ft = FURNITURE_TABLE;
         if (ft != FURNITURE_NONE) {
             SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
         }
