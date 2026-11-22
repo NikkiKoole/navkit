@@ -17,6 +17,7 @@
 #define TRANSPORT_FAR_THRESHOLD 40
 #define TRANSPORT_STATION_RADIUS 20
 #define TRANSPORT_WAIT_TIMEOUT 60.0f
+#define TRAIN_TRANSFER_WALK 15   // most cells walked between two lines' platforms to change
 
 typedef enum { CART_MOVING, CART_DOORS_OPEN } TrainCartState;
 
@@ -122,6 +123,8 @@ int StationBoardings(int stationIdx);
 void TrainsMarkPersonalTrip(int moverIdx, bool personal);
 bool TrainsIsPersonalTrip(int moverIdx);   // movers boarded here since stations were (re)built
 extern bool useTrainTimeChoice;
+extern bool useTrainTransfers;    // trip choice may plan a change of line (two rides)
+extern int trainTransferPlans;     // trips chosen that plan a change of line (stats)
 extern int trainChoicesConsidered;
 extern int trainDecisions, trainDecisionsFaster;
 extern double trainDecisionTrainSec, trainDecisionWalkSec;   // gave up waiting: walk, no train for a while

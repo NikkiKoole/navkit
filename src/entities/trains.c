@@ -149,6 +149,7 @@ void ClearTrains(void) {
     trackDistReady = false;   // runtime trip estimates start over
     trainDecisions = trainDecisionsFaster = 0;
     trainChoicesConsidered = 0;
+    trainTransferPlans = 0;
     trainDecisionTrainSec = trainDecisionWalkSec = 0.0;
     moverGaveUpInit = false;   // forget who gave up (cooldowns)
     for (int i = 0; i < MAX_TRAINS; i++) {
@@ -605,25 +606,88 @@ float WalkTripSeconds(int moverIdx) {
     return cells * MoverWalkSecondsPerCell(moverIdx);
 }
 
-// Best (entry, exit) pair among the stations within TRANSPORT_STATION_RADIUS of the
-// mover and of its goal, by trip time. Returns its seconds (1e9 = none).
+// Seconds for the second ride of a transfer trip, from boarding at `entry` on: the
+// station's measured wait, doors, the ride (by any train of that line, in the
+// direction it runs), doors, walking from `exit` to `goal`. 1e9 = no train goes.
+static float SecondLegSeconds(int moverIdx, int entry, int exit, Point goal) {
+    float pace = MoverWalkSecondsPerCell(moverIdx);
+    float cellsPerSec = trainSpeed * (60.0f / dayLength);
+    if (cellsPerSec <= 0.0f) return 1e9f;
+    int bestRide = -1, bestStops = 0;
+    for (int ti = 0; ti < MAX_TRAINS; ti++) {
+        const Train* t = &trains[ti];
+        if (!t->active || t->z != stations[entry].z) continue;
+        int toEntry, ride, stops;
+        if (!TrainRouteCells(t, entry, exit, 0, &toEntry, &ride, &stops)) continue;
+        if (bestRide < 0 || ride < bestRide) { bestRide = ride; bestStops = stops; }
+    }
+    if (bestRide < 0) return 1e9f;
+    float wait = stationWaitSamples[entry] > 0 ? stationAvgWait[entry] : TRAIN_WAIT_FALLBACK;
+    int ox, oy;
+    GetNearestPlatformCell(exit, goal.x, goal.y, &ox, &oy);
+    return wait + TRAIN_DOOR_TIME + bestRide / cellsPerSec + bestStops * 0.5f * TRAIN_DOOR_TIME
+         + TRAIN_DOOR_TIME + CellsBetween(ox, oy, goal.x, goal.y) * pace;
+}
+
+// Best trip among the stations within TRANSPORT_STATION_RADIUS of the mover and of
+// its goal, by trip time: one line (entry -> exit), or with useTrainTransfers two
+// lines (entry -> x, walk at most TRAIN_TRANSFER_WALK cells to y on another line,
+// y -> exit). For a transfer *outExit is x: the mover gets off there and plans
+// again, and that plan picks the second ride. Returns its seconds (1e9 = none).
+bool useTrainTransfers = true;
+int trainTransferPlans = 0;
+static bool lastBestIsTransfer = false;
+
 static float BestTrainTrip(int moverIdx, int* outEntry, int* outExit) {
     const Mover* m = &movers[moverIdx];
     int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
     float best = 1e9f;
     *outEntry = *outExit = -1;
+    lastBestIsTransfer = false;
+    int nearMover[MAX_STATIONS], nearGoal[MAX_STATIONS], nm = 0, ng = 0;
     for (int a = 0; a < stationCount; a++) {
         if (!stations[a].active || stations[a].z != mz) continue;
-        int ax, ay;
+        int ax, ay, bx, by;
         GetNearestPlatformCell(a, mx, my, &ax, &ay);
-        if (abs(ax - mx) + abs(ay - my) > TRANSPORT_STATION_RADIUS) continue;
-        for (int b = 0; b < stationCount; b++) {
-            if (b == a || !stations[b].active || stations[b].z != mz) continue;
-            int bx, by;
-            GetNearestPlatformCell(b, m->goal.x, m->goal.y, &bx, &by);
-            if (abs(bx - m->goal.x) + abs(by - m->goal.y) > TRANSPORT_STATION_RADIUS) continue;
+        if (abs(ax - mx) + abs(ay - my) <= TRANSPORT_STATION_RADIUS) nearMover[nm++] = a;
+        GetNearestPlatformCell(a, m->goal.x, m->goal.y, &bx, &by);
+        if (abs(bx - m->goal.x) + abs(by - m->goal.y) <= TRANSPORT_STATION_RADIUS) nearGoal[ng++] = a;
+    }
+    for (int i = 0; i < nm; i++)
+        for (int j = 0; j < ng; j++) {
+            int a = nearMover[i], b = nearGoal[j];
+            if (a == b) continue;
             float sec = TrainTripSeconds(moverIdx, a, b, m->goal);
             if (sec < best) { best = sec; *outEntry = a; *outExit = b; }
+        }
+    if (!useTrainTransfers || TrackLineCount() < 2) return best;
+    for (int j = 0; j < ng; j++) {
+        int b = nearGoal[j], lineB = StationLine(b);
+        for (int y = 0; y < stationCount; y++) {
+            if (y == b || !stations[y].active || stations[y].z != mz || StationLine(y) != lineB) continue;
+            float leg2 = -1.0f;   // computed once a matching x is found
+            for (int x = 0; x < stationCount; x++) {
+                if (!stations[x].active || stations[x].z != mz) continue;
+                int lineX = StationLine(x);
+                if (lineX < 0 || lineX == lineB) continue;
+                int yx, yy;   // y's platform cell nearest to x's platform
+                GetNearestPlatformCell(y, stations[x].platX, stations[x].platY, &yx, &yy);
+                int xx, xy;
+                GetNearestPlatformCell(x, yx, yy, &xx, &xy);
+                if (CellsBetween(xx, xy, yx, yy) > TRAIN_TRANSFER_WALK) continue;
+                for (int i = 0; i < nm; i++) {
+                    int a = nearMover[i];
+                    if (a == x || StationLine(a) != lineX) continue;
+                    if (leg2 < 0.0f) leg2 = SecondLegSeconds(moverIdx, y, b, m->goal);
+                    if (leg2 >= best) break;
+                    float leg1 = TrainTripSeconds(moverIdx, a, x, (Point){yx, yy, mz});
+                    if (leg1 + leg2 < best) {
+                        best = leg1 + leg2;
+                        *outEntry = a; *outExit = x;
+                        lastBestIsTransfer = true;
+                    }
+                }
+            }
         }
     }
     return best;
@@ -643,8 +707,11 @@ int StationBoardings(int stationIdx) {
 }
 
 // Stats: a trip the decision sent by train (headless output)
+static float chosenTripSec = -1.0f;   // set by ShouldUseTrain for a transfer trip
+
 void TrainNoteDecision(int moverIdx, int entry, int exit) {
-    float train = TrainTripSeconds(moverIdx, entry, exit, movers[moverIdx].goal);
+    float train = chosenTripSec >= 0.0f ? chosenTripSec
+                                        : TrainTripSeconds(moverIdx, entry, exit, movers[moverIdx].goal);
     float walk = WalkTripSeconds(moverIdx);
     trainDecisions++;
     if (train < walk) trainDecisionsFaster++;
@@ -670,6 +737,7 @@ void TrainChosenStations(int* entry, int* exit) { *entry = chosenEntry; *exit = 
 
 bool ShouldUseTrain(int moverIdx) {
     chosenEntry = chosenExit = -1;
+    chosenTripSec = -1.0f;
     if (stationCount < 2) return false;
     Mover* m = &movers[moverIdx];
     if (m->transportState != TRANSPORT_NONE) return false;
@@ -701,6 +769,7 @@ bool ShouldUseTrain(int moverIdx) {
         if (train >= 0.9f * WalkTripSeconds(moverIdx)) return false;
         chosenEntry = a;
         chosenExit = b;
+        if (lastBestIsTransfer) { chosenTripSec = train; trainTransferPlans++; }
         return true;
     }
 

@@ -559,6 +559,8 @@ static const Setting settings[] = {
     // --- Trains ---
     SET_BOOL("trainQueue", "Queue Line", "Entities/Trains", trainQueueEnabled,
       "Movers form a visible queue line at stations instead of spreading out."),
+    SET_BOOL("useTrainTransfers", "Transfers", "Entities/Trains", useTrainTransfers,
+      "Trip choice may plan a change of line: ride one line, walk to another line's platform, ride on. Off = one line per trip (a mover may still change by chance after a ride)."),
 
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,

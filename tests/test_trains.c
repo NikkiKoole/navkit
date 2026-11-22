@@ -1462,6 +1462,58 @@ describe(track_lines) {
     }
 }
 
+describe(train_transfers) {
+    // Line A east-west at y=10, line B north-south at x=205 starting just below A's
+    // east stop. Mover near A's west stop, goal near B's south stop: no single line
+    // goes there, two do.
+    it("plans a change of line when no single line goes there, rides the first line to the change") {
+        SetupClean();
+        InitTestGrid(240, 120);
+        for (int y = 0; y < 120; y++)
+            for (int x = 0; x < 240; x++) {
+                GRID(x, y, 0) = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                GRID(x, y, 1) = CELL_AIR;
+            }
+        PlaceTrackLine(2, 230, 10, 1);
+        for (int y = 16; y <= 115; y++) { GRID(205, y, 1) = CELL_TRACK; TRACK_CONN(205, y, 1) = TRACK_N | TRACK_S; }
+        TRACK_CONN(205, 16, 1) &= ~TRACK_N;
+        TRACK_CONN(205, 115, 1) &= ~TRACK_S;
+        PlacePlatform(10, 11, 1);
+        PlacePlatform(200, 11, 1);
+        PlacePlatform(206, 18, 1);
+        PlacePlatform(206, 110, 1);
+        RebuildStations();
+        expect(TrackLineCount() == 2);
+        int aWest = GetStationAt(10, 10, 1), aEast = GetStationAt(200, 10, 1);
+        expect(aWest >= 0 && aEast >= 0);
+        SpawnTrainHeading(60, 10, 1, 1, -1, 0);   // reaches the west stop just after the mover
+        SpawnTrainHeading(205, 17, 1, 1, 0, 1);
+        float oldSpeed = trainSpeed;
+        trainSpeed = 50.0f;
+        useTrainTimeChoice = true;
+        moverCount = 1;
+        InitMover(&movers[0], 10 * CELL_SIZE + 16, 14 * CELL_SIZE + 16, 1.0f, (Point){210, 112, 1}, MOVER_SPEED);
+        movers[0].pathLength = 0;
+        movers[0].pathIndex = -1;
+
+        useTrainTransfers = false;
+        expect(ShouldUseTrain(0) == false);   // no station of one line near both ends
+
+        useTrainTransfers = true;
+        int plans = trainTransferPlans;
+        expect(ShouldUseTrain(0) == true);
+        int entry, exit;
+        TrainChosenStations(&entry, &exit);
+        expect(entry == aWest);
+        expect(exit == aEast);                 // get off at the change, plan the rest there
+        expect(trainTransferPlans == plans + 1);
+
+        trainSpeed = oldSpeed;
+        useTrainTimeChoice = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1484,6 +1536,7 @@ int main(int argc, char* argv[]) {
     test(queue_positions);
     test(track_connections);
     test(track_lines);
+    test(train_transfers);
 
     return summary();
 }

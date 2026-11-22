@@ -25,7 +25,7 @@
 // ---------------------------------------------------------------------------
 typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ;
-    float dayLength, baseMoverSpeed, jobDistanceWeight;
+    float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -49,7 +49,8 @@ static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ,
-                                           dayLength, balance.baseMoverSpeed, jobDistanceWeight};
+                                           dayLength, balance.baseMoverSpeed, jobDistanceWeight,
+                                           trainSpeed};
         haveSavedSettings = true;
         return;
     }
@@ -61,6 +62,7 @@ static void SnapshotOrRestoreSettings(void) {
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
+    trainSpeed = savedSettings.trainSpeed;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
@@ -903,6 +905,113 @@ static bool MetroCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// transfer: a T of three lines, trips that need a change of line
+// ---------------------------------------------------------------------------
+
+// A long east-west line through the middle, and a north and a south line that end
+// next to its centre stop (lines can't cross on one level: crossing track joins
+// them into one line). Each line is a narrow loop (one track per direction, like
+// train-double) with several trains, so waits are short. Districts at the four outer
+// ends: east-west is a direct ride, west to north or north to south needs a change at
+// the centre. Trains run at 50 cells/s here (a metro, ~8x walking): at the default
+// 25 two rides with their waits and doors lose to walking the diagonal.
+// Compare --set useTrainTransfers 0.
+
+// A narrow loop: two parallel tracks `gap` apart joined at the ends; trains run
+// clockwise. alongX: from (a, c) to (b, c + gap); else from (c, a) to (c + gap, b).
+static void LayLoopLine(int a, int b, int c, int gap, bool alongX) {
+    Point p[4];
+    if (alongX) { p[0] = (Point){a, c, 1}; p[1] = (Point){b, c, 1}; p[2] = (Point){b, c + gap, 1}; p[3] = (Point){a, c + gap, 1}; }
+    else        { p[0] = (Point){c + gap, a, 1}; p[1] = (Point){c + gap, b, 1}; p[2] = (Point){c, b, 1}; p[3] = (Point){c, a, 1}; }
+    LayTrack(p, 4, true);
+}
+
+// A stop on a loop line: a platform on both outer sides at position `at`
+static void LayLoopStop(int at, int c, int gap, bool alongX) {
+    if (alongX) { LayPlatform(at - 3, c - 1, 6, true); LayPlatform(at - 3, c + gap + 1, 6, true); }
+    else        { LayPlatform(c - 1, at - 3, 6, false); LayPlatform(c + gap + 1, at - 3, 6, false); }
+}
+
+#define TRANSFER_DISTRICTS 4
+static Point transferDistricts[TRANSFER_DISTRICTS];
+
+static bool TransferGoalPicker(int moverIdx, Point* goal) {
+    const Mover* m = &movers[moverIdx];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+    for (int tries = 0; tries < 8; tries++) {
+        Point d = transferDistricts[GetRandomValue(0, TRANSFER_DISTRICTS - 1)];
+        if (abs(d.x - cx) + abs(d.y - cy) < 60) continue;   // another district
+        *goal = (Point){d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1};
+        return true;
+    }
+    return false;
+}
+
+static void SetupTransfer(void) {
+    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2, gap = 3;
+    const int ex0 = 20, ex1 = W - 21, ey = cy - 1;           // east-west line: rows ey, ey+gap
+    const int nx = cx + 8;                                    // north/south lines: columns nx, nx+gap
+    const int ny0 = 20, ny1 = cy - 10, sy0 = cy + 12, sy1 = H - 21;
+    LayLoopLine(ex0, ex1, ey, gap, true);
+    LayLoopStop(ex0 + 20, ey, gap, true);
+    LayLoopStop(cx, ey, gap, true);
+    LayLoopStop(ex1 - 20, ey, gap, true);
+    LayLoopLine(ny0, ny1, nx, gap, false);
+    LayLoopStop(ny0 + 20, nx, gap, false);
+    LayLoopStop(ny1 - 5, nx, gap, false);                     // change to the east-west line
+    LayLoopLine(sy0, sy1, nx, gap, false);
+    LayLoopStop(sy0 + 5, nx, gap, false);                     // change to the east-west line
+    LayLoopStop(sy1 - 20, nx, gap, false);
+    RebuildStations();
+
+    for (int k = 0; k < 2; k++) {   // spread out round each loop, all clockwise
+        SpawnTrainHeading(ex0 + 30 + k * (ex1 - ex0) / 2, ey, 1, 3, 1, 0);
+        SpawnTrainHeading(ex1 - 30 - k * (ex1 - ex0) / 2, ey + gap, 1, 3, -1, 0);
+    }
+    SpawnTrainHeading(nx + gap, ny0 + 10, 1, 3, 0, 1);
+    SpawnTrainHeading(nx, ny1 - 10, 1, 3, 0, -1);
+    SpawnTrainHeading(nx + gap, sy0 + 10, 1, 3, 0, 1);
+    SpawnTrainHeading(nx, sy1 - 10, 1, 3, 0, -1);
+    BuildEntrances();
+    BuildGraph();
+
+    if (trainSpeed == TRAIN_DEFAULT_SPEED) trainSpeed = 50.0f;   // unless --set trainSpeed chose one
+    transferDistricts[0] = (Point){ex0 + 20, ey - 12, 1};         // west
+    transferDistricts[1] = (Point){ex1 - 20, ey + gap + 12, 1};   // east
+    transferDistricts[2] = (Point){nx + gap + 12, ny0 + 20, 1};   // north
+    transferDistricts[3] = (Point){nx - 12, sy1 - 20, 1};         // south
+    MetroResetStats();
+    moverGoalPicker = TransferGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 40;
+    for (int i = 0; i < n; i++) {
+        Point d = transferDistricts[i % TRANSFER_DISTRICTS];
+        SpawnMoverAt(d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1);
+    }
+    currentViewZ = 1;
+    AddMessage(TextFormat("Transfer: %d lines, %d stations, %d movers", TrackLineCount(), stationCount, n), GREEN);
+}
+
+static void TransferPrintStats(void) {
+    MetroPrintStats();
+    printf("Trips planned with a change of line: %d (useTrainTransfers %s)\n", trainTransferPlans,
+           useTrainTransfers ? "on" : "off");
+}
+
+static bool TransferCheck(char* why, int whyLen) {
+    if (TrackLineCount() != 3) {
+        snprintf(why, (size_t)whyLen, "expected 3 lines, found %d", TrackLineCount());
+        return false;
+    }
+    if (useTrainTransfers && trainTransferPlans == 0) {
+        snprintf(why, (size_t)whyLen, "no trip planned a change of line (%d rides)", metroRides);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -932,6 +1041,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
     {"metro",      "Four coloured lines (circle, east-west, two north-south) with interchanges, 48 movers",
                    NULL,        SetupMetro, MetroTickStats, MetroPrintStats, MetroCheck, 320, 240},
+    {"transfer",   "A T of three loop lines: trips between the ends need a change of line, 40 movers (compare useTrainTransfers 0)",
+                   NULL,        SetupTransfer, MetroTickStats, TransferPrintStats, TransferCheck, 512, 320},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
