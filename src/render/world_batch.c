@@ -2,6 +2,8 @@
 #include "world_batch.h"
 #include "raylib/rlgl.h"
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 int rlNavKitPendingVertices(void);   // vendor/raylib/rlgl.h (NavKit patch)
 
@@ -18,6 +20,24 @@ static unsigned int wbShader, wbVao, wbCornerVbo, wbInstVbo;
 static int wbLocMvp = -1, wbLocColDiffuse = -1, wbLocTexture = -1;
 static int wbLocView = -1, wbLocTime = -1, wbLocEffects = -1;
 static bool wbReady = false, wbWarned = false;
+static int wbLocCorner = -1, wbLocRect = -1, wbLocUv = -1, wbLocColor = -1, wbLocKind = -1;
+
+// Instance attributes of the bound vertex array, reading from the bound buffer
+static void WbSetInstanceAttribs(void) {
+    int stride = (int)sizeof(WorldBatchSprite);
+    rlSetVertexAttribute((unsigned)wbLocRect, 4, RL_FLOAT, false, stride, (int)offsetof(WorldBatchSprite, x0));
+    rlEnableVertexAttribute((unsigned)wbLocRect);
+    rlSetVertexAttributeDivisor((unsigned)wbLocRect, 1);
+    rlSetVertexAttribute((unsigned)wbLocUv, 4, RL_FLOAT, false, stride, (int)offsetof(WorldBatchSprite, u0));
+    rlEnableVertexAttribute((unsigned)wbLocUv);
+    rlSetVertexAttributeDivisor((unsigned)wbLocUv, 1);
+    rlSetVertexAttribute((unsigned)wbLocColor, 4, RL_UNSIGNED_BYTE, true, stride, (int)offsetof(WorldBatchSprite, r));
+    rlEnableVertexAttribute((unsigned)wbLocColor);
+    rlSetVertexAttributeDivisor((unsigned)wbLocColor, 1);
+    rlSetVertexAttribute((unsigned)wbLocKind, 1, RL_UNSIGNED_BYTE, false, stride, (int)offsetof(WorldBatchSprite, kind));
+    rlEnableVertexAttribute((unsigned)wbLocKind);
+    rlSetVertexAttributeDivisor((unsigned)wbLocKind, 1);
+}
 
 // raylib's default shader (rlgl.h, GL 3.3), except that the quad's corners come from the
 // instance: the corner picks x0 or x1 and u0 or u1, the values raylib would have put in the
@@ -130,6 +150,7 @@ bool WorldBatchInit(Texture2D atlas) {
     int locColor = rlGetLocationAttrib(wbShader, "color");
     int locKind = rlGetLocationAttrib(wbShader, "kind");
     if (locCorner < 0 || locRect < 0 || locUv < 0 || locColor < 0 || locKind < 0) return false;
+    wbLocCorner = locCorner; wbLocRect = locRect; wbLocUv = locUv; wbLocColor = locColor; wbLocKind = locKind;
 
     wbVao = rlLoadVertexArray();
     rlEnableVertexArray(wbVao);
@@ -160,8 +181,38 @@ bool WorldBatchInit(Texture2D atlas) {
     return true;
 }
 
+WorldBatchCapture* worldBatchCapture = NULL;
+
+void WorldBatchPushMoved(const WorldBatchSprite* s, int n, float dx, float dy) {
+    while (n > 0) {
+        if (worldBatchCount == WORLD_BATCH_CAP) WorldBatchFlush();
+        int m = WORLD_BATCH_CAP - worldBatchCount;
+        if (m > n) m = n;
+        WorldBatchSprite* d = &worldBatchBuf[worldBatchCount];
+        for (int i = 0; i < m; i++) {
+            d[i] = s[i];
+            d[i].x0 += dx; d[i].x1 += dx; d[i].y0 += dy; d[i].y1 += dy;
+        }
+        worldBatchCount += m; s += m; n -= m;
+    }
+}
+
 void WorldBatchFlush(void) {
     if (worldBatchCount == 0) return;
+    if (worldBatchCapture) {
+        WorldBatchCapture* c = worldBatchCapture;
+        if (c->count + worldBatchCount > c->cap) {
+            int cap = c->cap ? c->cap : 1024;
+            while (cap < c->count + worldBatchCount) cap *= 2;
+            WorldBatchSprite* nb = realloc(c->buf, (size_t)cap * sizeof(WorldBatchSprite));
+            if (!nb) { worldBatchCount = 0; return; }
+            c->buf = nb; c->cap = cap;
+        }
+        memcpy(c->buf + c->count, worldBatchBuf, (size_t)worldBatchCount * sizeof(WorldBatchSprite));
+        c->count += worldBatchCount;
+        worldBatchCount = 0;
+        return;
+    }
     rlEnableShader(wbShader);
     Matrix mvp = WbMul(rlGetMatrixModelview(), rlGetMatrixProjection());
     rlSetUniformMatrix(wbLocMvp, mvp);
@@ -204,4 +255,50 @@ void WorldBatchEnd(void) {
 
 void WorldBatchSetView(float offsetX, float offsetY, float cellPixels, float time) {
     wbOffsetX = offsetX; wbOffsetY = offsetY; wbCellPixels = cellPixels; wbTime = time;
+}
+
+// Recorded sprites kept on the GPU (terrain cache): uploaded once, drawn moved by (dx, dy)
+void WorldBatchStaticFree(WorldBatchStatic* st) {
+    if (st->vao) rlUnloadVertexArray(st->vao);
+    if (st->vbo) rlUnloadVertexBuffer(st->vbo);
+    st->vao = st->vbo = 0; st->count = 0;
+}
+
+void WorldBatchStaticUpload(WorldBatchStatic* st, const WorldBatchSprite* s, int n) {
+    WorldBatchStaticFree(st);   // a fresh buffer: no waiting on draws still using the old one
+    if (!wbReady || n <= 0) return;
+    st->vao = rlLoadVertexArray();
+    rlEnableVertexArray(st->vao);
+    rlEnableVertexBuffer(wbCornerVbo);
+    rlSetVertexAttribute((unsigned)wbLocCorner, 2, RL_FLOAT, false, 0, 0);
+    rlEnableVertexAttribute((unsigned)wbLocCorner);
+    st->vbo = rlLoadVertexBuffer(s, n * (int)sizeof(WorldBatchSprite), false);
+    WbSetInstanceAttribs();
+    rlDisableVertexArray();
+    st->count = n;
+}
+
+void WorldBatchStaticDraw(const WorldBatchStatic* st, float dx, float dy) {
+    if (!st->vao || st->count == 0) return;
+    WorldBatchFlush();   // keep the order with what is queued
+    rlEnableShader(wbShader);
+    Matrix t = { 1,0,0,dx, 0,1,0,dy, 0,0,1,0, 0,0,0,1 };
+    Matrix mvp = WbMul(WbMul(t, rlGetMatrixModelview()), rlGetMatrixProjection());
+    rlSetUniformMatrix(wbLocMvp, mvp);
+    float white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    rlSetUniform(wbLocColDiffuse, white, RL_SHADER_UNIFORM_VEC4, 1);
+    int slot = 0;
+    rlSetUniform(wbLocTexture, &slot, RL_SHADER_UNIFORM_SAMPLER2D, 1);
+    float view[3] = {0.0f, 0.0f, wbCellPixels > 0.0f ? wbCellPixels : 1.0f};   // recorded at offset 0
+    rlSetUniform(wbLocView, view, RL_SHADER_UNIFORM_VEC3, 1);
+    rlSetUniform(wbLocTime, &wbTime, RL_SHADER_UNIFORM_FLOAT, 1);
+    int fx = shaderEffects ? 1 : 0;
+    rlSetUniform(wbLocEffects, &fx, RL_SHADER_UNIFORM_INT, 1);
+    rlActiveTextureSlot(0);
+    rlEnableTexture(worldBatchTexId);
+    rlEnableVertexArray(st->vao);
+    rlDrawVertexArrayInstanced(0, 6, st->count);
+    rlDisableVertexArray();
+    rlDisableTexture();
+    rlDisableShader();
 }

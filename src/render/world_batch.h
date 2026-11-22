@@ -32,6 +32,19 @@ extern float worldBatchWhiteU, worldBatchWhiteV;   // centre of a pure white atl
 extern WorldBatchSprite worldBatchBuf[WORLD_BATCH_CAP];
 extern int worldBatchCount;
 
+// Capture: while set, a flush appends the queued sprites here instead of drawing them
+// (the terrain cache records a chunk's sprites this way, rendering.c)
+typedef struct { WorldBatchSprite* buf; int count, cap; } WorldBatchCapture;
+extern WorldBatchCapture* worldBatchCapture;
+// Queue n recorded sprites moved by (dx, dy) pixels
+void WorldBatchPushMoved(const WorldBatchSprite* s, int n, float dx, float dy);
+
+// Recorded sprites kept on the GPU, drawn moved by (dx, dy) pixels
+typedef struct { unsigned int vao, vbo; int count; } WorldBatchStatic;
+void WorldBatchStaticUpload(WorldBatchStatic* st, const WorldBatchSprite* s, int n);
+void WorldBatchStaticDraw(const WorldBatchStatic* st, float dx, float dy);
+void WorldBatchStaticFree(WorldBatchStatic* st);
+
 bool WorldBatchInit(Texture2D atlas);  // false: no shader (falls back to raylib's batch)
 void WorldBatchBegin(void);
 void WorldBatchEnd(void);

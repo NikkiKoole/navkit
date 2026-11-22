@@ -139,8 +139,12 @@ void ResetPathStats(void) {
 // Graph maintenance
 // =============================================================================
 
+// The terrain cache (render/rendering.c) re-records chunks around changed cells; x < 0: all.
+// A pointer so tests, which have no renderer, link without it.
+void (*terrainCacheInvalidateHook)(int x, int y) = NULL;
 void MarkChunkDirty(int cellX, int cellY, int cellZ) {
     NavMarkCellChanged(NavGame(), cellX, cellY, cellZ);
+    if (terrainCacheInvalidateHook) terrainCacheInvalidateHook(cellX, cellY);
 }
 
 bool IsChunkDirty(int cx, int cy, int z) {
@@ -157,6 +161,7 @@ void BuildEntrances(void) {
     NavWorld* w = NavGame();
     NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
     TreesNoteWorldChanged();      // ... so leaves anywhere may have lost their trunk
+    if (terrainCacheInvalidateHook) terrainCacheInvalidateHook(-1, -1);   // ... and look different
     NavBuildEntrances(w);
     rampCount = w->rampCellNum;   // game's ramp counter is re-synced on full rebuilds
 }

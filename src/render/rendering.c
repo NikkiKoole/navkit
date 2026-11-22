@@ -24,8 +24,14 @@
 #define RAMP_OVERLAY_ALPHA   96
 #define FRONT_VIEW_DEPTH_LAYERS  5
 
+static bool drawClipOn = false;           // terrain cache: passes draw only this cell rectangle
+static int drawClipX0, drawClipY0, drawClipX1, drawClipY1;
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
+    if (drawClipOn) {
+        *minX = drawClipX0; *minY = drawClipY0; *maxX = drawClipX1; *maxY = drawClipY1;
+        return;
+    }
     *minX = 0;
     *minY = 0;
     *maxX = gridWidth;
@@ -1018,6 +1024,186 @@ static void DrawCloudShadows(void) {
             FastRect(dest, shadowColor);
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------
+// Terrain cache (EXPERIMENT, setting "terrainCache"): the terrain passes (cells, grass,
+// plants, mud, snow, ramps) recorded per 64x64-cell chunk as world-batch sprites, replayed
+// every frame moved by the camera offset. Recorded per zoom and view level.
+// Staleness: a chunk is re-recorded
+//   - at once when MarkChunkDirty touches it or a neighbour cell (cell edits),
+//   - in turn: every visible chunk within terrainCacheCycle frames (snow, grass, light, sky...),
+//   - when it scrolls into view older than that.
+// Turn-by-turn re-recordings are compared with the old recording: "changed" counts how
+// often the cache really was out of date (stats in --screenshot and the profiler).
+#define TC_CHUNK 64
+typedef struct { WorldBatchCapture rec; RenderTexture2D rt; int texW, texH; float phaseX, phaseY; Vector2 recOffset; unsigned builtFrame; bool valid; } TCChunk;
+static TCChunk* tcChunks = NULL;
+static int tcCX = 0, tcCY = 0;
+static float tcSize = -1.0f;
+static int tcViewZ = -1;
+static unsigned tcFrame = 0;
+static int tcTurn = 0;
+static WorldBatchCapture tcScratch = {0};
+long long tcTotalRebuilt = 0, tcTotalChanged = 0, tcTotalTurns = 0, tcTotalCompared = 0;
+static int tcFrameTurns = 0;
+
+static void TerrainCacheInvalidateCell(int x, int y) {
+    if (!tcChunks) return;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int cx = (x + dx) / TC_CHUNK, cy = (y + dy) / TC_CHUNK;
+            if (x + dx < 0 || y + dy < 0 || cx >= tcCX || cy >= tcCY) continue;
+            tcChunks[cy * tcCX + cx].valid = false;
+        }
+}
+
+static void TCRecord(TCChunk* c, int cx, int cy, bool compare) {
+    WorldBatchFlush();   // what was queued before draws first (normally nothing)
+    drawClipOn = true;   // recorded at the real camera offset: whole-pixel rounding as on screen
+    drawClipX0 = cx * TC_CHUNK; drawClipY0 = cy * TC_CHUNK;
+    drawClipX1 = drawClipX0 + TC_CHUNK; drawClipY1 = drawClipY0 + TC_CHUNK;
+    if (drawClipX1 > gridWidth) drawClipX1 = gridWidth;
+    if (drawClipY1 > gridHeight) drawClipY1 = gridHeight;
+    tcScratch.count = 0;
+    bool wasActiveRec = worldBatchActive;
+    if (!wasActiveRec) WorldBatchBegin();   // the passes draw through the world batch
+    worldBatchCapture = &tcScratch;
+    DrawCellGrid(); DrawGrassOverlay(); DrawPlantOverlay();
+    DrawMud(); DrawSnow(); DrawRampOverlay();
+    WorldBatchFlush();
+    worldBatchCapture = NULL;
+    if (!wasActiveRec) WorldBatchEnd();
+    drawClipOn = false;
+    bool sameView = c->recOffset.x == offset.x && c->recOffset.y == offset.y;
+    if (compare && !sameView) compare = false;   // moved camera: the recordings can't be compared
+    if (compare) tcTotalCompared++;
+    if (compare && (tcScratch.count != c->rec.count ||
+                    memcmp(tcScratch.buf, c->rec.buf, (size_t)tcScratch.count * sizeof(WorldBatchSprite)) != 0))
+        tcTotalChanged++;
+    WorldBatchCapture t = c->rec; c->rec = tcScratch; tcScratch = t;   // swap buffers
+    c->recOffset = offset;
+    // Draw the recording into the chunk's texture (physical pixels, black like the screen clear)
+    float dpi = GetWindowScaleDPI().x;
+    if (dpi <= 0.0f) dpi = 1.0f;
+    // Recorded at the chunk's sub-pixel position on screen now (physical px), so a still
+    // camera shows the same pixels as drawing the passes directly
+    float px0 = (offset.x + drawClipX0 * CELL_SIZE * zoom) * dpi, py0 = (offset.y + drawClipY0 * CELL_SIZE * zoom) * dpi;
+    c->phaseX = px0 - floorf(px0); c->phaseY = py0 - floorf(py0);
+    int needW = (int)ceilf((drawClipX1 - drawClipX0) * CELL_SIZE * zoom * dpi) + 2;
+    int needH = (int)ceilf((drawClipY1 - drawClipY0) * CELL_SIZE * zoom * dpi) + 2;
+    if (c->rt.id == 0 || c->rt.texture.width < needW || c->rt.texture.height < needH) {
+        if (c->rt.id) UnloadRenderTexture(c->rt);
+        c->rt = LoadRenderTexture(needW, needH);
+    }
+    c->texW = needW; c->texH = needH;
+    bool wasActive = worldBatchActive;
+    if (wasActive) WorldBatchEnd();
+    Matrix screenModelview = rlGetMatrixModelview();   // EndTextureMode drops the HiDPI scale
+    BeginTextureMode(c->rt);
+    ClearBackground(BLACK);
+    rlSetMatrixModelview((Matrix){ dpi,0,0,0, 0,dpi,0,0, 0,0,1,0, 0,0,0,1 });   // logical px -> texture px
+    WorldBatchBegin();
+    WorldBatchPushMoved(c->rec.buf, c->rec.count, -(px0 - c->phaseX) / dpi, -(py0 - c->phaseY) / dpi);
+    WorldBatchEnd();
+    EndTextureMode();
+    rlSetMatrixModelview(screenModelview);
+    if (wasActive) WorldBatchBegin();
+    c->valid = true;
+    c->builtFrame = tcFrame;
+    tcTotalRebuilt++;
+}
+
+// Used only zoomed out (cells smaller than terrainCacheBelowPx): zoomed in, re-recording
+// whole chunks costs more than drawing the few visible cells
+// While zooming or changing level every frame would re-record everything: draw directly
+// until the view has been still for a few frames.
+static bool TerrainCacheWanted(void) {
+    static float lastSize = -1.0f;
+    static int lastZ = -1, settle = 0;
+    float size = CELL_SIZE * zoom;
+    if (size != lastSize || currentViewZ != lastZ) { lastSize = size; lastZ = currentViewZ; settle = 6; }
+    if (!terrainCache || size >= (float)terrainCacheBelowPx) return false;
+    if (settle > 0) { settle--; return false; }
+    return true;
+}
+
+static void DrawTerrainCached(void) {
+    extern void (*terrainCacheInvalidateHook)(int x, int y);
+    terrainCacheInvalidateHook = TerrainCacheInvalidateCell;
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    int ncx = (gridWidth + TC_CHUNK - 1) / TC_CHUNK, ncy = (gridHeight + TC_CHUNK - 1) / TC_CHUNK;
+    if (!tcChunks || ncx != tcCX || ncy != tcCY) {
+        if (tcChunks) for (int i = 0; i < tcCX * tcCY; i++) { free(tcChunks[i].rec.buf); if (tcChunks[i].rt.id) UnloadRenderTexture(tcChunks[i].rt); }
+        free(tcChunks);
+        tcChunks = calloc((size_t)ncx * ncy, sizeof(TCChunk));
+        if (!tcChunks) return;
+        tcCX = ncx; tcCY = ncy;
+    }
+    if (size != tcSize || z != tcViewZ) {
+        for (int i = 0; i < tcCX * tcCY; i++) tcChunks[i].valid = false;
+        tcSize = size; tcViewZ = z;
+    }
+    tcFrame++;
+    long long rec0 = tcTotalRebuilt; tcFrameTurns = 0;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    if (maxX <= minX || maxY <= minY) return;
+    int cx0 = minX / TC_CHUNK, cx1 = (maxX - 1) / TC_CHUNK;
+    int cy0 = minY / TC_CHUNK, cy1 = (maxY - 1) / TC_CHUNK;
+    int w = cx1 - cx0 + 1, n = w * (cy1 - cy0 + 1);
+    int cycle = terrainCacheCycle < 1 ? 1 : terrainCacheCycle;
+    int refresh = (n + cycle - 1) / cycle;   // every visible chunk re-recorded within `cycle` frames
+    unsigned maxAge = (unsigned)((n + refresh - 1) / refresh) + 1;
+    // Missing, edited or too old: record now
+    for (int k = 0; k < n; k++) {
+        int cx = cx0 + k % w, cy = cy0 + k / w;
+        TCChunk* c = &tcChunks[cy * tcCX + cx];
+        if (!c->valid || tcFrame - c->builtFrame > maxAge) TCRecord(c, cx, cy, false);
+    }
+    // In turn: re-record a few, counting the ones that had changed
+    for (int i = 0; i < refresh && i < n; i++) {
+        int k = (tcTurn + i) % n;
+        int cx = cx0 + k % w, cy = cy0 + k / w;
+        TCChunk* c = &tcChunks[cy * tcCX + cx];
+        if (c->builtFrame == tcFrame) continue;
+        TCRecord(c, cx, cy, true);
+        tcTotalTurns++;
+        tcFrameTurns++;
+    }
+    tcTurn = (tcTurn + refresh) % n;
+    // The chunk images, opaque (they replace the screen clear, as the passes drew over it)
+    float dpi = GetWindowScaleDPI().x;
+    if (dpi <= 0.0f) dpi = 1.0f;
+    rlDrawRenderBatchActive();
+    rlDisableColorBlend();
+    for (int k = 0; k < n; k++) {
+        int cx = cx0 + k % w, cy = cy0 + k / w;
+        TCChunk* c = &tcChunks[cy * tcCX + cx];
+        if (!c->rt.id) continue;
+        // Screen pixels (physical) this chunk owns: centres inside [its edge, next chunk's edge)
+        float ex0 = (offset.x + cx * TC_CHUNK * size) * dpi, ex1 = (offset.x + (cx + 1) * TC_CHUNK * size) * dpi;
+        float ey0 = (offset.y + cy * TC_CHUNK * size) * dpi, ey1 = (offset.y + (cy + 1) * TC_CHUNK * size) * dpi;
+        if ((cx + 1) * TC_CHUNK >= gridWidth) ex1 = (offset.x + gridWidth * size) * dpi;
+        if ((cy + 1) * TC_CHUNK >= gridHeight) ey1 = (offset.y + gridHeight * size) * dpi;
+        int jx0 = (int)ceilf(ex0 - 0.5f), jx1 = (int)ceilf(ex1 - 0.5f);
+        int jy0 = (int)ceilf(ey0 - 0.5f), jy1 = (int)ceilf(ey1 - 0.5f);
+        int tx = (int)floorf(ex0 - c->phaseX + 0.5f), ty = (int)floorf(ey0 - c->phaseY + 0.5f);   // texture origin
+        int sx = jx0 - tx, sy = jy0 - ty, sw = jx1 - jx0, sh = jy1 - jy0;
+        if (sx < 0) { jx0 -= sx; sw += sx; sx = 0; }
+        if (sy < 0) { jy0 -= sy; sh += sy; sy = 0; }
+        if (sx + sw > c->texW) sw = c->texW - sx;
+        if (sy + sh > c->texH) sh = c->texH - sy;
+        if (sw <= 0 || sh <= 0) continue;
+        int H = c->rt.texture.height;   // render textures are stored bottom-up
+        Rectangle src = {(float)sx, (float)(H - sy - sh), (float)sw, -(float)sh};
+        Rectangle dst = {jx0 / dpi, jy0 / dpi, sw / dpi, sh / dpi};
+        DrawTexturePro(c->rt.texture, src, dst, (Vector2){0, 0}, 0.0f, WHITE);
+    }
+    rlDrawRenderBatchActive();
+    rlEnableColorBlend();
+    PROFILE_COUNT(TerrainCacheRecorded, (int)(tcTotalRebuilt - rec0));
 }
 
 static void DrawWater(void) {

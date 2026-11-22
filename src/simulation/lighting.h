@@ -19,6 +19,9 @@
 extern bool lightingEnabled;       // Master toggle — when off, GetLightColor returns WHITE
 extern bool skyLightEnabled;       // Toggle sky light computation
 extern bool blockLightEnabled;     // Toggle block light computation
+extern bool terrainCache;          // Zoomed out: terrain drawn from per-chunk images (rendering.c)
+extern int terrainCacheCycle;      // terrain cache: max age of a visible recording, in frames
+extern int terrainCacheBelowPx;    // terrain cache: used only when a cell is smaller than this (px)
 extern bool shaderEffects;         // Experimental shader effects in the world batch (water ripples, fire flicker)
 extern bool forceDaylight;         // Override sky color to WHITE (full brightness, ignores time of day)
 extern int  lightAmbientR;         // Ambient minimum red (0-255, prevents pitch black)
