@@ -1753,6 +1753,14 @@ void UpdateMovers(void) {
                 continue;
             }
 
+            // The path ran out short of a need's goal (a bed, food): plan again rather than
+            // stand there until the need's timeout (saves made before the arrival fix above)
+            if (m->freetimeState != FREETIME_NONE && m->currentJobId < 0 && m->pathLength > 0 &&
+                !PointsEqual(m->goal, (Point){currentX, currentY, currentZ})) {
+                m->needsRepath = true;
+                continue;
+            }
+
             // Track stuck time for movers with jobs but no path
             // This allows job stuck detection to work (it checks timeWithoutProgress > JOB_STUCK_TIME)
             if (m->currentJobId >= 0) {
@@ -1848,7 +1856,12 @@ void UpdateMovers(void) {
         float arrivalRadius = m->speed * dayLengthSpeedScale * dt;
         bool shouldSnap = true;
 
-        if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
+        // The goal itself counts only once the mover is in its cell: from the next cell
+        // over, 16 px (and fastInvSqrt's error) used to end the path one cell short, and
+        // needs that check the cell (a bed) then waited until their timeout
+        bool atGoalWaypoint = PointsEqual(target, m->goal) &&
+                              (currentX != target.x || currentY != target.y);
+        if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS && !atGoalWaypoint) {
             arrivalRadius = KNOT_FIX_ARRIVAL_RADIUS;
             shouldSnap = false;
         }

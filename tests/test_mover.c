@@ -219,6 +219,51 @@ describe(wall_collision) {
     }
 }
 
+describe(goal_arrival) {
+    it("a path ends in the goal cell, not 16 px short of it in the cell next to it") {
+        InitTestGridFromAscii(
+            "....\n"
+            "....\n"
+            "....\n"
+            "....\n");
+        BuildEntrances();
+        BuildGraph();
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        Point testPath[] = {{1, 1, 0}};
+        // on the border with the goal cell: 16.01 px from its centre
+        InitMoverWithPath(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + 0.01f, 0.0f,
+                          goal, 100.0f, testPath, 1);
+        moverCount = 1;
+        for (int t = 0; t < 30 && m->pathIndex >= 0; t++) Tick();
+        expect(m->pathIndex < 0);
+        expect((int)(m->y / CELL_SIZE) == 1 && (int)(m->x / CELL_SIZE) == 1);
+    }
+
+    it("a mover seeking a need whose path ran out short of the goal plans again") {
+        InitTestGridFromAscii(
+            "....\n"
+            "....\n"
+            "....\n"
+            "....\n");
+        BuildEntrances();
+        BuildGraph();
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        Point testPath[] = {{1, 1, 0}, {1, 2, 0}};
+        InitMoverWithPath(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + 0.01f, 0.0f,
+                          goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        m->pathIndex = -1;                       // used up, as in saves before the fix
+        m->freetimeState = FREETIME_SEEKING_REST;
+        for (int t = 0; t < 120; t++) Tick();
+        expect((int)(m->y / CELL_SIZE) == 1 && (int)(m->x / CELL_SIZE) == 1);
+        m->freetimeState = FREETIME_NONE;
+    }
+}
+
 describe(line_of_sight_repath) {
     it("should trigger repath when wall blocks path to next waypoint") {
         InitTestGridFromAscii(
@@ -3005,5 +3050,6 @@ int main(int argc, char* argv[]) {
     test(single_file_ladders);
     test(ladder_queue_cost);
     test(avoidance_levels);
+    test(goal_arrival);
     return summary();
 }
