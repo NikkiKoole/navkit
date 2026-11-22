@@ -62,7 +62,7 @@
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
 - `architecture/large-worlds.md` — What bigger maps cost (memory, graph updates, sims), improvements in order, estimates for 1024 and 2048
-- `architecture/chunked-world-plan.md` — Decision doc: one accessor for all per-cell layers, then map-sized and sparse layers, then steps to an endless (streamed) world
+- `architecture/chunked-world-plan.md` — Big maps (partial): accessor, map-sized and sparse layers done, 2048 runs; latest measurements (5000 movers, 2026-11-22) and next step at the end
 - `ui/game-structure.md` — One engine, several games: games table, settings table, actions, describe layer, SimStep, selection + panels + tab bar; what's left per step
 - `ui-redesign.md` — Bottom panel + Huisje/Boompje/Beestje tabs + selection model (selection, panels, tabs done; icons, roster views, removing the text bar left)
 - `architecture/unified-roadmap.md` — Master architecture plan tying 7 docs into Era 2 build order

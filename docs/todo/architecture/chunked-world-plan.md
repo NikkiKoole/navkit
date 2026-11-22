@@ -1,7 +1,8 @@
 # From fixed arrays to a chunked (and eventually endless) world
 
-> Status: plan / decision doc (2026-11-20). Decided: big bounded maps (target 2048x2048),
-> endless world deferred. Cheap win 1 done; step 1 next. Ties together
+> Status: partial (updated 2026-11-22). Decided: big bounded maps (target 2048x2048),
+> endless world deferred. Steps 1-2 done, step 3 (sparse layers) partly; 2048 runs. Latest
+> measurements and what's next: "5000 movers on a 1024 hill map" at the end. Ties together
 > `large-worlds.md` (what big maps cost, measured) and `../../vision/infinite-world-exploration.md`
 > (endless world research). Numbers are measured unless marked as estimates.
 
@@ -761,3 +762,49 @@ fields on so the path doesn't rot; (B) also remove the game-side plumbing (~150 
 pathfinding.c), keep the library's NavHFlow (fuzz-tested); (C) repair the fields (cached incoming
 index, refresh only on change, build only along the walked path): large, risky, and little to
 gain while a search costs ~1 ms. Revisit only for thousands of movers to one point.
+
+### 5000 movers on a 1024 hill map (2026-11-22)
+
+A 1024 hill save, sandbox, 5000 wandering movers, 0 jobs. Fully zoomed out the game ran at
+30-40 fps: drawing ~28 ms per frame plus a sim tick of ~10-13 ms.
+
+**Rendering:** a per-chunk terrain cache (each 64x64 chunk drawn once into a render texture
+when zoomed out) cut a zoom-0.1 frame from 28.5 to 13 ms with identical pixels. **Parked** on
+branch `terrain-cache-experiment` for its complexity (render textures, staleness rules, raylib
+HiDPI workarounds). The notes there (`docs/todo/architecture/terrain-cache-experiment.md` on that
+branch) list what is left to finish it. Kept on master: `--screenshot` times frames without the
+fps cap and prints the whole frame time and the zoom/viewZ line.
+
+**Sim, `Move` section** (`--headless --load <save> --ticks N --profile`, plus `sample`):
+- **Tunnel yielding: done.** `MoverShouldYield` did ~15 walkability lookups per mover per tick
+  (is a narrow stretch ahead?) and, at narrow entrances, searched a ~42-cell circle of movers.
+  The "nothing narrow ahead" answer is now kept per mover, keyed on its cell, the next two
+  waypoints and `walkabilityChangeCount` (bumped by `MarkChunkDirty` / `BuildEntrances`; usable
+  by anything else computed from walkability). The neighbour query covers only the stretch's
+  cells. Old and new query side by side: 0 different answers. Yield 1.4 -> 0.27 ms, Move 5.7 -> 4.5
+  ms (600 ticks).
+- **Spawning on cut-off patches: fixed.** Spawns took any walkable cell, so ~12% of the movers
+  landed on hilltops nobody can leave and failed a goal search every 1-2 s, forever.
+  `GetMainRegionAnchor` (the region most of 256 random walkable cells fall in) and
+  `GetRandomWalkableCellReachableFrom` now pick spawn cells (spawnmovers/add movers, the world
+  scenario, the hubs anchor). Fresh 1024 world, 5000 movers: cut off 635 -> 0. Move is ~0.3 ms
+  higher afterwards: those movers now walk too (the old numbers flattered).
+- **Tried and dropped:**
+  - Skipping a goal search the regions already call unreachable. No measurable gain: a search
+    from a tiny patch fails within a few nodes.
+  - Idle movers pausing ~3 s after arriving. Move -5% only (a 256-cell wander trip takes ~55 s),
+    and it changes how idle movers behave.
+- **Measuring trap:** the first ~600 ticks after a load include the burst where every mover
+  plans a path at once. Compare steady state over 3000 ticks: there Move is ~3.8 ms, not 4.5-5.7.
+
+**Steady state, what's left** (3000 ticks, ~9 ms per tick): Move ~3.8 ms, of which ~44% is
+wander path planning (~9 HPA* plans per tick at ~0.14 ms, half the abstract search, half
+refining the first legs). Then water ~1.6-1.8 ms, trees ~1.2, needs/mood ~1.2, repath ~0.8.
+Smaller items inside Move: ground trampling ~0.5 ms, line of sight ~0.45, ladders ~0.2.
+None of this is waste any more: making it cheaper means cheaper HPA* plans (library work) or
+cheaper water.
+
+**Where this leaves the big-map work:** the stress test (thousands of wandering movers, no jobs)
+no longer shows waste. Next step is a target from real play, not a bigger stress test:
+measure a survival save with a realistic colony (hundreds of movers doing jobs) on a 1024 map
+against "keeps 60 fps", and attack only what that shows.

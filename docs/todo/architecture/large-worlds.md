@@ -2,6 +2,8 @@
 
 > Status: idea / plan (2026-11-20). Measurements are real; the "achievable" numbers are
 > broad-stroke estimates, not promises. Each one says how sure we are.
+> Later work (2026-11-21 onward: 2048 maps, steady-state ticks, 5000 movers) is recorded in
+> `chunked-world-plan.md`; the "Next steps" below are the 2026-11-20 state.
 
 ## Where we are (512x512x16 cap, ~4.2M cells)
 
