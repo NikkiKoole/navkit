@@ -403,6 +403,12 @@ size_t NavHFlowMemoryUsage(const NavHFlow* h);
 typedef bool (*NavTargetFn)(void* user, int x, int y, int z);
 int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user, int maxCost,
                    NavPoint* found, NavPoint* outPath, int maxLen, int* pathLen);
+// Walking cost from `start` to each of `targets` (same rules and costs as A*,
+// all levels), in one bounded search that stops once every target is reached.
+// outCosts[i] = -1 if not reached within maxCost (> 0 bounds it, 0 = no bound).
+// Returns how many were reached. Meant for a handful of targets near start.
+int NavCostsToTargets(NavWorld* w, NavPoint start, const NavPoint* targets, int targetCount,
+                      int maxCost, int* outCosts);
 
 // Bounded single-level searches (exposed for tests/tools).
 // Bounds are [min, max). Return cost, or -1 if unreachable.

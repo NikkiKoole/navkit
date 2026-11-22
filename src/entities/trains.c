@@ -5,6 +5,7 @@
 #include "../simulation/lighting.h"
 #include "../core/time.h"
 #include "../core/event_log.h"
+#include "../world/pathfinding.h"
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
@@ -795,6 +796,32 @@ int TrainPlannedRoute(int moverIdx, int* lines, int maxLines) {
     return n;
 }
 
+// Walking seconds between (x,y,z) and each station's nearest platform cell, by the
+// pathfinder's own costs (ramps, ladders, mud: any level), for stations within
+// TRANSPORT_STATION_RADIUS across and TRANSIT_ACCESS_DZ levels; -1 otherwise.
+// toStation false: from the platform to the point (searched from the point: walking
+// is near enough symmetric).
+#define TRANSIT_ACCESS_DZ 12
+static void TransitAccessSeconds(Point p, float pace, float* outSec) {
+    NavPoint targets[MAX_STATIONS];
+    int stationOf[MAX_STATIONS], n = 0;
+    for (int i = 0; i < stationCount; i++) {
+        outSec[i] = -1.0f;
+        if (!stations[i].active || abs(stations[i].z - p.z) > TRANSIT_ACCESS_DZ) continue;
+        int px, py;
+        GetNearestPlatformCell(i, p.x, p.y, &px, &py);
+        if (abs(px - p.x) + abs(py - p.y) > TRANSPORT_STATION_RADIUS) continue;
+        targets[n] = (NavPoint){px, py, stations[i].z};
+        stationOf[n++] = i;
+    }
+    if (n == 0) return;
+    int costs[MAX_STATIONS];
+    NavCostsToTargets(NavGame(), (NavPoint){p.x, p.y, p.z}, targets, n,
+                      10 * 3 * TRANSPORT_STATION_RADIUS, costs);
+    for (int k = 0; k < n; k++)
+        if (costs[k] >= 0) outSec[stationOf[k]] = (costs[k] / 10.0f) * pace;
+}
+
 // Best trip by train for the mover to its goal. Returns seconds (1e9 = none) and
 // the stop to board at and the stop to get off at for the first ride (the mover
 // plans again there), the number of changes and the lines in order.
@@ -826,14 +853,14 @@ static float TransitPlan(int moverIdx, int* outEntry, int* outExit, int* outChan
     static bool done[TRANSIT_MAX_NODES];
     for (int i = 0; i < transitNodeCount; i++) { dist[i] = 1e9f; pred[i] = -1; predChange[i] = false; done[i] = false; }
 
+    static float accessIn[MAX_STATIONS], accessOut[MAX_STATIONS];
+    TransitAccessSeconds((Point){mx, my, mz}, pace, accessIn);
+    TransitAccessSeconds(m->goal, pace, accessOut);
     for (int i = 0; i < transitNodeCount; i++) {   // boarding near the mover
         const TransitNode* n = &transitNodes[i];
         const TrainStation* st = &stations[n->station];
-        if (st->z != mz) continue;
-        int px, py;
-        GetNearestPlatformCell(n->station, mx, my, &px, &py);
-        if (abs(px - mx) + abs(py - my) > TRANSPORT_STATION_RADIUS) continue;
-        float walkIn = CellsBetween(mx, my, px, py) * pace;
+        float walkIn = accessIn[n->station];
+        if (walkIn < 0.0f) continue;
         float arrive = TransitFirstArrival(n, walkIn, st->waitingCount / MAX_CART_CAPACITY, cellsPerSec, trainIdx);
         if (arrive >= 1e8f) continue;
         dist[i] = arrive + TRAIN_DOOR_TIME;
@@ -849,13 +876,9 @@ static float TransitPlan(int moverIdx, int* outEntry, int* outExit, int* outChan
         done[u] = true;
         const TransitNode* n = &transitNodes[u];
         // get off here for the goal (after riding at least one stop)
-        if (pred[u] >= 0 && !predChange[u] && stations[n->station].z == m->goal.z) {
-            int ox, oy;
-            GetNearestPlatformCell(n->station, m->goal.x, m->goal.y, &ox, &oy);
-            if (abs(ox - m->goal.x) + abs(oy - m->goal.y) <= TRANSPORT_STATION_RADIUS) {
-                float total = dist[u] + 0.5f * TRAIN_DOOR_TIME + CellsBetween(ox, oy, m->goal.x, m->goal.y) * pace;
-                if (total < best) { best = total; bestEnd = u; }
-            }
+        if (pred[u] >= 0 && !predChange[u] && accessOut[n->station] >= 0.0f) {
+            float total = dist[u] + 0.5f * TRAIN_DOOR_TIME + accessOut[n->station];
+            if (total < best) { best = total; bestEnd = u; }
         }
         // ride on (a stop on the way costs half a door stop: it may or may not stop)
         int v = n->next;
@@ -959,11 +982,9 @@ bool ShouldUseTrain(int moverIdx) {
     int my = (int)(m->y / CELL_SIZE);
     int mz = (int)m->z;
 
-    // Must be same z-level
-    if (m->goal.z != mz) return false;
-
-    // Time-based: take the train when the best (entry, exit) pair, in the
-    // direction the trains really run, beats walking the current path by 10%
+    // Time-based: take the train when the best trip (transit graph, any number of
+    // changes) beats walking the current path by 10%. Stations on other levels count:
+    // walking to and from them is costed by the pathfinder.
     if (useTrainTimeChoice) {
         int a, b, changes, lineCount;
         signed char lines[TRAIN_PLAN_CHANGES_MAX + 1];
@@ -982,7 +1003,8 @@ bool ShouldUseTrain(int moverIdx) {
         return true;
     }
 
-    // Old rule: goal far enough, a station near both ends
+    // Old rule: same level, goal far enough, a station near both ends
+    if (m->goal.z != mz) return false;
     int dist = abs(m->goal.x - mx) + abs(m->goal.y - my);
     if (dist < TRANSPORT_FAR_THRESHOLD) return false;
 

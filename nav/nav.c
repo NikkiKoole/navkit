@@ -2061,6 +2061,38 @@ int NavFindNearest(NavWorld* w, NavPoint start, NavTargetFn isTarget, void* user
     return cost;
 }
 
+typedef struct {
+    NavWorld* w;
+    const NavPoint* targets;
+    int count, left;
+    int* costs;
+} nav_CostsCtx;
+
+// Target callback that never stops early on a single target: records each target's
+// cost when the search settles it, and stops when all are found
+static bool nav_CostsVisit(void* user, int x, int y, int z) {
+    nav_CostsCtx* c = user;
+    for (int i = 0; i < c->count; i++) {
+        const NavPoint* t = &c->targets[i];
+        if (c->costs[i] < 0 && t->x == x && t->y == y && t->z == z) {
+            c->costs[i] = c->w->aG[nav_CellId3(c->w, x, y, z)];
+            c->left--;
+        }
+    }
+    return c->left == 0;
+}
+
+int NavCostsToTargets(NavWorld* w, NavPoint start, const NavPoint* targets, int targetCount,
+                      int maxCost, int* outCosts) {
+    for (int i = 0; i < targetCount; i++) outCosts[i] = -1;
+    if (targetCount <= 0) return 0;
+    nav_CostsCtx ctx = { w, targets, targetCount, targetCount, outCosts };
+    double startTime = NavHostTime();
+    nav_ForwardSearch(w, start, start, false, nav_CostsVisit, &ctx, maxCost);
+    w->lastMs = (NavHostTime() - startTime) * 1000.0;
+    return targetCount - ctx.left;
+}
+
 // =============================================================================
 // HPA* query
 // =============================================================================

@@ -538,8 +538,35 @@ static void test_find_nearest(void) {
     NavDestroy(w);
 }
 
+static void test_costs_to_targets(void) {
+    static StubMap m;
+    memset(&m, 0, sizeof(m));
+    m.w = 32; m.h = 24; m.d = 2;
+    for (int y = 0; y <= 20; y++) m.wall[0][y][10] = 1;   // same wall as test_find_nearest
+    m.ladder[0][6][6] = m.ladder[1][6][6] = 1;
+    NavWorld* w = NavCreate(32, 24, 2, 8, 8, &m);
+    NavPoint start = {5, 5, 0};
+    NavPoint t[4] = {{12, 5, 0}, {3, 20, 0}, {8, 6, 1}, {0, 0, 1}};   // behind the wall, near, upstairs x2
+    int costs[4];
+    int found = NavCostsToTargets(w, start, t, 4, 0, costs);
+    CHECK(found == 4);
+    for (int i = 0; i < 4; i++) {   // each equals A*'s cost
+        NavFindPathAStar(w, start, t[i], buf, 4096);
+        CHECK(costs[i] == w->lastCost);
+    }
+    // bounded: only the near ones
+    int near = NavCostsToTargets(w, start, t, 4, 60, costs);
+    CHECK(near < 4);
+    for (int i = 0; i < 4; i++) CHECK(costs[i] == -1 || costs[i] <= 60);
+    // unreachable target (inside the wall) stays -1
+    NavPoint inWall[1] = {{10, 5, 0}};
+    CHECK(NavCostsToTargets(w, start, inWall, 1, 0, costs) == 0 && costs[0] == -1);
+    NavDestroy(w);
+}
+
 int main(void) {
     printf("Running nav standalone tests...\n");
+    test_costs_to_targets();
     test_find_nearest();
     test_regions();
     test_hierarchical_flow_extra_cost();

@@ -130,6 +130,7 @@ void ScenarioResetWorld(const char* terrain) {
     InitFloorDirt();
     InitSnow();
     InitRooms();
+    ClearLightSources();   // belong to the old world (subway lights its stations)
     InvalidateLighting();
     BuildEntrances();
     BuildGraph();
@@ -740,6 +741,9 @@ static void TrainDoublePrintStats(void) {
 // Each station has a district a few cells off its platform (stations must be within
 // TRANSPORT_STATION_RADIUS of a mover and its goal to be considered).
 
+// Level the Lay* helpers build on (1 = the flat map's ground; subway sets its tunnel)
+static int layZ = 1;
+
 // Lay track along a polyline of axis-aligned legs; closed = back to the first point
 static void LayTrack(const Point* pts, int n, bool closed) {
     int legs = closed ? n : n - 1;
@@ -749,9 +753,9 @@ static void LayTrack(const Point* pts, int n, bool closed) {
         uint8_t fwd = sx > 0 ? TRACK_E : sx < 0 ? TRACK_W : sy > 0 ? TRACK_S : TRACK_N;
         uint8_t back = sx > 0 ? TRACK_W : sx < 0 ? TRACK_E : sy > 0 ? TRACK_N : TRACK_S;
         for (int x = a.x, y = a.y; ; x += sx, y += sy) {
-            GRID(x, y, 1) = CELL_TRACK;
-            if (x != b.x || y != b.y) TRACK_CONN(x, y, 1) |= fwd;
-            if (x != a.x || y != a.y) TRACK_CONN(x, y, 1) |= back;
+            GRID(x, y, layZ) = CELL_TRACK;
+            if (x != b.x || y != b.y) TRACK_CONN(x, y, layZ) |= fwd;
+            if (x != a.x || y != a.y) TRACK_CONN(x, y, layZ) |= back;
             if (x == b.x && y == b.y) break;
         }
     }
@@ -759,7 +763,7 @@ static void LayTrack(const Point* pts, int n, bool closed) {
 
 static void LayPlatform(int x, int y, int len, bool alongX) {
     for (int i = 0; i < len; i++)
-        GRID(alongX ? x + i : x, alongX ? y : y + i, 1) = CELL_PLATFORM;
+        GRID(alongX ? x + i : x, alongX ? y : y + i, layZ) = CELL_PLATFORM;
 }
 
 #define METRO_DISTRICTS MAX_STATIONS
@@ -949,8 +953,8 @@ static bool MetroCheck(char* why, int whyLen) {
 // clockwise. alongX: from (a, c) to (b, c + gap); else from (c, a) to (c + gap, b).
 static void LayLoopLine(int a, int b, int c, int gap, bool alongX) {
     Point p[4];
-    if (alongX) { p[0] = (Point){a, c, 1}; p[1] = (Point){b, c, 1}; p[2] = (Point){b, c + gap, 1}; p[3] = (Point){a, c + gap, 1}; }
-    else        { p[0] = (Point){c + gap, a, 1}; p[1] = (Point){c + gap, b, 1}; p[2] = (Point){c, b, 1}; p[3] = (Point){c, a, 1}; }
+    if (alongX) { p[0] = (Point){a, c, layZ}; p[1] = (Point){b, c, layZ}; p[2] = (Point){b, c + gap, layZ}; p[3] = (Point){a, c + gap, layZ}; }
+    else        { p[0] = (Point){c + gap, a, layZ}; p[1] = (Point){c + gap, b, layZ}; p[2] = (Point){c, b, layZ}; p[3] = (Point){c, a, layZ}; }
     LayTrack(p, 4, true);
 }
 
@@ -969,7 +973,7 @@ static bool TransferGoalPicker(int moverIdx, Point* goal) {
     for (int tries = 0; tries < 8; tries++) {
         Point d = transferDistricts[GetRandomValue(0, TRANSFER_DISTRICTS - 1)];
         if (abs(d.x - cx) + abs(d.y - cy) < 60) continue;   // another district
-        *goal = (Point){d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), 1};
+        *goal = (Point){d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), d.z};
         return true;
     }
     return false;
@@ -1135,6 +1139,143 @@ static bool TransitChainCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// subway: the transfer network underground
+// ---------------------------------------------------------------------------
+
+// Solid ground five levels deep (street at z=5), the same T of three loop lines as
+// "transfer" but in a tunnel at z=2 (two dirt levels above it). Each stop has a hall
+// (platforms on both sides, the space between the tracks dug out so movers cross),
+// one ramp of three steps up to the street; the centre stop of the east-west line
+// and the ends of the north and south lines share passages (change there without
+// going up). Movers live on the street at the four ends. Trip choice costs the walk
+// down to a platform with the pathfinder. Compare with "transfer" (same network on
+// the street). See the tunnel with viewZ 2.
+#define SUBWAY_STREET 5
+#define SUBWAY_TUNNEL 2
+static Point subwayDistricts[4];
+
+static void CarveAir(int x0, int y0, int x1, int y1, int z) {   // only dirt, inclusive
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            if (x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && GRID(x, y, z) == CELL_WALL)
+                GRID(x, y, z) = CELL_AIR;
+}
+
+// Three ramps from the tunnel at (x, y) up to the street, rising towards (dx, dy).
+// Returns the street cell where it comes out.
+static Point RampToStreet(int x, int y, int dx, int dy) {
+    CellType ramp = dy < 0 ? CELL_RAMP_N : dy > 0 ? CELL_RAMP_S : dx > 0 ? CELL_RAMP_E : CELL_RAMP_W;
+    for (int k = 0; k < SUBWAY_STREET - SUBWAY_TUNNEL; k++) {
+        int z = SUBWAY_TUNNEL + k;
+        GRID(x + k * dx, y + k * dy, z) = ramp;
+        SetWallMaterial(x + k * dx, y + k * dy, z, MAT_DIRT);
+    }
+    int k = SUBWAY_STREET - SUBWAY_TUNNEL;
+    return (Point){x + k * dx, y + k * dy, SUBWAY_STREET};
+}
+
+// A stop's hall: platforms, the cells between the two tracks and two cells beyond,
+// with lamps along both outer walls
+static void SubwayHall(int at, int c, int gap, bool alongX) {
+    if (alongX) CarveAir(at - 4, c - 3, at + 3, c + gap + 3, SUBWAY_TUNNEL);
+    else        CarveAir(c - 3, at - 4, c + gap + 3, at + 3, SUBWAY_TUNNEL);
+    for (int k = -4; k <= 3; k += 7) {
+        int a = at + k;
+        if (alongX) { AddLightSource(a, c - 3, SUBWAY_TUNNEL, 255, 235, 190, 12);
+                      AddLightSource(a, c + gap + 3, SUBWAY_TUNNEL, 255, 235, 190, 12); }
+        else        { AddLightSource(c - 3, a, SUBWAY_TUNNEL, 255, 235, 190, 12);
+                      AddLightSource(c + gap + 3, a, SUBWAY_TUNNEL, 255, 235, 190, 12); }
+    }
+}
+
+static void LightPassage(int x0, int y0, int x1, int y1) {
+    for (int y = y0 + 2; y <= y1; y += 7)
+        for (int x = x0 + 2; x <= x1; x += 7)
+            if (GRID(x, y, SUBWAY_TUNNEL) == CELL_AIR) AddLightSource(x, y, SUBWAY_TUNNEL, 255, 235, 190, 10);
+}
+
+static void SetupSubway(void) {
+    const int W = gridWidth, H = gridHeight, cx = W / 2, cy = H / 2, gap = 3;
+    for (int z = 1; z < SUBWAY_STREET; z++)
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                GRID(x, y, z) = CELL_WALL;
+                SetWallMaterial(x, y, z, MAT_DIRT);
+                SetWallNatural(x, y, z);
+            }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) SetVegetation(x, y, SUBWAY_STREET - 1, VEG_GRASS_TALLER);
+
+    layZ = SUBWAY_TUNNEL;
+    const int ex0 = 20, ex1 = W - 21, ey = cy - 1;
+    const int nx = cx + 8, ny0 = 20, ny1 = cy - 10, sy0 = cy + 12, sy1 = H - 21;
+    LayLoopLine(ex0, ex1, ey, gap, true);
+    LayLoopLine(ny0, ny1, nx, gap, false);
+    LayLoopLine(sy0, sy1, nx, gap, false);
+    const int ew[3] = {ex0 + 20, cx, ex1 - 20};
+    for (int k = 0; k < 3; k++) { LayLoopStop(ew[k], ey, gap, true); SubwayHall(ew[k], ey, gap, true); }
+    LayLoopStop(ny0 + 20, nx, gap, false); SubwayHall(ny0 + 20, nx, gap, false);
+    LayLoopStop(ny1 - 5, nx, gap, false);  SubwayHall(ny1 - 5, nx, gap, false);
+    LayLoopStop(sy0 + 5, nx, gap, false);  SubwayHall(sy0 + 5, nx, gap, false);
+    LayLoopStop(sy1 - 20, nx, gap, false); SubwayHall(sy1 - 20, nx, gap, false);
+    layZ = 1;
+    // Interchange passages: centre stop <-> the north line's last stop and the south line's first
+    CarveAir(cx - 4, ny1 - 9, nx - 2, ey - 4, SUBWAY_TUNNEL);
+    CarveAir(cx - 4, ey + gap + 4, nx - 2, sy0 + 9, SUBWAY_TUNNEL);
+    LightPassage(cx - 4, ny1 - 9, nx - 2, ey - 4);
+    LightPassage(cx - 4, ey + gap + 4, nx - 2, sy0 + 9);
+    // Ramps up to the street: outer stops away from the tracks, centre from its passage
+    Point west  = RampToStreet(ew[0], ey - 4, 0, -1);
+    Point east  = RampToStreet(ew[2], ey + gap + 4, 0, 1);
+    RampToStreet(cx - 5, ny1 - 6, -1, 0);
+    Point north = RampToStreet(nx + gap + 4, ny0 + 20, 1, 0);
+    Point south = RampToStreet(nx - 4, sy1 - 20, -1, 0);
+    RebuildStations();
+
+    for (int k = 0; k < 2; k++) {
+        SpawnTrainHeading(ex0 + 30 + k * (ex1 - ex0) / 2, ey, SUBWAY_TUNNEL, 3, 1, 0);
+        SpawnTrainHeading(ex1 - 30 - k * (ex1 - ex0) / 2, ey + gap, SUBWAY_TUNNEL, 3, -1, 0);
+    }
+    SpawnTrainHeading(nx + gap, ny0 + 10, SUBWAY_TUNNEL, 3, 0, 1);
+    SpawnTrainHeading(nx, ny1 - 10, SUBWAY_TUNNEL, 3, 0, -1);
+    SpawnTrainHeading(nx + gap, sy0 + 10, SUBWAY_TUNNEL, 3, 0, 1);
+    SpawnTrainHeading(nx, sy1 - 10, SUBWAY_TUNNEL, 3, 0, -1);
+    BuildEntrances();
+    BuildGraph();
+
+    if (trainSpeed == TRAIN_DEFAULT_SPEED) trainSpeed = 50.0f;   // unless --set trainSpeed chose one
+    subwayDistricts[0] = (Point){west.x, west.y - 12, SUBWAY_STREET};
+    subwayDistricts[1] = (Point){east.x, east.y + 12, SUBWAY_STREET};
+    subwayDistricts[2] = (Point){north.x + 12, north.y, SUBWAY_STREET};
+    subwayDistricts[3] = (Point){south.x - 12, south.y, SUBWAY_STREET};
+    for (int i = 0; i < 4; i++) transferDistricts[i] = subwayDistricts[i];   // same goal picker
+    MetroResetStats();
+    moverGoalPicker = TransferGoalPicker;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 40;
+    for (int i = 0; i < n; i++) {
+        Point d = subwayDistricts[i % 4];
+        SpawnMoverAt(d.x + GetRandomValue(-5, 5), d.y + GetRandomValue(-5, 5), SUBWAY_STREET);
+    }
+    currentViewZ = SUBWAY_STREET;
+    AddMessage(TextFormat("Subway: %d lines, %d stations underground (viewZ %d), %d movers on the street",
+                          TrackLineCount(), stationCount, SUBWAY_TUNNEL, n), GREEN);
+}
+
+static bool SubwayCheck(char* why, int whyLen) {
+    if (TrackLineCount() != 3) {
+        snprintf(why, (size_t)whyLen, "expected 3 lines, found %d", TrackLineCount());
+        return false;
+    }
+    if (metroRides == 0) {
+        snprintf(why, (size_t)whyLen, "nobody went down to ride the subway");
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1166,6 +1307,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupMetro, MetroTickStats, MetroPrintStats, MetroCheck, 320, 240},
     {"transfer",   "A T of three loop lines: trips between the ends need a change of line, 40 movers (compare useTrainTransfers 0)",
                    NULL,        SetupTransfer, MetroTickStats, TransferPrintStats, TransferCheck, 512, 320},
+    {"subway",     "The transfer network in a tunnel two levels under the street: ramps down, halls, changes underground, 40 movers",
+                   NULL,        SetupSubway, MetroTickStats, TransferPrintStats, SubwayCheck, 512, 320},
     {"transit-chain", "Six lines in a staircase: end to end is five changes of line, 48 movers",
                    NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
 };
