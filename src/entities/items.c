@@ -8,6 +8,7 @@
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include "containers.h"  // for ContainerDef, GetContainerDef, GetOutermostContainer
 #include "../simulation/temperature.h"  // for temperatureGrid
+#include "../simulation/balance.h"  // GameHoursToGameSeconds
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -281,9 +282,13 @@ static void SpoilageTick(float dt) {
 }
 
 // Optimized - only iterates up to high water mark
-// Cool hot items toward ambient temperature (Newton's cooling)
-#define FOOD_COOLING_RATE 0.02f  // per second — ~35s to halve the difference
+// Cool hot items toward ambient temperature (Newton's cooling). The gap to ambient halves
+// every foodCoolingHalfLifeGH game hours: 0.5 = a meal from the stove (80C) is below
+// "warm" (40C) after ~45 game minutes, at any day length.
+float foodCoolingHalfLifeGH = 0.5f;
 static void TemperatureTick(float dt) {
+    float halfLife = GameHoursToGameSeconds(foodCoolingHalfLifeGH);
+    float keep = halfLife > 0.0f ? expf(-0.69314718f * dt / halfLife) : 0.0f;   // share of the gap left
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].temperature <= 0.0f) continue;
@@ -294,7 +299,7 @@ static void TemperatureTick(float dt) {
         if (tx >= 0 && tx < gridWidth && ty >= 0 && ty < gridHeight && tz >= 0 && tz < gridDepth) {
             ambient = (float)GetTemperature(tx, ty, tz);
         }
-        items[i].temperature += (ambient - items[i].temperature) * FOOD_COOLING_RATE * dt;
+        items[i].temperature = ambient + (items[i].temperature - ambient) * keep;
         if (fabsf(items[i].temperature - ambient) < 0.5f) {
             items[i].temperature = 0.0f;  // close enough — stop tracking
         }

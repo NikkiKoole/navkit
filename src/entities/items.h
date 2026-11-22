@@ -140,7 +140,8 @@ int FindNearestUnreservedItem(float x, float y, float z);  // Uses spatial grid
 int FindNearestUnreservedItemNaive(float x, float y, float z);  // O(MAX_ITEMS) brute force
 
 // Cooldown management
-void ItemsTick(float dt);              // Optimized - iterates to itemHighWaterMark
+void ItemsTick(float dt);
+extern float foodCoolingHalfLifeGH;   // game hours for hot food to lose half its heat over ambient              // Optimized - iterates to itemHighWaterMark
 void ItemsTickNaive(float dt);         // O(MAX_ITEMS) brute force
 void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 void ClearUnreachableCooldownsNearCell(int x, int y, int z, int radius); // Clear cooldowns when terrain changes

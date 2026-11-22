@@ -13,6 +13,7 @@
 #include "../simulation/mood.h"
 #include "../entities/mover.h"
 #include "../entities/animals.h"
+#include "../entities/items.h"
 #include "../entities/trains.h"
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
@@ -524,6 +525,8 @@ static const Setting settings[] = {
     SET_BOOL("mood", "Mood", "Entities/Movers/Needs", moodEnabled, "Movers have moods from needs and surroundings."),
     SET_BOOL("toolReqs", "Tool Reqs", "Entities/Movers/Needs", toolRequirementsEnabled,
       "Jobs need the right tool (e.g. an axe to chop)."),
+    SET_FLOAT("foodCooling", "Food Cooling (GH)", "Entities/Movers/Needs", foodCoolingHalfLifeGH, 0.05f, 0.05f, 12.0f,
+      "Game hours for hot food to lose half its heat over room temperature. Eaten at 40C or more = hot meal mood.", NULL),
 
     // --- Movers: avoidance ---
     SET_BOOL("avoidance", "Enabled", "Entities/Movers/Avoidance", useMoverAvoidance,

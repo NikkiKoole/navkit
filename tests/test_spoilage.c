@@ -10,8 +10,10 @@
 #include "../src/world/material.h"
 #include "../src/simulation/balance.h"
 #include "../src/core/time.h"
+#include "../src/simulation/temperature.h"
 #include "test_helpers.h"
 #include <string.h>
+#include <math.h>
 
 static bool test_verbose = false;
 
@@ -176,6 +178,22 @@ describe(spoilage_timer) {
             expect(items[idx].condition != CONDITION_ROTTEN);
             TickSpoilage(0.2f * dayLength);   // 5.1 days
             expect(items[idx].condition == CONDITION_ROTTEN);
+        }
+        dayLength = 60.0f;
+    }
+
+    it("hot food loses half its heat over room temperature every foodCoolingHalfLifeGH, at any day length") {
+        float lengths[2] = {60.0f, 360.0f};
+        for (int k = 0; k < 2; k++) {
+            dayLength = lengths[k];
+            InitTestGridFromAscii("....\n....\n");
+            ClearItems();
+            int idx = SpawnItem(0, 0, 1, ITEM_BREAD);
+            items[idx].temperature = 80.0f;
+            float ambient = (float)GetTemperature(0, 0, 1);
+            TickSpoilage(GameHoursToGameSeconds(foodCoolingHalfLifeGH));
+            float expected = ambient + (80.0f - ambient) * 0.5f;
+            expect(fabsf(items[idx].temperature - expected) < 0.5f);
         }
         dayLength = 60.0f;
     }
