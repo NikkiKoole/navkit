@@ -3,6 +3,7 @@
 #include "workshops.h"
 #include "../world/pathfinding.h"
 #include "../simulation/rooms.h"
+#include "../simulation/balance.h"
 #include <string.h>
 
 Furniture furniture[MAX_FURNITURE];
@@ -11,18 +12,22 @@ uint8_t* furnitureMoveCostGrid = NULL;   // allocated in grid_layers.c
 uint8_t* capabilityGrid = NULL;   // allocated in grid_layers.c
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
-    [FURNITURE_NONE]       = { "None",       0.0f,   false, 0,  CAP_NONE },
-    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.028f, false, 12, CAP_NONE },
-    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.028f, false, 12, CAP_NONE },
-    [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, false, 12, CAP_NONE },
-    [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11, CAP_NONE },
-    [FURNITURE_TOILET]     = { "Toilet",     0.0f,   false, 11, CAP_NONE },
+    [FURNITURE_NONE]       = { "None",       0.0f,    false, 0,  CAP_NONE },
+    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.7f,   false, 12, CAP_NONE },
+    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.7f,   false, 12, CAP_NONE },
+    [FURNITURE_PLANK_BED]  = { "Plank Bed",  1.0f,   false, 12, CAP_NONE },
+    [FURNITURE_CHAIR]      = { "Chair",      0.375f, false, 11, CAP_NONE },
+    [FURNITURE_TOILET]     = { "Toilet",     0.0f,    false, 11, CAP_NONE },
     // Not blocking (a blocking cell would drop out of its room), but costly to cross
-    [FURNITURE_TABLE]      = { "Table",      0.0f,   false, 16, CAP_PREP_SURFACE },
+    [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,
                "furnitureDefs[] must have an entry for every FurnitureType");
+
+float FurnitureRecoveryPerGH(int furnitureType) {
+    return GetFurnitureDef((FurnitureType)furnitureType)->restRate * balance.bedRecoveryPerGH;
+}
 
 const FurnitureDef* GetFurnitureDef(FurnitureType type) {
     if (type < 0 || type >= FURNITURE_TYPE_COUNT) return &furnitureDefs[FURNITURE_NONE];

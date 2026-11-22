@@ -162,8 +162,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
             float recoveryPerGH = balance.groundRecoveryPerGH;
             const char* restOn = "ground";
             if (ValidFurniture(m->needTarget)) {
-                recoveryPerGH = balance.bedRecoveryPerGH;
-                restOn = "bed";
+                recoveryPerGH = FurnitureRecoveryPerGH(furniture[m->needTarget].type);
+                restOn = GetFurnitureDef(furniture[m->needTarget].type)->name;
             }
             if (recoveryPerGH > 0) {
                 float hoursToRested = (balance.energyWakeThreshold - m->energy) / recoveryPerGH;

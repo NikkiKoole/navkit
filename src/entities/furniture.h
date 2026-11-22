@@ -27,7 +27,7 @@ typedef enum {
 
 typedef struct {
     const char* name;
-    float restRate;       // Energy recovery per second (0 = no rest)
+    float restRate;       // Rest quality as a fraction of a bed (1.0 = bed: sleepHoursInBed); 0 = no rest
     bool blocking;        // true = CELL_FLAG_WORKSHOP_BLOCK, false = movement penalty
     int moveCost;         // GetCellMoveCost value when non-blocking (0 = no penalty)
     uint8_t capabilities; // CapabilityFlag bitmask (0 = no capabilities)
@@ -48,6 +48,7 @@ extern uint8_t* furnitureMoveCostGrid;
 extern uint8_t* capabilityGrid;
 #define CAPABILITY(x, y, z) (capabilityGrid CELL_AT((x), (y), (z)))
 
+float FurnitureRecoveryPerGH(int furnitureType);  // energy per game hour while resting on it
 const FurnitureDef* GetFurnitureDef(FurnitureType type);
 void ClearFurniture(void);
 int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material);

@@ -25,7 +25,7 @@ typedef struct {
     uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
     float weight;         // Weight in kg (affects carry speed)
     float nutrition;      // Hunger restored when eaten (0=not food)
-    float spoilageLimit;  // Game-seconds until spoiled (0 = doesn't spoil, only if IF_SPOILS)
+    float spoilageLimitGH; // Game hours until spoiled (0 = doesn't spoil, only if IF_SPOILS); same in days for any dayLength
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -51,7 +51,8 @@ extern const ItemDef itemDefs[];
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
-#define ItemSpoilageLimit(t)    (itemDefs[t].spoilageLimit)
+#define ItemSpoilageLimitGH(t)  (itemDefs[t].spoilageLimitGH)
+float ItemSpoilageLimit(int type);  // game seconds at the current dayLength (spoilageTimer counts game seconds)
 
 // Hydration values for drinkable items (0.0 = not drinkable, 1.0 = full hydration)
 // Note: uses hardcoded enum values because item_defs.h cannot include items.h

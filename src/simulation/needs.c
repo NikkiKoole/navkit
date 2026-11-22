@@ -753,7 +753,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             float rate = RatePerGameSecond(balance.groundRecoveryPerGH);
             if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE &&
                 furniture[m->needTarget].active) {
-                rate = GetFurnitureDef(furniture[m->needTarget].type)->restRate;
+                rate = RatePerGameSecond(FurnitureRecoveryPerGH(furniture[m->needTarget].type));
             }
             m->energy += rate * gameDeltaTime;
             if (m->energy > 1.0f) m->energy = 1.0f;

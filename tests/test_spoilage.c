@@ -8,6 +8,8 @@
 #include "../src/entities/stacking.h"
 #include "../src/core/event_log.h"
 #include "../src/world/material.h"
+#include "../src/simulation/balance.h"
+#include "../src/core/time.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -161,6 +163,21 @@ describe(spoilage_timer) {
         expect(idx >= 0);
         TickSpoilage(480.0f);
         expect(items[idx].condition == CONDITION_ROTTEN);
+    }
+
+    it("bread keeps the same number of days whatever the day length") {
+        float lengths[2] = {60.0f, 120.0f};
+        for (int k = 0; k < 2; k++) {
+            dayLength = lengths[k];
+            InitTestGridFromAscii("....\n....\n");
+            ClearItems();
+            int idx = SpawnItem(0, 0, 1, ITEM_BREAD);
+            TickSpoilage(4.9f * dayLength);   // 4.9 days
+            expect(items[idx].condition != CONDITION_ROTTEN);
+            TickSpoilage(0.2f * dayLength);   // 5.1 days
+            expect(items[idx].condition == CONDITION_ROTTEN);
+        }
+        dayLength = 60.0f;
     }
 
     it("should become rotten exactly at limit") {

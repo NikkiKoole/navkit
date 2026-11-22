@@ -561,11 +561,40 @@ describe(furniture_rest_seeking) {
             SimNeedsTick();
         }
 
-        // Bed rate is 0.040/s, ground is 0.012/s — bed should be WAY ahead
-        // After 5s: bed = 0.5 + 0.2 = 0.7, ground = 0.5 + 0.06 = 0.56
+        // At dayLength 60, 5s = 2 GH: bed 0.1/GH -> 0.7, ground 0.7/17 per GH -> ~0.58
         expect(movers[mi_bed].energy > movers[mi_ground].energy);
         expect(movers[mi_bed].energy > 0.65f);
         expect(movers[mi_ground].energy < 0.6f);
+    }
+
+    it("a night in bed takes sleepHoursInBed game hours, whatever the day length") {
+        float lengths[2] = {60.0f, 120.0f};
+        for (int k = 0; k < 2; k++) {
+            SetupClean();
+            dayLength = lengths[k];
+            int mi = SetupMover(5, 5);
+            int fi = SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, 0);
+            furniture[fi].occupant = mi;
+            movers[mi].freetimeState = FREETIME_RESTING;
+            movers[mi].needTarget = fi;
+            movers[mi].energy = balance.energyExhaustedThreshold;
+            int ticks = 0;
+            while (movers[mi].freetimeState == FREETIME_RESTING && ticks < 100000) {
+                movers[mi].hunger = 1.0f;
+                SimNeedsTick();
+                ticks++;
+            }
+            float gameHours = ticks * TICK_DT / (dayLength / 24.0f);
+            if (test_verbose) printf("dayLength %.0f: slept %.2f game hours\n", dayLength, gameHours);
+            expect(fabsf(gameHours - balance.sleepHoursInBed) < 0.1f);
+        }
+        dayLength = 60.0f;
+    }
+
+    it("a leaf pile rests slower than a bed but faster than the ground") {
+        expect(FurnitureRecoveryPerGH(FURNITURE_PLANK_BED) == balance.bedRecoveryPerGH);
+        expect(FurnitureRecoveryPerGH(FURNITURE_LEAF_PILE) < balance.bedRecoveryPerGH);
+        expect(FurnitureRecoveryPerGH(FURNITURE_LEAF_PILE) > balance.groundRecoveryPerGH);
     }
 
     it("a mover waking from a bed releases the furniture reservation") {
