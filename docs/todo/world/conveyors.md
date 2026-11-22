@@ -89,19 +89,31 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 
 **Simulation crossovers**: wet belts slip, burning crates set the next one alight.
 
-## Overlap with train cargo
+## Carriers: who builds what (agreed 2026-11-23)
 
-navkit-59 (trains) plans **cargo platforms = a stockpile next to the track, marked as a stop**:
-trains load from it and unload at the next stop whose stockpile filter accepts the item, and
-haulers do the rest. The belt spike uses the same idea: a belt end's stockpile is its pick-up
-or drop-off point. Keep it one concept ("a stockpile is a transfer point for a carrier") so a
-belt can feed a cargo platform and a train can unload onto a belt's pick-up pile.
+|            | Items                                   | People                     |
+|------------|-----------------------------------------|----------------------------|
+| Horizontal | belts (this spike), train cargo (planned) | trains (built)           |
+| Vertical   | vertical belts / hoist, chutes (next)   | elevator (`world/elevators.md`) |
+
+- **One transfer rule for all item carriers**: a stockpile is the transfer point; loads go
+  straight into a slot at the drop-off and haulers do the last mile
+  (`pathfinding/transport-layer.md`, "Item Transport").
+- **Vertical belts** (belts code): UP/DOWN directions, a load moves one level per step,
+  stockpile transfer points on each floor. Chutes = down only, no power.
+- **Train cargo** (trains code): a cargo stop = a stockpile within 2 cells of a platform; a train
+  loads an item only if a stop further down the line has a higher-priority stockpile with room.
+  The take/put code in `BeltTakeInput`/`BeltDropOut` then moves to a shared helper in `stockpiles.c`.
+- **Elevator** (trains code): not stacked track. A shaft entity (car, one stop per floor,
+  station-style waiting list, doors, capacity) that feeds the transit graph as a line: stops in
+  cycle order + travel time. Trip choice, changes and elevator-to-train changes then work
+  unchanged. A freight elevator is the same car carrying crates.
 
 ## Next steps if the spike earns it
 
 1. Save/load belts; clear them on game start.
 2. Build belts in game (recipe + blueprint), remove them (drops the load).
 3. A belt end feeding a workshop input / taking from a workshop output.
-4. Chutes (downhill, no power).
+4. Vertical belts + chutes (agreed as the next belt step, see the table above).
 5. Train cargo through the same transfer-point idea.
 6. Only if routing becomes the fun part: splitters, filters, labels.

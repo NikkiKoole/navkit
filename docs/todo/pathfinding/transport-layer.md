@@ -331,17 +331,29 @@ A simple walk is a 1-leg journey. A train ride is 3 legs (walk → ride → walk
 
 ## Item Transport
 
-Some nodes carry items, not movers. The item equivalent of "mover rides" is:
+Some nodes carry items, not movers.
 
-1. Hauler carries item to entry (existing haul job)
-2. Item placed on transport (hoist, chute, pack animal, canal)
-3. Item travels to exit
-4. Item appears at exit cell (ground item or stockpile)
-5. Another hauler picks it up (existing haul job)
+**Rule (decided 2026-11-23, belts + train cargo): a stockpile is the transfer point.**
 
-This decomposes into two standard haul jobs with a transport step in between. The job system doesn't need to understand transport — it just sees "item appeared at (x, y, z)".
+1. Haulers stock the pick-up stockpile (existing haul jobs, nothing new)
+2. The carrier takes a load straight from that stockpile (belt line start, train at a cargo stop)
+3. The load rides (state `ITEM_ON_BELT` or similar: no job can take it meanwhile)
+4. At the drop-off, the load goes **straight into a slot of the stockpile there**. A full or
+   unwilling stockpile blocks the carrier: belts back up; trains don't load what has nowhere to go
+5. Haulers only do the last mile from that stockpile (existing jobs)
 
-The interesting decision: does the **job system** route items via transport, or does the **pathfinder** expose item-transport edges so `FindNearestItem()` can account for them? Probably the job system, since items don't pathfind themselves.
+So no hauler unloads at the exit and no item is dropped loose there: the job system never
+needs to understand transport, it just sees stocked stockpiles. Containers ride whole (a crate
+is one load, `MoveContainer` carries its contents).
+
+- Belts: `src/entities/belts.c` (`BeltTakeInput` / `BeltDropOut`), see `world/conveyors.md`.
+- Train cargo (planned): a cargo stop = a stockpile within 2 cells of a platform. A train loads
+  an item only if a stop further down the line has a higher-priority stockpile that accepts it
+  and has room, and unloads it there (priority stops ping-pong).
+- The take/put code becomes one shared helper in `stockpiles.c` when cargo is built.
+
+Routing stays in the carriers (a belt goes where it points, a train to the stop that wants the
+item), not in the pathfinder: items don't pathfind themselves.
 
 ---
 
