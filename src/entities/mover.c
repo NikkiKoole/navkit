@@ -62,6 +62,10 @@ int repathFallbackCount = 0;
 static int repathCursor = 0;
 // Seconds each mover has been waiting at a narrow passage (not saved; reset by ClearMovers)
 static float moverYieldTime[MAX_MOVERS];
+static Point moverYieldCell[MAX_MOVERS];   // where the current wait started
+// Waiting at a narrow passage this tick: others' avoidance ignores it, or a crowd waiting at
+// the far end walls off the very mover it waits for (no hard bodies: walk through them)
+static bool moverYielding[MAX_MOVERS];
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -243,6 +247,7 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
                 if (j == moverIndex) continue;
                 // Only movers on the same level push each other (as for animals and trains)
                 if ((int)movers[j].z != (int)m->z) continue;
+                if (moverYielding[j]) continue;
                 
                 scanned++;
                 if (scanned >= AVOID_MAX_SCAN) {
@@ -1057,6 +1062,7 @@ void ClearMovers(void) {
     repathCursor = 0;
     LaddersClear();
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
+    memset(moverYielding, 0, sizeof(moverYielding));
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
@@ -1502,6 +1508,7 @@ void UpdateMovers(void) {
     if (useSingleFileLadders) LaddersUpdate(dt);
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
+        moverYielding[i] = false;
         if (!m->active) continue;
         
         // Decrement fall timer for visual feedback
@@ -1915,14 +1922,20 @@ void UpdateMovers(void) {
 
             // Single-lane passage ahead with oncoming traffic: wait at the entrance
             if (useTunnelYielding && !lineFollow) {
+                // The wait clock runs until the mover reaches another cell. (It used to reset
+                // whenever the answer was "go" for one tick: in a crowd at a busy gap that
+                // flickers, so the timeout never fired and dozens waited at both ends.)
+                Point here = {currentX, currentY, currentZ};
+                if (moverYieldTime[i] > 0.0f && !PointsEqual(moverYieldCell[i], here)) moverYieldTime[i] = 0.0f;
                 if (moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i)) {
+                    if (moverYieldTime[i] == 0.0f) moverYieldCell[i] = here;
                     moverYieldTime[i] += dt;
+                    moverYielding[i] = true;
                     m->timeWithoutProgress = 0.0f;     // waiting in line is not being stuck
                     m->lastX = m->x;
                     m->lastY = m->y;
                     continue;
                 }
-                if (moverYieldTime[i] > 0.0f && !MoverShouldYield(i)) moverYieldTime[i] = 0.0f;
             }
 
             float invDist = 1.0f / dist;
