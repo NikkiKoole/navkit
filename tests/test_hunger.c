@@ -829,6 +829,59 @@ describe(critical_need_search_cooldown) {
     }
 }
 
+// Food far away: the seek timeout is for food that can't be reached, not for distance.
+// Bug: foodSeekTimeoutGH 0.5 is ~8 cells of walking, so movers turned back halfway.
+static bool WalkToFarFood(float testDayLength, int* seekStarts) {
+    InitTestGridFromAscii(
+        "................................\n"
+        "................................\n"
+        "................................\n");
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers(); ClearItems(); ClearStockpiles(); ClearJobs(); ClearPlants();
+    InitBalance();
+    hungerEnabled = true; energyEnabled = false; bodyTempEnabled = false;
+    thirstEnabled = false; bladderEnabled = false;
+    dayLength = testDayLength;
+    currentTick = 1;
+
+    int spIdx = CreateStockpile(30, 1, 0, 1, 1);
+    int food = SpawnItem(30 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+    PlaceItemInStockpile(spIdx, 30, 1, food);
+
+    Point goal = {1, 1, 0};
+    InitMover(&movers[0], 1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, goal, MOVER_SPEED);
+    moverCount = 1;
+    movers[0].hunger = 0.25f;  // hungry, not starving (above the hunger speed-penalty threshold)
+
+    bool ate = false;
+    int prev = FREETIME_NONE;
+    *seekStarts = 0;
+    for (int t = 0; t < 20000 && !ate; t++) {
+        Tick();
+        NeedsTick();
+        ProcessFreetimeNeeds();
+        if (movers[0].freetimeState == FREETIME_SEEKING_FOOD && prev != FREETIME_SEEKING_FOOD) (*seekStarts)++;
+        if (movers[0].freetimeState == FREETIME_EATING) ate = true;
+        prev = movers[0].freetimeState;
+    }
+    dayLength = 60.0f;
+    return ate;
+}
+
+describe(food_far_away) {
+    it("a hungry mover walks 29 cells to food without giving up on the way") {
+        int starts = 0;
+        expect(WalkToFarFood(60.0f, &starts));
+        expect(starts == 1);
+    }
+
+    it("the same walk works at dayLength 120") {
+        int starts = 0;
+        expect(WalkToFarFood(120.0f, &starts));
+        expect(starts == 1);
+    }
+}
+
 describe(eating_starving_unassigns_job) {
     it("starving mover unassigns current job") {
         SetupClean();
@@ -1234,6 +1287,7 @@ int main(int argc, char* argv[]) {
     test(eating_food_competition);
     test(eating_consumption);
     test(critical_need_search_cooldown);
+    test(food_far_away);
     test(eating_starving_unassigns_job);
     test(unassign_job_pickup);
     test(drying_rack_berries);

@@ -84,6 +84,21 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
     return bestIdx;
 }
 
+// Seeking counts needProgress up to a timeout (foodSeekTimeoutGH etc.). That timeout is for
+// targets that can't be reached, not for distance: at the start of a seek, needProgress is
+// set below zero by the time the walk itself should take, so a far target gets the same
+// slack as a near one. Allowance = 3x the straight-line walk at this mover's speed
+// (detours around walls, hunger slowdown, stairs). Movement is scaled to game hours, so
+// this is the same number of game hours at any dayLength.
+static void StartSeekClock(Mover* m) {
+    float dx = (m->goal.x + 0.5f) * CELL_SIZE - m->x;
+    float dy = (m->goal.y + 0.5f) * CELL_SIZE - m->y;
+    float dz = (m->goal.z - m->z) * CELL_SIZE;
+    float pxPerGameSecond = m->speed * (60.0f / dayLength);
+    m->needProgress = 0.0f;
+    if (pxPerGameSecond > 0.0f) m->needProgress = -3.0f * sqrtf(dx * dx + dy * dy + dz * dz) / pxPerGameSecond;
+}
+
 static void StartFoodSearch(Mover* m, int moverIdx) {
     // Try stockpile first, then ground items
     int itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
@@ -114,6 +129,7 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     int goalY = (int)(items[itemIdx].y / CELL_SIZE);
     int goalZ = (int)items[itemIdx].z;
     m->goal = (Point){goalX, goalY, goalZ};
+    StartSeekClock(m);
     m->needsRepath = true;
 }
 
@@ -261,6 +277,7 @@ static void StartBladderSearch(Mover* m, int moverIdx) {
         m->needTarget = toiletIdx;
         m->needProgress = 0.0f;
         m->goal = (Point){furniture[toiletIdx].x, furniture[toiletIdx].y, cz};
+        StartSeekClock(m);
         m->needsRepath = true;
         return;
     }
@@ -272,6 +289,7 @@ static void StartBladderSearch(Mover* m, int moverIdx) {
         m->needTarget = bushX + bushY * gridWidth;  // encode position
         m->needProgress = 0.0f;
         m->goal = (Point){bushX, bushY, cz};
+        StartSeekClock(m);
         m->needsRepath = true;
         return;
     }
@@ -387,6 +405,7 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
             goalX = items[itemIdx].x; goalY = items[itemIdx].y; goalZ = (int)items[itemIdx].z;
         }
         m->goal = (Point){(int)(goalX / CELL_SIZE), (int)(goalY / CELL_SIZE), goalZ};
+        StartSeekClock(m);
         m->needsRepath = true;
         return;
     }
@@ -399,6 +418,7 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
         m->needTarget = waterX + waterY * gridWidth; // encode water cell position
         m->needProgress = 0.0f;
         m->goal = (Point){standX, standY, standZ};
+        StartSeekClock(m);
         m->needsRepath = true;
         return;
     }
