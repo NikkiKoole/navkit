@@ -392,17 +392,41 @@ static void YieldCollect(int j, float distSq, void* user) {
     if (c->n < c->cap) c->idx[c->n++] = j;
 }
 
+// "No narrow stretch to enter" depends only on the mover's cell, the next two waypoints
+// (UpcomingRouteCells(i, .., 2) reads no further) and walkability: remember it per mover
+// with exactly those as the key, so most movers skip the walkability lookups each tick.
+typedef struct { int cx, cy, z; Point wp0, wp1; unsigned walkCount; bool valid; } YieldClearKey;
+static YieldClearKey yieldClear[MAX_MOVERS];
+
+static YieldClearKey YieldKeyFor(int i, int cx, int cy, int z) {
+    const Mover* m = &movers[i];
+    YieldClearKey k = {cx, cy, z, moverPaths[i][m->pathIndex],
+                       m->pathIndex > 0 ? moverPaths[i][m->pathIndex - 1] : (Point){-1, -1, -1},
+                       walkabilityChangeCount, true};
+    return k;
+}
+
+static bool YieldKeyEqual(const YieldClearKey* a, const YieldClearKey* b) {
+    return a->valid && b->valid && a->cx == b->cx && a->cy == b->cy && a->z == b->z &&
+           a->wp0.x == b->wp0.x && a->wp0.y == b->wp0.y && a->wp0.z == b->wp0.z &&
+           a->wp1.x == b->wp1.x && a->wp1.y == b->wp1.y && a->wp1.z == b->wp1.z &&
+           a->walkCount == b->walkCount;
+}
+
 static bool MoverShouldYield(int i) {
     Mover* m = &movers[i];
     int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
-    if (m->pathIndex < 0 || IsNarrowCell(cx, cy, z)) return false;   // already inside: keep going
+    if (m->pathIndex < 0) return false;
+    YieldClearKey key = YieldKeyFor(i, cx, cy, z);
+    if (YieldKeyEqual(&yieldClear[i], &key)) return false;
+    if (IsNarrowCell(cx, cy, z)) { yieldClear[i] = key; return false; }   // already inside: keep going
 
     Point route[YIELD_LOOKAHEAD_CELLS + 2];
     // Cheap check first: at an entrance, the narrow stretch starts within the next 2 cells
     int n = UpcomingRouteCells(i, route, 2);
     int start = -1;
     for (int k = 0; k < n; k++) if (IsNarrowCell(route[k].x, route[k].y, z)) { start = k; break; }
-    if (start < 0) return false;
+    if (start < 0) { yieldClear[i] = key; return false; }
     n = UpcomingRouteCells(i, route, YIELD_LOOKAHEAD_CELLS + 2);
     int end = start;
     while (end + 1 < n && IsNarrowCell(route[end + 1].x, route[end + 1].y, z)) end++;
@@ -411,16 +435,27 @@ static bool MoverShouldYield(int i) {
     float myDx = moverPaths[i][m->pathIndex].x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
     float myDy = moverPaths[i][m->pathIndex].y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
 
-    // Candidates from the spatial grid (built this tick; the radius covers the box
-    // below plus a grid cell of slack for movers that moved since), else everyone
+    // Candidates from the spatial grid: only movers standing on route[start..beyond] matter,
+    // so a circle around those cells (plus a grid cell of slack for movers that moved since
+    // the grid was built this tick), else everyone
     static int* cand = NULL;
     static int candCap = 0;
     int nc = 0;
     if (moverGrid.cellCounts) {
         if (candCap < moverCount) { free(cand); candCap = moverCount; cand = malloc((size_t)candCap * sizeof(int)); }
-        float r = (YIELD_LOOKAHEAD_CELLS + 4) * CELL_SIZE * 1.4143f + MOVER_GRID_CELL_SIZE;
+        int last = beyond >= 0 ? beyond : end;
+        int bx0 = route[start].x, bx1 = bx0, by0 = route[start].y, by1 = by0;
+        for (int k = start + 1; k <= last; k++) {
+            if (route[k].x < bx0) bx0 = route[k].x;
+            if (route[k].x > bx1) bx1 = route[k].x;
+            if (route[k].y < by0) by0 = route[k].y;
+            if (route[k].y > by1) by1 = route[k].y;
+        }
+        float qx = (bx0 + bx1 + 1) * 0.5f * CELL_SIZE, qy = (by0 + by1 + 1) * 0.5f * CELL_SIZE;
+        float hw = (bx1 - bx0 + 1) * 0.5f * CELL_SIZE, hh = (by1 - by0 + 1) * 0.5f * CELL_SIZE;
+        float r = sqrtf(hw * hw + hh * hh) + MOVER_GRID_CELL_SIZE;
         YieldCand yc = {cand, 0, candCap};
-        QueryMoverNeighbors(m->x, m->y, r, i, YieldCollect, &yc);
+        QueryMoverNeighbors(qx, qy, r, i, YieldCollect, &yc);
         nc = yc.n;
     } else nc = -1;
     for (int c = 0; nc < 0 ? c < moverCount : c < nc; c++) {

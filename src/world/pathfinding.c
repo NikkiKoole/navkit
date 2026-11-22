@@ -139,7 +139,10 @@ void ResetPathStats(void) {
 // Graph maintenance
 // =============================================================================
 
+unsigned walkabilityChangeCount = 0;
+
 void MarkChunkDirty(int cellX, int cellY, int cellZ) {
+    walkabilityChangeCount++;
     NavMarkCellChanged(NavGame(), cellX, cellY, cellZ);
 }
 
@@ -155,6 +158,7 @@ void TreesNoteWorldChanged(void);
 
 void BuildEntrances(void) {
     NavWorld* w = NavGame();
+    walkabilityChangeCount++;
     NavRegionsInvalidate(w);      // full rebuild = the world may have changed without notifications
     TreesNoteWorldChanged();      // ... so leaves anywhere may have lost their trunk
     NavBuildEntrances(w);

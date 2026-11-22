@@ -79,6 +79,9 @@ void ResetPathStats(void);        // call when switching algorithms
 
 // ---- graph maintenance ----
 void MarkChunkDirty(int cellX, int cellY, int cellZ);
+// Bumped by MarkChunkDirty and BuildEntrances: every walkability change goes through one of
+// them, so a value computed from walkability is still valid while this is unchanged
+extern unsigned walkabilityChangeCount;
 bool IsChunkDirty(int cx, int cy, int z);
 void SetChunkDirty(int cx, int cy, int z, bool dirty);
 void BuildEntrances(void);
