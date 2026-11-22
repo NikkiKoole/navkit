@@ -5,6 +5,11 @@
 > measurements and what's next: "5000 movers on a 1024 hill map" at the end. Ties together
 > `large-worlds.md` (what big maps cost, measured) and `../../vision/infinite-world-exploration.md`
 > (endless world research). Numbers are measured unless marked as estimates.
+>
+> **Key finding (2026-11-23): a much taller world costs little more.** On generated terrain the
+> content of the world sits in a band 2-4 levels thick around the ground; everything above is
+> air and below is rock. With per-block palettes, memory follows the land surface, not the
+> volume, so 64+ levels need not cost 4x. See "Taller worlds: block palettes (measured)".
 
 ## The decision in one paragraph
 
@@ -549,6 +554,54 @@ were not failed searches: with coarse paths the route comes back separately and 
 requests (200-370 ms) are long cross-map routes and a shared-goal field over its build budget. A
 coarser abstraction level (step 5) is what would make cross-map routes cheap; not needed yet.
 
+## Taller worlds: block palettes (measured 2026-11-23)
+
+**The realization:** height is nearly free. Today every column stores all 16 levels at ~75-87
+bytes per cell, so a 64-level world would cost 4x. But generated terrain is a thin skin: what
+varies is a band 2-4 levels thick around the ground, with uniform air above and uniform rock
+below. Store the world in blocks with a **palette** (each block keeps its few distinct cell
+values once, plus a small index per cell; a block with one value stores no index at all), and
+extra levels above or below the ground cost next to nothing. Memory then scales with the land
+**surface**, not the volume. That opens real relief (valleys, cliffs, mountains several times
+today's 11 land levels) without the 4x.
+
+**Measured** (1024x1024x16, island seeds 3 and 5, hills seed 3; throwaway tool linked against
+`test_unity.o`). "Cell value" = cell type + wall material + floor material + water level + cell
+flags + vegetation (the layers that say what a cell *is*; simulation layers not included):
+
+| block (x, y, z) | single-value blocks: island / hills | mean distinct values (island) | index bits per cell (island) |
+|---|---|---|---|
+| 16x16x2 | 59-62% / 18% | | |
+| 16x16x4 | 50-52% / 7% | 2.8-3.0 (max 22) | 1.1 |
+| 16x16x8 | 32-34% / 0% | | |
+| 16x16x16 | 0% / 0% | 7.0-7.5 (max 24) | 2.9 |
+
+- Island 16x16x4 blocks by palette size: 1 value 50%, 2-4 values 31%, 5-16 values 19%, over 16
+  values 0.2%.
+- Per column, the band that is neither plain bottom nor plain air: 2-3 levels for 85% of island
+  columns (mean 3.8, up to 15 under trees and in the mountains); hills mean 8.5 (its ground sits
+  high in a 16-level world).
+- With 16 levels, a 16-tall block always contains the ground, so single-value blocks alone save
+  little today. Palettes are what work: these layers take ~9-10 bytes per cell dense against
+  ~1-3 bits plus a few palette entries per block, about 25-70x smaller (estimate from the
+  numbers above).
+- **Estimate for a taller world:** levels added above or below the ground become single-value
+  blocks (no index). A 2048-wide, 64-level island looks feasible for these layers.
+
+**Caveats (not measured):**
+- **Simulation layers** (temperature, light, wear, snow, ...) vary from cell to cell and don't
+  palette-compress. They are a large part of today's 75-87 B/cell. They need to exist only where
+  something happens (sparse, active blocks) or at a coarser resolution. This is the real work.
+- **Steep relief** in a taller world spreads the ground over more blocks than here.
+- **Colonies**: dug tunnels and buildings add mixed blocks; only generated terrain was measured.
+- **Layered geology** (strata) adds a few palette values per block; still cheap.
+- Sims that sweep cells (water, temperature, trees) would have to visit only non-uniform /
+  active blocks. `CELL_AT` is still the single place that knows the layout, which is what makes
+  a storage change like this possible at all.
+
+Next measurement worth doing before any design: the same count on a lived-in colony save, and
+which simulation layers are non-default in what fraction of blocks.
+
 ## Allocation model (for steps 2-3)
 
 Group memory by lifetime instead of one allocation per layer. Three small pieces, no
@@ -595,6 +648,9 @@ Each is its own project; order follows the infinite-world doc, adjusted for what
    Choose layout B early if streaming is the target, so step 3 comes almost free.
 3. **Before step 5:** decide the overview-map design (see the infinite-world doc, section 9);
    it decides how per-chunk generation works.
+4. **Taller worlds (2026-11-23):** block palettes make height cheap (see above). Decide
+   whether more levels (64+) is a goal; if so, palettes for the "what a cell is" layers and
+   active-block storage for simulation layers belong in the storage design from the start.
 
 ## References
 
