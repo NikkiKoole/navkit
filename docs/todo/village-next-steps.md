@@ -158,7 +158,16 @@ This is minimum viable mood, but with *legible causes*. A player can always answ
 
 ---
 
-### Step 3: Distance Weighting in Job Assignment
+### Step 3: Distance Weighting in Job Assignment — DONE (2026-11-22)
+
+Built as setting `jobDistanceWeight` (Mover Balance; 0 = old strict priority order, off by
+default). Job phases have priority levels (maintenance 0, crafting 1, hunting 2, hauling 3,
+designations 4, farming 5; clothing/water pot unlimited); `AssignJobs` runs them in distance
+bands so a job costs `level / weight + distance` cells and the cheapest goes first. Scenario
+`worksplit` (haul west, mine east): at weight 0.2 walking on jobs -20%, jobs away from home
+31 -> 4 of 60. Cost: about +2% Jobs time at 0.2 on a 200-mover stress run. Note: hauling has
+always had a hard 50-cell limit (MOVER_SEARCH_RADIUS) for finding a mover for an item.
+
 
 **Effort:** ~0.25 session | **Deps:** none | **Unlocks:** movers behaving locally, proto-occupations
 

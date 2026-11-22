@@ -17,7 +17,8 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 2. Add name to `JobTypeName()` in `jobs.h`
 3. Write `WorkGiver_Foo()` — checks capability, finds target, creates job via `CreateJob()`
 4. Write `RunJob_Foo()` — step-based state machine, returns `JOBRUN_RUNNING/DONE/FAIL`
-5. Add WorkGiver call to `AssignJobs()` in priority order
+5. Add WorkGiver call to `AssignJobs()` in priority order (a new phase also gets a row,
+   with its priority level, in `jobPhases[]`)
 6. Add RunJob dispatch in `JobsTick()`
 7. If designation-driven: add `DESIGNATION_FOO` in `designations.h`, cache in jobs.c
 
@@ -28,6 +29,13 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 - **Job cancellation**: always use `CancelJob()` — it safe-drops carried items, clears reservations, returns mover to idle list
 - **Idle mover cache**: maintained incrementally via `AddMoverToIdleList`/`RemoveMoverFromIdleList` (don't scan all movers)
 - **Active job list**: `activeJobList[]` for O(n) iteration where n = active jobs only
+- **Distance weighting** (setting `jobDistanceWeight`, 0 = off): `AssignJobs` then runs the
+  phases in distance bands (`AssignJobs_DistanceBands`): a job one priority level lower wins
+  if it is `1/weight` cells closer. A WorkGiver must call `JobInRange(moverIdx, x, y, z)` right
+  after choosing its target (before reserving or pathfinding) and return -1 if false;
+  item-centric phases get it through `TryAssignItemToMover`. Code that changes an item before
+  assigning it (split, take out of a container) checks `ItemHasHaulerInRange` first.
+  Movers in mover-centric phase loops are wrapped in `PhaseMoverSkip/Begin/End`.
 
 ## Item Reservation Rules
 

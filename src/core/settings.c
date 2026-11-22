@@ -351,6 +351,10 @@ static const Setting settings[] = {
       "Base mover speed in pixels/sec. Changing it rescales every mover's speed.", DescBaseSpeed, RescaleMoverSpeeds),
     SET_FLOAT("moverSpeedVariance", "Speed Variance", "Mover Balance", balance.moverSpeedVariance, 0.05f, 0.0f, 0.5f,
       "Random speed spread per new mover (+/- fraction).", DescSpeedVariance),
+    SET_FLOAT("jobDistanceWeight", "Job Distance Weight", "Mover Balance", jobDistanceWeight, 0.01f, 0.0f, 2.0f,
+      "How much distance counts against job priority, in priority levels per cell (each job phase is one level: "
+      "hauling, mining, farming, ...). 0.1 = a job one level lower wins if it is 10 cells closer; "
+      "0 = strict priority order (nearest within one type).", NULL),
 
     // --- Mover balance: day budget (game-hours) ---
     SET_BALANCE("workHoursPerDay", "Work Hours/Day", "Mover Balance/Day Budget", workHoursPerDay, 0.5f, 1.0f, 24.0f,

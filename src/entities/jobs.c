@@ -204,6 +204,76 @@ static int bpCacheReadyToBuild[MAX_BP_CACHE];
 static int bpCacheReadyToBuildCount = 0;
 static bool bpHaulItemsExhausted = false;  // set when no items found for any blueprint
 
+// -----------------------------------------------------------------------------
+// Job distance weighting (setting jobDistanceWeight, see AssignJobs_DistanceBands)
+// -----------------------------------------------------------------------------
+// While AssignJobs runs in distance bands, every WorkGiver / item-to-mover match
+// rejects a target farther than jobRangeLimit cells from the mover and notes that
+// in jobRangeSkipped (the phase then has work left for a wider band). Outside the
+// bands the limit is -1 and JobInRange is always true, so nothing changes.
+static float jobRangeLimit = -1.0f;   // cells; < 0 = no limit
+static bool jobRangeSkipped = false;
+
+// Distance in cells from a mover to a cell: straight line on the map plus z levels.
+// The same measure for both directions of matching (mover -> job, job -> mover).
+static float JobDistance(int moverIdx, int x, int y, int z) {
+    const Mover* m = &movers[moverIdx];
+    float dx = m->x / CELL_SIZE - ((float)x + 0.5f);
+    float dy = m->y / CELL_SIZE - ((float)y + 0.5f);
+    return sqrtf(dx * dx + dy * dy) + fabsf(floorf(m->z) - (float)z);
+}
+
+static bool JobInRange(int moverIdx, int x, int y, int z) {
+    if (jobRangeLimit < 0.0f) return true;
+    if (JobDistance(moverIdx, x, y, z) <= jobRangeLimit) return true;
+    jobRangeSkipped = true;
+    return false;
+}
+
+// Per item, this frame: distance to the nearest idle hauler when last looked up.
+// Within one AssignJobs the idle movers only get fewer, so that distance can only
+// grow: while it is beyond the band, the item is skipped without a new search.
+static float itemHaulerDist[MAX_ITEMS];
+static uint32_t itemHaulerStamp[MAX_ITEMS];
+static uint32_t jobBandFrame = 0;   // bumped by every banded AssignJobs
+
+// Distance bands only. true = skip this item now: its nearest idle hauler is known
+// to be beyond the band (marks the band as skipped: a wider one may take it), or
+// known to be missing (no idle hauler near it at all this frame: nothing to retry).
+static bool ItemHaulerSkip(int itemIdx) {
+    if (jobRangeLimit < 0.0f || itemHaulerStamp[itemIdx] != jobBandFrame) return false;
+    float d = itemHaulerDist[itemIdx];
+    if (d <= jobRangeLimit) return false;
+    if (d < INFINITY) jobRangeSkipped = true;
+    return true;
+}
+
+static void ItemHaulerRemember(int itemIdx, float dist) {   // INFINITY = nobody
+    if (jobRangeLimit < 0.0f) return;
+    itemHaulerDist[itemIdx] = dist;
+    itemHaulerStamp[itemIdx] = jobBandFrame;
+}
+
+// Per mover, the phases (bit per phase) that already turned this mover down this
+// frame for another reason than range (no work, no path): later, wider bands skip
+// it there instead of repeating the search and its pathfinding.
+static uint16_t jobPhaseMoverDone[MAX_MOVERS];
+static uint16_t jobPhaseBit = 0;   // current phase's bit while banding, 0 otherwise
+
+static inline bool PhaseMoverSkip(int moverIdx) {
+    return jobPhaseBit && (jobPhaseMoverDone[moverIdx] & jobPhaseBit);
+}
+static inline bool PhaseMoverBegin(void) {
+    bool was = jobRangeSkipped;
+    jobRangeSkipped = false;
+    return was;
+}
+static inline void PhaseMoverEnd(int moverIdx, bool was) {
+    if (jobPhaseBit && !jobRangeSkipped && moverIsInIdleList[moverIdx])
+        jobPhaseMoverDone[moverIdx] |= jobPhaseBit;
+    jobRangeSkipped |= was;
+}
+
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
@@ -3402,6 +3472,7 @@ void JobsTick(void) {
 
 int* idleMoverList = NULL;
 int idleMoverCount = 0;
+float jobDistanceWeight = 0.0f;
 bool* moverIsInIdleList = NULL;
 static int idleMoverCapacity = 0;
 
@@ -3871,11 +3942,81 @@ void UnassignJob(void* moverPtr, int moverIdx) {
     AddMoverToIdleList(moverIdx);
 }
 
+// Helper: nearest idle mover that can haul, for an item (skipping excludeMovers).
+// -1 if none (the spatial grid search only looks MOVER_SEARCH_RADIUS around the item).
+static int FindNearestIdleHauler(const Item* item, const int* excludeMovers, int excludeCount) {
+    int moverIdx = -1;
+
+    // Use MoverSpatialGrid if available and built
+    if (moverGrid.cellCounts && moverGrid.cellStarts[moverGrid.cellCount] > 0) {
+        IdleMoverSearchContext ctx = {
+            .itemX = item->x,
+            .itemY = item->y,
+            .itemZ = (int)item->z,
+            .bestMoverIdx = -1,
+            .bestDistSq = 1e30f,
+            .requireCanHaul = true,
+            .requireCanMine = false,
+            .requireCanBuild = false,
+            .excludeMovers = {-1, -1, -1},
+            .excludeCount = excludeCount
+        };
+        for (int e = 0; e < excludeCount; e++) ctx.excludeMovers[e] = excludeMovers[e];
+
+        QueryMoverNeighbors(item->x, item->y, MOVER_SEARCH_RADIUS, -1, IdleMoverSearchCallback, &ctx);
+        moverIdx = ctx.bestMoverIdx;
+    } else {
+        // Fallback: find nearest idle mover (for tests without spatial grid)
+        float bestDistSq = 1e30f;
+        for (int i = 0; i < idleMoverCount; i++) {
+            int idx = idleMoverList[i];
+            // Skip excluded movers
+            bool excluded = false;
+            for (int e = 0; e < excludeCount; e++) {
+                if (excludeMovers[e] == idx) { excluded = true; break; }
+            }
+            if (excluded) continue;
+            if (!movers[idx].capabilities.canHaul) continue;
+            float dx = movers[idx].x - item->x;
+            float dy = movers[idx].y - item->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                moverIdx = idx;
+            }
+        }
+    }
+    return moverIdx;
+}
+
+// Distance bands: is the nearest idle hauler within the current range of this item?
+// For callers that change the item (split a stack, take it out of a container)
+// before TryAssignItemToMover. Always true outside the bands.
+static bool ItemHasHaulerInRange(int itemIdx) {
+    if (jobRangeLimit < 0.0f) return true;
+    if (ItemHaulerSkip(itemIdx)) return false;
+    const Item* item = &items[itemIdx];
+    int moverIdx = FindNearestIdleHauler(item, NULL, 0);
+    if (moverIdx < 0) return true;   // nobody at all: let the normal path decide
+    int x = (int)(item->x / CELL_SIZE), y = (int)(item->y / CELL_SIZE), z = (int)item->z;
+    ItemHaulerRemember(itemIdx, JobDistance(moverIdx, x, y, z));
+    return JobInRange(moverIdx, x, y, z);
+}
+
+// Set by TryAssignItemToMover when it returned false only because the nearest
+// mover is outside the distance band (not a failure: a wider band may take it)
+static bool tryAssignOutOfRange = false;
+
 // Helper: Try to assign a job for a specific item to a nearby idle mover
 // Returns true if assignment succeeded, false otherwise
 static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, bool safeDrop) {
     Item* item = &items[itemIdx];
     Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+    tryAssignOutOfRange = false;
+    if (ItemHaulerSkip(itemIdx)) {
+        tryAssignOutOfRange = itemHaulerDist[itemIdx] < INFINITY;   // too far, not missing
+        return false;
+    }
 
     // Try up to 3 movers: if the nearest can't path, try the next-nearest.
     // Only set unreachableCooldown if ALL candidates fail.
@@ -3884,49 +4025,17 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
     int excludeCount = 0;
 
     for (int attempt = 0; attempt < MAX_MOVER_RETRIES; attempt++) {
-        int moverIdx = -1;
+        int moverIdx = FindNearestIdleHauler(item, excludeMovers, excludeCount);
 
-        // Use MoverSpatialGrid if available and built
-        if (moverGrid.cellCounts && moverGrid.cellStarts[moverGrid.cellCount] > 0) {
-            IdleMoverSearchContext ctx = {
-                .itemX = item->x,
-                .itemY = item->y,
-                .itemZ = (int)item->z,
-                .bestMoverIdx = -1,
-                .bestDistSq = 1e30f,
-                .requireCanHaul = true,
-                .requireCanMine = false,
-                .requireCanBuild = false,
-                .excludeMovers = {-1, -1, -1},
-                .excludeCount = excludeCount
-            };
-            for (int e = 0; e < excludeCount; e++) ctx.excludeMovers[e] = excludeMovers[e];
-
-            QueryMoverNeighbors(item->x, item->y, MOVER_SEARCH_RADIUS, -1, IdleMoverSearchCallback, &ctx);
-            moverIdx = ctx.bestMoverIdx;
-        } else {
-            // Fallback: find nearest idle mover (for tests without spatial grid)
-            float bestDistSq = 1e30f;
-            for (int i = 0; i < idleMoverCount; i++) {
-                int idx = idleMoverList[i];
-                // Skip excluded movers
-                bool excluded = false;
-                for (int e = 0; e < excludeCount; e++) {
-                    if (excludeMovers[e] == idx) { excluded = true; break; }
-                }
-                if (excluded) continue;
-                if (!movers[idx].capabilities.canHaul) continue;
-                float dx = movers[idx].x - item->x;
-                float dy = movers[idx].y - item->y;
-                float distSq = dx * dx + dy * dy;
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    moverIdx = idx;
-                }
-            }
+        if (moverIdx < 0) {   // No more candidate movers
+            if (attempt == 0) ItemHaulerRemember(itemIdx, INFINITY);
+            break;
         }
-
-        if (moverIdx < 0) break;  // No more candidate movers
+        if (!JobInRange(moverIdx, itemCell.x, itemCell.y, itemCell.z)) {
+            tryAssignOutOfRange = true;   // the nearest left is too far for this band
+            ItemHaulerRemember(itemIdx, JobDistance(moverIdx, itemCell.x, itemCell.y, itemCell.z));
+            return false;
+        }
         Mover* m = &movers[moverIdx];
 
         // Reserve item
@@ -4053,6 +4162,7 @@ static void AssignJobs_P1_StockpileMaintenance(void) {
         }
 
         if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
+            if (tryAssignOutOfRange) break;   // distance band: same item would come back
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
         } else if (!safeDrop) {
             InvalidateStockpileSlotCache(items[itemIdx].type, items[itemIdx].material);
@@ -4081,7 +4191,10 @@ static void AssignJobs_P2_Crafting(void) {
             for (int i = 0; i < moversToCheck && idleMoverCount > 0; i++) {
                 int moverIdx = idleCopy[i];
                 if (!moverIsInIdleList[moverIdx]) continue;
+                if (PhaseMoverSkip(moverIdx)) continue;
+                bool rs = PhaseMoverBegin();
                 WorkGiver_Craft(moverIdx);
+                PhaseMoverEnd(moverIdx, rs);
             }
             free(idleCopy);
         }
@@ -4107,7 +4220,10 @@ static void AssignJobs_P2b_PassiveDelivery(void) {
             for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
                 int moverIdx = idleCopy[i];
                 if (!moverIsInIdleList[moverIdx]) continue;
+                if (PhaseMoverSkip(moverIdx)) continue;
+                bool rs = PhaseMoverBegin();
                 WorkGiver_DeliverToPassiveWorkshop(moverIdx);
+                PhaseMoverEnd(moverIdx, rs);
             }
             free(idleCopy);
         }
@@ -4135,7 +4251,10 @@ static void AssignJobs_P2c_Ignition(void) {
             for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
                 int moverIdx = idleCopy[i];
                 if (!moverIsInIdleList[moverIdx]) continue;
+                if (PhaseMoverSkip(moverIdx)) continue;
+                bool rs = PhaseMoverBegin();
                 WorkGiver_IgniteWorkshop(moverIdx);
+                PhaseMoverEnd(moverIdx, rs);
             }
             free(idleCopy);
         }
@@ -4152,6 +4271,7 @@ static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
             int itemIdx = itemGrid.itemIndices[t];
             Item* item = &items[itemIdx];
 
+            if (ItemHaulerSkip(itemIdx)) continue;   // distance bands: known too far / nobody
             if (!IsItemHaulable(item, itemIdx)) continue;
             uint8_t mat = ResolveItemMaterialForJobs(item);
             if (!typeMatHasStockpile[item->type][mat]) continue;
@@ -4168,6 +4288,7 @@ static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
         for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
             Item* item = &items[j];
 
+            if (ItemHaulerSkip(j)) continue;   // distance bands: known too far / nobody
             if (!IsItemHaulable(item, j)) continue;
             uint8_t mat = ResolveItemMaterialForJobs(item);
             if (!typeMatHasStockpile[item->type][mat]) continue;
@@ -4223,6 +4344,7 @@ static void AssignJobs_P3c_Rehaul(void) {
             }
         } else if (isOverfull) {
             destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+            if (destSp >= 0 && !ItemHasHaulerInRange(j)) continue;   // distance band: don't split yet
             // Split off the excess from the overfull stack
             if (destSp >= 0) {
                 Stockpile* sp = &stockpiles[currentSp];
@@ -4275,6 +4397,7 @@ static void AssignJobs_P3e_ContainerCleanup(void) {
 
                 bool illegal = !StockpileAcceptsItem(spIdx, items[j].type, items[j].material)
                     || (sp->rejectsRotten && items[j].condition == CONDITION_ROTTEN);
+                if (illegal && !ItemHasHaulerInRange(j)) continue;   // distance band: leave it inside
                 if (illegal) {
                     // Extract from container — item becomes ITEM_ON_GROUND at container pos
                     ExtractItemFromContainer(j);
@@ -4358,6 +4481,8 @@ static void AssignJobs_P4_Designations(void) {
             int moverIdx = idleCopy[i];
 
             if (!moverIsInIdleList[moverIdx]) continue;
+            if (PhaseMoverSkip(moverIdx)) continue;
+            bool rs = PhaseMoverBegin();
 
             int jobId = -1;
             for (int j = 0; j < designationSpecCount && jobId < 0; j++) {
@@ -4377,10 +4502,217 @@ static void AssignJobs_P4_Designations(void) {
             }
 
             (void)jobId;
+            PhaseMoverEnd(moverIdx, rs);
         }
 
         free(idleCopy);
     }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2d_Hunt(void) {
+    {
+        bool anyMarked = false;
+        for (int i = 0; i < animalCount; i++) {
+            if (animals[i].active && animals[i].markedForHunt && animals[i].reservedByHunter < 0) {
+                anyMarked = true;
+                break;
+            }
+        }
+        if (anyMarked) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    if (PhaseMoverSkip(moverIdx)) continue;
+                    bool rs = PhaseMoverBegin();
+                    WorkGiver_Hunt(moverIdx);
+                    PhaseMoverEnd(moverIdx, rs);
+                }
+                free(idleCopy);
+            }
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2e_Clothing(void) {
+    {
+        // Quick pre-check: any unreserved clothing items on ground/stockpile?
+        bool anyClothing = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (!ItemIsClothing(items[i].type)) continue;
+            if (items[i].reservedBy >= 0) continue;
+            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+            anyClothing = true;
+            break;
+        }
+        if (anyClothing) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_EquipClothing(moverIdx);
+                }
+                free(idleCopy);
+            }
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2f_WaterPot(void) {
+    if (thirstEnabled) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_FillWaterPot(moverIdx);
+            }
+            free(idleCopy);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P5_Farming(void) {
+    if (farmActiveCells > 0) {
+        RebuildFarmWorkCache();
+
+        // Pre-check: any unreserved water items? (one scan, shared across all movers)
+        bool anyWaterItems = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (items[i].type != ITEM_WATER) continue;
+            if (items[i].reservedBy != -1) continue;
+            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+            anyWaterItems = true;
+            break;
+        }
+
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                if (PhaseMoverSkip(moverIdx)) continue;
+                bool rs = PhaseMoverBegin();
+                int jobId = WorkGiver_HarvestCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_PlantCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_TendCrop(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
+                if (jobId < 0 && anyWaterItems) jobId = WorkGiver_WaterCrop(moverIdx);
+                (void)jobId;
+                PhaseMoverEnd(moverIdx, rs);
+            }
+            free(idleCopy);
+        }
+    }
+}
+
+// =============================================================================
+// Distance bands (jobDistanceWeight > 0)
+// =============================================================================
+// Job score = priority - distance * weight. Each phase has a priority level
+// (0 = most urgent); one level is worth band = 1 / weight cells of walking, so a
+// job costs level * band + distance. To hand out jobs cheapest first without
+// changing the phases, they run in rounds with a growing threshold T: a phase at
+// level k may only match a mover and a job at most T - k * band cells apart
+// (JobInRange). A phase that turned nothing down for range is done for the frame.
+// Self-care phases (clothing, water pot) have no level: no limit, first round.
+// The rounds stop when every phase is done or nobody is idle; T grows by a band
+// per round, and by a quarter of itself once that is more, so far work takes
+// few rounds. weight 0 never comes here: AssignJobs runs the phases once in order.
+static bool (*bandTypeMatHasStockpile)[MAT_COUNT];
+static bool bandAnyTypeHasSlot;
+static void AssignJobs_P3_ItemHaulBand(void) {
+    if (bandAnyTypeHasSlot) AssignJobs_P3_ItemHaul(bandTypeMatHasStockpile);
+}
+
+typedef struct {
+    void (*run)(void);
+    int level;          // priority level, -1 = no distance limit
+    const char* name;   // profiler section (time summed over the rounds)
+} JobPhase;
+
+static const JobPhase jobPhases[] = {
+    {AssignJobs_P1_StockpileMaintenance, 0, "Band_P1_Maintenance"},
+    {AssignJobs_P2_Crafting,             1, "Band_P2_Crafting"},
+    {AssignJobs_P2b_PassiveDelivery,     1, "Band_P2b_PassiveDelivery"},
+    {AssignJobs_P2c_Ignition,            1, "Band_P2c_Ignition"},
+    {AssignJobs_P2d_Hunt,                2, "Band_P2d_Hunt"},
+    {AssignJobs_P2e_Clothing,           -1, "Band_P2e_Clothing"},
+    {AssignJobs_P2f_WaterPot,           -1, "Band_P2f_WaterPot"},
+    {AssignJobs_P3_ItemHaulBand,         3, "Band_P3_ItemHaul"},
+    {AssignJobs_P3c_Rehaul,              3, "Band_P3c_Rehaul"},
+    {AssignJobs_P3e_ContainerCleanup,    3, "Band_P3e_ContainerCleanup"},
+    {AssignJobs_P3d_Consolidate,         3, "Band_P3d_Consolidate"},
+    {AssignJobs_P4_Designations,         4, "Band_P4_Designations"},
+    {AssignJobs_P5_Farming,              5, "Band_P5_Farming"},
+};
+#define JOB_PHASE_COUNT ((int)(sizeof(jobPhases) / sizeof(jobPhases[0])))
+#define JOB_PHASE_MAX_LEVEL 5
+#define JOB_BAND_MAX_ROUNDS 64
+
+__attribute__((noinline))
+static void AssignJobs_DistanceBands(bool typeMatHasStockpile[][MAT_COUNT], bool anyTypeHasSlot) {
+    bandTypeMatHasStockpile = typeMatHasStockpile;
+    bandAnyTypeHasSlot = anyTypeHasSlot;
+    for (int i = 0; i < idleMoverCount; i++) jobPhaseMoverDone[idleMoverList[i]] = 0;
+    jobBandFrame++;   // forget last frame's item -> hauler distances
+    if (jobBandFrame == 0) { memset(itemHaulerStamp, 0, sizeof(itemHaulerStamp)); jobBandFrame = 1; }
+
+    float band = 1.0f / jobDistanceWeight;                         // cells per priority level
+    float farthest = (float)(gridWidth + gridHeight + gridDepth);   // no match is farther apart
+    float lastT = JOB_PHASE_MAX_LEVEL * band + farthest;            // from here nothing is out of range
+    bool done[JOB_PHASE_COUNT] = {false};
+    float T = band;
+    int rounds = 0;
+
+    while (idleMoverCount > 0) {
+        rounds++;
+        bool last = (T >= lastT) || rounds >= JOB_BAND_MAX_ROUNDS;
+        bool anyLeft = false;
+        for (int p = 0; p < JOB_PHASE_COUNT && idleMoverCount > 0; p++) {
+            if (done[p]) continue;
+            int level = jobPhases[p].level;
+            float limit = -1.0f;   // no limit
+            if (level >= 0 && !last) {
+                limit = T - (float)level * band;
+                if (limit <= 0.0f) { anyLeft = true; continue; }   // its first band is still ahead
+            }
+            jobRangeLimit = limit;
+            jobRangeSkipped = false;
+            jobPhaseBit = (uint16_t)(1u << p);
+#if PROFILER_ENABLED
+            ProfileAccumBegin(jobPhases[p].name);
+#endif
+            jobPhases[p].run();
+#if PROFILER_ENABLED
+            ProfileAccumEnd(jobPhases[p].name);
+#endif
+            if (jobRangeSkipped) anyLeft = true;
+            else done[p] = true;
+        }
+        if (!anyLeft || last) break;
+        T += fmaxf(band, T * 0.25f);
+    }
+    jobRangeLimit = -1.0f;
+    jobRangeSkipped = false;
+    jobPhaseBit = 0;
+    PROFILE_COUNT(job_band_rounds, rounds);
 }
 
 void AssignJobs(void) {
@@ -4418,6 +4750,14 @@ void AssignJobs(void) {
     PROFILE_COUNT(cache_rebuilds, 1);
     PROFILE_END(Jobs_CacheRebuild);
 
+    // Distance against priority: run the phases in distance bands instead
+    if (jobDistanceWeight > 0.0f) {
+        PROFILE_BEGIN(Jobs_DistanceBands);
+        AssignJobs_DistanceBands(typeMatHasStockpile, anyTypeHasSlot);
+        PROFILE_END(Jobs_DistanceBands);
+        return;
+    }
+
     PROFILE_BEGIN(Jobs_P1_Maintenance);
     AssignJobs_P1_StockpileMaintenance();
     PROFILE_END(Jobs_P1_Maintenance);
@@ -4438,78 +4778,18 @@ void AssignJobs(void) {
     PROFILE_END(Jobs_P2c_Ignition);
     if (idleMoverCount == 0) return;
 
-    // Priority 2d: Hunting (between crafting and hauling)
     PROFILE_BEGIN(Jobs_P2d_Hunt);
-    {
-        bool anyMarked = false;
-        for (int i = 0; i < animalCount; i++) {
-            if (animals[i].active && animals[i].markedForHunt && animals[i].reservedByHunter < 0) {
-                anyMarked = true;
-                break;
-            }
-        }
-        if (anyMarked) {
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (idleCopy) {
-                int idleCopyCount = idleMoverCount;
-                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                    int moverIdx = idleCopy[i];
-                    if (!moverIsInIdleList[moverIdx]) continue;
-                    WorkGiver_Hunt(moverIdx);
-                }
-                free(idleCopy);
-            }
-        }
-    }
+    AssignJobs_P2d_Hunt();
     PROFILE_END(Jobs_P2d_Hunt);
     if (idleMoverCount == 0) return;
 
-    // Priority 2e: Equip clothing (between hunting and hauling)
     PROFILE_BEGIN(Jobs_P2e_Clothing);
-    {
-        // Quick pre-check: any unreserved clothing items on ground/stockpile?
-        bool anyClothing = false;
-        for (int i = 0; i < itemHighWaterMark; i++) {
-            if (!items[i].active) continue;
-            if (!ItemIsClothing(items[i].type)) continue;
-            if (items[i].reservedBy >= 0) continue;
-            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
-            anyClothing = true;
-            break;
-        }
-        if (anyClothing) {
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (idleCopy) {
-                int idleCopyCount = idleMoverCount;
-                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                    int moverIdx = idleCopy[i];
-                    if (!moverIsInIdleList[moverIdx]) continue;
-                    WorkGiver_EquipClothing(moverIdx);
-                }
-                free(idleCopy);
-            }
-        }
-    }
+    AssignJobs_P2e_Clothing();
     PROFILE_END(Jobs_P2e_Clothing);
     if (idleMoverCount == 0) return;
 
-    // Priority 2f: Fill water pots (between equipping and hauling)
     PROFILE_BEGIN(Jobs_P2f_WaterPot);
-    if (thirstEnabled) {
-        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-        if (idleCopy) {
-            int idleCopyCount = idleMoverCount;
-            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                int moverIdx = idleCopy[i];
-                if (!moverIsInIdleList[moverIdx]) continue;
-                WorkGiver_FillWaterPot(moverIdx);
-            }
-            free(idleCopy);
-        }
-    }
+    AssignJobs_P2f_WaterPot();
     PROFILE_END(Jobs_P2f_WaterPot);
     if (idleMoverCount == 0) return;
 
@@ -4542,37 +4822,7 @@ void AssignJobs(void) {
 
     // Priority 5: Farm work (harvest ripe > plant > tend weeds > fertilize)
     PROFILE_BEGIN(Jobs_P5_Farming);
-    if (farmActiveCells > 0) {
-        RebuildFarmWorkCache();
-
-        // Pre-check: any unreserved water items? (one scan, shared across all movers)
-        bool anyWaterItems = false;
-        for (int i = 0; i < itemHighWaterMark; i++) {
-            if (!items[i].active) continue;
-            if (items[i].type != ITEM_WATER) continue;
-            if (items[i].reservedBy != -1) continue;
-            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
-            anyWaterItems = true;
-            break;
-        }
-
-        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-        if (idleCopy) {
-            int idleCopyCount = idleMoverCount;
-            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                int moverIdx = idleCopy[i];
-                if (!moverIsInIdleList[moverIdx]) continue;
-                int jobId = WorkGiver_HarvestCrop(moverIdx);
-                if (jobId < 0) jobId = WorkGiver_PlantCrop(moverIdx);
-                if (jobId < 0) jobId = WorkGiver_TendCrop(moverIdx);
-                if (jobId < 0) jobId = WorkGiver_Fertilize(moverIdx);
-                if (jobId < 0 && anyWaterItems) jobId = WorkGiver_WaterCrop(moverIdx);
-                (void)jobId;
-            }
-            free(idleCopy);
-        }
-    }
+    AssignJobs_P5_Farming();
     PROFILE_END(Jobs_P5_Farming);
 }
 
@@ -4801,6 +5051,7 @@ static int WorkGiver_KnapDesignation(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Find nearest available ITEM_ROCK
     int bestItemIdx = -1;
@@ -4928,6 +5179,7 @@ static int WorkGiver_DigRootsDesignation(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
     Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
@@ -4999,6 +5251,7 @@ static int WorkGiver_ExploreDesignation(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // No pathfinding reachability check — walking blind is the whole point
     int jobId = CreateJob(JOBTYPE_EXPLORE);
@@ -5056,6 +5309,7 @@ static int WorkGiver_TillDesignation(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
     Point desigCell = { bestX, bestY, bestZ };
@@ -5209,6 +5463,7 @@ int WorkGiver_TendCrop(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     // Check no other mover is already tending this cell
     for (int i = 0; i < activeJobCount; i++) {
@@ -5284,6 +5539,7 @@ int WorkGiver_Fertilize(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     // Check no other mover is already fertilizing this cell
     for (int i = 0; i < activeJobCount; i++) {
@@ -5344,6 +5600,7 @@ int WorkGiver_WaterCrop(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     // Check no other mover is already watering this cell (cheap)
     for (int i = 0; i < activeJobCount; i++) {
@@ -5427,6 +5684,7 @@ int WorkGiver_PlantCrop(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     // Check no other mover is already planting this cell
     for (int i = 0; i < activeJobCount; i++) {
@@ -5509,6 +5767,7 @@ int WorkGiver_HarvestCrop(int moverIdx) {
         }
     }
     if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
 
     // Check no other mover is already harvesting this cell
     for (int i = 0; i < activeJobCount; i++) {
@@ -5570,6 +5829,7 @@ int WorkGiver_DeconstructWorkshop(int moverIdx) {
     }
 
     if (bestWsIdx < 0) return -1;
+    if (!JobInRange(moverIdx, workshops[bestWsIdx].workTileX, workshops[bestWsIdx].workTileY, workshops[bestWsIdx].z)) return -1;
 
     Workshop* ws = &workshops[bestWsIdx];
 
@@ -5636,6 +5896,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
         if (!workshopDefs[ws->type].passive) continue;
         if (ws->passiveReady) continue;  // Skip workshops that are already burning
         if (ws->billCount == 0) continue;
+        if (!JobInRange(moverIdx, ws->workTileX, ws->workTileY, ws->z)) continue;
 
         // Find first runnable, non-suspended bill
         int billIdx = -1;
@@ -5778,6 +6039,7 @@ int WorkGiver_IgniteWorkshop(int moverIdx) {
         if (ws->passiveReady) continue;           // Already ignited
         if (ws->assignedCrafter >= 0) continue;   // Someone already assigned
         if (ws->billCount == 0) continue;
+        if (!JobInRange(moverIdx, ws->workTileX, ws->workTileY, ws->z)) continue;
 
         // Find first runnable, non-suspended bill
         int billIdx = -1;
@@ -5888,6 +6150,7 @@ int WorkGiver_GatherSapling(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -5963,6 +6226,7 @@ int WorkGiver_PlantSapling(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Find nearest available sapling item
     int bestItemIdx = -1;
@@ -6086,6 +6350,7 @@ int WorkGiver_GatherGrass(int moverIdx) {
         }
         return -1;
     }
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -6159,6 +6424,7 @@ int WorkGiver_GatherReeds(int moverIdx) {
     if (bestDesigX < 0) {
         return -1;
     }
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -6229,6 +6495,7 @@ int WorkGiver_HarvestBerry(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
     Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
@@ -6298,6 +6565,7 @@ int WorkGiver_GatherTree(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -6366,6 +6634,7 @@ static int WorkGiver_CleanDesignation(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -6435,6 +6704,7 @@ int WorkGiver_Craft(int moverIdx) {
         if (!ws->active) continue;
         if (workshopDefs[ws->type].passive) continue;  // Passive workshops don't use crafters
         if (ws->assignedCrafter >= 0) continue;  // Already has crafter
+        if (!JobInRange(moverIdx, ws->workTileX, ws->workTileY, ws->z)) continue;
 
         // Find first non-suspended bill that can run
         for (int b = 0; b < ws->billCount; b++) {
@@ -6989,6 +7259,7 @@ int WorkGiver_Mining(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // If second-pass result, find a tool for it
     int neededToolIdx = -1;
@@ -7093,6 +7364,7 @@ int WorkGiver_Channel(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // If second-pass result, find a tool for it
     int neededToolIdx = -1;
@@ -7204,6 +7476,7 @@ int WorkGiver_DigRamp(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // If second-pass result, find a tool for it
     int neededToolIdx = -1;
@@ -7302,6 +7575,7 @@ int WorkGiver_RemoveFloor(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability - mover walks TO the tile
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -7385,6 +7659,7 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability - try all adjacent walkable tiles until we find one with a valid path
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -7472,6 +7747,7 @@ int WorkGiver_Chop(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     // Check reachability
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
@@ -7571,6 +7847,7 @@ int WorkGiver_ChopFelled(int moverIdx) {
     }
 
     if (bestDesigX < 0) return -1;
+    if (!JobInRange(moverIdx, bestDesigX, bestDesigY, bestDesigZ)) return -1;
 
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
     if (!FindReachableAdjacentTile(bestDesigX, bestDesigY, bestDesigZ, moverCell, &bestAdjX, &bestAdjY)) {
@@ -7647,6 +7924,7 @@ int WorkGiver_Build(int moverIdx) {
     }
 
     if (bestBpIdx < 0) return -1;
+    if (!JobInRange(moverIdx, blueprints[bestBpIdx].x, blueprints[bestBpIdx].y, blueprints[bestBpIdx].z)) return -1;
 
     Blueprint* bp = &blueprints[bestBpIdx];
 
@@ -7753,6 +8031,7 @@ int WorkGiver_BlueprintClear(int moverIdx) {
         }
 
         if (foundItem < 0) continue;  // all items reserved, skip
+        if (!JobInRange(moverIdx, bp->x, bp->y, bp->z)) continue;
 
         // Find stockpile for this item, or safe-drop
         uint8_t mat = ResolveItemMaterialForJobs(&items[foundItem]);
@@ -7969,10 +8248,12 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     // Blueprint-driven: for each blueprint needing materials, find a matching item
     int bestBpIdx = -1;
     int bestItemIdx = -1;
+    bool anyOutOfRange = false;   // distance band: not exhausted, just too far
 
     for (int ci = 0; ci < bpCacheNeedsMaterialsCount; ci++) {
         int bpIdx = bpCacheNeedsMaterials[ci];
         Blueprint* bp = &blueprints[bpIdx];
+        if (!JobInRange(moverIdx, bp->x, bp->y, bp->z)) { anyOutOfRange = true; continue; }
 
         // Find an unfilled slot, then find a matching item
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
@@ -8004,7 +8285,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     if (bestBpIdx < 0 || bestItemIdx < 0) {
         // No items found for any blueprint — subsequent movers won't find any either
         // (items only get reserved, never spawned, during the assignment loop)
-        bpHaulItemsExhausted = true;
+        if (!anyOutOfRange) bpHaulItemsExhausted = true;
         return -1;
     }
 
@@ -8116,6 +8397,7 @@ int WorkGiver_Hunt(int moverIdx) {
     }
 
     if (bestIdx < 0) return -1;
+    if (!JobInRange(moverIdx, (int)(animals[bestIdx].x / CELL_SIZE), (int)(animals[bestIdx].y / CELL_SIZE), (int)animals[bestIdx].z)) return -1;
 
     Animal* target = &animals[bestIdx];
 

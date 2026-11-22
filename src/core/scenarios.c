@@ -351,6 +351,124 @@ static void SetupTrainLong(void) {
 }
 
 // ---------------------------------------------------------------------------
+// worksplit: two clusters of work far apart (job distance weighting)
+// ---------------------------------------------------------------------------
+// West cluster A: logs on the ground + a log stockpile (hauling). East cluster B:
+// stone walls designated for mining (rocks stay where they fall: no stockpile takes
+// rocks). Half the movers start at each cluster. Hauling outranks mining, so with
+// jobDistanceWeight 0 the B movers walk west to haul first; with a weight > 0 they
+// should mine at home. Stats: distance walked and job starts in the other cluster.
+// Default 2+2 movers, 15 jobs per mover; scenarioMovers / scenarioSize scale it up.
+static float wsPrevX[MAX_MOVERS], wsPrevY[MAX_MOVERS];
+static int wsPrevJob[MAX_MOVERS];
+static bool wsHomeWest[MAX_MOVERS];
+static double wsWalked, wsWalkedBusy;
+static int wsJobStarts, wsCrossStarts, wsAwayStarts, wsLastBusyTick, wsTicks;
+
+static void SetupWorkSplit(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    int perSide = scenarioMovers > 0 ? (scenarioMovers + 1) / 2 : 2;
+    int jobs = perSide * 15;
+    int cy = gridHeight / 2;
+    int ax = gridWidth / 8, bx = gridWidth - gridWidth / 8;   // cluster centres
+
+    // A: log stockpile(s) next to the centre, logs scattered around it
+    int spW = 8, spH = 8, made = 0;
+    for (int k = 0; made < jobs && k < 16; k++) {
+        int sp = CreateStockpile(ax - 4 + (k % 2) * 9, cy - 12 + (k / 2) * 9 + 8, 1, spW, spH);
+        if (sp < 0) break;
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_LOG);
+        made += spW * spH * stockpiles[sp].maxStackSize;
+    }
+    for (int i = 0, tries = 0; i < jobs && tries < jobs * 50; tries++) {
+        int x = ax + GetRandomValue(-12, 12), y = cy + GetRandomValue(-12, 12);
+        if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+        if (IsPositionInStockpile(x * CELL_SIZE + 4, y * CELL_SIZE + 4, 1, NULL)) continue;
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_LOG);
+        i++;
+    }
+
+    // B: single stone walls on even cells (every wall has open neighbours), designated
+    for (int i = 0, x = bx - 12, y = cy - 6; i < jobs && y < gridHeight; ) {
+        if (x >= 0 && x < gridWidth && y >= 0) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+            DesignateMine(x, y, 1);
+            i++;
+        }
+        x += 2;
+        if (x > bx + 12) { x = bx - 12; y += 2; }
+    }
+    BuildEntrances();
+    BuildGraph();
+
+    for (int i = 0; i < perSide; i++) {
+        SpawnMoverAt(ax + (i % 5) - 2, cy + 7 + i / 5, 1);
+        SpawnMoverAt(bx + (i % 5) - 2, cy + 7 + i / 5, 1);
+    }
+    for (int i = 0; i < MAX_MOVERS; i++) {
+        wsPrevX[i] = i < moverCount ? movers[i].x : 0;
+        wsPrevY[i] = i < moverCount ? movers[i].y : 0;
+        wsPrevJob[i] = -1;
+        wsHomeWest[i] = i < moverCount && movers[i].x / CELL_SIZE < gridWidth / 2;
+    }
+    wsWalked = wsWalkedBusy = 0;
+    wsJobStarts = wsCrossStarts = wsAwayStarts = wsLastBusyTick = wsTicks = 0;
+    currentViewZ = 1;
+    AddMessage(TextFormat("Work split: %d movers, %d logs to haul west, %d walls to mine east",
+                          moverCount, jobs, jobs), GREEN);
+}
+
+// Cell where a job starts (what the mover walks to first), -1 if unknown
+static int WorkSplitJobStartX(const Job* job) {
+    if (job->targetItem >= 0 && items[job->targetItem].active) return (int)(items[job->targetItem].x / CELL_SIZE);
+    if (job->targetMineX >= 0) return job->targetMineX;
+    return -1;
+}
+
+static void WorkSplitTickStats(void) {
+    wsTicks++;
+    bool busy = false;
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        float dx = m->x - wsPrevX[i], dy = m->y - wsPrevY[i];
+        float step = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+        wsWalked += step;
+        if (m->currentJobId >= 0) wsWalkedBusy += step;
+        wsPrevX[i] = m->x; wsPrevY[i] = m->y;
+        if (m->currentJobId >= 0) busy = true;
+        if (m->currentJobId >= 0 && m->currentJobId != wsPrevJob[i]) {
+            Job* job = GetJob(m->currentJobId);
+            int tx = job ? WorkSplitJobStartX(job) : -1;
+            if (tx >= 0) {
+                wsJobStarts++;
+                bool moverWest = m->x / CELL_SIZE < gridWidth / 2, jobWest = tx < gridWidth / 2;
+                if (moverWest != jobWest) wsCrossStarts++;
+                if (wsHomeWest[i] != jobWest) wsAwayStarts++;
+            }
+        }
+        wsPrevJob[i] = m->currentJobId;
+    }
+    if (busy) wsLastBusyTick = wsTicks;
+}
+
+static void WorkSplitPrintStats(void) {
+    int logsLeft = 0, wallsLeft = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_LOG && items[i].state != ITEM_IN_STOCKPILE) logsLeft++;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (DESIGNATION(x, y, z).type == DESIGNATION_MINE) wallsLeft++;
+    printf("Job distance weight: %.3f\n", jobDistanceWeight);
+    printf("Walked (cells, all movers): %.0f, of that with a job: %.0f\n", wsWalked, wsWalkedBusy);
+    printf("Job starts: %d, in the other cluster: %d, away from home cluster: %d\n",
+           wsJobStarts, wsCrossStarts, wsAwayStarts);
+    printf("Last tick with a job: %d; logs not stored: %d, walls left: %d\n", wsLastBusyTick, logsLeft, wallsLeft);
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -521,6 +639,8 @@ static const Scenario scenarios[] = {
                    "HillsSoilsWater", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
+    {"worksplit",  "Haul work west, mine work east, movers at both: compare jobDistanceWeight 0 vs > 0",
+                   NULL,        SetupWorkSplit, WorkSplitTickStats, WorkSplitPrintStats, NULL, 48, 40},
     {"train-double", "Double track (one per direction), platforms on both sides, 3 stops, 32 movers",
                    NULL,        SetupTrainDouble, NULL, TrainDoublePrintStats, NULL, 240, 24},
 };

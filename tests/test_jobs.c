@@ -14588,6 +14588,105 @@ describe(construction_cancellation) {
     }
 }
 
+// =============================================================================
+// Job distance weighting (setting jobDistanceWeight): distance counts against
+// the phase priority. Layout: a mover at (0,0) next to a wall designated for
+// mining (1,1); an item to haul 30 cells east with a stockpile further east.
+// Hauling outranks mining by one level.
+// =============================================================================
+static void SetupDistanceWeightWorld(bool withMine, int itemX) {
+    InitTestGridFromAscii(
+        "........................................\n"
+        ".#......................................\n"
+        "........................................\n");
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    InitDesignations();
+    if (withMine) DesignateMine(1, 1, 0);
+
+    Point goal = {0, 0, 0};
+    InitMover(&movers[0], 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+    moverCount = 1;
+
+    SpawnItem(itemX * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+    int spIdx = CreateStockpile(36, 0, 0, 1, 1);
+    SetStockpileFilter(spIdx, ITEM_RED, true);
+}
+
+describe(job_distance_weighting) {
+    it("weight 0 keeps strict priority: the far haul beats the mine job next door") {
+        jobDistanceWeight = 0.0f;
+        SetupDistanceWeightWorld(true, 30);
+        AssignJobs();
+        expect(MoverIsMovingToPickup(&movers[0]));
+        expect(MoverGetTargetItem(&movers[0]) == 0);
+    }
+
+    it("weight > 0: the mine job next door beats the haul 30 cells away") {
+        jobDistanceWeight = 0.2f;   // one level = 5 cells: haul 15+30, mine 20+1.4
+        SetupDistanceWeightWorld(true, 30);
+        AssignJobs();
+        expect(MoverHasMineJob(&movers[0]));
+        expect(items[0].reservedBy == -1);
+        expect(items[0].unreachableCooldown == 0.0f);   // skipped for range, not marked unreachable
+        jobDistanceWeight = 0.0f;
+    }
+
+    it("weight > 0: far work is still taken when there is nothing closer") {
+        jobDistanceWeight = 0.2f;
+        SetupDistanceWeightWorld(false, 30);
+        AssignJobs();
+        expect(MoverIsMovingToPickup(&movers[0]));
+        expect(MoverGetTargetItem(&movers[0]) == 0);
+        jobDistanceWeight = 0.0f;
+    }
+
+    it("weight > 0: a near haul still beats the mine job (higher level, about as close)") {
+        jobDistanceWeight = 0.2f;
+        SetupDistanceWeightWorld(true, 3);
+        AssignJobs();
+        expect(MoverIsMovingToPickup(&movers[0]));
+        jobDistanceWeight = 0.0f;
+    }
+
+    it("a small weight lets urgent work pull from far away") {
+        jobDistanceWeight = 0.01f;   // one level = 100 cells: 30 cells is not enough to flip it
+        SetupDistanceWeightWorld(true, 30);
+        AssignJobs();
+        expect(MoverIsMovingToPickup(&movers[0]));
+        jobDistanceWeight = 0.0f;
+    }
+
+    it("stockpile maintenance skipped for range does not mark the item unreachable") {
+        jobDistanceWeight = 0.2f;
+        SetupDistanceWeightWorld(true, 30);
+        // The item lies on a stockpile that does not accept it: maintenance (level 0)
+        // wants it moved, but 30 cells is more than 4 levels (20 cells) away
+        DeleteItem(0);
+        int spBad = CreateStockpile(30, 2, 0, 1, 1);
+        SetStockpileFilter(spBad, ITEM_RED, false);
+        int it = SpawnItem(30 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        AssignJobs();
+        expect(MoverHasMineJob(&movers[0]));
+        expect(items[it].unreachableCooldown == 0.0f);
+        jobDistanceWeight = 0.0f;
+    }
+
+    it("of two movers, the one next to the job takes it, the other one takes its own") {
+        jobDistanceWeight = 0.2f;
+        SetupDistanceWeightWorld(true, 30);
+        Point goal = {31, 2, 0};
+        InitMover(&movers[1], 31 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 2;
+        AssignJobs();
+        expect(MoverHasMineJob(&movers[0]));
+        expect(MoverIsMovingToPickup(&movers[1]));
+        jobDistanceWeight = 0.0f;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -14747,6 +14846,9 @@ int main(int argc, char* argv[]) {
 
     // Construction recipe system (Phase 6 - cancellation + lossy refund)
     test(construction_cancellation);
+
+    // Distance against priority in job assignment
+    test(job_distance_weighting);
     
     return summary();
 }

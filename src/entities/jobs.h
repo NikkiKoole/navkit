@@ -243,6 +243,10 @@ JobRunResult RunJob_GatherReeds(Job* job, void* mover, float dt);
 // Idle mover cache - maintained incrementally instead of scanning all movers
 extern int* idleMoverList;      // Array of mover indices that are idle
 extern int idleMoverCount;      // Number of idle movers
+
+// Distance against priority in AssignJobs: priority levels per cell (0 = strict
+// priority order, the old behaviour). See AssignJobs in jobs.c.
+extern float jobDistanceWeight;
 extern bool* moverIsInIdleList; // Quick lookup: is mover in idle list?
 
 // Initialize/free the job system caches
