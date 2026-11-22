@@ -333,11 +333,64 @@ describe(starvation_wakes_sleeper) {
         movers[mi].hunger = 0.05f;  // starving threshold
         movers[mi].freetimeState = FREETIME_RESTING;
         movers[mi].needTarget = -1;
+        SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_BERRIES);
 
         SimNeedsTick();
 
         // Player expects: mover wakes up — starvation overrides sleep
         expect(movers[mi].freetimeState != FREETIME_RESTING);
+    }
+
+    it("a dehydrating sleeper gets up to drink, or sleeps on when there is nothing to drink") {
+        bool wasThirst = thirstEnabled;
+        for (int k = 0; k < 2; k++) {
+            SetupClean();
+            thirstEnabled = true;
+            int mi = SetupMover(5, 5);
+            movers[mi].energy = 0.3f;
+            movers[mi].hunger = 1.0f;
+            movers[mi].thirst = balance.thirstCriticalThreshold - 0.01f;
+            movers[mi].freetimeState = FREETIME_RESTING;
+            movers[mi].needTarget = -1;
+            if (k == 0) SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+            SimNeedsTick();
+            if (k == 0) {
+                expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+            } else {
+                for (int i = 0; i < 300; i++) { movers[mi].hunger = 1.0f; SimNeedsTick(); }
+                expect(movers[mi].freetimeState == FREETIME_RESTING || movers[mi].freetimeState == FREETIME_SEEKING_REST);
+            }
+        }
+        thirstEnabled = wasThirst;
+    }
+
+    it("a starving AND dehydrating sleeper with no food still gets up to drink") {
+        SetupClean();
+        bool wasThirst = thirstEnabled;
+        thirstEnabled = true;
+        int mi = SetupMover(5, 5);
+        movers[mi].energy = 0.3f;
+        movers[mi].hunger = 0.0f;
+        movers[mi].thirst = balance.thirstCriticalThreshold - 0.01f;
+        movers[mi].freetimeState = FREETIME_RESTING;
+        movers[mi].needTarget = -1;
+        SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        SimNeedsTick();
+        thirstEnabled = wasThirst;
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+    }
+
+    it("a starving sleeper with no food anywhere sleeps on") {
+        SetupClean();
+        int mi = SetupMover(5, 5);
+        movers[mi].energy = 0.3f;
+        movers[mi].hunger = 0.05f;
+        movers[mi].freetimeState = FREETIME_RESTING;
+        movers[mi].needTarget = -1;
+        for (int i = 0; i < 300; i++) SimNeedsTick();
+        // Bug: it was woken every tick (nothing to eat), lay down again and never rested
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+        expect(movers[mi].energy > 0.3f);
     }
 
     it("a sleeping mover who is merely hungry stays asleep") {
@@ -592,6 +645,33 @@ describe(furniture_rest_seeking) {
         dayLength = 60.0f;
     }
 
+    it("an exhausted mover whose walk to the bed failed lies down where it is") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        int fi = SpawnFurniture(8, 8, 1, FURNITURE_PLANK_BED, 0);
+        movers[mi].energy = balance.energyExhaustedThreshold - 0.01f;
+        movers[mi].hunger = 1.0f;
+        SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_REST);
+        movers[mi].needProgress = GameHoursToGameSeconds(balance.restSeekTimeoutGH) + 1.0f;   // never got there
+        SimNeedsTick();   // gives up on the bed and, in the same tick, lies down
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+        expect(movers[mi].needTarget == -1);   // on the ground, not the same bed again
+        expect(furniture[fi].occupant == -1);
+    }
+
+    it("an exhausted mover goes to its bed even while another search is cooling down") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        int fi = SpawnFurniture(8, 8, 1, FURNITURE_PLANK_BED, 0);
+        movers[mi].energy = balance.energyExhaustedThreshold - 0.01f;
+        movers[mi].hunger = 1.0f;
+        movers[mi].needSearchCooldown = 10.0f;   // e.g. a food search found nothing
+        SimNeedsTick();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_REST);
+        expect(movers[mi].needTarget == fi);
+    }
+
     it("a leaf pile rests slower than a bed but faster than the ground") {
         expect(FurnitureRecoveryPerGH(FURNITURE_PLANK_BED) == balance.bedRecoveryPerGH);
         expect(FurnitureRecoveryPerGH(FURNITURE_LEAF_PILE) < balance.bedRecoveryPerGH);
@@ -633,6 +713,7 @@ describe(furniture_rest_seeking) {
         furniture[fi].occupant = mi;
         movers[mi].freetimeState = FREETIME_RESTING;
         movers[mi].needTarget = fi;
+        SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_BERRIES);
 
         SimNeedsTick();
 

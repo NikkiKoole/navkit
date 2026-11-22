@@ -802,6 +802,44 @@ static void GiveFakeHaulJob(int mi) {
 // Bug: a critical need dropped the job every tick even while its search was on cooldown;
 // AssignJobs gave the job back, so the mover stood still taking and losing a job each tick.
 describe(critical_need_search_cooldown) {
+    it("a starving mover with no food anywhere still goes to drink when dehydrating") {
+        SetupClean();
+        bool wasThirst = thirstEnabled;
+        thirstEnabled = true;
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.0f;
+        movers[mi].thirst = balance.thirstCriticalThreshold - 0.01f;
+        SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        ProcessFreetimeNeeds();
+        thirstEnabled = wasThirst;
+        // Bug: the failed food search ended the chain and its cooldown blocked every later
+        // drink search, so a colony out of food also died of thirst.
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+    }
+
+    it("a starving mover with no food anywhere rests when tired") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.0f;
+        movers[mi].energy = balance.energyTiredThreshold - 0.01f;   // tired, not exhausted
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_RESTING || movers[mi].freetimeState == FREETIME_SEEKING_REST);
+    }
+
+    it("a starving mover with no food anywhere still sleeps when exhausted") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.0f;
+        movers[mi].energy = balance.energyExhaustedThreshold - 0.01f;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_RESTING || movers[mi].freetimeState == FREETIME_SEEKING_REST);
+        // and later, with the food search cooling down, still rests
+        movers[mi].freetimeState = FREETIME_NONE;
+        movers[mi].needSearchCooldown = 10.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+    }
+
     it("starving mover whose food search is on cooldown keeps its job") {
         SetupClean();
         ClearJobs();

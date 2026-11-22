@@ -402,6 +402,15 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
     return found;
 }
 
+// Is there anything to drink for this mover (a stored drink, any tap on its level, natural water)?
+static bool DrinkAvailable(const Mover* m) {
+    if (FindBestDrinkableItem(m->x, m->y, (int)m->z) >= 0) return true;
+    for (int i = 0; i < MAX_FURNITURE; i++)
+        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) return true;
+    int wx, wy, wz, sx, sy, sz;
+    return FindNearestWaterCell(m->x, m->y, (int)m->z, &wx, &wy, &wz, &sx, &sy, &sz);
+}
+
 static void StartDrinkSearch(Mover* m, int moverIdx) {
     // Try to find a drinkable item (in stockpile, container, or on ground)
     int itemIdx = FindBestDrinkableItem(m->x, m->y, (int)m->z);
@@ -471,7 +480,12 @@ static void StartDrinkSearch(Mover* m, int moverIdx) {
 }
 
 // Lie down and rest right here, on the ground.
+// The last walk to a bed failed (timed out or lost the bed): until a rest starts, an
+// exhausted mover lies down where it is rather than trying that bed again. Not saved.
+static bool restWalkFailed[MAX_MOVERS];
+
 static void StartGroundRest(Mover* m, int moverIdx) {
+    restWalkFailed[moverIdx] = false;
     EventLog("Mover %d RESTING on ground", moverIdx);
     m->freetimeState = FREETIME_RESTING;
     m->needTarget = -1;
@@ -551,10 +565,13 @@ static bool IsGoodDrink(ItemType type) {
 // job away anyway left the mover standing still, getting the job back from AssignJobs and
 // losing it again every tick (and critical needs reset the cooldown on every unassign, so
 // with no food around they also searched every item every tick).
-static void CriticalNeed(Mover* m, int moverIdx, void (*startSearch)(Mover*, int)) {
-    if (m->needSearchCooldown > 0.0f) return;
+// Returns true when the search started (the mover is on its way); false when it may not
+// search (cooldown) or found nothing, so the caller tries the next critical need.
+static bool CriticalNeed(Mover* m, int moverIdx, bool canSearch, void (*startSearch)(Mover*, int)) {
+    if (!canSearch) return false;
     if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
     startSearch(m, moverIdx);
+    return m->freetimeState != FREETIME_NONE;
 }
 
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
@@ -620,34 +637,49 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         case FREETIME_NONE: {
             // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
             //           hungry > thirsty > bladder > tired > chilly
-            if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold) {
+            // Critical needs, in that order. One whose search finds nothing (no food
+            // anywhere) falls through to the next in the same tick: a starving mover with
+            // no food must still drink and sleep. (Before, starving ended the chain, and the
+            // one shared search cooldown kept the drink search from ever running.)
+            bool starving    = hungerEnabled && m->hunger < balance.hungerCriticalThreshold;
+            bool dehydrating = thirstEnabled && m->thirst < balance.thirstCriticalThreshold;
+            bool desperate   = bladderEnabled && m->bladder < balance.bladderCriticalThreshold;
+            bool exhausted   = energyEnabled && m->energy < balance.energyExhaustedThreshold;
+            bool freezing    = bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold;
+            bool canSearch   = m->needSearchCooldown <= 0.0f;
+            bool handled     = false;
+            if (starving) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
-                bool jobProducesFood = false;
-                if (m->currentJobId >= 0) {
-                    JobType jt = jobs[m->currentJobId].type;
-                    jobProducesFood = (jt == JOBTYPE_HARVEST_BERRY);
-                }
-                if (!jobProducesFood) CriticalNeed(m, moverIdx, StartFoodSearch);
-            } else if (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) {
-                // DEHYDRATING — unassign job, seek drink urgently
-                CriticalNeed(m, moverIdx, StartDrinkSearch);
-            } else if (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) {
-                // DESPERATE — unassign job, seek toilet/bush urgently
-                CriticalNeed(m, moverIdx, StartBladderSearch);
-            } else if (energyEnabled && m->energy < balance.energyExhaustedThreshold) {
+                bool jobProducesFood = m->currentJobId >= 0 && jobs[m->currentJobId].type == JOBTYPE_HARVEST_BERRY;
+                if (jobProducesFood) handled = true;
+                else handled = CriticalNeed(m, moverIdx, canSearch, StartFoodSearch);
+            }
+            // DEHYDRATING / DESPERATE — unassign job, seek drink / toilet urgently
+            if (!handled && dehydrating) handled = CriticalNeed(m, moverIdx, canSearch, StartDrinkSearch);
+            if (!handled && desperate) handled = CriticalNeed(m, moverIdx, canSearch, StartBladderSearch);
+            if (!handled && exhausted) {
                 // EXHAUSTED — unassign job (preserves designation progress), seek rest. If the
-                // last rest search failed (cooldown, e.g. the bed was out of reach), the
-                // mover can't go on: it lies down where it stands.
-                if (m->needSearchCooldown > 0.0f) {
+                // last walk to a bed failed and the search is cooling down, the mover can't
+                // go on: it lies down where it stands. A cooldown from another search (no
+                // food) doesn't keep it from its bed.
+                if (!canSearch && restWalkFailed[moverIdx]) {
                     if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
                     StartGroundRest(m, moverIdx);
+                    handled = true;
                 } else {
-                    CriticalNeed(m, moverIdx, StartRestSearch);
+                    handled = CriticalNeed(m, moverIdx, true, StartRestSearch);
                 }
-            } else if (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold) {
-                // FREEZING — unassign job, seek warmth urgently
-                CriticalNeed(m, moverIdx, StartWarmthSearch);
+            }
+            // FREEZING — unassign job, seek warmth urgently
+            if (!handled && freezing) handled = CriticalNeed(m, moverIdx, canSearch, StartWarmthSearch);
+            // Nothing found for the critical needs (no food, nothing to drink): a tired mover
+            // without work rests rather than waiting awake for the next search.
+            if (!handled && (starving || dehydrating) && canSearch && energyEnabled &&
+                m->energy < balance.energyTiredThreshold && m->currentJobId < 0)
+                handled = CriticalNeed(m, moverIdx, true, StartRestSearch);
+            if (starving || dehydrating || desperate || exhausted || freezing) {
+                // a critical need is being handled or waits for its cooldown: nothing else
             } else if (hungerEnabled && m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
@@ -789,6 +821,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     m->freetimeState = FREETIME_NONE;
                     m->needTarget = -1;
                     m->needSearchCooldown = GameHoursToGameSeconds(balance.restSearchCooldownGH);
+                    restWalkFailed[moverIdx] = true;
                     break;
                 }
 
@@ -821,11 +854,13 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.restSearchCooldownGH);
+                restWalkFailed[moverIdx] = true;
             }
             break;
         }
 
         case FREETIME_RESTING: {
+            restWalkFailed[moverIdx] = false;
             // Reset stuck detector (mover is intentionally still)
             m->timeWithoutProgress = 0.0f;
 
@@ -857,12 +892,36 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 break;
             }
 
-            // Starvation interrupt: wake up to eat
-            if (m->hunger < balance.hungerCriticalThreshold) {
+            // Starvation interrupt: wake up to eat, if there is food to go to. With no food
+            // anywhere a starving sleeper used to be woken every tick and never rested
+            // again; now it sleeps on and looks again when the search cooldown is over.
+            bool canLook = m->needSearchCooldown <= 0.0f;   // as at the start of this tick
+            bool foodToEat = false;
+            if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold && canLook) {
+                foodToEat = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z) >= 0 ||
+                            FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0;
+            }
+            // Dehydrating wakes a sleeper the same way: only with something to drink
+            bool drinkToHave = false;
+            if (thirstEnabled && m->thirst < balance.thirstCriticalThreshold && canLook) {
+                drinkToHave = DrinkAvailable(m);
+            }
+            // Desperate bladder (there is always somewhere to go) and freezing wake a sleeper too
+            bool otherCritical = canLook &&
+                ((bladderEnabled && m->bladder < balance.bladderCriticalThreshold) ||
+                 (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold));
+            bool lookedInVain = canLook && !foodToEat && !drinkToHave &&
+                ((hungerEnabled && m->hunger < balance.hungerCriticalThreshold) ||
+                 (thirstEnabled && m->thirst < balance.thirstCriticalThreshold));
+            if (lookedInVain && !otherCritical) {
+                // nothing to eat or drink: sleep on, look again after the cooldown
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+            }
+            if (foodToEat || drinkToHave || otherCritical) {
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
-                // Next tick: hunger check will trigger SEEKING_FOOD
+                // ProcessFreetimeNeeds weighs the needs again this tick and sends it off
             }
             break;
         }
