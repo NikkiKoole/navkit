@@ -4,6 +4,39 @@
 
 Unified system for workshop crafting AND daily life activities. Extends [workshop-evolution-plan.md](../../todo/workshop-evolution-plan.md) with a concrete capability model that covers both job-driven production and need-driven survival.
 
+## Where we are (2026-11)
+
+**Built (dollhouse kitchen):** `capabilityGrid`, a 1-byte bitmask per cell with two flags
+(`CAP_PREP_SURFACE`, `CAP_WATER_SOURCE`, `src/entities/furniture.h`). 1x1 workshops (stove,
+counter) and furniture write it; a recipe's `requiredNearbyCapability` is checked in
+`ShouldBillRun()` with `HasNearbyCapability()` over a square of radius 8.
+
+**Not built yet:** everything below that makes it general. The recipe still belongs to a
+workshop (the bill hangs on the stove); the capability is only an extra condition. Gaps,
+in rough order:
+
+1. **Recipes not tied to a building** (Phase B): "where in the world can this recipe run?"
+2. **Levels**: on/off bits can't say heat 1 vs heat 3. Store a level per capability on the
+   def; the grid only marks "something here", or a byte per capability for the few that need levels.
+3. **World/cell providers**: shelter = no sky above (`IsExposedToSky`), a grate = heat, a
+   fountain = water. Not only furniture and workshops.
+4. **Nearby = reachable**, not a square: today a stove behind a wall counts. Cheap: same
+   room (`rooms.c`) or within N path steps.
+5. **Needs through the resolver** (Phase C), e.g. via the advertisement idea from the dollhouse.
+6. **Access filter**: owner / keys / opening hours; the resolver skips what this mover may not use.
+7. **A third driver next to jobs and needs: direct action** ("warm up at that grate",
+   "build a cardboard shelter here") for a single controlled character.
+8. **Exchange + queues**: coins as recipe input/output, a station service point in `service.c`.
+
+**Smallest proof:** levels + a cell provider for one capability, *heat*: a heating grate
+(cell) and a burning barrel (station) give heat 1; a cold mover walks to the nearest one.
+Tests 2, 3 and 5 without touching workshop code.
+
+The 1999 city game needs most of this: see
+[docs/vision/city-1999.md](../../vision/city-1999.md#stations-in-the-city).
+
+---
+
 ## Core Principle
 
 **Everything is possible with the right capabilities nearby.** No workshop gates — only capability level gates. A campfire provides `heat_source:1`, which is enough to cook food but not smelt iron (`heat_source:3`). This is physics, not an arbitrary building requirement. Workshops still "win" in practice because they cluster capabilities in one spot, giving them better spatial scores.
