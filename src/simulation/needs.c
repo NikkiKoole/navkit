@@ -1072,6 +1072,15 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     }
 }
 
+float MoverEnergyDrainPerGH(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+    if (m->bodyTemp < balance.moderateColdThreshold) drainPerGH *= balance.coldEnergyDrainMult;
+    Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+    if (job && job->carryingItem >= 0) drainPerGH *= balance.carryingEnergyMult;
+    return drainPerGH;
+}
+
 void ProcessFreetimeNeeds(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];

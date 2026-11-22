@@ -28,6 +28,7 @@
 #include "../world/material.h"
 #include "../simulation/balance.h"
 #include "../simulation/mood.h"
+#include "../simulation/needs.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -114,7 +115,7 @@ static bool ValidFurniture(int idx) {
     return idx >= 0 && idx < MAX_FURNITURE && furniture[idx].active;
 }
 
-static void DescribeMoverNeeds(const Mover* m, const Job* job, DescLines* d) {
+static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
     DescTone tone;
 
     // Hunger
@@ -169,7 +170,7 @@ static void DescribeMoverNeeds(const Mover* m, const Job* job, DescLines* d) {
                 if (hoursToRested > 0) snprintf(proj, sizeof(proj), " — rested in %.1fh (%s)", hoursToRested, restOn);
             }
         } else {
-            float drainPerGH = job ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+            float drainPerGH = MoverEnergyDrainPerGH((int)(m - movers));
             if (drainPerGH > 0) {
                 float hoursToTired = (m->energy - balance.energyTiredThreshold) / drainPerGH;
                 if (hoursToTired > 0) snprintf(proj, sizeof(proj), " — tired in %.1fh", hoursToTired);
@@ -315,7 +316,7 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
                 m->x, m->y, m->z, (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE));
     }
 
-    DescribeMoverNeeds(m, job, out);
+    DescribeMoverNeeds(m, out);
     DescribeMoverMood(m, out);
 
     DescAdd(out, job ? DESC_GOOD : DESC_MUTED, "Job: %s (step %d)",

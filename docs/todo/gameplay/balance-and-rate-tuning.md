@@ -135,7 +135,6 @@ typedef struct {
 
     // === MULTIPLIERS (for system interactions) ===
     float workEnergyMult;          // 1.0 (base, modified below)
-    float nightEnergyMult;         // 1.2 (20% faster drain at night)
     float carryingEnergyMult;      // 1.1 (10% faster when hauling)
     float hungerSpeedPenaltyMin;   // 0.5 (50% speed when starving)
     float hungerPenaltyThreshold;  // 0.2
@@ -188,8 +187,8 @@ float drainPerGH = balance.energyDrainIdlePerGH;
 
 // Each modifier is independent
 if (m->currentJobId >= 0)  drainPerGH = balance.energyDrainWorkPerGH;
-if (IsNightTime())         drainPerGH *= balance.nightEnergyMult;     // 1.2
-if (IsCarryingItem(m))     drainPerGH *= balance.carryingEnergyMult;  // 1.1
+if (m->bodyTemp < balance.moderateColdThreshold) drainPerGH *= balance.coldEnergyDrainMult; // 1.5
+if (job && job->carryingItem >= 0)  drainPerGH *= balance.carryingEnergyMult;             // 1.1
 
 float drainPerSec = RatePerRealSecond(drainPerGH);
 m->energy -= drainPerSec * gameDeltaTime;
@@ -204,11 +203,13 @@ m->energy -= drainPerSec * gameDeltaTime;
 
 ### Future Systems That Would Use This
 
+No clock-based night drain: energy must not depend on the time of day (design call 2026-11-22,
+see docs/todo/schedule-system.md). Day rhythm should come from world facts (dark, cold, comfort).
+
 | System | Multiplier on | Value | Effect |
 |--------|--------------|-------|--------|
 | Working | energy drain | 1.5× | Jobs tire faster |
-| Night time | energy drain | 1.2× | Natural tiredness at night |
-| Carrying heavy items | energy drain | 1.1× | Hauling is tiring |
+| Carrying heavy items | energy drain | 1.1× | Hauling is tiring (done: `MoverEnergyDrainPerGH` in needs.c) |
 | Rain (exposed) | energy drain | 1.3× | Getting wet is exhausting |
 | Cold temperature | hunger drain | 1.4× | Cold makes you hungrier |
 | Hot temperature | energy drain | 1.2× | Heat is tiring |

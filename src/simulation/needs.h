@@ -8,4 +8,8 @@
 // Call after NeedsTick(), before AssignJobs().
 void ProcessFreetimeNeeds(void);
 
+// Energy lost per game hour by a mover that is awake: work vs idle, x cold, x carrying.
+// Used by NeedsTick and by the mover description, so the tooltip matches the sim.
+float MoverEnergyDrainPerGH(int moverIdx);
+
 #endif

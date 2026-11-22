@@ -208,6 +208,9 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
     /* Trains */ \
     X(bool, trainQueueEnabled)
 
+// Night energy drain was planned but never used, and is not wanted (energy must not depend on the clock).
+static float savedUnusedNightEnergyMult = 1.2f;
+
 #define BALANCE_SETTINGS_TABLE(X) \
     X(float, balance.baseMoverSpeed) \
     X(float, balance.moverSpeedVariance) \
@@ -223,7 +226,7 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
     X(float, balance.energyTiredThreshold) \
     X(float, balance.energyExhaustedThreshold) \
     X(float, balance.energyWakeThreshold) \
-    X(float, balance.nightEnergyMult) \
+    X(float, savedUnusedNightEnergyMult) /* removed setting; slot kept so the save format is unchanged */ \
     X(float, balance.carryingEnergyMult) \
     X(float, balance.hungerSpeedPenaltyMin) \
     X(float, balance.hungerPenaltyThreshold) \

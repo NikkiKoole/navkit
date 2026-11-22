@@ -86,8 +86,7 @@ typedef struct {
     float warmthSatisfiedTemp;       // 36.0 (leave fire when this warm)
 
     // === MULTIPLIERS (for system interactions) ===
-    float nightEnergyMult;          // 1.2
-    float carryingEnergyMult;       // 1.1
+    float carryingEnergyMult;       // 1.1 (energy drains faster while carrying an item)
     float hungerSpeedPenaltyMin;    // 0.5
     float hungerPenaltyThreshold;   // 0.2
 

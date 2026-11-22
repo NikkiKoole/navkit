@@ -71,7 +71,6 @@ void InitBalance(void) {
     balance.warmthSatisfiedTemp      = 36.0f;
 
     // Multipliers
-    balance.nightEnergyMult       = 1.2f;
     balance.carryingEnergyMult    = 1.1f;
     balance.hungerSpeedPenaltyMin = 0.5f;
     balance.hungerPenaltyThreshold = 0.2f;

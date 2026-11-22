@@ -401,10 +401,8 @@ static const Setting settings[] = {
       "Stop sleeping when energy reaches this."),
 
     // --- Mover balance: multipliers ---
-    SET_BALANCE("nightEnergy", "Night Energy", "Mover Balance/Multipliers", nightEnergyMult, 0.05f, 0.5f, 3.0f,
-      "Energy drain multiplier at night."),
     SET_BALANCE("carryingEnergy", "Carrying Energy", "Mover Balance/Multipliers", carryingEnergyMult, 0.05f, 0.5f, 3.0f,
-      "Energy drain multiplier when hauling."),
+      "Energy drain multiplier while carrying an item (hauling, delivering, crafting inputs)."),
     SET_BALANCE("hungerSpeedMin", "Hunger Speed Min", "Mover Balance/Multipliers", hungerSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
       "Minimum speed multiplier when starving."),
 

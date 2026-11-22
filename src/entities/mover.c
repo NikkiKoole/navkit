@@ -27,6 +27,7 @@
 #include "../simulation/farming.h"
 #include "../simulation/balance.h"
 #include "../simulation/rooms.h"
+#include "../simulation/needs.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1245,11 +1246,7 @@ void NeedsTick(void) {
         // Drain energy
         if (energyEnabled) {
             if (m->freetimeState != FREETIME_RESTING) {
-                float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
-                if (m->bodyTemp < balance.moderateColdThreshold) {
-                    drainPerGH *= balance.coldEnergyDrainMult;
-                }
-                m->energy -= RatePerGameSecond(drainPerGH) * dt;
+                m->energy -= RatePerGameSecond(MoverEnergyDrainPerGH(i)) * dt;
                 if (m->energy < 0.0f) m->energy = 0.0f;
             }
         } else {

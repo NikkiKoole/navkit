@@ -119,6 +119,43 @@ describe(mover_gets_tired_and_sleeps) {
         expect(movers[mi_work].energy < movers[mi_idle].energy);
     }
 
+    it("a mover carrying something drains energy faster than one walking empty-handed") {
+        SetupClean();
+        int mi_empty = SetupMover(3, 3);
+        int mi_carry = SetupMover(7, 7);
+        for (int j = 0; j < 2; j++) {
+            Job* job = &jobs[j];
+            memset(job, 0, sizeof(*job));
+            job->active = true;
+            job->type = JOBTYPE_HAUL;
+            job->assignedMover = j == 0 ? mi_empty : mi_carry;
+            job->step = j == 0 ? STEP_MOVING_TO_WORK : STEP_CARRYING;
+            job->targetItem = job->targetStockpile = job->targetBlueprint = job->targetWorkshop = -1;
+            job->carryingItem = job->targetItem2 = job->targetItem3 = job->fuelItem = job->toolItem = -1;
+            job->targetAnimalIdx = -1;
+        }
+        jobs[1].carryingItem = SpawnItem(7 * CELL_SIZE, 7 * CELL_SIZE, 1.0f, ITEM_ROCK);
+        items[jobs[1].carryingItem].state = ITEM_CARRIED;
+        movers[mi_empty].currentJobId = 0;
+        movers[mi_carry].currentJobId = 1;
+        jobHighWaterMark = 2;
+        activeJobCount = 2;
+
+        expect(fabsf(MoverEnergyDrainPerGH(mi_carry) -
+                     MoverEnergyDrainPerGH(mi_empty) * balance.carryingEnergyMult) < 1e-6f);
+
+        for (int i = 0; i < 600; i++) {
+            movers[mi_empty].hunger = movers[mi_carry].hunger = 1.0f;
+            NeedsTick();
+        }
+        expect(movers[mi_carry].energy < movers[mi_empty].energy);
+
+        balance.carryingEnergyMult = 1.0f;  // the setting is what makes the difference
+        movers[mi_empty].energy = movers[mi_carry].energy = 1.0f;
+        for (int i = 0; i < 600; i++) NeedsTick();
+        expect(movers[mi_carry].energy == movers[mi_empty].energy);
+    }
+
     it("when energy drops below tired threshold, an idle mover lies down to rest") {
         SetupClean();
         int mi = SetupMover(5, 5);
