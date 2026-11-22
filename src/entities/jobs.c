@@ -1743,9 +1743,10 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Progress building using recipe buildTime, scaled by tool quality
+        // Progress building using recipe buildTime (game hours), scaled by tool quality.
+        // job->progress counts game seconds of work.
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-        float buildTime = recipe ? recipe->stages[bp->stage].buildTime : 2.0f;
+        float buildTime = GameHoursToGameSeconds(recipe ? recipe->stages[bp->stage].buildTime : 1.0f);
         float speed = GetJobToolSpeedMultiplier(JOBTYPE_BUILD, MAT_NONE, mover->equippedTool);
         job->progress += dt * speed;
         bp->progress = job->progress / buildTime;
@@ -2605,7 +2606,7 @@ JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
         mover->timeWithoutProgress = 0.0f;
         job->progress += dt;
 
-        if (job->progress >= job->workRequired) {
+        if (job->progress >= GameHoursToGameSeconds(job->workRequired)) {
             // Deconstruction complete — refund materials
             int recipeIdx = GetConstructionRecipeForWorkshopType(ws->type);
             if (recipeIdx >= 0) {
@@ -5841,8 +5842,8 @@ int WorkGiver_DeconstructWorkshop(int moverIdx) {
     int tempLen = FindPath(moverPathAlgorithm, moverCell, goalCell, tempPath, MAX_PATH);
     if (tempLen == 0) return -1;
 
-    // Get deconstruct time = half build time
-    float deconstructTime = 1.0f;
+    // Deconstruct time = half the build time (game hours)
+    float deconstructTime = 0.5f;
     int recipeIdx = GetConstructionRecipeForWorkshopType(ws->type);
     if (recipeIdx >= 0) {
         const ConstructionRecipe* recipe = GetConstructionRecipe(recipeIdx);
@@ -5852,7 +5853,7 @@ int WorkGiver_DeconstructWorkshop(int moverIdx) {
                 totalBuildTime += recipe->stages[s].buildTime;
             }
             deconstructTime = totalBuildTime * 0.5f;
-            if (deconstructTime < 0.5f) deconstructTime = 0.5f;
+            if (deconstructTime < 0.1f) deconstructTime = 0.1f;
         }
     }
 

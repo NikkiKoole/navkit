@@ -10,6 +10,7 @@
 #include "../src/entities/items.h"
 #include "../src/entities/item_defs.h"
 #include "../src/entities/jobs.h"
+#include "../src/entities/tool_quality.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
 #include "../src/entities/furniture.h"
@@ -11972,7 +11973,7 @@ describe(construction_recipe_data) {
         expect(r->stages[0].inputs[0].altCount == 2);
         expect(r->stages[0].inputs[0].alternatives[0].itemType == ITEM_ROCK);
         expect(r->stages[0].inputs[0].alternatives[1].itemType == ITEM_BLOCKS);
-        expect(r->stages[0].buildTime == 3.0f);
+        expect(r->stages[0].buildTime == 1.5f);   // game hours
         expect(r->resultMaterial == MAT_NONE);  // inherited
         expect(r->materialFromStage == 0);
         expect(r->materialFromSlot == 0);
@@ -12270,11 +12271,49 @@ describe(construction_recipe_build) {
         expect(CountBlueprints() == 0);
     }
 
+    it("building takes the recipe's game hours, whatever the day length") {
+        float lengths[2] = {60.0f, 360.0f};
+        float savedDay = dayLength;
+        for (int k = 0; k < 2; k++) {
+            dayLength = lengths[k];
+            InitGridFromAsciiWithChunkSize("........\n........\n........\n........\n", 8, 8);
+            moverPathAlgorithm = PATH_ALGO_ASTAR;
+            ClearMovers(); ClearItems(); InitDesignations(); ClearJobs();
+            gameSpeed = 1.0f;
+            Mover* m = &movers[0];
+            InitMover(m, CELL_SIZE * 3.5f, CELL_SIZE * 1.5f, 0.0f, (Point){3, 1, 0}, 100.0f);
+            moverCount = 1;
+            int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+            FillBlueprintStage(bpIdx, MAT_GRANITE);
+            int jobId = CreateJob(JOBTYPE_BUILD);
+            Job* job = GetJob(jobId);
+            job->targetBlueprint = bpIdx;
+            job->assignedMover = 0;
+            m->currentJobId = jobId;
+            blueprints[bpIdx].assignedBuilder = 0;
+            blueprints[bpIdx].state = BLUEPRINT_BUILDING;
+            m->goal = (Point){4, 1, 0};
+            m->needsRepath = true;
+            int workTicks = 0;
+            for (int i = 0; i < 200000 && GRID(4, 1, 0) != CELL_WALL; i++) {
+                if (job->active && job->step == STEP_WORKING) workTicks++;
+                Tick();
+                JobsTick();
+            }
+            expect(GRID(4, 1, 0) == CELL_WALL);
+            float speed = GetJobToolSpeedMultiplier(JOBTYPE_BUILD, MAT_NONE, -1);
+            float expectedTicks = GameHoursToGameSeconds(1.5f) / (TICK_DT * speed);
+            if (test_verbose) printf("dayLength %.0f: %d work ticks, expected %.0f\n", dayLength, workTicks, expectedTicks);
+            expect(fabsf(workTicks - expectedTicks) <= 3.0f);
+        }
+        dayLength = savedDay;
+    }
+
     it("should use recipe build time not flat constant") {
         // Test #33
         const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
-        expect(r->stages[0].buildTime != 2.0f);  // dry stone wall = 3.0, not default 2.0
-        expect(r->stages[0].buildTime == 3.0f);
+        expect(r->stages[0].buildTime != 1.0f);  // dry stone wall = 1.5 game hours, not the 1.0 fallback
+        expect(r->stages[0].buildTime == 1.5f);
     }
 
     it("should survive save and load mid delivery") {

@@ -17,6 +17,7 @@
 #include "../simulation/mood.h"
 #include "../core/sim_manager.h"
 #include "../entities/trains.h"
+#include "../simulation/balance.h"
 #include <math.h>
 
 #define MAX_VISIBLE_DEPTH    9
@@ -2592,7 +2593,7 @@ static void DrawWorkshops(void) {
             if (dm->currentJobId >= 0) {
                 Job* dj = GetJob(dm->currentJobId);
                 if (dj && dj->type == JOBTYPE_DECONSTRUCT_WORKSHOP && dj->step == STEP_WORKING && dj->workRequired > 0) {
-                    progress = dj->progress / dj->workRequired;
+                    progress = dj->progress / GameHoursToGameSeconds(dj->workRequired);
                     barColor = RED;
                 }
             }

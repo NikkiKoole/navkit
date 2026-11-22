@@ -39,7 +39,7 @@ typedef struct {
 typedef struct {
     ConstructionInput inputs[MAX_INPUTS_PER_STAGE];
     int inputCount;      // how many input slots this stage has
-    float buildTime;     // seconds to build this stage
+    float buildTime;     // game hours to build this stage (like MINE_WORK_TIME 0.8, CHOP 1.2)
 } ConstructionStage;
 
 // Static recipe definition
