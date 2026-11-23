@@ -581,6 +581,8 @@ static const Setting settings[] = {
       "Movers one car carries at a time; the others wait for its next trip.", NULL),
     SET_FLOAT("elevatorDoorTime", "Door Time (s)", "Entities/Elevators", elevatorDoorTime, 0.1f, 0.2f, 10.0f,
       "Seconds the doors stay open at a stop (at dayLength 60).", NULL),
+    SET_BOOL("elevatorWaitCost", "Wait Cost", "Entities/Elevators", useElevatorWaitCost,
+      "Routes count the expected wait for the car (doors, the car coming, the line ahead): with stairs nearby, movers take them when the elevator is busy. Waiting movers re-plan after a while."),
 
     // --- Belts ---
     SET_FLOAT("beltSpeed", "Speed (cells/s)", "Entities/Belts", beltSpeed, 0.1f, 0.1f, 20.0f,

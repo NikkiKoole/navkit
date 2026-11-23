@@ -1765,6 +1765,38 @@ describe(elevator_rides) {
         elevatorCapacity = 4;
     }
 
+    it("a ride costs the car's travel plus the expected wait: a long line costs more") {
+        SetupTower();
+        float speedWas = elevatorSpeed;
+        elevatorSpeed = 0.001f;   // the car stays where it is: nobody gets on during the test
+        elevators[0].z = 1.0f;
+        int idle = ElevatorExtraCost(15, 15, 1, 1);
+        expect(idle > 0);
+        expect(ClimbExtraCost(15, 15, 1, 1) == idle);   // the nav hook sends shafts here
+        elevators[0].z = 4.0f;                          // the car is far away
+        int far = ElevatorExtraCost(15, 15, 1, 1);
+        expect(far > idle);
+        // eight movers in the line at z1: two full cars ahead
+        moverCount = 8;
+        for (int i = 0; i < 8; i++) {
+            InitMover(&movers[i], (12 + i) * CELL_SIZE + 16, 17 * CELL_SIZE + 16, 1.0f, (Point){18, 18, 4}, MOVER_SPEED);
+            movers[i].needsRepath = true;
+            Tick();
+        }
+        for (int t = 0; t < 200; t++) Tick();   // they plan, walk up and join the line
+        int inLine = 0;
+        for (int i = 0; i < 8; i++) inLine += ElevatorMoverWaiting(i);
+        expect(inLine >= elevatorCapacity);     // at least one full car ahead
+        elevators[0].z = 4.0f;                  // same car position as `far`
+        int busy = ElevatorExtraCost(15, 15, 1, 1);
+        useElevatorWaitCost = false;
+        int noWait = ElevatorExtraCost(15, 15, 1, 1);
+        useElevatorWaitCost = true;
+        elevatorSpeed = speedWas;
+        expect(busy > far);
+        expect(noWait < idle);   // travel time only
+    }
+
     it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {
         SetupTower();
         moverCount = 1;

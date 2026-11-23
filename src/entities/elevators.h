@@ -39,6 +39,10 @@ extern float elevatorSpeed;      // levels per second at dayLength 60 (setting)
 extern int elevatorCapacity;     // riders per car (setting, <= ELEVATOR_MAX_RIDERS)
 extern float elevatorDoorTime;   // seconds the doors stay open at a stop (dayLength 60)
 extern int elevatorRides;        // stats: boardings since the last clear
+extern bool useElevatorWaitCost; // routes count the expected wait for the car (setting)
+
+int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change
+int ClimbExtraCost(int x, int y, int z, int dz);      // NAV_CLIMB_EXTRA: ladders + elevators
 
 void RebuildElevators(void);     // after shaft cells change (keeps cars that still exist)
 void ClearElevators(void);

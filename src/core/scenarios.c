@@ -1890,25 +1890,40 @@ static bool CargoCheck(char* why, int whyLen) {
     return true;
 }
 
-// elevator: a tower of six floors on open ground. The floors (constructed, no stairs)
-// are reachable only by the elevator shaft in the middle: one car, capacity 4. Movers
-// walk to random goals, half of them on a random floor of the tower (up there, most next
-// goals are on the same floor), so they line up at the door, ride, and get off where
-// their path leaves the shaft.
+// elevator: a tower of six floors on open ground. Two elevator shafts (one car each,
+// capacity 4) and one straight staircase (ramps along the west side, from the ground under
+// the tower to the top) connect the floors. Movers walk to random goals, half of them on a
+// random floor of the tower (up there, most next goals are on the same floor): they line
+// up at a door, ride, and get off where their path leaves the shaft, or take the stairs
+// when the cars are busy (the expected wait is in the route cost). Compare
+// --set elevatorWaitCost 0 (stairs only when shorter on foot).
 #define ELEV_TOWER_X0 18
 #define ELEV_TOWER_Y0 8
 #define ELEV_TOWER_W 12
 #define ELEV_TOWER_H 12
 #define ELEV_TOP 7
-static int elevShaftX, elevShaftY;
-static int elevMaxRiders = 0;
+#define ELEV_SHAFTS 2
+static int elevShaftX[ELEV_SHAFTS], elevShaftY[ELEV_SHAFTS];
+static int elevMaxRiders = 0, elevStairSteps = 0;
+static float elevPrevZ[MAX_MOVERS];
+
+static bool ElevIsShaft(int x, int y) {
+    for (int s = 0; s < ELEV_SHAFTS; s++) if (elevShaftX[s] == x && elevShaftY[s] == y) return true;
+    return false;
+}
+
+static Point ElevTowerGoal(int z) {
+    for (;;) {
+        Point g = {ELEV_TOWER_X0 + 1 + GetRandomValue(0, ELEV_TOWER_W - 2),
+                   ELEV_TOWER_Y0 + GetRandomValue(0, ELEV_TOWER_H - 1), z};   // not the stair column
+        if (!ElevIsShaft(g.x, g.y)) return g;
+    }
+}
 
 static bool ElevatorGoalPicker(int moverIdx, Point* goal) {
     int mz = (int)movers[moverIdx].z;
     if (mz >= 2 && GetRandomValue(0, 99) < 70) {   // up in the tower: mostly stay on this floor a while
-        *goal = (Point){ELEV_TOWER_X0 + GetRandomValue(0, ELEV_TOWER_W - 1),
-                        ELEV_TOWER_Y0 + GetRandomValue(0, ELEV_TOWER_H - 1), mz};
-        if (goal->x == elevShaftX && goal->y == elevShaftY) goal->x++;
+        *goal = ElevTowerGoal(mz);
         return true;
     }
     if (GetRandomValue(0, 1) == 0) {
@@ -1916,26 +1931,31 @@ static bool ElevatorGoalPicker(int moverIdx, Point* goal) {
         if (goal->x >= ELEV_TOWER_X0 && goal->x < ELEV_TOWER_X0 + ELEV_TOWER_W &&
             goal->y >= ELEV_TOWER_Y0 && goal->y < ELEV_TOWER_Y0 + ELEV_TOWER_H) goal->y = 2;   // not under the tower
     } else {
-        *goal = (Point){ELEV_TOWER_X0 + GetRandomValue(0, ELEV_TOWER_W - 1),
-                        ELEV_TOWER_Y0 + GetRandomValue(0, ELEV_TOWER_H - 1), GetRandomValue(2, ELEV_TOP)};
-        if (goal->x == elevShaftX && goal->y == elevShaftY) goal->x++;
+        *goal = ElevTowerGoal(GetRandomValue(2, ELEV_TOP));
     }
     return true;
 }
 
 static void SetupElevator(void) {
-    elevShaftX = ELEV_TOWER_X0 + ELEV_TOWER_W / 2;
-    elevShaftY = ELEV_TOWER_Y0 + ELEV_TOWER_H / 2;
+    elevShaftX[0] = ELEV_TOWER_X0 + ELEV_TOWER_W / 2;     elevShaftY[0] = ELEV_TOWER_Y0 + ELEV_TOWER_H / 2;
+    elevShaftX[1] = ELEV_TOWER_X0 + ELEV_TOWER_W - 3;     elevShaftY[1] = ELEV_TOWER_Y0 + 2;
     for (int z = 2; z <= ELEV_TOP; z++)
         for (int y = ELEV_TOWER_Y0; y < ELEV_TOWER_Y0 + ELEV_TOWER_H; y++)
             for (int x = ELEV_TOWER_X0; x < ELEV_TOWER_X0 + ELEV_TOWER_W; x++) {
                 GRID(x, y, z) = CELL_AIR;
                 SET_FLOOR(x, y, z);
             }
-    for (int z = 1; z <= ELEV_TOP; z++) {
-        GRID(elevShaftX, elevShaftY, z) = CELL_ELEVATOR;
-        CELL_FLAGS(elevShaftX, elevShaftY, z) &= ~CELL_FLAG_HAS_FLOOR;
-    }
+    for (int s = 0; s < ELEV_SHAFTS; s++)
+        for (int z = 1; z <= ELEV_TOP; z++) {
+            GRID(elevShaftX[s], elevShaftY[s], z) = CELL_ELEVATOR;
+            CELL_FLAGS(elevShaftX[s], elevShaftY[s], z) &= ~CELL_FLAG_HAS_FLOOR;
+        }
+    // The staircase: a straight flight up the west column, one level per cell, rising north
+    // from the ground under the tower to the top floor; each floor steps on and off it
+    int sx = ELEV_TOWER_X0, sy = ELEV_TOWER_Y0 + ELEV_TOWER_H - 2;
+    Point top = RampUp(sx, sy, 0, -1, 1, ELEV_TOP);
+    for (int k = 0; k < ELEV_TOP - 1; k++) CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+    (void)top;
     RebuildElevators();
     BuildEntrances();
     BuildGraph();
@@ -1943,36 +1963,47 @@ static void SetupElevator(void) {
     preferDifferentZ = false;
     moverGoalPicker = ElevatorGoalPicker;
     elevMaxRiders = 0;
-    int n = scenarioMovers > 0 ? scenarioMovers : 16;
-    for (int i = 0; i < n; i++) SpawnMoverAt(4 + (i * 5) % (gridWidth - 8), 3 + (i / 8) * 22, 1);
+    elevStairSteps = 0;
+    int n = scenarioMovers > 0 ? scenarioMovers : 24;
+    for (int i = 0; i < n; i++) SpawnMoverAt(4 + (i * 5) % (gridWidth - 8), 3 + (i / 8) * 13, 1);
+    for (int i = 0; i < MAX_MOVERS; i++) elevPrevZ[i] = 1.0f;
     currentViewZ = 1;
-    AddMessage(TextFormat("Elevator: a %d-floor tower reachable only by its elevator, %d movers", ELEV_TOP - 1, n), GREEN);
+    AddMessage(TextFormat("Elevator: a %d-floor tower, two elevators and a staircase, %d movers", ELEV_TOP - 1, n), GREEN);
 }
 
 static void ElevatorTickStats(void) {
     for (int k = 0; k < elevatorCount; k++)
         if (elevators[k].riderCount > elevMaxRiders) elevMaxRiders = elevators[k].riderCount;
+    for (int i = 0; i < moverCount; i++) {   // a level climbed or descended on the stairs
+        const Mover* m = &movers[i];
+        if (!m->active) continue;
+        if (m->z == floorf(m->z) && m->z != elevPrevZ[i]) {
+            if (!ElevIsShaft((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE))) elevStairSteps += (int)fabsf(m->z - elevPrevZ[i]);
+            elevPrevZ[i] = m->z;
+        }
+    }
 }
 
 static void ElevatorPrintStats(void) {
     int onLevel[16] = {0};
     for (int i = 0; i < moverCount; i++)
         if (movers[i].active && (int)movers[i].z < 16) onLevel[(int)movers[i].z]++;
-    printf("Elevator: %d boardings, %d stops, most riders at once %d (capacity %d)\n", elevatorRides,
-           elevatorCount > 0 ? elevators[0].trips : 0, elevMaxRiders, elevatorCapacity);
     int waiting = 0, riding = 0;
     for (int i = 0; i < moverCount; i++) { waiting += ElevatorMoverWaiting(i); riding += ElevatorMoverAboard(i); }
-    printf("Now: %d waiting for the car, %d aboard; car at z%.1f\n", waiting, riding,
-           elevatorCount > 0 ? elevators[0].z : -1.0f);
+    printf("Elevator: %d boardings (", elevatorRides);
+    for (int k = 0; k < elevatorCount; k++) printf("%scar %d: %d stops", k ? ", " : "", k, elevators[k].trips);
+    printf("), most riders at once %d (capacity %d); %d levels on the stairs (wait cost %s)\n",
+           elevMaxRiders, elevatorCapacity, elevStairSteps, useElevatorWaitCost ? "on" : "off");
+    printf("Now: %d in line for a car, %d aboard\n", waiting, riding);
     printf("Movers per level:");
     for (int z = 1; z <= ELEV_TOP; z++) printf(" z%d=%d", z, onLevel[z]);
     printf("\n");
 }
 
 static bool ElevatorCheck(char* why, int whyLen) {
-    if (elevatorRides < 10 || elevMaxRiders > elevatorCapacity) {
-        snprintf(why, (size_t)whyLen, "%d boardings (want 10+), most riders %d (capacity %d)",
-                 elevatorRides, elevMaxRiders, elevatorCapacity);
+    if (elevatorRides < 10 || elevMaxRiders > elevatorCapacity || elevStairSteps == 0) {
+        snprintf(why, (size_t)whyLen, "%d boardings (want 10+), most riders %d (capacity %d), %d levels on the stairs",
+                 elevatorRides, elevMaxRiders, elevatorCapacity, elevStairSteps);
         return false;
     }
     return true;
@@ -2148,7 +2179,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
     {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",
                    NULL,        SetupBeltBuild, NULL, BeltBuildPrintStats, BeltBuildCheck, 32, 20},
-    {"elevator",   "A six-floor tower reachable only by its elevator: movers wait, ride and get off on their floor, 16 movers",
+    {"elevator",   "A six-floor tower with two elevators and a staircase: movers line up, ride, or take the stairs when the cars are busy, 24 movers",
                    NULL,        SetupElevator, ElevatorTickStats, ElevatorPrintStats, ElevatorCheck, 48, 32},
     {"belt-workshop", "A belt feeds a sawmill's hopper stockpile, a second belt carries the planks from its output tile, 3 movers",
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},

@@ -86,9 +86,10 @@ static inline int NavAffectedZ(void* host, int z, int* outZ) {
     return GetAdditionalAffectedZLevels(z, outZ);
 }
 
-// Ladder queues make climbing cost more (entities/mover.c keeps the queues)
-int LadderQueueExtraCost(int x, int y, int z, int dz);
-#define NAV_CLIMB_EXTRA(host, x, y, z, dz) LadderQueueExtraCost((x), (y), (z), (dz))
+// Ladder queues make climbing cost more (entities/ladders.c keeps the queues); an
+// elevator shaft costs the car's travel and the expected wait (entities/elevators.c)
+int ClimbExtraCost(int x, int y, int z, int dz);
+#define NAV_CLIMB_EXTRA(host, x, y, z, dz) ClimbExtraCost((x), (y), (z), (dz))
 
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
 void InvalidateLightingAt(int x, int y, int z);

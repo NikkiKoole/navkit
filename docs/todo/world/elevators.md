@@ -26,14 +26,22 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   (`MoverRefillRouteNow`), so the ride is on the path before the mover lines up.
 - **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
   caught between levels is put on the nearest level and re-plans.
-- Scenario `elevator`: a six-floor tower reachable only by its elevator, 16 movers, half of
-  their goals in the tower; up there 70% of next goals are on the same floor. One car of 4 is
-  a real bottleneck: 7-13 movers in line at any time (12000 ticks: 106 rides, 331 arrivals).
+- **Route cost** (`ClimbExtraCost`, the `NAV_CLIMB_EXTRA` hook; ladders keep their queue
+  cost): a level in a shaft costs the car's travel time plus half the expected wait (doors,
+  the car coming to this level, one round trip per full car already in this level's line).
+  Charged per level, so a ride of n levels pays n halves: right for the short rides where
+  stairs compete, generous for long ones. Movers in a line re-plan at 4 s and 10 s
+  (x patience), so they switch to the stairs when the line is long. Setting
+  `elevatorWaitCost` (off = travel time only).
+- Scenario `elevator`: a six-floor tower, two shafts and a straight staircase up the west
+  side, 24 movers, half of their goals in the tower (up there 70% of next goals on the same
+  floor). 12000 ticks with the wait cost: 2172 arrivals, 2-4 in line, 1926 levels on the
+  stairs; without it: 1347 arrivals, 12-14 in line, 862 levels on the stairs.
 
 Left (in order of use):
 1. ~~Waiting line in front of the door~~ done.
-2. Route cost of the wait (`NAV_CLIMB_EXTRA` hook, like ladder queues): today a shaft costs
-   the same as a ladder, so a mover never prefers stairs to a busy elevator.
+2. ~~Route cost of the wait~~ done (per level; an exact one-off boarding cost would need
+   the pathfinder to know where a ride starts).
 3. Building shafts in game (blueprint), a proper shaft sprite (today `dark_shade`).
 4. Elevator settings in the save (v100), freight elevator (crates in the car).
 

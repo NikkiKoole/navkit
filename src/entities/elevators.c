@@ -6,6 +6,8 @@
 #include "../core/event_log.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../simulation/balance.h"
+#include "ladders.h"
 #include <math.h>
 #include <string.h>
 
@@ -16,6 +18,7 @@ float elevatorSpeed = 1.5f;      // levels per second at dayLength 60
 int elevatorCapacity = 4;
 float elevatorDoorTime = 1.5f;
 int elevatorRides = 0;
+bool useElevatorWaitCost = true;
 
 // Per mover: which car it waits for / rides, where it gets on and off
 enum { ELEV_NONE, ELEV_WAITING, ELEV_RIDING };
@@ -356,6 +359,9 @@ static void LineDetour(int k, int level, const Mover* m, float* tx, float* ty) {
 
 static unsigned long lineOrderNext = 1;
 static unsigned long moverLineOrder[MAX_MOVERS];   // when it joined the line (first come, first served)
+static float moverLineWait[MAX_MOVERS];            // seconds in this line
+#define ELEV_REPLAN_AT_1 4.0f    // a waiting mover re-plans at these wait times (x patience):
+#define ELEV_REPLAN_AT_2 10.0f   // with the wait in the route cost, the stairs may now be quicker
 
 static void JoinLine(int i, int k, int fromZ) {
     if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == fromZ) return;
@@ -363,6 +369,7 @@ static void JoinLine(int i, int k, int fromZ) {
     moverElev[i] = k;
     moverElevFrom[i] = fromZ;
     moverLineOrder[i] = lineOrderNext++;
+    moverLineWait[i] = 0.0f;
 }
 
 static int PlaceInLine(int i) {
@@ -445,6 +452,11 @@ bool ElevatorQueueTick(int i, float dt) {
     moverElevDest[i] = dest;
     moverElevSeen[i] = elevTick;
     if (!TryBoard(i, wp)) {
+        float before = moverLineWait[i], pat = MoverPatience(m);
+        moverLineWait[i] += dt;
+        float r1 = ELEV_REPLAN_AT_1 * pat, r2 = ELEV_REPLAN_AT_2 * pat;
+        if (useElevatorWaitCost && ((before < r1 && moverLineWait[i] >= r1) || (before < r2 && moverLineWait[i] >= r2)))
+            m->needsRepath = true;   // maybe the stairs are quicker now
         float tx, ty;
         LineSpot(k, mz, PlaceInLine(i), &tx, &ty);
         LineDetour(k, mz, m, &tx, &ty);
@@ -518,4 +530,42 @@ bool ElevatorMoverAboard(int i) {
 
 bool ElevatorMoverWaiting(int i) {
     return i >= 0 && i < MAX_MOVERS && moverElevState[i] == ELEV_WAITING;
+}
+
+// --- Route cost -------------------------------------------------------------------
+// The pathfinder charges a level change in a shaft one cell's move cost (like a ladder);
+// this adds the rest of a ride, in path cost at the base walking pace:
+//  - the car's travel time for the level
+//  - half the expected wait to get on at this level (charged per level, a ride of n levels
+//    pays n halves: about right for the short rides where stairs compete): the doors,
+//    the car coming here, and one round trip of the car per full car of people already
+//    in this level's line
+// With useElevatorWaitCost off only the travel time counts. A shaft without a car (not
+// rebuilt yet) costs like a ladder.
+int ElevatorExtraCost(int x, int y, int z, int dz) {
+    int k = ElevatorAt(x, y, z);
+    if (k < 0 || ElevatorAt(x, y, z + dz) != k) return 0;
+    const Elevator* e = &elevators[k];
+    float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
+    float base = balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f;
+    float secPerCell = (float)CELL_SIZE / base;   // both at dayLength 60
+    float sec = 1.0f / speed;
+    if (useElevatorWaitCost) {
+        int line = 0;
+        for (int i = 0; i < moverCount; i++)
+            if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z) line++;
+        int cap = elevatorCapacity < 1 ? 1 : elevatorCapacity;
+        float roundTrip = 2.0f * (float)(e->zMax - e->zMin) / speed + 2.0f * elevatorDoorTime;
+        float wait = elevatorDoorTime + fabsf(e->z - (float)z) / speed + (float)(line / cap) * roundTrip;
+        sec += 0.5f * wait;
+    }
+    int extra = (int)(sec / secPerCell * 10.0f + 0.5f) - 10;   // one cell is already charged
+    return extra > 0 ? extra : 0;
+}
+
+int ClimbExtraCost(int x, int y, int z, int dz) {
+    int zt = z + dz;
+    if (zt >= 0 && zt < gridDepth && CellIsShaft(GRID(x, y, z)) && CellIsShaft(GRID(x, y, zt)))
+        return ElevatorExtraCost(x, y, z, dz);
+    return LadderQueueExtraCost(x, y, z, dz);
 }
