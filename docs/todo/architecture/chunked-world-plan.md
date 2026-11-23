@@ -606,13 +606,16 @@ settlers at the landing beach, 80 trees to chop, 40 cells to dig, 150 grass cell
 two stone huts with thatch floors (58 blueprints); needs on, nobody dies. Three game days =
 64,800 ticks: `--headless --seed 3 --scenario island-colony --ticks 64800 --profile --save f`.
 
-**Tick cost:** world simulation (`TickWithDt`) 2.4 ms per tick (water 1.9 of it), steady.
-**Jobs: 7.3 ms per tick on average, worst tick 458 ms, 18,677 ticks over 5 ms**, and growing
-(about 2 ms after one game day). A `sample` of the loaded day-3 save puts nearly all of it in
-`AssignJobs_P4_Designations` -> `WorkGiver_BlueprintHaul` -> `FindPathOrRoute` -> HPA* (4,856 of
-5,045 job samples): blueprints waiting for scarce stone run full path searches for their haul,
-over and over. That is the first real-play hot spot on a big map, ahead of every simulation. Not
-fixed here (job system); the scenario reproduces it.
+**Tick cost (re-measured 2026-11-23 by navkit-8e on clean builds):** world simulation
+(`TickWithDt`) about 2.9 ms per tick on master (water 2.1 of it, worst tick 224 ms), the biggest
+cost. Jobs only 0.18 ms per tick at 82eca465 (worst 77 ms, 466 ticks over 5 ms) and 0.29 ms on
+master (worst 105 ms, 728 ticks over 5 ms); both runs end with 58 blueprints still open. The
+remaining job spikes are in `AssignJobs_P4_Designations` (blueprint hauls running path searches).
+
+*Retracted:* the first measurement here said Jobs 7.3 ms per tick (worst 458 ms). That binary
+was built from the shared main tree while other sessions had uncommitted changes in it, so it
+did not match any commit and does not reproduce. Measure only from a clean build (a worktree at
+a known commit).
 
 **Blocks after three days** (same tool, `--save` loaded): 16x16x4 blocks with one value 43%
 (fresh island 44%), mean 5.0 distinct values per block (fresh 4.4), index 1.7 bits per cell:
