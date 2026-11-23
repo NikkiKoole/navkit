@@ -340,6 +340,12 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
                 break;
+            case ACTION_WORK_SHAFT:
+                n = AddItem(items, n, "Shaft: from here up one level", 0, -1, false, true, false);
+                n = AddItem(items, n, "On a shaft top: one more level", 0, -1, false, true, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag take down", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_RAMP:
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);

@@ -2009,6 +2009,78 @@ static bool ElevatorCheck(char* why, int whyLen) {
     return true;
 }
 
+// elevator-build: movers build an elevator. Two decks (floors at z2 and z3, no stairs)
+// stand east of a shaft blueprint on the ground; planks and cordage lie in the west. The
+// first blueprint makes a shaft up to z2; once that stands, a second one on its top
+// extends it to z3 (built like a ladder, level by level). Then movers ride up to the decks.
+#define EB_SHAFT_X 15
+#define EB_SHAFT_Y 9
+static bool ebExtended = false;
+
+static bool ElevBuildGoalPicker(int moverIdx, Point* goal) {
+    (void)moverIdx;
+    int k = ElevatorAt(EB_SHAFT_X, EB_SHAFT_Y, 1);
+    int top = k >= 0 ? elevators[k].zMax : 1;
+    if (top >= 2 && GetRandomValue(0, 99) < 60) {   // up on a deck the shaft reaches
+        *goal = (Point){16 + GetRandomValue(1, 11), 5 + GetRandomValue(0, 9), GetRandomValue(2, top < 3 ? top : 3)};
+        return true;
+    }
+    *goal = (Point){GetRandomValue(1, 13), GetRandomValue(1, gridHeight - 2), 1};
+    return true;
+}
+
+static void SetupElevatorBuild(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    for (int z = 2; z <= 3; z++)
+        for (int y = 5; y <= 14; y++)
+            for (int x = 16; x <= 27; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
+    CreateRecipeBlueprint(EB_SHAFT_X, EB_SHAFT_Y, 1, CONSTRUCTION_SHAFT);
+    ebExtended = false;
+    // Materials for two levels: 4 planks + 2 cordage each
+    for (int i = 0; i < 12; i++) {
+        int x = 3 + i % 6, y = 3 + i / 6;
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1,
+                  (i % 3 == 2) ? ITEM_CORDAGE : ITEM_PLANKS);
+    }
+    BuildEntrances();
+    BuildGraph();
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    moverGoalPicker = ElevBuildGoalPicker;
+    elevatorRides = 0;
+    for (int i = 0; i < 3; i++) SpawnMoverAt(5 + i, 10, 1);
+    currentViewZ = 1;
+    AddMessage("Elevator build: a shaft blueprint by two decks; materials west. Built to z2, then extended to z3", GREEN);
+}
+
+static void ElevatorBuildTick(void) {
+    // The first level stands: put the next blueprint on its top
+    if (!ebExtended && GRID(EB_SHAFT_X, EB_SHAFT_Y, 2) == CELL_ELEVATOR) {
+        if (CreateRecipeBlueprint(EB_SHAFT_X, EB_SHAFT_Y, 2, CONSTRUCTION_SHAFT) >= 0) ebExtended = true;
+    }
+}
+
+static int ElevBuildTop(void) {
+    int k = ElevatorAt(EB_SHAFT_X, EB_SHAFT_Y, 1);
+    return k >= 0 ? elevators[k].zMax : 0;
+}
+
+static void ElevatorBuildPrintStats(void) {
+    int pending = 0, up = 0;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) if (blueprints[i].active && blueprints[i].recipeIndex == CONSTRUCTION_SHAFT) pending++;
+    for (int i = 0; i < moverCount; i++) if (movers[i].active && movers[i].z >= 2.0f) up++;
+    printf("Elevator build: shaft reaches z%d, %d blueprints left; %d rides, %d movers up on the decks\n",
+           ElevBuildTop(), pending, elevatorRides, up);
+}
+
+static bool ElevatorBuildCheck(char* why, int whyLen) {
+    if (ElevBuildTop() < 3 || elevatorRides == 0) {
+        snprintf(why, (size_t)whyLen, "shaft reaches z%d (want z3), %d rides", ElevBuildTop(), elevatorRides);
+        return false;
+    }
+    return true;
+}
+
 // belt-build: belts built by movers. A 12-cell belt line is only blueprinted; planks
 // and cordage lie by the movers. They haul materials and build the cells; as soon as
 // the line is whole, the rock stacks pre-stocked in A ride to B.
@@ -2218,6 +2290,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBelt, NULL, BeltPrintStats, BeltCheck, 48, 24},
     {"belt-lift",  "Vertical belts: a lift carries logs up to a deck, a chute brings rocks down, 2 movers",
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
+    {"elevator-build", "Movers build an elevator shaft from blueprints (planks + cordage), level by level, then ride it up to two decks, 3 movers",
+                   NULL,        SetupElevatorBuild, ElevatorBuildTick, ElevatorBuildPrintStats, ElevatorBuildCheck, 32, 20},
     {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",
                    NULL,        SetupBeltBuild, NULL, BeltBuildPrintStats, BeltBuildCheck, 32, 20},
     {"elevator",   "A six-floor tower with two elevators and a staircase: movers line up, ride, or take the stairs when the cars are busy, 24 movers",

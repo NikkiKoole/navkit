@@ -681,6 +681,18 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_SHAFT,
+        .name = "ELEVATOR",
+        .barDisplayText = "Elevator",
+        .barKey = 'e',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     {
         .action = ACTION_WORK_WORKSHOP,

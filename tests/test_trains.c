@@ -1473,19 +1473,23 @@ describe(track_lines) {
         remove("/tmp/test_trains_lines_save.bin");
     }
 
-    it("train settings and endless mode are saved (v99)") {
+    it("train and elevator settings and endless mode are saved (v99, v100)") {
         SetupClean();
         PlaceTrackLine(2, 20, 5, 1);
         RebuildStations();
         trainSpeed = 50.0f;
         useTrainTimeChoice = false; useTrainTransfers = false; trainFreight = false;
         endlessMoverMode = false;
+        elevatorSpeed = 3.0f; elevatorCapacity = 6; elevatorDoorTime = 0.5f; useElevatorWaitCost = false;
         expect(SaveWorld("/tmp/test_trains_settings_save.bin"));
+        elevatorSpeed = 1.5f; elevatorCapacity = 4; elevatorDoorTime = 1.5f; useElevatorWaitCost = true;
         trainSpeed = TRAIN_DEFAULT_SPEED;
         useTrainTimeChoice = useTrainTransfers = trainFreight = endlessMoverMode = true;
         expect(LoadWorld("/tmp/test_trains_settings_save.bin"));
         expect(trainSpeed == 50.0f);
         expect(!useTrainTimeChoice && !useTrainTransfers && !trainFreight && !endlessMoverMode);
+        expect(elevatorSpeed == 3.0f && elevatorCapacity == 6 && elevatorDoorTime == 0.5f && !useElevatorWaitCost);
+        elevatorSpeed = 1.5f; elevatorCapacity = 4; elevatorDoorTime = 1.5f; useElevatorWaitCost = true;
         trainSpeed = TRAIN_DEFAULT_SPEED;
         useTrainTimeChoice = useTrainTransfers = trainFreight = endlessMoverMode = true;
         remove("/tmp/test_trains_settings_save.bin");
@@ -1795,6 +1799,28 @@ describe(elevator_rides) {
         elevatorSpeed = speedWas;
         expect(busy > far);
         expect(noWait < idle);   // travel time only
+    }
+
+    it("a shaft is built like a ladder: up one level, extended from its top, taken down whole") {
+        SetupClean();
+        for (int y = 8; y <= 12; y++)            // a floor at z3 around (10,10)
+            for (int x = 8; x <= 12; x++) SET_FLOOR(x, y, 3);
+        expect(CanPlaceShaft(10, 10, 1));
+        expect(!CanPlaceShaft(10, 10, 0));        // inside the ground
+        expect(CreateRecipeBlueprint(10, 10, 1, CONSTRUCTION_SHAFT) >= 0);
+        CancelBlueprint(GetBlueprintAt(10, 10, 1));
+        expect(PlaceShaft(10, 10, 1, MAT_OAK));
+        expect(GRID(10, 10, 1) == CELL_ELEVATOR && GRID(10, 10, 2) == CELL_ELEVATOR && GRID(10, 10, 3) == CELL_AIR);
+        expect(elevatorCount == 1 && elevators[0].zMin == 1 && elevators[0].zMax == 2);
+        expect(!CanPlaceShaft(10, 10, 1));        // not the top
+        expect(CanPlaceShaft(10, 10, 2));         // the top: extend
+        expect(PlaceShaft(10, 10, 2, MAT_OAK));
+        expect(GRID(10, 10, 3) == CELL_ELEVATOR && !HAS_FLOOR(10, 10, 3));   // a hole in the floor
+        expect(elevatorCount == 1 && elevators[0].zMax == 3);
+        expect(RemoveShaftAt(10, 10, 2) == 3);
+        expect(GRID(10, 10, 1) == CELL_AIR && GRID(10, 10, 3) == CELL_AIR);
+        expect(HAS_FLOOR(10, 10, 3));            // the floor is whole again
+        expect(elevatorCount == 0);
     }
 
     it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {

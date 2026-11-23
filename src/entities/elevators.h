@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 #include "../world/grid.h"
+#include "../world/material.h"
 
 #define MAX_ELEVATORS 64
 #define ELEVATOR_MAX_RIDERS 8
@@ -50,6 +51,11 @@ void ElevatorsAfterLoad(void);   // LoadWorld: rebuild, put movers caught mid-sh
 void ElevatorsUpdate(float dt);  // once per tick, before movement: cars move, doors time out
 
 int ElevatorAt(int x, int y, int z);   // the elevator whose shaft holds (x,y,z), or -1
+
+// Building (BUILD_SHAFT blueprints) and taking down
+bool CanPlaceShaft(int x, int y, int z);              // walkable empty cell or a shaft top, room above
+bool PlaceShaft(int x, int y, int z, MaterialType mat);   // shaft from z up to z+1 (or extend the top)
+int RemoveShaftAt(int x, int y, int z);               // the whole column through (x,y,z); levels removed
 
 // Mover hooks (mover.c movement loop), in this order; true = handled this tick (skip
 // normal movement)

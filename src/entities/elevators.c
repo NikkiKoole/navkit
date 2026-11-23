@@ -8,6 +8,9 @@
 #include "../world/cell_defs.h"
 #include "../simulation/balance.h"
 #include "ladders.h"
+#include "items.h"
+#include "../world/material.h"
+#include "../world/pathfinding.h"
 #include <math.h>
 #include <string.h>
 
@@ -568,4 +571,68 @@ int ClimbExtraCost(int x, int y, int z, int dz) {
     if (zt >= 0 && zt < gridDepth && CellIsShaft(GRID(x, y, z)) && CellIsShaft(GRID(x, y, zt)))
         return ElevatorExtraCost(x, y, z, dz);
     return LadderQueueExtraCost(x, y, z, dz);
+}
+
+// --- Building and removing shafts ----------------------------------------------
+// Like a ladder: built on a walkable cell, a shaft goes from there up one level (cutting
+// the floor above); built on the top of a shaft, it extends it one more level. A car
+// runs as soon as the shaft spans two levels (RebuildElevators).
+
+static bool ShaftRoomAbove(int x, int y, int z) {
+    return z + 1 < gridDepth && GRID(x, y, z + 1) == CELL_AIR;
+}
+
+bool CanPlaceShaft(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    CellType c = GRID(x, y, z);
+    if (c == CELL_ELEVATOR) return ShaftRoomAbove(x, y, z);   // the top: extend it
+    if (!IsCellWalkableAt(z, y, x) || c != CELL_AIR) return false;   // not on ramps, ladders, doors, track
+    return ShaftRoomAbove(x, y, z);
+}
+
+static void SetShaftCell(int x, int y, int z, MaterialType mat) {
+    PushItemsOutOfCell(x, y, z);
+    GRID(x, y, z) = CELL_ELEVATOR;
+    CLEAR_FLOOR(x, y, z);   // a hole in the floor up here
+    SetWallMaterial(x, y, z, mat);
+    MarkChunkDirty(x, y, z);
+    InvalidatePathsThroughCell(x, y, z);
+}
+
+bool PlaceShaft(int x, int y, int z, MaterialType mat) {
+    if (!CanPlaceShaft(x, y, z)) return false;
+    if (mat == MAT_NONE) mat = MAT_OAK;
+    if (GRID(x, y, z) != CELL_ELEVATOR) SetShaftCell(x, y, z, mat);
+    SetShaftCell(x, y, z + 1, mat);
+    if (z + 2 < gridDepth) MarkChunkDirty(x, y, z + 2);
+    RebuildElevators();
+    return true;
+}
+
+// Take down the whole shaft through (x, y, z): each cell back to air (a floor again where
+// the level around it has one), one plank back per level. Riders get off on the nearest
+// level (RebuildElevators). Returns the levels removed.
+int RemoveShaftAt(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return 0;
+    if (GRID(x, y, z) != CELL_ELEVATOR) return 0;
+    int z0 = z, z1 = z;
+    while (z0 > 0 && GRID(x, y, z0 - 1) == CELL_ELEVATOR) z0--;
+    while (z1 + 1 < gridDepth && GRID(x, y, z1 + 1) == CELL_ELEVATOR) z1++;
+    for (int zz = z0; zz <= z1; zz++) {
+        GRID(x, y, zz) = CELL_AIR;
+        bool floorAround = false;
+        static const int dx4[4] = {1, -1, 0, 0}, dy4[4] = {0, 0, 1, -1};
+        for (int d = 0; d < 4; d++) {
+            int nx = x + dx4[d], ny = y + dy4[d];
+            if (nx >= 0 && ny >= 0 && nx < gridWidth && ny < gridHeight && HAS_FLOOR(nx, ny, zz)) floorAround = true;
+        }
+        bool solidBelow = zz == 0 || CellIsSolid(GRID(x, y, zz - 1));
+        if (floorAround && !solidBelow) SET_FLOOR(x, y, zz);
+        MarkChunkDirty(x, y, zz);
+        InvalidatePathsThroughCell(x, y, zz);
+    }
+    if (z1 + 1 < gridDepth) MarkChunkDirty(x, y, z1 + 1);
+    RebuildElevators();
+    // Riders in that car were let off (z rounded); anyone left mid-air falls as usual
+    return z1 - z0 + 1;
 }

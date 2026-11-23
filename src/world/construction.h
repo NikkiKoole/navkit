@@ -20,6 +20,7 @@ typedef enum {
     BUILD_WORKSHOP,
     BUILD_DOOR,
     BUILD_BELT,         // conveyor belt cell (belts.c); direction in Blueprint.workshopType
+    BUILD_SHAFT,        // elevator shaft (elevators.c): like a ladder, reaches one level up
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -109,6 +110,7 @@ typedef enum {
     CONSTRUCTION_WORKSHOP_COUNTER,       // 1 stage: 3 planks
     CONSTRUCTION_TABLE,                  // 1 stage: 3 planks (furniture; append only, saves store the index)
     CONSTRUCTION_BELT,                   // 1 stage: 2 planks + 1 cordage (conveyor belt cell)
+    CONSTRUCTION_SHAFT,                  // 1 stage: 4 planks + 2 cordage (elevator shaft, one level up)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

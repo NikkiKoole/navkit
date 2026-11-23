@@ -559,6 +559,11 @@ bool SaveWorld(const char* filename) {
     fwrite(&useTrainTransfers, sizeof(bool), 1, f);
     fwrite(&trainFreight, sizeof(bool), 1, f);
     fwrite(&endlessMoverMode, sizeof(bool), 1, f);
+    // v100+: elevator settings
+    fwrite(&elevatorSpeed, sizeof(float), 1, f);
+    fwrite(&elevatorDoorTime, sizeof(float), 1, f);
+    fwrite(&elevatorCapacity, sizeof(int), 1, f);
+    fwrite(&useElevatorWaitCost, sizeof(bool), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1453,6 +1458,17 @@ bool LoadWorld(const char* filename) {
         trainSpeed = TRAIN_DEFAULT_SPEED;
         useTrainTimeChoice = useTrainTransfers = trainFreight = true;
         endlessMoverMode = true;
+    }
+    if (version >= V100_ELEVATOR_SETTINGS) {
+        fread(&elevatorSpeed, sizeof(float), 1, f);
+        fread(&elevatorDoorTime, sizeof(float), 1, f);
+        fread(&elevatorCapacity, sizeof(int), 1, f);
+        fread(&useElevatorWaitCost, sizeof(bool), 1, f);
+    } else {
+        elevatorSpeed = 1.5f;
+        elevatorDoorTime = 1.5f;
+        elevatorCapacity = 4;
+        useElevatorWaitCost = true;
     }
 
     RecalcBalanceTable();

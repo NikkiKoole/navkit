@@ -42,8 +42,13 @@ Left (in order of use):
 1. ~~Waiting line in front of the door~~ done.
 2. ~~Route cost of the wait~~ done (per level; an exact one-off boarding cost would need
    the pathfinder to know where a ride starts).
-3. Building shafts in game (blueprint), a proper shaft sprite (today `dark_shade`).
-4. Elevator settings in the save (v100), freight elevator (crates in the car).
+3. ~~Building shafts in game~~ done: recipe `CONSTRUCTION_SHAFT` (4 planks + 2 cordage per
+   level, `BUILD_SHAFT`), Work → Build → Elevator (key e) and play HUD "Build Elevator".
+   Built like a ladder: on a floor cell a shaft from there up one level (cutting the floor
+   above), on a shaft top one more level; the car runs once it spans two. Right-drag takes
+   the whole column down (a plank back per level, floors restored, riders let off).
+   Scenario `elevator-build`. Left: a proper shaft sprite (today `dark_shade`).
+4. ~~Elevator settings in the save~~ done (v100). Left: freight elevator (crates in the car).
 
 Full simulation elevators for colony sim: moving platforms with state, queuing, capacity, and wait times.
 

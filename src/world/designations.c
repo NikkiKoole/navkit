@@ -18,6 +18,7 @@
 #include "../entities/stacking.h"
 #include "../core/event_log.h"
 #include "../simulation/rooms.h"
+#include "../entities/elevators.h"
 #include "../entities/belts.h"
 #include "../game_state.h"
 #include <string.h>
@@ -2301,6 +2302,9 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         // Laid on walkable ground (the builder stands on it); one belt per cell
         if (!IsCellWalkableAt(z, y, x)) return -1;
         if (BeltAt(x, y, z) >= 0) return -1;
+    } else if (recipe->buildCategory == BUILD_SHAFT) {
+        // On walkable ground or the top of a shaft, with room for the level above
+        if (!CanPlaceShaft(x, y, z)) return -1;
     } else if (recipe->buildCategory == BUILD_WORKSHOP) {
         // Workshop blueprints are placed at the work tile via CreateWorkshopBlueprint()
         // which handles full footprint validation. Just check work tile is walkable.
@@ -2854,6 +2858,14 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->assignedBuilder = -1;
         blueprintCount--;
         InvalidateRooms();
+        return;
+    }
+
+    if (recipe->buildCategory == BUILD_SHAFT) {
+        bp->active = false;          // off first: the shaft cell is the blueprint's cell
+        bp->assignedBuilder = -1;
+        blueprintCount--;
+        if (PlaceShaft(x, y, z, finalMat)) EventLog("Elevator shaft built at (%d,%d,%d)", x, y, z);
         return;
     }
 

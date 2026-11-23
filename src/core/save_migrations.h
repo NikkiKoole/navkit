@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 99
+#define CURRENT_SAVE_VERSION 100
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -51,6 +51,9 @@
 // (trainSpeed float; useTrainTimeChoice, useTrainTransfers, trainFreight, endlessMoverMode
 // bool). Older saves: the defaults.
 #define V99_TRAIN_SETTINGS 99
+// v100: elevator settings after the v99 train settings (elevatorSpeed, elevatorDoorTime
+// float; elevatorCapacity int; useElevatorWaitCost bool). Older saves: the defaults.
+#define V100_ELEVATOR_SETTINGS 100
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {

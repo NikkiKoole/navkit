@@ -1131,6 +1131,35 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    // An elevator shaft: a plank frame with a hand-hauled hoist. Built like a ladder: on a
+    // floor it makes a shaft from there up one level (cutting the floor above); built on
+    // the top of a shaft it extends it one more level. A car runs as soon as it spans two.
+    [CONSTRUCTION_SHAFT] = {
+        .name = "Elevator Shaft",
+        .buildCategory = BUILD_SHAFT,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 4,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 1.0f,   // game hours: frame the level, rig the rope
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {
