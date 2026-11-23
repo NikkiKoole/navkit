@@ -513,10 +513,21 @@ void SetSnowLevel(int x, int y, int z, uint8_t level) {
 // One row of the snow sweep: the topmost solid cell of each column grows, melts or resets
 static void SnowRow(int y, float elapsedTime, bool isSnowing, bool isFreezing, bool* anySnow, bool* anyAccum) {
         for (int x = 0; x < gridWidth; x++) {
-            // Find topmost solid cell
+            // Find topmost solid cell. Water is not a cell type, so a sea or lake is air with
+            // water in it: snow doesn't settle through it onto the bed below, and snow already
+            // there (water rose over snowy ground) is gone
+            bool underWater = false;
             for (int z = gridDepth - 1; z >= 0; z--) {
                 CellType cell = GRID(x, y, z);
-                if (cell == CELL_AIR) continue;
+                if (cell == CELL_AIR) {
+                    if (GetWaterLevel(x, y, z) > 0) underWater = true;
+                    continue;
+                }
+                if (underWater) {
+                    if (SNOW(x, y, z) > 0) SetSnowLevel(x, y, z, 0);
+                    if (SNOW_ACCUM(x, y, z) != 0.0f) SNOW_ACCUM(x, y, z) = 0.0f;
+                    break;
+                }
                 
                 // Found ground at z
                 bool exposed = IsExposedToSky(x, y, z);

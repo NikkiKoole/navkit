@@ -668,7 +668,10 @@ layer. A taller world does not make it bigger.
 
 Side finding: snow lies on the top non-air cell of every column, including the sea bed under
 open sea (water is not a cell type), so all 65,536 columns had snow; snow should skip columns
-with water on top (`SnowRow` in `src/simulation/weather.c`, not fixed here). The light grid
+with water on top. Fixed 2026-11-23 (`SnowRow` in `src/simulation/weather.c`: a column with
+water above its ground gets no snow, and snow a flood covers is gone): the winter colony after 7
+game hours has snow on 27,132 cells (dry land plus tree tops), not 65,536. So the 54% of blocks
+measured above is too high; snow stays a surface layer either way. The light grid
 is derived, not saved: measuring light from a save needs `RecomputeLighting()` after loading.
 
 **Side findings:** with work times in game hours a tree takes 10-15 real seconds to chop, so the

@@ -3,6 +3,7 @@
 #include "../vendor/raylib.h"
 #include "../src/core/time.h"
 #include "../src/simulation/weather.h"
+#include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/groundwear.h"
@@ -128,6 +129,58 @@ describe(snow_accumulation) {
         
         // Should not accumulate under roof
         expect(GetSnowLevel(5, 5, 0) == 0);
+    }
+
+    // Water isn't a cell type: a sea is air with water in it. Snow used to settle through it
+    // onto the bed below (the island had snow on every sea column)
+    it("does not settle on ground under water") {
+        InitTestGrid(10, 10);
+        InitSnow();
+        InitWater();
+        InitWeather();
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        GRID(5, 5, 0) = CELL_WALL;                 // bed under water
+        SetWallMaterial(5, 5, 0, MAT_DIRT);
+        SetWaterLevel(5, 5, 1, 7);
+        GRID(6, 5, 0) = CELL_WALL;                 // dry ground beside it
+        SetWallMaterial(6, 5, 0, MAT_DIRT);
+
+        weatherState.current = WEATHER_SNOW;
+        weatherState.intensity = 1.0f;
+        SetTestTemperature(-5);
+        for (int i = 0; i < 120; i++) {
+            gameDeltaTime = 0.1f; UpdateSnow();
+        }
+
+        expect(GetSnowLevel(6, 5, 0) > 0);         // it did snow
+        expect(GetSnowLevel(5, 5, 0) == 0);
+        InitWater();                               // later tests use this cell dry
+    }
+
+    it("clears snow that water has covered") {
+        InitTestGrid(10, 10);
+        InitSnow();
+        InitWater();
+        InitWeather();
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        GRID(5, 5, 0) = CELL_WALL;
+        SetWallMaterial(5, 5, 0, MAT_DIRT);
+        SetSnowLevel(5, 5, 0, 2);
+        SetWaterLevel(5, 5, 1, 4);                 // a flood or the tide comes in
+
+        weatherState.current = WEATHER_SNOW;
+        weatherState.intensity = 1.0f;
+        SetTestTemperature(-5);
+        for (int i = 0; i < 20; i++) {
+            gameDeltaTime = 0.1f; UpdateSnow();
+        }
+
+        expect(GetSnowLevel(5, 5, 0) == 0);
+        InitWater();                               // later tests use this cell dry
     }
     
     it("accumulates faster during high intensity snow") {
