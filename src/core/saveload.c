@@ -7,6 +7,7 @@ bool LoadWorld(const char* filename);
 void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
+#include "../entities/belts.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -526,6 +527,10 @@ bool SaveWorld(const char* filename) {
             fwrite(&furniture[i], sizeof(Furniture), 1, f);
         }
     }
+
+    // Conveyor belts (v98+); items riding them are saved as ITEM_ON_BELT with the items
+    fwrite(&beltCount, sizeof(beltCount), 1, f);
+    fwrite(belts, sizeof(Belt), beltCount, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -1376,6 +1381,21 @@ bool LoadWorld(const char* filename) {
         }
         furnitureCount = savedCount;
     }
+
+    // Conveyor belts (v98+). Older saves have none; BeltsAfterLoad also puts any item left
+    // ITEM_ON_BELT by a pre-v98 save back on the ground.
+    memset(belts, 0, sizeof(belts));
+    beltCount = 0;
+    if (version >= V98_BELTS) {
+        fread(&beltCount, sizeof(beltCount), 1, f);
+        if (beltCount < 0 || beltCount > MAX_BELTS) {
+            printf("ERROR: bad belt count %d\n", beltCount);
+            fclose(f);
+            return false;
+        }
+        if (beltCount > 0) fread(belts, sizeof(Belt), beltCount, f);
+    }
+    BeltsAfterLoad();
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);

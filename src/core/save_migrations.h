@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 97
+#define CURRENT_SAVE_VERSION 98
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -43,6 +43,10 @@
 // v97: Train gets freight (cargo item indices, their source priority, cargoCount) at
 // the end of the struct; older saves read TrainV96 (no freight)
 #define V97_TRAIN_CARGO 97
+// v98: conveyor belts (belts.c) after furniture at the end of the entities section:
+// beltCount + Belt[beltCount] (raw structs; next/fed are rebuilt by BeltsAfterLoad).
+// Older saves: no belts.
+#define V98_BELTS 98
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {

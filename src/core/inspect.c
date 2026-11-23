@@ -30,6 +30,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/plants.h"
 #include "../entities/furniture.h"
+#include "../entities/belts.h"
 #include "../simulation/mood.h"
 #include "save_migrations.h"
 
@@ -1774,6 +1775,13 @@ int InspectSaveFile(int argc, char** argv) {
     if (insp_furnitureCount > 0) {
         fseek(f, insp_furnitureCount * (int)sizeof(Furniture), SEEK_CUR);
     }
+
+    // Conveyor belts (v98+): count only (the cells themselves aren't inspected yet)
+    int insp_beltCount = 0;
+    if (version >= V98_BELTS) {
+        fread(&insp_beltCount, sizeof(insp_beltCount), 1, f);
+        if (insp_beltCount > 0) fseek(f, insp_beltCount * (int)sizeof(Belt), SEEK_CUR);
+    }
     
     fclose(f);
     
@@ -1819,6 +1827,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Blueprints: %d active\n", activeBP);
         printf("Workshops: %d active\n", activeWorkshops);
         printf("Furniture: %d\n", insp_furnitureCount);
+        printf("Belts: %d\n", insp_beltCount);
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
         printf("Light sources: %d\n", insp_lightSourceCount);

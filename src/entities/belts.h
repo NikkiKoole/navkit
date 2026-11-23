@@ -10,8 +10,8 @@
 // no stockpile: it is dropped on the ground ahead if no ground item lies there. Else it waits.
 // Items on a belt are ITEM_ON_BELT: not in the item spatial grid, so no job sees them.
 //
-// Saving: not yet (planned as v98: saveload.c writes beltCount + belts[], BeltsAfterLoad rebuilds
-// the rest). Until then belts vanish on load.
+// Saved since v98: saveload.c writes beltCount + belts[] (raw structs: changing Belt needs a
+// save version and a migration); BeltsAfterLoad rebuilds the lookup and line order.
 #ifndef BELTS_H
 #define BELTS_H
 

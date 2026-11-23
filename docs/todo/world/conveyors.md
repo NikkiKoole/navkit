@@ -81,9 +81,10 @@ Not yet: a play HUD tool (only the dev UI menu), deconstruction as a job (remova
 
 ### Not in the spike (known gaps)
 
-- **Not saved.** Belts vanish on load, and items that were riding stay `ITEM_ON_BELT` where
-  they were (invisible to jobs). Fix: save belts (version bump) or turn riding items back to
-  ground on save.
+- ~~Not saved~~ Saved since v98 (belts after furniture; `BeltsAfterLoad` rebuilds the lookup and
+  puts items a pre-v98 save left `ITEM_ON_BELT` back on the ground). Checked: a mid-run save of
+  `belt` loads and delivers all 40 logs, like an unbroken run; `belt-lift` and `belt-build` too.
+  `beltSpeed` is not saved (the settings table has no per-row version).
 - Belts don't care about walls, water or fire; movers walk over them and are not carried.
 - Lifts and chutes are free: no power, no speed difference, no lift capacity.
 - Belt ends find the stockpile slot by scanning it (fine at spike sizes).
@@ -149,7 +150,7 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 
 ## Next steps if the spike earns it
 
-1. Save/load belts; clear them on game start.
+1. ~~Save/load belts~~ done (v98). Clear them on game start (today: scenario reset only).
 2. Build belts in game (recipe + blueprint), remove them (drops the load).
 3. A belt end feeding a workshop input / taking from a workshop output.
 4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Next there: power (water wheel,
