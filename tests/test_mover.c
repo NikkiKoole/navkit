@@ -11,6 +11,7 @@
 #include "../src/simulation/balance.h"
 #include "../src/entities/workshops.h"
 #include "../src/world/terrain.h"
+#include "../src/simulation/water.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -261,6 +262,56 @@ describe(goal_arrival) {
         for (int t = 0; t < 120; t++) Tick();
         expect((int)(m->y / CELL_SIZE) == 1 && (int)(m->x / CELL_SIZE) == 1);
         m->freetimeState = FREETIME_NONE;
+    }
+}
+
+describe(wading_out_of_water) {
+    it("a mover whose cell floods wades to the nearest dry cell") {
+        InitTestGridFromAscii(
+            "......\n"
+            "######\n");
+        BuildEntrances();
+        BuildGraph();
+        InitWater();
+        bool wasEnabled = waterEnabled;
+        waterEnabled = false;                    // keep the flood where it is
+        for (int x = 0; x < 4; x++) SetWaterLevel(x, 0, 0, 5);   // deep: not walkable
+        ClearMovers();
+        Mover* m = &movers[0];
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, (Point){1, 0, 0}, 100.0f);
+        moverCount = 1;
+        expect(!IsCellWalkableAt(0, 0, 1));
+        for (int t = 0; t < 600 && !IsCellWalkableAt(0, (int)(m->y / CELL_SIZE), (int)(m->x / CELL_SIZE)); t++) Tick();
+        expect((int)(m->x / CELL_SIZE) == 4);     // nearest dry cell
+        expect(m->active);
+        waterEnabled = wasEnabled;
+        InitWater();
+    }
+
+    it("a mover on a flooded ramp climbs off its top") {
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n");
+        // z0: flooded floor, a ramp at (2,0) pointing east up to a dry ledge at z1
+        for (int x = 0; x < 6; x++) { GRID(x, 0, 0) = CELL_AIR; GRID(x, 1, 0) = CELL_WALL; }
+        for (int x = 3; x < 6; x++) GRID(x, 0, 0) = CELL_WALL;   // the ledge's solid ground
+        GRID(2, 0, 0) = CELL_RAMP_E;
+        BuildEntrances();
+        BuildGraph();
+        InitWater();
+        bool wasEnabled = waterEnabled;
+        waterEnabled = false;
+        for (int x = 0; x < 3; x++) SetWaterLevel(x, 0, 0, 5);
+        ClearMovers();
+        Mover* m = &movers[0];
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, (Point){2, 0, 0}, 100.0f);
+        moverCount = 1;
+        expect(!IsCellWalkableAt(0, 0, 2));
+        for (int t = 0; t < 600 && (int)m->z == 0; t++) Tick();
+        expect((int)m->z == 1);
+        expect(IsCellWalkableAt((int)m->z, (int)(m->y / CELL_SIZE), (int)(m->x / CELL_SIZE)));
+        waterEnabled = wasEnabled;
+        InitWater();
     }
 }
 
@@ -3051,5 +3102,6 @@ int main(int argc, char* argv[]) {
     test(ladder_queue_cost);
     test(avoidance_levels);
     test(goal_arrival);
+    test(wading_out_of_water);
     return summary();
 }

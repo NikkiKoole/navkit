@@ -99,6 +99,71 @@ static inline int clampi(int v, int lo, int hi) {
 
 // Try to make a mover fall to ground. Returns true if mover fell.
 // Searches downward from current z for a walkable cell, stops at walls.
+// A mover in a non-walkable cell it can't fall out of, with water around it (a basin
+// that flooded under it, a 1-wide river it was pushed over): wade toward the nearest dry
+// cell at half speed. Breadth-first over cells that would be walkable without their
+// water, up to WADE_RADIUS cells away; a flooded ramp whose top end is dry is a way out
+// too (up onto the next level). false = no way out found (stays put as before).
+#define WADE_RADIUS 8
+static bool WadeTowardDryCell(Mover* m, int cx, int cy, int cz, float dt) {
+    enum { W = 2 * WADE_RADIUS + 1 };
+    static signed char from[W][W];          // direction we came from + 1 (0 = unvisited)
+    static Point queue[W * W];
+    memset(from, 0, sizeof(from));
+    static const int ddx[4] = {1, -1, 0, 0}, ddy[4] = {0, 0, 1, -1};
+    int head = 0, tail = 0, found = -1;
+    Point up = {-1, -1, -1};                // dry top of a flooded ramp (level cz + 1)
+    queue[tail++] = (Point){cx, cy, cz};
+    from[WADE_RADIUS][WADE_RADIUS] = 5;
+    while (head < tail && found < 0) {
+        int at = head++;
+        Point p = queue[at];
+        CellType pc = GRID(p.x, p.y, cz);
+        if (cz + 1 < gridDepth && CellIsDirectionalRamp(pc)) {
+            int hx, hy;
+            GetRampHighSideOffset(pc, &hx, &hy);
+            if (IsCellWalkableAt(cz + 1, p.y + hy, p.x + hx)) {
+                found = at;
+                up = (Point){p.x + hx, p.y + hy, cz + 1};
+                break;
+            }
+        }
+        for (int d = 0; d < 4; d++) {
+            int nx = p.x + ddx[d], ny = p.y + ddy[d];
+            int lx = nx - cx + WADE_RADIUS, ly = ny - cy + WADE_RADIUS;
+            if (lx < 0 || lx >= W || ly < 0 || ly >= W || from[ly][lx]) continue;
+            if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
+            bool dry = IsCellWalkableAt(cz, ny, nx);
+            if (!dry && !(IsCellWalkableAtEx(cz, ny, nx, true) && WATER(nx, ny, cz).level > 0)) continue;
+            from[ly][lx] = (signed char)(d + 1);
+            queue[tail++] = (Point){nx, ny, cz};
+            if (dry) { found = tail - 1; break; }
+        }
+    }
+    if (found < 0) return false;
+    // The first step out of the start cell: back along the search, or the ramp's top
+    Point step = queue[found];
+    if (step.x == cx && step.y == cy) {
+        step = up;                          // standing on the flooded ramp: climb off it
+    } else {
+        for (;;) {
+            int d = from[step.y - cy + WADE_RADIUS][step.x - cx + WADE_RADIUS] - 1;
+            Point prev = {step.x - ddx[d], step.y - ddy[d], cz};
+            if (prev.x == cx && prev.y == cy) break;
+            step = prev;
+        }
+    }
+    float tx = step.x * CELL_SIZE + CELL_SIZE * 0.5f, ty = step.y * CELL_SIZE + CELL_SIZE * 0.5f;
+    float dx = tx - m->x, dy = ty - m->y, dist = sqrtf(dx * dx + dy * dy);
+    float move = m->speed * (60.0f / dayLength) * 0.5f * dt;   // half walking speed
+    if (dist <= move || dist < 0.01f) { m->x = tx; m->y = ty; }
+    else { m->x += dx / dist * move; m->y += dy / dist * move; }
+    if (step.z > cz && (int)(m->x / CELL_SIZE) == step.x && (int)(m->y / CELL_SIZE) == step.y)
+        m->z = (float)step.z;               // off the ramp's top onto the next level
+    m->needsRepath = true;                  // plans again once it stands on dry ground
+    return true;
+}
+
 static bool TryFallToGround(Mover* m, int cellX, int cellY) {
     int currentZ = (int)m->z;
     
@@ -1558,6 +1623,8 @@ void UpdateMovers(void) {
                         if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX)) {
                             m->z = (float)(currentZ + 1);
                             m->needsRepath = true;
+                        } else {
+                            WadeTowardDryCell(m, currentX, currentY, currentZ, dt);
                         }
                     }
                     continue;
