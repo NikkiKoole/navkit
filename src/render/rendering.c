@@ -1029,6 +1029,42 @@ static void DrawCloudShadows(void) {
     }
 }
 
+// Flecks on flowing water (setting waterFlecks): two light streaks per cell slide the way the
+// water has been moving (GetWaterFlow) and fade in and out, faster where the current is
+// stronger. Still water gets none, so its picture doesn't change. Moves with game time.
+static void DrawWaterFlecks(int x, int y, int z, Rectangle dest, float size, Color tint, bool darken) {
+    float fx, fy;
+    if (!GetWaterFlow(x, y, z, &fx, &fy)) return;
+    float m = sqrtf(fx * fx + fy * fy);
+    if (m < 0.5f) return;
+    float ux = fx / m, uy = fy / m;
+    float strength = log2f(1.0f + m) / 5.0f;            // 0..1: ~31 units per half-life = full
+    if (strength > 1.0f) strength = 1.0f;
+    float speed = 0.4f + 1.4f * strength;               // cells per game-second
+    float t = (float)fmod(gameTime, 4096.0);
+    bool alongX = fabsf(ux) >= fabsf(uy);
+    for (int k = 0; k < 2; k++) {
+        uint32_t h = (uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u ^ (uint32_t)(z * 2 + k) * 83492791u;
+        h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+        float off = (float)(h & 1023) / 1024.0f;
+        float lat = (float)((h >> 10) & 1023) / 1024.0f - 0.5f;   // across the flow
+        float phase = t * speed + off;
+        phase -= floorf(phase);
+        float along = phase - 0.5f;
+        float cx = dest.x + size * (0.5f + ux * along * 0.9f - uy * lat * 0.7f);
+        float cy = dest.y + size * (0.5f + uy * along * 0.9f + ux * lat * 0.7f);
+        float w = alongX ? size * 0.30f : size * 0.10f, hgt = alongX ? size * 0.10f : size * 0.30f;
+        if (w < 1.0f) w = 1.0f;
+        if (hgt < 1.0f) hgt = 1.0f;
+        float fade = sinf(phase * 3.14159265f);           // in at the start, out at the end
+        int a = (int)((40.0f + 110.0f * strength) * fade);
+        if (a <= 0) continue;
+        Color c = MultiplyColor((Color){200, 230, 255, (unsigned char)a}, tint);
+        if (darken) c = FloorDarkenTint(c);
+        FastRect((Rectangle){cx - w * 0.5f, cy - hgt * 0.5f, w, hgt}, c);
+    }
+}
+
 static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     WorldBatchSetKind(WB_KIND_WATER);   // shader effects (setting shaderEffects); reset below
@@ -1038,6 +1074,7 @@ static void DrawWater(void) {
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    bool flecks = waterFlecks && size >= 6.0f;   // zoomed out they are noise
 
     // Draw water at deeper levels (z-9 through z-1) with depth darkening
     int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
@@ -1057,6 +1094,7 @@ static void DrawWater(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 FastRect(dest, waterColor);
+                if (flecks) DrawWaterFlecks(x, y, zDepth, dest, size, lightTint, true);
                 
                 if (WATER(x, y, zDepth).isSource) {
                     DrawSourceMarker(dest, size, (Color){75, 135, 191, 200});
@@ -1086,6 +1124,7 @@ static void DrawWater(void) {
             // Draw water overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             FastRect(dest, waterColor);
+            if (flecks) DrawWaterFlecks(x, y, z, dest, size, lightTint, false);
             
             // Mark sources with a brighter center
             if (WATER(x, y, z).isSource) {

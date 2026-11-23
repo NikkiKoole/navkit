@@ -160,6 +160,7 @@ bool sectionSteam = false;
 bool sectionTemperature = false;
 bool showTemperatureOverlay = false;
 bool showWaterFlow = false;
+bool waterFlecks = true;
 bool sectionEntropy = false;
 bool sectionTrees = false;
 bool sectionMoverWalls = false;

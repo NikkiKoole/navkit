@@ -686,6 +686,8 @@ static const Setting settings[] = {
       "Mark simulation source cells on the current z-level."),
     SET_BOOL("tempOverlay", "Temperature", "Rendering & Debug/Debug/Overlays", showTemperatureOverlay,
       "Color cells by temperature."),
+    SET_BOOL("waterFlecks", "Water Flecks", "Rendering & Debug/Debug/Rendering", waterFlecks,
+      "Light flecks slide along flowing water, the way the current runs (still water gets none)."),
     SET_BOOL("flowOverlay", "Water Flow", "Rendering & Debug/Debug/Overlays", showWaterFlow,
       "Arrows showing which way water has been moving (the current) on the current z-level and the one below. Zoomed out, an arrow sums a block of cells."),
 };
