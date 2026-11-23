@@ -145,6 +145,16 @@ Not yet: food on the flats, dikes, storm surge; `islandTide` on by default (the 
 - Dikes and polders: in scope, or a later game?
 - Speed: a full tide in 12.4 game hours; is that too slow or fast to notice in play?
 
+## Surf line (drawn, 2026-11-23)
+
+`DrawSeaFoam` (rendering.c): a light band, gently pulsing, on each side of a sea-surface water
+cell that borders a cell without water. Sea surface = `isSea` water, water under an emptied
+sea cell (low tide shows the sea one level down), or water next to the sea (a flooded shore
+ramp at high tide). Not darkened with depth and tinted by the sky, not the cell's light
+(one level down the light tint made it vanish). The line sits in front of the shore ramps at
+low tide and on top of them at high tide: the tide is visible. Maps without a tide: no isSea
+bits, no foam, same picture. `reveal` (console) lifts the fog to look at it in the island game.
+
 ## Side idea: surf (branding), cheap
 
 - Drawing only: per sea cell the distance to shore and the shore direction (computed once);
