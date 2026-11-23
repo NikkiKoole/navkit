@@ -22,6 +22,10 @@ int elevatorCapacity = 4;
 float elevatorDoorTime = 1.5f;
 int elevatorRides = 0;
 bool useElevatorWaitCost = true;
+bool elevatorDirectionalPickup = true;
+double elevatorWaitSum = 0.0;
+float elevatorWaitMax = 0.0f;
+int elevatorWaitCount = 0, elevatorDetours = 0;
 
 // Per mover: which car it waits for / rides, where it gets on and off
 enum { ELEV_NONE, ELEV_WAITING, ELEV_RIDING };
@@ -60,6 +64,7 @@ static void ClearMoverState(void) {
 void ClearElevators(void) {
     elevatorCount = 0;
     elevatorRides = 0;
+    elevatorWaitSum = 0.0; elevatorWaitMax = 0.0f; elevatorWaitCount = 0; elevatorDetours = 0;
     ClearMoverState();
 }
 
@@ -143,12 +148,20 @@ int ElevatorAt(int x, int y, int z) {
 
 static int Sign(int v) { return (v > 0) - (v < 0); }
 
-// The car stands at `level`: may the waiter with this trip get on?
+static bool RequestsBeyond(int k, int level, int dir);
+
+// The car stands at `level`: may the waiter with this trip get on? There must be room,
+// and the car must be going the waiter's way: its riders' way, or, empty, the way it is
+// sweeping while calls still wait further on (elevatorDirectionalPickup: otherwise an
+// empty car turns round for anyone and the calls further on wait).
 static bool CanBoard(const Elevator* e, int level, int dest) {
     if (e->riderCount >= elevatorCapacity || e->riderCount >= ELEVATOR_MAX_RIDERS) return false;
     int want = Sign(dest - level);
     for (int r = 0; r < e->riderCount; r++)
         if (Sign(moverElevDest[e->riders[r]] - level) != want) return false;   // car goes the other way
+    if (e->riderCount == 0 && elevatorDirectionalPickup && e->dir != 0 && want != e->dir &&
+        RequestsBeyond((int)(e - elevators), level, e->dir))
+        return false;   // empty, but on its way to calls further on: on the way back
     return true;
 }
 
@@ -400,6 +413,13 @@ static bool TryBoard(int i, int shaftWp) {
     int fromZ = moverElevFrom[i];
     if (e->state != CAR_DOORS || (int)floorf(e->z + 0.5f) != fromZ) return false;
     if (!CanBoard(e, fromZ, moverElevDest[i]) || !FirstToBoard(i)) return false;
+    // Stats: how long it waited; a detour = an empty car taking someone the other way
+    // while calls further on in its direction still wait
+    if (e->riderCount == 0 && e->dir != 0 && Sign(moverElevDest[i] - fromZ) != e->dir &&
+        RequestsBeyond(moverElev[i], fromZ, e->dir)) elevatorDetours++;
+    elevatorWaitSum += moverLineWait[i];
+    elevatorWaitCount++;
+    if (moverLineWait[i] > elevatorWaitMax) elevatorWaitMax = moverLineWait[i];
     e->riders[e->riderCount++] = i;
     moverElevState[i] = ELEV_RIDING;
     moverSteppingIn[i] = true;

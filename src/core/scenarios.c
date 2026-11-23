@@ -2009,6 +2009,75 @@ static bool ElevatorCheck(char* why, int whyLen) {
     return true;
 }
 
+// elevator-tall: a ten-floor tower (z2..z11) over the ground, one elevator, no stairs.
+// 30 movers go to random levels, up and down, so the car always has calls both ways.
+// Shows how the car serves them: average and longest wait in line, and detours (an
+// empty car that turns round for someone going the other way while calls further on
+// still wait). Compare --set elevatorDirectionalPickup 0.
+#define ET_X0 14
+#define ET_Y0 6
+#define ET_W 10
+#define ET_TOP 11
+#define ET_SX (ET_X0 + ET_W / 2)
+#define ET_SY (ET_Y0 + ET_W / 2)
+
+static bool ElevTallGoalPicker(int moverIdx, Point* goal) {
+    (void)moverIdx;
+    int z = GetRandomValue(1, ET_TOP);
+    for (;;) {
+        *goal = (Point){ET_X0 + GetRandomValue(0, ET_W - 1), ET_Y0 + GetRandomValue(0, ET_W - 1), z};
+        if (goal->x != ET_SX || goal->y != ET_SY) return true;
+    }
+}
+
+static void SetupElevatorTall(void) {
+    for (int z = 2; z <= ET_TOP; z++)
+        for (int y = ET_Y0; y < ET_Y0 + ET_W; y++)
+            for (int x = ET_X0; x < ET_X0 + ET_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
+    for (int z = 1; z <= ET_TOP; z++) {
+        GRID(ET_SX, ET_SY, z) = CELL_ELEVATOR;
+        CELL_FLAGS(ET_SX, ET_SY, z) &= ~CELL_FLAG_HAS_FLOOR;
+    }
+    RebuildElevators();
+    BuildEntrances();
+    BuildGraph();
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    moverGoalPicker = ElevTallGoalPicker;
+    int n = scenarioMovers > 0 ? scenarioMovers : 30;
+    for (int i = 0; i < n; i++) SpawnMoverAt(ET_X0 + i % ET_W, ET_Y0 - 3 + (i / ET_W) * (ET_W + 5), 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Elevator tall: %d floors, one elevator, %d movers", ET_TOP - 1, n), GREEN);
+}
+
+static long etTicks[3], etRiderTicks, etMovingTicks, etWaitersTicks;
+static void ElevatorTallTick(void) {
+    if (elevatorCount < 1) return;
+    const Elevator* e = &elevators[0];
+    etTicks[e->state]++;
+    if (e->state == CAR_MOVING) { etMovingTicks++; etRiderTicks += e->riderCount; }
+    for (int i = 0; i < moverCount; i++) etWaitersTicks += ElevatorMoverWaiting(i);
+}
+
+static void ElevatorTallPrintStats(void) {
+    long all = etTicks[0] + etTicks[1] + etTicks[2];
+    if (all > 0)
+        printf("Car time: idle %.0f%%, moving %.0f%%, doors %.0f%%; avg riders while moving %.2f; avg in line %.1f; stops %d\n",
+               100.0 * etTicks[0] / all, 100.0 * etTicks[1] / all, 100.0 * etTicks[2] / all,
+               etMovingTicks ? (double)etRiderTicks / etMovingTicks : 0.0, (double)etWaitersTicks / all, elevators[0].trips);
+    printf("Elevator tall: %d boardings, wait in line avg %.1f s, longest %.1f s; %d detours (sweep pickup %s)\n",
+           elevatorRides, elevatorWaitCount > 0 ? elevatorWaitSum / elevatorWaitCount : 0.0, elevatorWaitMax,
+           elevatorDetours, elevatorDirectionalPickup ? "on" : "off");
+}
+
+static bool ElevatorTallCheck(char* why, int whyLen) {
+    if (elevatorRides < 20 || (elevatorDirectionalPickup && elevatorDetours > 0)) {
+        snprintf(why, (size_t)whyLen, "%d boardings (want 20+), %d detours (want 0 with sweep pickup)", elevatorRides, elevatorDetours);
+        return false;
+    }
+    return true;
+}
+
 // elevator-build: movers build an elevator. Two decks (floors at z2 and z3, no stairs)
 // stand east of a shaft blueprint on the ground; planks and cordage lie in the west. The
 // first blueprint makes a shaft up to z2; once that stands, a second one on its top
@@ -2290,6 +2359,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBelt, NULL, BeltPrintStats, BeltCheck, 48, 24},
     {"belt-lift",  "Vertical belts: a lift carries logs up to a deck, a chute brings rocks down, 2 movers",
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
+    {"elevator-tall", "A ten-floor tower with one elevator, 30 movers going up and down: waits and detours (compare elevatorDirectionalPickup 0)",
+                   NULL,        SetupElevatorTall, ElevatorTallTick, ElevatorTallPrintStats, ElevatorTallCheck, 40, 28},
     {"elevator-build", "Movers build an elevator shaft from blueprints (planks + cordage), level by level, then ride it up to two decks, 3 movers",
                    NULL,        SetupElevatorBuild, ElevatorBuildTick, ElevatorBuildPrintStats, ElevatorBuildCheck, 32, 20},
     {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",

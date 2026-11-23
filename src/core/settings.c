@@ -581,6 +581,8 @@ static const Setting settings[] = {
       "Movers one car carries at a time; the others wait for its next trip.", NULL),
     SET_FLOAT("elevatorDoorTime", "Door Time (s)", "Entities/Elevators", elevatorDoorTime, 0.1f, 0.2f, 10.0f,
       "Seconds the doors stay open at a stop (at dayLength 60).", NULL),
+    SET_BOOL("elevatorDirectionalPickup", "Sweep Pickup", "Entities/Elevators", elevatorDirectionalPickup,
+      "An empty car on its way to calls further on picks up only people going its way; the others ride on its way back. Off: it stops for anyone and turns round, and the calls further on wait."),
     SET_BOOL("elevatorWaitCost", "Wait Cost", "Entities/Elevators", useElevatorWaitCost,
       "Routes count the expected wait for the car (doors, the car coming, the line ahead): with stairs nearby, movers take them when the elevator is busy. Waiting movers re-plan after a while."),
 

@@ -1823,6 +1823,31 @@ describe(elevator_rides) {
         expect(elevatorCount == 0);
     }
 
+    it("an empty car on its way up to a call passes a down-going waiter and takes them on the way back") {
+        for (int pass = 0; pass < 2; pass++) {
+            SetupTower();
+            for (int y = 10; y <= 20; y++)          // a floor at z2 too
+                for (int x = 10; x <= 20; x++) if (x != 15 || y != 15) { GRID(x, y, 2) = CELL_AIR; SET_FLOOR(x, y, 2); }
+            BuildEntrances();
+            BuildGraph();
+            elevatorDirectionalPickup = (pass == 0);
+            moverCount = 2;
+            // A on z2 and B on z4 both go down to the ground; the car waits at the bottom
+            InitMover(&movers[0], 15 * CELL_SIZE + 16, 16 * CELL_SIZE + 16, 2.0f, (Point){5, 5, 1}, MOVER_SPEED);
+            InitMover(&movers[1], 15 * CELL_SIZE + 16, 16 * CELL_SIZE + 16, 4.0f, (Point){6, 6, 1}, MOVER_SPEED);
+            movers[0].needsRepath = movers[1].needsRepath = true;
+            int first = -1;
+            for (int t = 0; t < 3000 && first < 0; t++) {
+                Tick();
+                if (ElevatorMoverAboard(0)) first = 0;
+                else if (ElevatorMoverAboard(1)) first = 1;
+            }
+            if (pass == 0) { expect(first == 1); }   // sweep up to B first, A on the way down
+            else { expect(first == 0); }             // old rule: the empty car turns round for A
+        }
+        elevatorDirectionalPickup = true;
+    }
+
     it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {
         SetupTower();
         moverCount = 1;

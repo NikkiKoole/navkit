@@ -41,6 +41,12 @@ extern int elevatorCapacity;     // riders per car (setting, <= ELEVATOR_MAX_RID
 extern float elevatorDoorTime;   // seconds the doors stay open at a stop (dayLength 60)
 extern int elevatorRides;        // stats: boardings since the last clear
 extern bool useElevatorWaitCost; // routes count the expected wait for the car (setting)
+extern bool elevatorDirectionalPickup;   // an empty car on its way to calls doesn't turn round for others (setting)
+// Stats since the last clear: seconds waited in line (sum, count, longest); detours = an
+// empty car took someone the other way while calls further on still waited
+extern double elevatorWaitSum;
+extern float elevatorWaitMax;
+extern int elevatorWaitCount, elevatorDetours;
 
 int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change
 int ClimbExtraCost(int x, int y, int z, int dz);      // NAV_CLIMB_EXTRA: ladders + elevators

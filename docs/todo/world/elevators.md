@@ -24,6 +24,20 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   the car. It gets off at the last shaft waypoint of its path (a new path while aboard sets
   a new stop). A coarse path's window that ends at the shaft door is refined right away
   (`MoverRefillRouteNow`), so the ride is on the path before the mover lines up.
+- **Sweep pickup** (`elevatorDirectionalPickup`, on): an empty car on its way to calls
+  further on picks up only people going its way; the others ride on its way back. Before,
+  an empty car stopped for anyone and turned round, and the calls further on waited.
+  Scenario `elevator-tall` (10 floors, one car, no stairs), 18000 ticks:
+
+  | movers | rule | detours | avg wait | longest | boardings |
+  |---|---|---|---|---|---|
+  | 8  | old / sweep | 0 / 0 | 11.1 / 11.1 s | 76 / 76 s | 132 / 132 |
+  | 15 | old / sweep | 5 / 0 | 25.8 / 22.0 s | 186 / 135 s | 124 / 134 |
+  | 30 | old / sweep | 4 / 0 | 30.2 / 33.5 s | 155 / 139 s | 139 / 135 |
+
+  It matters at medium load. At 30 movers the one car is simply saturated (never idle,
+  doors open 62% of the time, ~3 of 4 places taken, ~17 in line): more cars or capacity
+  help there, not the order of service.
 - **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
   caught between levels is put on the nearest level and re-plans.
 - **Route cost** (`ClimbExtraCost`, the `NAV_CLIMB_EXTRA` hook; ladders keep their queue
