@@ -47,6 +47,7 @@ extern bool elevatorDirectionalPickup;   // an empty car on its way to calls doe
 extern double elevatorWaitSum;
 extern float elevatorWaitMax;
 extern int elevatorWaitCount, elevatorDetours;
+void ElevatorPrintWaitStats(void);   // headless: wait/ride distribution, per floor
 
 int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change (travel)
 int ElevatorBoardCost(int x, int y, int z);           // route cost of boarding at (x,y,z): the wait

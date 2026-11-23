@@ -13,6 +13,8 @@
 #include "../world/pathfinding.h"
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 Elevator elevators[MAX_ELEVATORS];
 int elevatorCount = 0;
@@ -23,6 +25,13 @@ float elevatorDoorTime = 1.5f;
 int elevatorRides = 0;
 bool useElevatorWaitCost = true;
 bool elevatorDirectionalPickup = true;
+// Wait and ride samples (seconds), for the distribution
+#define ELEV_SAMPLES 8192
+static float waitSamples[ELEV_SAMPLES], rideSamples[ELEV_SAMPLES];
+static int waitFloor[ELEV_SAMPLES], rideFloors[ELEV_SAMPLES];
+static int waitSampleCount = 0, rideSampleCount = 0;
+static double moverRideStart[MAX_MOVERS];
+static int moverRideFromZ[MAX_MOVERS];
 double elevatorWaitSum = 0.0;
 float elevatorWaitMax = 0.0f;
 int elevatorWaitCount = 0, elevatorDetours = 0;
@@ -65,6 +74,7 @@ void ClearElevators(void) {
     elevatorCount = 0;
     elevatorRides = 0;
     elevatorWaitSum = 0.0; elevatorWaitMax = 0.0f; elevatorWaitCount = 0; elevatorDetours = 0;
+    waitSampleCount = rideSampleCount = 0;
     ClearMoverState();
 }
 
@@ -419,6 +429,12 @@ static bool TryBoard(int i, int shaftWp) {
         RequestsBeyond(moverElev[i], fromZ, e->dir)) elevatorDetours++;
     elevatorWaitSum += moverLineWait[i];
     elevatorWaitCount++;
+    if (waitSampleCount < ELEV_SAMPLES) {
+        waitFloor[waitSampleCount] = fromZ;
+        waitSamples[waitSampleCount++] = moverLineWait[i];
+    }
+    moverRideStart[i] = gameTime;
+    moverRideFromZ[i] = fromZ;
     if (moverLineWait[i] > elevatorWaitMax) elevatorWaitMax = moverLineWait[i];
     e->riders[e->riderCount++] = i;
     moverElevState[i] = ELEV_RIDING;
@@ -533,6 +549,10 @@ bool ElevatorRiderTick(int i, float dt) {
     int level = (int)floorf(e->z + 0.5f);
     if (e->state != CAR_DOORS || level != moverElevDest[i]) return true;
     // Off: skip the shaft waypoints the ride covered
+    if (rideSampleCount < ELEV_SAMPLES) {
+        rideFloors[rideSampleCount] = abs(level - moverRideFromZ[i]);
+        rideSamples[rideSampleCount++] = (float)(gameTime - moverRideStart[i]);
+    }
     m->z = (float)level;
     while (m->pathIndex >= 0 && moverPaths[i][m->pathIndex].x == e->x && moverPaths[i][m->pathIndex].y == e->y)
         m->pathIndex--;
@@ -706,4 +726,53 @@ int RemoveShaftAt(int x, int y, int z) {
     RebuildElevators();
     // Riders in that car were let off (z rounded); anyone left mid-air falls as usual
     return z1 - z0 + 1;
+}
+
+// --- Measuring ----------------------------------------------------------------------
+static int CmpFloat(const void* a, const void* b) {
+    float x = *(const float*)a, y = *(const float*)b;
+    return (x > y) - (x < y);
+}
+
+static float Percentile(const float* sorted, int n, float p) {
+    if (n <= 0) return 0.0f;
+    int k = (int)(p * (float)(n - 1) + 0.5f);
+    return sorted[k];
+}
+
+// Waits in line and rides: median, 90th percentile, longest, in seconds, game hours and
+// cells of walking (how far a mover walks in that time); longest wait per floor
+void ElevatorPrintWaitStats(void) {
+    static float tmp[ELEV_SAMPLES];
+    float hourSec = dayLength / 24.0f;                       // seconds per game hour
+    float walkCellsPerSec = (balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f)
+                            * (60.0f / dayLength) / (float)CELL_SIZE;
+    printf("Time scale: a game hour is %.1f s; a mover walks %.1f cells in it\n", hourSec, walkCellsPerSec * hourSec);
+    const char* names[2] = {"wait in line", "ride"};
+    for (int which = 0; which < 2; which++) {
+        int n = which ? rideSampleCount : waitSampleCount;
+        if (n == 0) continue;
+        memcpy(tmp, which ? rideSamples : waitSamples, sizeof(float) * (size_t)n);
+        qsort(tmp, (size_t)n, sizeof(float), CmpFloat);
+        float med = Percentile(tmp, n, 0.5f), p90 = Percentile(tmp, n, 0.9f), mx = tmp[n - 1];
+        printf("%-13s n=%4d  median %5.1f s (%4.1f h, %4.0f cells)  p90 %5.1f s (%4.1f h)  longest %5.1f s (%4.1f h)\n",
+               names[which], n, med, med / hourSec, med * walkCellsPerSec, p90, p90 / hourSec, mx, mx / hourSec);
+    }
+    if (rideSampleCount > 0) {
+        double perFloor = 0.0; int floors = 0;
+        for (int k = 0; k < rideSampleCount; k++) { perFloor += rideSamples[k]; floors += rideFloors[k]; }
+        printf("ride time per floor ridden: %.2f s (car speed %.1f floors/s, doors %.1f s at each stop)\n",
+               floors > 0 ? perFloor / floors : 0.0, elevatorSpeed * (60.0f / dayLength), elevatorDoorTime * (dayLength / 60.0f));
+    }
+    if (waitSampleCount > 0) {
+        float worst[64] = {0}; int cnt[64] = {0};
+        for (int k = 0; k < waitSampleCount; k++) {
+            int f = waitFloor[k] < 64 ? waitFloor[k] : 63;
+            cnt[f]++;
+            if (waitSamples[k] > worst[f]) worst[f] = waitSamples[k];
+        }
+        printf("longest wait by floor:");
+        for (int f = 0; f < 64; f++) if (cnt[f]) printf(" z%d %.0fs(%d)", f, worst[f], cnt[f]);
+        printf("\n");
+    }
 }
