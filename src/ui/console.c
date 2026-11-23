@@ -94,6 +94,7 @@ static void Cmd_Grid(int argc, const char** argv);
 static void Cmd_Scenario(int argc, const char** argv);
 static void Cmd_Game(int argc, const char** argv);
 static void Cmd_SpawnMovers(int argc, const char** argv);
+static void Cmd_Reveal(int argc, const char** argv);
 void SpawnMoversDemo(int count);   // main.c
 void AddMoversDemo(int count);     // main.c
 
@@ -132,6 +133,7 @@ void Console_Init(void) {
     Console_RegisterCmd("clear", Cmd_Clear, "Clear entities: clear items|movers|fire|smoke|steam|water|temp|wear|lights|animals|stockpiles|all");
     Console_RegisterCmd("tp", Cmd_Tp, "Teleport camera: tp <x> <y> [z]");
     Console_RegisterCmd("rain", Cmd_Rain, "Start/stop rain: rain [light|medium|heavy|stop|1-100]");
+    Console_RegisterCmd("reveal", Cmd_Reveal, "Lift the fog of war: every cell explored (dev cheat; survival/island)");
     Console_RegisterCmd("weather", Cmd_Weather, "Force weather: weather clear|cloudy|rain|heavy|thunder|snow|mist");
     Console_RegisterCmd("season", Cmd_Season, "Jump to season: season spring|summer|autumn|winter");
     Console_RegisterCmd("terrain", Cmd_Terrain, "Generate terrain: terrain <name> (use 'terrain list' to see options)");
@@ -783,6 +785,16 @@ static void Cmd_Clear(int argc, const char** argv) {
     } else {
         Console_Printf(YELLOW, "Unknown: %s (items movers fire smoke steam water temp wear lights animals stockpiles all)", what);
     }
+}
+
+// Lift the fog of war (survival and island start with everything unexplored). Exploration
+// also gates pathing and jobs, so the nav graph is rebuilt.
+static void Cmd_Reveal(int argc, const char** argv) {
+    (void)argc; (void)argv;
+    CLEAR_GRID_LAYER(unexploredGrid, 0);
+    BuildEntrances();
+    BuildGraph();
+    Console_Print("Fog of war lifted: everything explored", GREEN);
 }
 
 static void Cmd_Rain(int argc, const char** argv) {
