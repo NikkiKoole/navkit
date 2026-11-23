@@ -6,6 +6,9 @@
 #include "../core/time.h"
 #include "../core/event_log.h"
 #include "../world/pathfinding.h"
+#include "stockpiles.h"
+#include "items.h"
+#include "jobs.h"
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
@@ -157,7 +160,10 @@ void ClearTrains(void) {
     transitGen++;
     trainDecisionTrainSec = trainDecisionWalkSec = 0.0;
     moverGaveUpInit = false;   // forget who gave up (cooldowns)
+    trainCargoLoaded = trainCargoUnloaded = trainCargoHaulDrops = 0;
     for (int i = 0; i < MAX_TRAINS; i++) {
+        if (trains[i].active) DropTrainCargo(i);
+        trains[i].cargoCount = 0;
         trains[i].active = false;
         trains[i].cartState = CART_MOVING;
         trains[i].stateTimer = 0.0f;
@@ -204,6 +210,7 @@ int SpawnTrain(int x, int y, int z) {
     t->ridingCount = 0;
     t->carCount = 1;
     t->trailCount = 0;
+    t->cargoCount = 0;
     trainCount++;
     return idx;
 }
@@ -1217,6 +1224,201 @@ static bool FindNextTrackCell(Train* t, int* outX, int* outY) {
 // Train Tick
 // ============================================================================
 
+// ============================================================================
+// Freight
+// ============================================================================
+
+int trainCargoLoaded = 0, trainCargoUnloaded = 0, trainCargoHaulDrops = 0;
+bool trainFreight = true;
+
+int StationCargoStockpiles(int stationIdx, int* out, int maxOut) {
+    if (stationIdx < 0 || stationIdx >= stationCount || !stations[stationIdx].active) return 0;
+    const TrainStation* st = &stations[stationIdx];
+    int n = 0;
+    for (int sp = 0; sp < MAX_STOCKPILES && n < maxOut; sp++) {
+        const Stockpile* s = &stockpiles[sp];
+        if (!s->active || s->z != st->z) continue;
+        bool near = false;
+        for (int p = 0; p < st->platformCellCount && !near; p++) {
+            int px = st->platformCells[p][0], py = st->platformCells[p][1];
+            int dx = px < s->x ? s->x - px : (px >= s->x + s->width ? px - (s->x + s->width - 1) : 0);
+            int dy = py < s->y ? s->y - py : (py >= s->y + s->height ? py - (s->y + s->height - 1) : 0);
+            near = dx <= TRAIN_CARGO_REACH && dy <= TRAIN_CARGO_REACH;
+        }
+        if (near) out[n++] = sp;
+    }
+    return n;
+}
+
+static bool LineHasTrain(int line) {
+    for (int t = 0; t < MAX_TRAINS; t++) if (trains[t].active && TrainLine(t) == line) return true;
+    return false;
+}
+
+// Another stop of `line` (not `fromStation`) has a cargo stockpile with priority above
+// `fromPriority` that accepts the item and has room
+static bool CargoBetterStopOnLine(int line, int fromStation, int itemIdx, int fromPriority) {
+    const Item* it = &items[itemIdx];
+    for (int st = 0; st < stationCount; st++) {
+        if (st == fromStation || !stations[st].active || StationLine(st) != line) continue;
+        int sps[16];
+        int n = StationCargoStockpiles(st, sps, 16);
+        for (int k = 0; k < n; k++) {
+            if (stockpiles[sps[k]].priority <= fromPriority) continue;
+            int sx, sy;
+            if (FindFreeStockpileSlot(sps[k], it->type, it->material, &sx, &sy)) return true;
+        }
+    }
+    return false;
+}
+
+bool TrainCargoWillForward(int stockpileIdx, int itemIdx) {
+    if (!trainFreight || stockpileIdx < 0 || !stockpiles[stockpileIdx].active) return false;
+    for (int st = 0; st < stationCount; st++) {
+        int sps[16];
+        int n = StationCargoStockpiles(st, sps, 16);
+        for (int k = 0; k < n; k++) {
+            if (sps[k] != stockpileIdx) continue;
+            int line = StationLine(st);
+            if (line >= 0 && LineHasTrain(line) &&
+                CargoBetterStopOnLine(line, st, itemIdx, stockpiles[stockpileIdx].priority)) return true;
+        }
+    }
+    return false;
+}
+
+typedef struct { int line, station, priority; } CargoWant;
+static bool CargoWantItem(int itemIdx, void* user) {
+    const CargoWant* w = user;
+    return CargoBetterStopOnLine(w->line, w->station, itemIdx, w->priority);
+}
+
+static int TrainCargoCapacity(const Train* t) {
+    int cap = (t->carCount > 0 ? t->carCount : 1) * TRAIN_CARGO_PER_CAR;
+    return cap < MAX_TRAIN_CARGO ? cap : MAX_TRAIN_CARGO;
+}
+
+static void CargoRemoveAt(Train* t, int k) {
+    t->cargo[k] = t->cargo[t->cargoCount - 1];
+    t->cargoFromPriority[k] = t->cargoFromPriority[t->cargoCount - 1];
+    t->cargoCount--;
+}
+
+// The cargo stockpile here that would take this load (priority above where it came from)
+static int CargoUnloadTarget(int stationIdx, const Train* t, int k) {
+    const Item* it = &items[t->cargo[k]];
+    int sps[16], best = -1;
+    int n = StationCargoStockpiles(stationIdx, sps, 16);
+    for (int j = 0; j < n; j++) {
+        int sp = sps[j];
+        if (stockpiles[sp].priority <= t->cargoFromPriority[k]) continue;
+        int sx, sy;
+        if (!FindFreeStockpileSlot(sp, it->type, it->material, &sx, &sy)) continue;
+        if (best < 0 || stockpiles[sp].priority > stockpiles[best].priority) best = sp;
+    }
+    return best;
+}
+
+// Something to unload or load at this stop (decides whether the train stops)
+static bool TrainCargoWorkAt(int trainIdx, int stationIdx) {
+    Train* t = &trains[trainIdx];
+    if (!trainFreight && t->cargoCount == 0) return false;   // off: only unload what is aboard
+    for (int k = 0; k < t->cargoCount; k++)
+        if (CargoUnloadTarget(stationIdx, t, k) >= 0) return true;
+    if (t->cargoCount >= TrainCargoCapacity(t)) return false;
+    int line = TrainLine(trainIdx), sps[16];
+    int n = StationCargoStockpiles(stationIdx, sps, 16);
+    for (int j = 0; j < n; j++) {
+        const Stockpile* s = &stockpiles[sps[j]];
+        int slots = s->width * s->height;
+        for (int i = 0; i < slots; i++) {
+            int si = s->slots[i];
+            if (!s->cells[i] || s->slotIsContainer[i] || si < 0 || !items[si].active) continue;
+            if (items[si].state != ITEM_IN_STOCKPILE || items[si].reservedBy != -1) continue;
+            if (CargoBetterStopOnLine(line, stationIdx, si, s->priority)) return true;
+        }
+    }
+    return false;
+}
+
+static void TrainCargoAtStop(int trainIdx, int stationIdx) {
+    Train* t = &trains[trainIdx];
+    for (int k = t->cargoCount - 1; k >= 0; k--) {   // unload first
+        int sp = CargoUnloadTarget(stationIdx, t, k);
+        if (sp < 0) continue;
+        int it = t->cargo[k];
+        if (StockpilePutLoad(sp, it)) {
+            CargoRemoveAt(t, k);
+            trainCargoUnloaded++;
+        }
+    }
+    if (!trainFreight) return;
+    int line = TrainLine(trainIdx), sps[16];
+    int n = StationCargoStockpiles(stationIdx, sps, 16);
+    for (int j = 0; j < n && t->cargoCount < TrainCargoCapacity(t); j++) {
+        CargoWant w = { line, stationIdx, stockpiles[sps[j]].priority };
+        while (t->cargoCount < TrainCargoCapacity(t)) {
+            int it = StockpileTakeStack(sps[j], -1, CargoWantItem, &w);
+            if (it < 0) break;
+            items[it].state = ITEM_ON_TRAIN;
+            items[it].reservedBy = -1;
+            items[it].x = t->x; items[it].y = t->y; items[it].z = (float)t->z;
+            t->cargo[t->cargoCount] = it;
+            t->cargoFromPriority[t->cargoCount] = (unsigned char)stockpiles[sps[j]].priority;
+            t->cargoCount++;
+            trainCargoLoaded++;
+        }
+    }
+}
+
+void DropTrainCargo(int trainIdx) {
+    Train* t = &trains[trainIdx];
+    for (int k = 0; k < t->cargoCount; k++) {
+        int it = t->cargo[k];
+        if (it < 0 || it >= MAX_ITEMS || !items[it].active || items[it].state != ITEM_ON_TRAIN) continue;
+        items[it].state = ITEM_ON_GROUND;
+        items[it].x = t->cellX * CELL_SIZE + CELL_SIZE * 0.5f;
+        items[it].y = t->cellY * CELL_SIZE + CELL_SIZE * 0.5f;
+        items[it].z = (float)t->z;
+    }
+    t->cargoCount = 0;
+}
+
+bool TrainCargoRedirectHaul(int moverIdx, int entryStation) {
+    Mover* m = &movers[moverIdx];
+    if (!trainFreight || m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || job->type != JOBTYPE_HAUL || job->step != STEP_CARRYING) return false;
+    int it = job->carryingItem, target = job->targetStockpile;
+    if (it < 0 || !items[it].active || target < 0 || !stockpiles[target].active) return false;
+    if (items[it].contentCount > 0) return false;   // containers ride with their hauler
+    int line = StationLine(entryStation);
+    if (line < 0 || !LineHasTrain(line)) return false;
+    int sps[16];
+    int n = StationCargoStockpiles(entryStation, sps, 16);
+    for (int j = 0; j < n; j++) {
+        int sp = sps[j];
+        if (sp == target || stockpiles[sp].priority >= stockpiles[target].priority) continue;
+        if (!StockpileAcceptsItem(sp, items[it].type, items[it].material)) continue;
+        if (!CargoBetterStopOnLine(line, entryStation, it, stockpiles[sp].priority)) continue;
+        int sx, sy;
+        if (!FindFreeStockpileSlot(sp, items[it].type, items[it].material, &sx, &sy)) continue;
+        if (!ReserveStockpileSlot(sp, sx, sy, moverIdx, items[it].type, items[it].material)) continue;
+        ReleaseStockpileSlot(target, job->targetSlotX, job->targetSlotY);
+        InvalidateStockpileSlotCache(items[it].type, items[it].material);
+        job->targetStockpile = sp;
+        job->targetSlotX = sx;
+        job->targetSlotY = sy;
+        m->goal = (Point){sx, sy, stockpiles[sp].z};
+        m->needsRepath = true;
+        trainCargoHaulDrops++;
+        EventLog("Mover %d drops item %d at cargo stop (stockpile %d, station %d) instead of riding",
+                 moverIdx, it, sp, entryStation);
+        return true;
+    }
+    return false;
+}
+
 void TrainsTick(float dt) {
     float gdt = dt * gameSpeed;
     if (gdt <= 0.0f) return;
@@ -1229,6 +1431,7 @@ void TrainsTick(float dt) {
         if (GRID(t->cellX, t->cellY, t->z) != CELL_TRACK) {
             if (t->lightCellX >= 0) RemoveLightSource(t->lightCellX, t->lightCellY, t->z);
             DismountAllRiders(i);
+            DropTrainCargo(i);
             t->active = false;
             trainCount--;
             continue;
@@ -1293,7 +1496,8 @@ void TrainsTick(float dt) {
                         if (movers[mi].transportExitStation == stIdx) hasExiters = true;
                     }
                 }
-                if (hasWaiters || hasExiters) {
+                bool hasCargo = TrainCargoWorkAt(i, stIdx);
+                if (hasWaiters || hasExiters || hasCargo) {
                     // Pull forward: only stop if the next track cell is NOT part of this station
                     int peekX, peekY;
                     bool hasNext = FindNextTrackCell(t, &peekX, &peekY);
@@ -1303,6 +1507,7 @@ void TrainsTick(float dt) {
                         t->stateTimer = TRAIN_DOOR_TIME;
                         t->atStation = stIdx;
                         t->progress = 0.0f;
+                        if (hasCargo) TrainCargoAtStop(i, stIdx);
                         break;
                     }
                 }
@@ -1378,6 +1583,12 @@ void TrainsTick(float dt) {
                 movers[mi].y = t->y;
                 movers[mi].timeWithoutProgress = 0.0f;
             }
+        }
+
+        // Freight rides along
+        for (int k = 0; k < t->cargoCount; k++) {
+            int it = t->cargo[k];
+            if (it >= 0 && it < MAX_ITEMS && items[it].active) { items[it].x = t->x; items[it].y = t->y; }
         }
 
         // Update locomotive light at current cell

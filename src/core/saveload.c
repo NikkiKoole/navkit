@@ -620,6 +620,25 @@ void RebuildPostLoadState(void) {
         }
     }
 
+    // ...but the active jobs were loaded and carry on: give them back the items they hold
+    // and the stockpile slots haul jobs are heading for (the counts were cleared on load).
+    // Without this an idle mover picks up a load another job is about to fetch, and a
+    // slot can overfill. Same rules as the state audit (item <-> job, slot <-> haul job).
+    for (int j = 0; j < jobHighWaterMark; j++) {
+        const Job* job = &jobs[j];
+        if (!job->active || job->assignedMover < 0) continue;
+        int held[5] = { job->targetItem, job->carryingItem, job->targetItem2, job->targetItem3, job->toolItem };
+        for (int k = 0; k < 5; k++)
+            if (held[k] >= 0 && held[k] < MAX_ITEMS && items[held[k]].active)
+                items[held[k]].reservedBy = job->assignedMover;
+        if (job->type == JOBTYPE_HAUL && job->targetStockpile >= 0 && job->targetStockpile < MAX_STOCKPILES) {
+            Stockpile* sp = &stockpiles[job->targetStockpile];
+            int lx = job->targetSlotX - sp->x, ly = job->targetSlotY - sp->y;
+            if (sp->active && lx >= 0 && ly >= 0 && lx < sp->width && ly < sp->height)
+                sp->reservedBy[ly * sp->width + lx]++;
+        }
+    }
+
     // Rebuild waterActiveCells from loaded water grid
     waterActiveCells = 0;
     for (int z = 0; z < gridDepth; z++) {
@@ -1224,11 +1243,19 @@ bool LoadWorld(const char* filename) {
         fread(animals, sizeof(Animal), animalCount, f);
     }
 
-    // Trains (v88+: Train has multi-car trail fields)
+    // Trains (v88+: Train has multi-car trail fields; v97+: freight)
     if (version >= 88) {
         fread(&trainCount, sizeof(trainCount), 1, f);
         if (trainCount > 0) {
-            fread(trains, sizeof(Train), trainCount, f);
+            if (version >= V97_TRAIN_CARGO) {
+                fread(trains, sizeof(Train), trainCount, f);
+            } else {
+                for (int ti = 0; ti < trainCount; ti++) {
+                    TrainV96 old;
+                    fread(&old, sizeof(TrainV96), 1, f);
+                    MigrateTrainV96(&trains[ti], &old);
+                }
+            }
         }
         fread(&stationCount, sizeof(stationCount), 1, f);
         if (stationCount > 0) {

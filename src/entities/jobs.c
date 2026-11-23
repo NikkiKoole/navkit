@@ -4363,6 +4363,7 @@ static void AssignJobs_P3c_Rehaul(void) {
                 }
             }
         } else {
+            if (TrainCargoWillForward(currentSp, j)) continue;   // freight: the train takes it on
             destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
         }
 
@@ -7135,6 +7136,7 @@ int WorkGiver_Rehaul(int moverIdx) {
         } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
             destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
         } else {
+            if (TrainCargoWillForward(currentSp, j)) continue;   // freight: the train takes it on
             destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
         }
 

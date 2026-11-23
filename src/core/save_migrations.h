@@ -4,11 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <stddef.h>
 #include "../world/material.h"
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 96
+#define CURRENT_SAVE_VERSION 97
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -38,6 +40,9 @@
 // Older saves: stable non-source cells were at ambient (offset 0); others keep their
 // temperature at the ambient of the moment they load.
 #define V96_TEMP_OFFSETS 96
+// v97: Train gets freight (cargo item indices, their source priority, cargoCount) at
+// the end of the struct; older saves read TrainV96 (no freight)
+#define V97_TRAIN_CARGO 97
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
@@ -276,5 +281,35 @@ typedef struct {
     int ridingCount;
     // No carCount, trail fields in V87
 } TrainV87;
+
+// V96 Train struct (v88-v96: multi-car, before freight added in v97). Same layout as the
+// start of Train.
+typedef struct {
+    float x, y;
+    int z;
+    int cellX, cellY;
+    int prevCellX, prevCellY;
+    float speed;
+    float progress;
+    int lightCellX, lightCellY;
+    bool active;
+    int cartState;
+    float stateTimer;
+    int atStation;
+    int ridingMovers[MAX_CART_CAPACITY];
+    int ridingCount;
+    int carCount;
+    int trailCellX[MAX_TRAIL_LENGTH];
+    int trailCellY[MAX_TRAIL_LENGTH];
+    int trailCount;
+} TrainV96;
+
+_Static_assert(offsetof(Train, cargo) == sizeof(TrainV96), "TrainV96 must be the start of Train");
+
+static inline void MigrateTrainV96(Train* t, const TrainV96* old) {
+    memset(t, 0, sizeof(*t));
+    memcpy(t, old, sizeof(*old));   // TrainV96 is a prefix of Train
+    t->cargoCount = 0;
+}
 
 #endif

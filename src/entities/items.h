@@ -90,7 +90,8 @@ typedef enum {
     ITEM_CARRIED,
     ITEM_IN_STOCKPILE,
     ITEM_IN_CONTAINER,    // inside another item
-    ITEM_ON_BELT          // riding a conveyor belt (belts.c): no job may take it
+    ITEM_ON_BELT,         // riding a conveyor belt (belts.c): no job may take it
+    ITEM_ON_TRAIN         // freight on a train (trains.c, Train.cargo): no job may take it
 } ItemState;
 
 // Item condition (spoilage progression)

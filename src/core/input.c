@@ -2100,6 +2100,7 @@ static void Tool_RemoveTrain(const ToolArgs* a) {
         if (trains[i].lightCellX >= 0) {
             RemoveLightSource(trains[i].lightCellX, trains[i].lightCellY, trains[i].z);
         }
+        DropTrainCargo(i);
         trains[i].active = false;
         trainCount--;
         AddMessage(TextFormat("Removed train #%d", i), ORANGE);

@@ -1558,6 +1558,83 @@ static bool BeltLiftCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// cargo: freight from a mine stop to a town stop
+// ---------------------------------------------------------------------------
+
+// One narrow loop line (two trains, four cars = 16 loads each) between a mine stop
+// (west) and a town stop (east). Rocks lie around the mine. Next to each stop a cargo
+// stockpile for rocks: the mine's at priority 2, the town's at 7. Four haulers at the
+// mine pick up rocks for the best stockpile (the town); as they would board the train
+// with one, they leave it at the mine's cargo stockpile instead and go back for the
+// next. Trains load what the town takes and unload it there. Compare --set
+// useTrainTimeChoice 0 (haulers walk every rock to town).
+static int cargoTown = -1, cargoMine = -1, cargoRocks = 0;
+
+static int StockpileItemCount(int sp) {
+    int n = 0;
+    if (sp < 0) return 0;
+    const Stockpile* s = &stockpiles[sp];
+    for (int i = 0; i < s->width * s->height; i++)
+        if (s->cells[i] && s->slots[i] >= 0) n += s->slotCounts[i];
+    return n;
+}
+
+static void SetupCargo(void) {
+    const int W = gridWidth, gap = 3, ey = 28;
+    const int x0 = 20, x1 = W - 21, mineStop = 32, townStop = W - 33;
+    LayLoopLine(x0, x1, ey, gap, true);
+    LayLoopStop(mineStop, ey, gap, true);
+    LayLoopStop(townStop, ey, gap, true);
+    RebuildStations();
+    SpawnTrainHeading(x0 + 20, ey, 1, 4, 1, 0);
+    SpawnTrainHeading(x1 - 20, ey + gap, 1, 4, -1, 0);
+    // cargo stockpiles: two rows from the platforms
+    cargoMine = CreateStockpile(mineStop - 4, ey - 6, 1, 8, 4);        // rows ey-6..ey-3 (platform ey-1)
+    cargoTown = CreateStockpile(townStop - 4, ey + gap + 3, 1, 8, 4);  // rows ey+gap+3.. (platform ey+gap+1)
+    int sps[2] = {cargoMine, cargoTown}, prio[2] = {2, 7};
+    for (int k = 0; k < 2; k++) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sps[k], (ItemType)t, false);
+        SetStockpileFilter(sps[k], ITEM_ROCK, true);
+        SetStockpilePriority(sps[k], prio[k]);
+    }
+    InvalidateStockpileSlotCacheAll();
+    // a quarry north of the mine stop: every rock within reach of the station, stacks of 1
+    cargoRocks = 0;
+    for (int y = 15; y <= 19; y += 2)
+        for (int x = 20; x <= 42; x++) {
+            SpawnItem((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 1.0f, ITEM_ROCK);
+            cargoRocks++;
+        }
+    BuildEntrances();
+    BuildGraph();
+    if (trainSpeed == TRAIN_DEFAULT_SPEED) trainSpeed = 50.0f;   // unless --set trainSpeed chose one
+    endlessMoverMode = true;   // idle haulers wander (off: an idle mover without a path is switched off)
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 4;
+    for (int i = 0; i < n; i++) SpawnMoverAt(24 + i * 4, 12, 1);   // at the quarry
+    currentViewZ = 1;
+    AddMessage(TextFormat("Cargo: %d rocks at the mine, %d haulers; freight trains to the town stockpile", cargoRocks, n), GREEN);
+}
+
+static void CargoPrintStats(void) {
+    int riding = 0;
+    for (int t = 0; t < MAX_TRAINS; t++) if (trains[t].active) riding += trains[t].cargoCount;
+    printf("Cargo: %d rocks; town stockpile %d, mine cargo stockpile %d, on trains %d\n",
+           cargoRocks, StockpileItemCount(cargoTown), StockpileItemCount(cargoMine), riding);
+    printf("Freight: %d loads loaded, %d unloaded; %d hauls left at the mine stop instead of riding\n",
+           trainCargoLoaded, trainCargoUnloaded, trainCargoHaulDrops);
+}
+
+static bool CargoCheck(char* why, int whyLen) {
+    if (trainCargoUnloaded == 0) {
+        snprintf(why, (size_t)whyLen, "no freight reached the town (%d loaded, %d hauls dropped at the stop)",
+                 trainCargoLoaded, trainCargoHaulDrops);
+        return false;
+    }
+    return true;
+}
+
 // belt-build: belts built by movers. A 12-cell belt line is only blueprinted; planks
 // and cordage lie by the movers. They haul materials and build the cells; as soon as
 // the line is whole, the rock stacks pre-stocked in A ride to B.
@@ -1647,6 +1724,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupSubway, MetroTickStats, TransferPrintStats, SubwayCheck, 512, 320},
     {"subway-deep", "Two lines at different depths, one crossing under the other; change by ramps between levels, 40 movers",
                    NULL,        SetupSubwayDeep, MetroTickStats, TransferPrintStats, SubwayDeepCheck, 512, 320},
+    {"cargo",      "Freight: haulers leave rocks at the mine stop, trains carry them to the town stockpile, 4 haulers",
+                   NULL,        SetupCargo, NULL, CargoPrintStats, CargoCheck, 240, 60},
     {"transit-chain", "Six lines in a staircase: end to end is five changes of line, 48 movers",
                    NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
     {"belt",       "Conveyor spike: movers stock a log pile, a belt carries the stacks (and a crate) to a second pile, 3 movers",

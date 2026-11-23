@@ -568,6 +568,8 @@ static const Setting settings[] = {
     // --- Trains ---
     SET_BOOL("trainQueue", "Queue Line", "Entities/Trains", trainQueueEnabled,
       "Movers form a visible queue line at stations instead of spreading out."),
+    SET_BOOL("trainFreight", "Freight", "Entities/Trains", trainFreight,
+      "Trains carry loads between cargo stockpiles (a stockpile within 2 cells of a platform), to a stop whose cargo stockpile has a higher priority. Haulers that would ride with an item leave it at the boarding stop's cargo stockpile instead."),
     SET_BOOL("useTrainTransfers", "Transfers", "Entities/Trains", useTrainTransfers,
       "Trip choice may plan a change of line: ride one line, walk to another line's platform, ride on. Off = one line per trip (a mover may still change by chance after a ride)."),
 

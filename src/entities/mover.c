@@ -2155,6 +2155,9 @@ static void MaybeTakeTrain(int i) {
     int entryStation, exitStation;
     TrainChosenStations(&entryStation, &exitStation);
     if (entryStation < 0 || exitStation < 0 || entryStation == exitStation) return;
+    // A hauler with an item: leave it at the boarding stop's cargo stockpile if the
+    // train will carry it on (freight), instead of riding along
+    if (TrainCargoRedirectHaul(i, entryStation)) return;
     TrainNoteDecision(i, entryStation, exitStation);   // stats: train vs walking time
     TrainsMarkPersonalTrip(i, m->currentJobId < 0);
     int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);

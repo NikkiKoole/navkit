@@ -696,6 +696,8 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
     return false;  // stockpile full or all reserved
 }
 
+static bool SlotCountsAsFree(const Stockpile* sp, int s);
+
 bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx, ItemType type, uint8_t material) {
     (void)moverIdx;  // Reservations are tracked by count, not mover ID
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
@@ -724,7 +726,9 @@ bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx, 
         sp->slotMaterials[idx] = mat;
     }
     
+    bool wasFree = SlotCountsAsFree(sp, idx);   // keep freeSlotCount right between rebuilds
     sp->reservedBy[idx]++;
+    sp->freeSlotCount += (int)SlotCountsAsFree(sp, idx) - (int)wasFree;
     return true;
 }
 
@@ -738,7 +742,9 @@ void ReleaseStockpileSlot(int stockpileIdx, int slotX, int slotY) {
     if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) return;
     
     int idx = SlotIndex(sp, lx, ly);
+    bool wasFree = SlotCountsAsFree(sp, idx);   // keep freeSlotCount right between rebuilds
     if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;
+    sp->freeSlotCount += (int)SlotCountsAsFree(sp, idx) - (int)wasFree;
     
     // Clear type stamp if slot is now empty and unreserved
     if (sp->reservedBy[idx] == 0 && sp->slotCounts[idx] == 0) {
@@ -1477,16 +1483,20 @@ bool StockpilePutLoad(int sp, int itemIdx) {
     Item* it = &items[itemIdx];
     int sx, sy;
     if (!FindFreeStockpileSlot(sp, it->type, it->material, &sx, &sy)) return false;
-    int z = stockpiles[sp].z;
+    Stockpile* s = &stockpiles[sp];
+    int slot = (sy - s->y) * s->width + (sx - s->x);
+    bool wasFree = SlotCountsAsFree(s, slot);
+    // PlaceItemInStockpile counts one reservation of the slot as fulfilled: add the one
+    // this load stands for, or it would use up a hauler's (whose job then overfills it).
+    // Not ReserveStockpileSlot: that refuses an empty slot still stamped with another type.
+    s->reservedBy[slot]++;
+    int z = s->z;
     float px = (sx + 0.5f) * CELL_SIZE, py = (sy + 0.5f) * CELL_SIZE;
     it->state = ITEM_ON_GROUND;
     it->x = px; it->y = py; it->z = (float)z;
     if (it->contentCount > 0) MoveContainer(itemIdx, px, py, (float)z);
     ItemType type = it->type;           // read before placing: it may merge into the
     uint8_t mat = it->material;         // slot's stack and be deleted
-    Stockpile* s = &stockpiles[sp];
-    int slot = (sy - s->y) * s->width + (sx - s->x);
-    bool wasFree = SlotCountsAsFree(s, slot);
     PlaceItemInStockpile(sp, sx, sy, itemIdx);
     s->freeSlotCount += (int)SlotCountsAsFree(s, slot) - (int)wasFree;   // a slot that just filled up
     InvalidateStockpileSlotCache(type, mat);

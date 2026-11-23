@@ -11,6 +11,9 @@
 #define MAX_PLATFORM_CELLS 8
 #define MAX_TRAIL_LENGTH 8
 #define TRAIN_DOOR_TIME 3.0f
+#define TRAIN_CARGO_PER_CAR 4   // loads (stacks) per car
+#define MAX_TRAIN_CARGO 32
+#define TRAIN_CARGO_REACH 2     // a stockpile this close to a platform is that stop's cargo stockpile
 #define TRAIN_DEFAULT_SPEED 25.0f  // Cells per second (4x walking: worth it on long trips, see train-double)
 
 // Transport thresholds
@@ -62,6 +65,11 @@ typedef struct {
     int trailCellX[MAX_TRAIL_LENGTH];   // Previous cell positions (trail[0] = most recent)
     int trailCellY[MAX_TRAIL_LENGTH];
     int trailCount;                     // How many trail entries are filled (builds up from 0)
+    // Freight (v97+): item indices riding (ITEM_ON_TRAIN) and the priority of the
+    // stockpile each was loaded from (it is unloaded only into a higher one)
+    int cargo[MAX_TRAIN_CARGO];
+    unsigned char cargoFromPriority[MAX_TRAIN_CARGO];
+    int cargoCount;
 } Train;
 
 extern Train trains[MAX_TRAINS];
@@ -132,6 +140,19 @@ int TrainPlannedRoute(int moverIdx, int* lines, int maxLines);
 extern int trainChoicesConsidered;
 extern int trainDecisions, trainDecisionsFaster;
 extern double trainDecisionTrainSec, trainDecisionWalkSec;   // gave up waiting: walk, no train for a while
+
+// Freight. A cargo stockpile is one with a cell within TRAIN_CARGO_REACH of a station's
+// platform. A train stopping there unloads loads into it when it has a higher priority
+// than the one they came from, and loads whole stacks that a stop on its line has a
+// higher-priority cargo stockpile for (StockpileTakeStack / StockpilePutLoad). Haulers
+// that would ride the train with an item drop it at the boarding stop's cargo stockpile
+// instead (TrainCargoRedirectHaul), and don't rehaul what the train will carry on.
+int  StationCargoStockpiles(int stationIdx, int* out, int maxOut);
+bool TrainCargoWillForward(int stockpileIdx, int itemIdx);   // the train takes it on from here
+bool TrainCargoRedirectHaul(int moverIdx, int entryStation);  // true: the mover delivers to the stop
+void DropTrainCargo(int trainIdx);                            // on the ground (train removed)
+extern int trainCargoLoaded, trainCargoUnloaded, trainCargoHaulDrops;
+extern bool trainFreight;   // setting: trains carry freight between cargo stockpiles
 
 // Board/exit
 void BoardMoverOnTrain(int trainIdx, int moverIdx, int stationIdx);

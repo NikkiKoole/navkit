@@ -1560,6 +1560,85 @@ describe(train_transfers) {
     }
 }
 
+// Count of `type` units in a stockpile's slots
+static int CountInStockpile(int sp, ItemType type) {
+    int n = 0;
+    const Stockpile* s = &stockpiles[sp];
+    for (int i = 0; i < s->width * s->height; i++)
+        if (s->cells[i] && s->slots[i] >= 0 && items[s->slots[i]].type == type) n += s->slotCounts[i];
+    return n;
+}
+
+static int SetupRockStockpile(int x, int y, int w, int h, int priority) {
+    int sp = CreateStockpile(x, y, 1, w, h);
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, false);
+    SetStockpileFilter(sp, ITEM_ROCK, true);
+    SetStockpilePriority(sp, priority);
+    return sp;
+}
+
+describe(train_freight) {
+    // A shuttle between a west stop (x=5) and an east stop (x=34), rock stockpiles two
+    // rows from each platform: west priority 2 with rocks in it, east priority 7
+    it("carries loads from a stop's cargo stockpile to a higher-priority one down the line, and not back") {
+        SetupClean();
+        PlaceTrackLine(2, 37, 10, 1);
+        PlacePlatform(5, 11, 1);
+        PlacePlatform(34, 11, 1);
+        RebuildStations();
+        int west = SetupRockStockpile(3, 13, 4, 2, 2);
+        int east = SetupRockStockpile(32, 13, 4, 2, 7);
+        int sps[8];
+        expect(StationCargoStockpiles(GetStationAt(5, 10, 1), sps, 8) == 1 && sps[0] == west);
+        expect(StationCargoStockpiles(GetStationAt(34, 10, 1), sps, 8) == 1 && sps[0] == east);
+        for (int i = 0; i < 3; i++) {
+            int it = SpawnItem((3 + i + 0.5f) * CELL_SIZE, 13.5f * CELL_SIZE, 1.0f, ITEM_ROCK);
+            PlaceItemInStockpile(west, 3 + i, 13, it);
+        }
+        expect(CountInStockpile(west, ITEM_ROCK) == 3);
+        int t = SpawnTrainHeading(20, 10, 1, 2, -1, 0);   // heads west first
+        expect(t >= 0);
+        bool sawAboard = false;
+        for (int k = 0; k < 60 * 60 && CountInStockpile(east, ITEM_ROCK) < 3; k++) {
+            TrainsTick(TICK_DT);
+            if (trains[t].cargoCount > 0) sawAboard = true;
+        }
+        expect(sawAboard);
+        expect(CountInStockpile(east, ITEM_ROCK) == 3);
+        expect(CountInStockpile(west, ITEM_ROCK) == 0);
+        // a few more round trips: nothing goes back (west has the lower priority)
+        for (int k = 0; k < 60 * 30; k++) TrainsTick(TICK_DT);
+        expect(CountInStockpile(east, ITEM_ROCK) == 3);
+        expect(trains[t].cargoCount == 0);
+    }
+
+    it("removing the train drops its freight on the ground, and trainFreight off loads nothing") {
+        SetupClean();
+        PlaceTrackLine(2, 37, 10, 1);
+        PlacePlatform(5, 11, 1);
+        PlacePlatform(34, 11, 1);
+        RebuildStations();
+        int west = SetupRockStockpile(3, 13, 4, 2, 2);
+        SetupRockStockpile(32, 13, 4, 2, 7);
+        int it = SpawnItem(3.5f * CELL_SIZE, 13.5f * CELL_SIZE, 1.0f, ITEM_ROCK);
+        PlaceItemInStockpile(west, 3, 13, it);
+        trainFreight = false;
+        int t = SpawnTrainHeading(20, 10, 1, 2, -1, 0);
+        for (int k = 0; k < 60 * 10; k++) TrainsTick(TICK_DT);
+        expect(trains[t].cargoCount == 0);
+        expect(CountInStockpile(west, ITEM_ROCK) == 1);
+        trainFreight = true;
+        bool aboard = false;
+        for (int k = 0; k < 60 * 20 && !aboard; k++) { TrainsTick(TICK_DT); aboard = trains[t].cargoCount > 0; }
+        expect(aboard);
+        int carried = trains[t].cargo[0];
+        expect(items[carried].state == ITEM_ON_TRAIN);
+        DropTrainCargo(t);
+        expect(trains[t].cargoCount == 0);
+        expect(items[carried].state == ITEM_ON_GROUND);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1583,6 +1662,7 @@ int main(int argc, char* argv[]) {
     test(track_connections);
     test(track_lines);
     test(train_transfers);
+    test(train_freight);
 
     return summary();
 }

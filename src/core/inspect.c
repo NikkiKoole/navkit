@@ -906,7 +906,7 @@ static void print_transport(void) {
                i, t->cellX, t->cellY, t->z, t->x, t->y, t->speed,
                t->cartState == CART_DOORS_OPEN ? "DOORS_OPEN" : "MOVING");
         if (t->atStation >= 0) printf(", atStation=%d", t->atStation);
-        printf(", riders=%d", t->ridingCount);
+        printf(", riders=%d, cargo=%d", t->ridingCount, t->cargoCount);
         if (t->ridingCount > 0) {
             printf(" [");
             for (int r = 0; r < t->ridingCount; r++) {
@@ -1681,7 +1681,14 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= 88) {
         fread(&insp_trainCount, 4, 1, f);
         insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
-        if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
+        if (insp_trainCount > 0) {
+            if (version >= V97_TRAIN_CARGO) fread(insp_trains, sizeof(Train), insp_trainCount, f);
+            else for (int ti = 0; ti < insp_trainCount; ti++) {
+                TrainV96 old;
+                fread(&old, sizeof(TrainV96), 1, f);
+                MigrateTrainV96(&insp_trains[ti], &old);
+            }
+        }
         fread(&insp_stationCount, 4, 1, f);
         insp_stations = malloc(insp_stationCount > 0 ? insp_stationCount * sizeof(TrainStation) : sizeof(TrainStation));
         if (insp_stationCount > 0) fread(insp_stations, sizeof(TrainStation), insp_stationCount, f);
