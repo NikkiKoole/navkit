@@ -182,6 +182,42 @@ describe(snow_accumulation) {
         expect(GetSnowLevel(5, 5, 0) == 0);
         InitWater();                               // later tests use this cell dry
     }
+
+    // Ice you can walk on is the surface: snow lies on it (and goes when it thaws)
+    it("settles on ice you can walk on, and goes when the ice thaws") {
+        InitTestGrid(10, 10);
+        InitSnow();
+        InitWater();
+        InitWeather();
+        seasonalAmplitude = 0;
+        diurnalAmplitude = 0;
+
+        GRID(5, 5, 0) = CELL_WALL;                 // lake bed
+        SetWallMaterial(5, 5, 0, MAT_DIRT);
+        SetWaterLevel(5, 5, 1, 7);
+        FreezeWater(5, 5, 1);
+        GRID(4, 5, 0) = CELL_WALL;                 // thin ice: shallow frozen water, no snow
+        SetWallMaterial(4, 5, 0, MAT_DIRT);
+        SetWaterLevel(4, 5, 1, 2);
+        FreezeWater(4, 5, 1);
+
+        weatherState.current = WEATHER_SNOW;
+        weatherState.intensity = 1.0f;
+        SetTestTemperature(-5);
+        for (int i = 0; i < 120; i++) {
+            gameDeltaTime = 0.1f; UpdateSnow();
+        }
+        expect(GetSnowLevel(5, 5, 1) > 0);         // on the ice
+        expect(GetSnowLevel(5, 5, 0) == 0);        // not on the bed under it
+        expect(GetSnowLevel(4, 5, 1) == 0 && GetSnowLevel(4, 5, 0) == 0);
+
+        ThawWater(5, 5, 1);
+        for (int i = 0; i < 20; i++) {
+            gameDeltaTime = 0.1f; UpdateSnow();
+        }
+        expect(GetSnowLevel(5, 5, 1) == 0);
+        InitWater();                               // later tests use these cells dry
+    }
     
     it("accumulates faster during high intensity snow") {
         InitTestGrid(10, 10);

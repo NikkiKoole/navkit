@@ -884,15 +884,18 @@ void UpdateWaterFreezing(void) {
                 if (cell->level == 0) continue;
                 
                 int temp = GetTemperature(x, y, z);  // Celsius
+                // The sea doesn't freeze (salt, waves): the tide's sea, or water at or below the
+                // sea beyond the map edge (the island's sea; lakes and rivers lie above it)
+                bool sea = cell->isSea || z <= waterEdgeSeaZ;
                 
                 if (cell->isFrozen) {
-                    // Check if should thaw
-                    if (temp > TEMP_WATER_FREEZES) {
+                    // Check if should thaw (sea ice from before this rule thaws too)
+                    if (temp > TEMP_WATER_FREEZES || sea) {
                         ThawWater(x, y, z);
                     }
                 } else {
                     // Check if should freeze (any water level)
-                    if (temp <= TEMP_WATER_FREEZES && cell->level > 0) {
+                    if (temp <= TEMP_WATER_FREEZES && cell->level > 0 && !sea) {
                         FreezeWater(x, y, z);
                     }
                     // Check if should boil (convert to steam)

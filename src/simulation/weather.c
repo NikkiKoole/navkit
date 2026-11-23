@@ -515,15 +515,23 @@ static void SnowRow(int y, float elapsedTime, bool isSnowing, bool isFreezing, b
         for (int x = 0; x < gridWidth; x++) {
             // Find topmost solid cell. Water is not a cell type, so a sea or lake is air with
             // water in it: snow doesn't settle through it onto the bed below, and snow already
-            // there (water rose over snowy ground) is gone
+            // there (water rose over snowy ground) is gone. Ice you can walk on (deep frozen
+            // water) is the surface itself: snow lies on it, and goes when it thaws.
             bool underWater = false;
             for (int z = gridDepth - 1; z >= 0; z--) {
                 CellType cell = GRID(x, y, z);
                 if (cell == CELL_AIR) {
-                    if (GetWaterLevel(x, y, z) > 0) underWater = true;
-                    continue;
-                }
-                if (underWater) {
+                    int wl = GetWaterLevel(x, y, z);
+                    if (wl == 0) continue;
+                    bool ice = !underWater && wl >= WATER_BLOCKS_MOVEMENT && IsWaterFrozen(x, y, z);
+                    if (!ice) {
+                        underWater = true;
+                        if (SNOW(x, y, z) > 0) SetSnowLevel(x, y, z, 0);   // the ice under it thawed
+                        if (SNOW_ACCUM(x, y, z) != 0.0f) SNOW_ACCUM(x, y, z) = 0.0f;
+                        continue;
+                    }
+                    // ice: this cell is the surface, handled as ground below
+                } else if (underWater) {
                     if (SNOW(x, y, z) > 0) SetSnowLevel(x, y, z, 0);
                     if (SNOW_ACCUM(x, y, z) != 0.0f) SNOW_ACCUM(x, y, z) = 0.0f;
                     break;

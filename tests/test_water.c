@@ -1331,6 +1331,31 @@ describe(water_freezing) {
         expect(IsWaterFrozen(1, 0, 0) == true);
     }
     
+    // The sea doesn't freeze (salt, waves): water at or below the sea beyond the map edge
+    // (waterEdgeSeaZ, the island's sea) or marked as the tide's sea. Lakes above it do.
+    it("should not freeze the sea, only water above it") {
+        InitTestGridFromAscii(
+            "....\n");
+        InitWater();
+        InitTemperature();
+        int origEdgeSea = waterEdgeSeaZ;
+        waterEdgeSeaZ = 0;                         // the sea reaches z 0
+
+        SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);   // sea
+        SetTemperature(1, 0, 0, -10);
+        SetWaterLevel(2, 0, 1, WATER_MAX_LEVEL);   // a pond above the sea
+        SetTemperature(2, 0, 1, -10);
+        UpdateWaterFreezing();
+        expect(IsWaterFrozen(1, 0, 0) == false);
+        expect(IsWaterFrozen(2, 0, 1) == true);
+
+        // sea ice from before this rule thaws, even in the cold
+        FreezeWater(1, 0, 0);
+        UpdateWaterFreezing();
+        expect(IsWaterFrozen(1, 0, 0) == false);
+        waterEdgeSeaZ = origEdgeSea;
+    }
+
     it("should thaw frozen water when temperature rises") {
         InitTestGridFromAscii(
             "....\n");

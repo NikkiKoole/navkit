@@ -947,7 +947,8 @@ static unsigned char SnowAlpha(uint8_t level) {
     return alphas[level < 4 ? level : 3];
 }
 
-static void DrawSnow(void) {
+// onIce: only snow lying on ice (drawn after the ice, which would cover it), else all other snow
+static void DrawSnowLayer(bool onIce) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
@@ -963,6 +964,7 @@ static void DrawSnow(void) {
                 Color depthTint = GetDepthTint(zDepth, z);
                 uint8_t snowLevel = GetSnowLevel(x, y, zDepth);
                 if (snowLevel == 0) continue;
+                if (IsWaterFrozen(x, y, zDepth) != onIce) continue;
 
                 unsigned char alpha = SnowAlpha(snowLevel);
                 Color snowColor = {255, 255, 255, alpha};
@@ -982,6 +984,7 @@ static void DrawSnow(void) {
         for (int x = minX; x < maxX; x++) {
             uint8_t snowLevel = GetSnowLevel(x, y, zBelow);
             if (snowLevel == 0) continue;
+            if (IsWaterFrozen(x, y, zBelow) != onIce) continue;
             CellType cellHere = GRID(x, y, z);
             if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
             if (HAS_FLOOR(x, y, z)) continue;
@@ -997,6 +1000,9 @@ static void DrawSnow(void) {
         }
     }
 }
+
+static void DrawSnow(void) { DrawSnowLayer(false); }
+static void DrawSnowOnIce(void) { DrawSnowLayer(true); }
 
 static void DrawCloudShadows(void) {
     // Only draw cloud shadows for weather types that have clouds

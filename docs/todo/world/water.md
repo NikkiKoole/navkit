@@ -29,6 +29,15 @@ cells are processed per tick, scanning bottom to top.
 - **Island:** rivers rise at springs at their heads (drainage-built, so they run downhill to the
   sea without a break); the sea beyond the edge takes what they bring. Levels off on seeds 1/3/5.
 
+- **The sea doesn't freeze; snow lies on ice, not under water** (navkit-b4): at -6 C every water
+  cell on the island froze in ~7 game hours, the sea included (91,000 cells, all walkable). Now
+  water at or below `waterEdgeSeaZ` or marked `isSea` (tide) never freezes, and sea ice in older
+  saves thaws; lakes and rivers still do (winter island: 465 frozen cells). Snow (`SnowRow` in
+  `weather.c`) no longer settles on the bed under water, a flood clears snow it covers, and ice
+  you can walk on (deep frozen water) carries snow, drawn over the ice (`DrawSnowOnIce`). Tests:
+  `test_water` "should not freeze the sea", `test_snow` under water / on ice. Open: freezing is
+  still instant (a lake is walkable ice hours after the first frost).
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.

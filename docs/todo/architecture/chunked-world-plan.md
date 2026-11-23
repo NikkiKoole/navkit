@@ -670,7 +670,8 @@ Side finding: snow lies on the top non-air cell of every column, including the s
 open sea (water is not a cell type), so all 65,536 columns had snow; snow should skip columns
 with water on top. Fixed 2026-11-23 (`SnowRow` in `src/simulation/weather.c`: a column with
 water above its ground gets no snow, and snow a flood covers is gone): the winter colony after 7
-game hours has snow on 27,132 cells (dry land plus tree tops), not 65,536. So the 54% of blocks
+game hours has snow on 27,132 cells (dry land plus tree tops), not 65,536. Ice you can walk on carries
+snow too, and the sea no longer freezes (`docs/todo/world/water.md`). So the 54% of blocks
 measured above is too high; snow stays a surface layer either way. The light grid
 is derived, not saved: measuring light from a save needs `RecomputeLighting()` after loading.
 

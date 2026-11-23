@@ -1784,6 +1784,7 @@ int main(int argc, char** argv) {
         DrawRampOverlay();   // Draw ramps after grass/mud/snow so they're visible
         DrawWater();
         DrawFrozenWater();
+        DrawSnowOnIce();     // snow lying on ice, over the ice
         DrawFire();
         DrawSmoke();
         DrawSteam();
