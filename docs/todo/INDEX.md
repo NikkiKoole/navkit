@@ -69,7 +69,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 
 ## Ideas & Vision
 
-- `board-for-parallel-sessions.md` — A work board for the parallel sessions, modelled on fp.engine.new's file-backed kanban (cards, `ready` gate, claims with leases); three C-flavoured ways (shell, small C tool, raylib view); not built
+- `board-for-parallel-sessions.md` — A work board for the parallel sessions, modelled on fp.engine.new's file-backed kanban (cards, claims with leases; `ready` not human-only here); three C-flavoured ways (shell, small C tool, raylib view); not built
 - `endgame-village-vision.md` — 20th-century village destination picture: systems inventory, daily life, economy, social, housing
 - `../vision/city-1999.md` — Homeless in a 1999 city: ownership, keys/locks, Cataclysm-style inventory (pockets, bags, cart), trash/bin/deposit loop, coins, city stations, missing systems, item cap analysis, two milestones
 - `sims-inspired-priorities.md` — What makes The Sims work; reorder next sessions for "Sims feel"

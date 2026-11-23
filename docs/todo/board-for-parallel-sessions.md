@@ -11,8 +11,7 @@ and by a hand-kept "Recently active" list at the top of `docs/todo/INDEX.md`. Th
 
 - nothing stops two sessions starting the same work; it relies on the heads-up messages
 - a hand-kept recent list goes stale as soon as a session forgets to update it
-- work the user wants done next has no single place where it waits, with the user deciding what
-  may be picked up
+- work that is ready to be done next has no single place where it waits
 
 ## The model to copy: fp.engine.new's board
 
@@ -24,8 +23,10 @@ makes it work is mostly **conventions**, not code:
   with frontmatter: `status` (`idea → todo → doing → review → done`, plus `blocked`), `kind`,
   `topics` (from a fixed list), `priority`, `owner`, `after: [c-…]` (comes after these cards).
   The body says what and why; a `## Log` at the end records who did what when.
-- **`ready: true` is a gate only the human sets.** Agents may only claim ready cards, so the user
-  decides what gets picked up.
+- **`ready: true` marks a card as claimable.** In fp.engine.new only the human sets it.
+  **For navkit: not human-only (user's decision, 2026-11-23)**: a session may mark a card ready
+  too, e.g. when the card says what to do and nothing it waits on is open. The user can still
+  set or clear it like anyone else.
 - **Claiming is a committed edit**: `claimed_at` + `lease_expires` in the card. A rejected push
   means someone else claimed first (git is the compare-and-swap; no server). A crashed session's
   lease runs out.
@@ -60,8 +61,8 @@ field), the way fp.engine.new's cards point at `audits/`.
 
 ## Recommendation (when it is picked up)
 
-Start with **option 1**: the format and the habits (claim before starting, `ready` set by the
-user, close with a log line) carry most of the value, and shell keeps it tiny. If listing and
+Start with **option 1**: the format and the habits (claim before starting, mark a card ready
+when it is complete enough to start, close with a log line) carry most of the value, and shell keeps it tiny. If listing and
 ordering start to hurt, move to **option 2** on the same files, so nothing migrates. Option 3 only
 if the user wants to look at the board as columns.
 
@@ -69,5 +70,8 @@ First cards would be what is active now (the "Recently active" lines in `INDEX.m
 next steps), not a backfill of the old lists.
 
 **The real cost is discipline, not language**: claims only help if every session claims before it
-starts. Open question for the user: should `ready` really be a human-only gate here, given that
-sessions mostly pick up work themselves today?
+starts.
+
+**Decided (2026-11-23): `ready` is not human-only here.** Sessions pick up work themselves today
+and should keep doing so; `ready` just says "this card is complete enough to claim". So the
+claim + lease is what prevents double work, not the gate.
