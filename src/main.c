@@ -1262,7 +1262,20 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--save") == 0 && i + 1 < argc) {
             const char* outFile = argv[i + 1];
-            if (SaveWorld(outFile)) {
+            // A .gz name gets a real gzip file (--load and drag-and-drop gunzip by extension):
+            // save uncompressed next to it, then gzip into place, like F5 does.
+            size_t olen = strlen(outFile);
+            bool gz = olen > 3 && strcmp(outFile + olen - 3, ".gz") == 0;
+            char rawFile[1024];
+            snprintf(rawFile, sizeof(rawFile), "%s.tmp", outFile);
+            bool ok = SaveWorld(gz ? rawFile : outFile);
+            if (ok && gz) {
+                char cmd[2200];
+                snprintf(cmd, sizeof(cmd), "gzip -c '%s' > '%s'", rawFile, outFile);
+                ok = system(cmd) == 0;
+                remove(rawFile);
+            }
+            if (ok) {
                 printf("Saved to: %s\n", outFile);
             } else {
                 printf("Failed to save to: %s\n", outFile);

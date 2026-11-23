@@ -628,9 +628,9 @@ campfire, torches and a winter.
 
 **Side findings:** with work times in game hours a tree takes 10-15 real seconds to chop, so the
 `--check` stuck rule (no movement for 2 s) counts working settlers as stuck: 7-12 of 20 early on,
-0 at the end. The scenario is therefore not in `scenarios-check`. `--save f.bin.gz` writes an
-uncompressed file while `--load` gunzips by the `.gz` extension, so such a save only loads after
-renaming it to `.bin`.
+0 at the end. The scenario is therefore not in `scenarios-check`. `--save f.bin.gz` used to write an
+uncompressed file while `--load` gunzips by the `.gz` extension; fixed 2026-11-23 (a `.gz` name
+now gets a real gzip file).
 
 ## Allocation model (for steps 2-3)
 
