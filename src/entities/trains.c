@@ -239,6 +239,16 @@ int SpawnTrainWithCars(int x, int y, int z, int cars) {
 // Station Detection
 // ============================================================================
 
+// Is platform cell (x,y,z) already part of one of the first `count` stations?
+static bool PlatformCellClaimed(int x, int y, int z, int count) {
+    for (int si = 0; si < count; si++) {
+        if (stations[si].z != z) continue;
+        for (int pc = 0; pc < stations[si].platformCellCount; pc++)
+            if (stations[si].platformCells[pc][0] == x && stations[si].platformCells[pc][1] == y) return true;
+    }
+    return false;
+}
+
 void RebuildStations(void) {
     trackDistReady = false;   // stations changed: distances and waits start over
     // Save old waiters before rebuilding
@@ -278,17 +288,7 @@ void RebuildStations(void) {
                     if (px < 0 || px >= gridWidth || py < 0 || py >= gridHeight) continue;
                     if (GRID(px, py, z) != CELL_PLATFORM) continue;
                     // Check if this platform cell is already claimed by another station
-                    bool alreadyClaimed = false;
-                    for (int si = 0; si < stationCount && !alreadyClaimed; si++) {
-                        if (stations[si].z != z) continue;
-                        for (int pc = 0; pc < stations[si].platformCellCount; pc++) {
-                            if (stations[si].platformCells[pc][0] == px && stations[si].platformCells[pc][1] == py) {
-                                alreadyClaimed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (alreadyClaimed) continue;
+                    if (PlatformCellClaimed(px, py, z, stationCount)) continue;
                     // Found a station: track at (x,y), platform at (px,py)
                     TrainStation* s = &stations[stationCount];
                     s->trackX = x;
@@ -315,28 +315,40 @@ void RebuildStations(void) {
                     s->platformCells[0][1] = py;
                     s->platformCellCount = 1;
 
-                    // Walk in +trackDir
+                    // Walk in +trackDir, then -trackDir, each up to the first cell another stop
+                    // already has: which way +trackDir points depends on the platform's side, and
+                    // walking back over claimed cells made a stop per cell for a platform below
+                    // (or left of) its track
                     int cx = px + trackDirX, cy = py + trackDirY;
                     while (s->platformCellCount < MAX_PLATFORM_CELLS) {
                         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
                         if (GRID(cx, cy, z) != CELL_PLATFORM) break;
+                        if (PlatformCellClaimed(cx, cy, z, stationCount)) break;
                         s->platformCells[s->platformCellCount][0] = cx;
                         s->platformCells[s->platformCellCount][1] = cy;
                         s->platformCellCount++;
                         cx += trackDirX;
                         cy += trackDirY;
                     }
+                    int plusCells = s->platformCellCount - 1;
                     // Walk in -trackDir
                     cx = px - trackDirX;
                     cy = py - trackDirY;
                     while (s->platformCellCount < MAX_PLATFORM_CELLS) {
                         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) break;
                         if (GRID(cx, cy, z) != CELL_PLATFORM) break;
+                        if (PlatformCellClaimed(cx, cy, z, stationCount)) break;
                         s->platformCells[s->platformCellCount][0] = cx;
                         s->platformCells[s->platformCellCount][1] = cy;
                         s->platformCellCount++;
                         cx -= trackDirX;
                         cy -= trackDirY;
+                    }
+
+                    // The line forms along the stop's own cells
+                    if (plusCells == 0 && s->platformCellCount > 1) {
+                        s->queueDirX = -trackDirX;
+                        s->queueDirY = -trackDirY;
                     }
 
                     // Restore waiters from old station at same location

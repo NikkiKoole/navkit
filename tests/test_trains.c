@@ -997,6 +997,37 @@ describe(multi_cell_platform) {
         expect(stations[0].platformCells[0][1] == 5);
     }
 
+    it("a long platform makes the same number of stops on either side of its track") {
+        SetupClean();
+        // Platform above a track (y=9 over y=10) and below another (y=31 under y=30): 32 cells each
+        for (int x = 0; x < 40; x++) { GRID(x, 10, 1) = CELL_TRACK; GRID(x, 30, 1) = CELL_TRACK; }
+        for (int x = 4; x <= 35; x++) { GRID(x, 9, 1) = CELL_PLATFORM; GRID(x, 31, 1) = CELL_PLATFORM; }
+        RebuildStations();
+        int above = 0, below = 0;
+        int claimed[2][40] = {{0}};
+        for (int i = 0; i < stationCount; i++) {
+            if (stations[i].platY == 9) above++;
+            if (stations[i].platY == 31) below++;
+            for (int c = 0; c < stations[i].platformCellCount; c++) {
+                int cx = stations[i].platformCells[c][0], cy = stations[i].platformCells[c][1];
+                claimed[cy == 31][cx]++;
+            }
+            // the line forms over the stop's own cells: the cell one step along the queue is its own
+            int qx = stations[i].platX + stations[i].queueDirX, qy = stations[i].platY + stations[i].queueDirY;
+            bool own = stations[i].platformCellCount == 1;
+            for (int c = 1; c < stations[i].platformCellCount; c++)
+                if (stations[i].platformCells[c][0] == qx && stations[i].platformCells[c][1] == qy) own = true;
+            expect(own);
+        }
+        expect(above == 32 / MAX_PLATFORM_CELLS);
+        expect(below == 32 / MAX_PLATFORM_CELLS);
+        // every platform cell belongs to exactly one stop
+        bool once = true;
+        for (int side = 0; side < 2; side++)
+            for (int x = 4; x <= 35; x++) if (claimed[side][x] != 1) once = false;
+        expect(once);
+    }
+
     it("stops at non-platform cell in parallel direction") {
         SetupClean();
         for (int x = 8; x <= 14; x++) GRID(x, 5, 1) = CELL_TRACK;
