@@ -13,6 +13,8 @@
 Belt belts[MAX_BELTS];
 int beltCount = 0;
 float beltSpeed = 1.5f;      // cells per second at dayLength 60, like trainSpeed
+float beltLiftFactor = 0.4f;
+float beltChuteFactor = 3.0f;
 int beltItemsIn = 0, beltItemsOut = 0;
 
 // Cell -> belt lookup: open addressing, rebuilt whenever belts are placed or removed
@@ -256,7 +258,7 @@ void BeltsTick(float dt) {
         if (it >= 0 && (!items[it].active || items[it].state != ITEM_ON_BELT)) { bl->item = -1; it = -1; }
         if (it < 0) { BeltTakeInput(b); continue; }
 
-        bl->progress += step;
+        bl->progress += step * (bl->dir == BELT_UP ? beltLiftFactor : bl->dir == BELT_DOWN ? beltChuteFactor : 1.0f);
         if (bl->progress >= 1.0f) {
             float over = bl->progress - 1.0f;
             bool moved = false;

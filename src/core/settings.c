@@ -576,6 +576,10 @@ static const Setting settings[] = {
     // --- Belts ---
     SET_FLOAT("beltSpeed", "Speed (cells/s)", "Entities/Belts", beltSpeed, 0.1f, 0.1f, 20.0f,
       "Conveyor belt speed in cells per second (at dayLength 60, like trains). One item per cell.", NULL),
+    SET_FLOAT("beltLiftFactor", "Lift speed (x belt)", "Entities/Belts", beltLiftFactor, 0.05f, 0.05f, 2.0f,
+      "A lift (belt going up a level) moves at this fraction of the belt speed: lifting is slow.", NULL),
+    SET_FLOAT("beltChuteFactor", "Chute speed (x belt)", "Entities/Belts", beltChuteFactor, 0.1f, 0.5f, 10.0f,
+      "A chute (belt going down a level) moves at this multiple of the belt speed: things fall quickly.", NULL),
 
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,

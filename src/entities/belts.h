@@ -37,6 +37,8 @@ typedef struct {
 extern Belt belts[MAX_BELTS];
 extern int beltCount;          // high-water mark
 extern float beltSpeed;        // cells per game second
+extern float beltLiftFactor;   // speed of a lift (BELT_UP) as a fraction of beltSpeed: climbing is slow
+extern float beltChuteFactor;  // speed of a chute (BELT_DOWN) as a multiple of beltSpeed: falling is quick
 extern int beltItemsIn, beltItemsOut;   // counters since ClearBelts (scenario stats)
 
 void ClearBelts(void);

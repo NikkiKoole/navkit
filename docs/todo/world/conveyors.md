@@ -100,7 +100,9 @@ Not yet: a belt end pointing straight into a workshop (no hopper), recipes with 
   `belt` loads and delivers all 40 logs, like an unbroken run; `belt-lift` and `belt-build` too.
   `beltSpeed` is not saved (the settings table has no per-row version).
 - Belts don't care about walls, water or fire; movers walk over them and are not carried.
-- Lifts and chutes are free: no power, no speed difference, no lift capacity.
+- Lifts and chutes are free (no power, no lift capacity), but not the same speed: a lift runs at
+  `beltLiftFactor` (0.4) of the belt speed, a chute at `beltChuteFactor` (3x). In `belt-lift`, at
+  1200 ticks 4 logs are up with a normal-speed lift vs 0 with factor 0.05.
 - Belt ends find the stockpile slot by scanning it (fine at spike sizes).
 - `ClearBelts` runs on scenario reset and on every game start (`StartGame`); a load replaces the belts.
 
@@ -168,7 +170,7 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 2. ~~Build belts in game~~ done (dev UI and play HUD). Removal as a job.
 3. ~~A belt feeding a workshop / taking from its output~~ works through a linked hopper
    stockpile and a belt on the output tile (scenario `belt-workshop`).
-4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Next there: power (water wheel,
-   steam) and gravity (chutes fast and free, lifts slow or powered).
+4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Lifts slow / chutes fast done (settings).
+   Next there: power (water wheel, steam) to speed lifts up.
 5. Train cargo through the same transfer-point idea.
 6. Only if routing becomes the fun part: splitters, filters, labels.
