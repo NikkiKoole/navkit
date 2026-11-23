@@ -672,16 +672,14 @@ void GenerateIsland(void) {
         }
     }
 
-    // Water sources keep rivers running and the sea topped up: river heads, one per lake,
-    // and the sea along the frame
+    // Water sources keep rivers running: river heads, one per lake. The sea beyond the map edge
+    // keeps the sea at its level and takes what the rivers bring (waterEdgeSeaZ)
+    waterEdgeSeaZ = IS_SEA_Z;
     int sources = 0;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             int i = y * W + x;
-            if (cover[i] == IS_SEA) {
-                if (x == 0 || y == 0 || x == W - 1 || y == H - 1) { SetWaterSource(x, y, IS_SEA_Z, true); sources++; }
-                continue;
-            }
+            if (cover[i] == IS_SEA) continue;
             if (cover[i] != IS_RIVER) continue;
             bool head = true;                       // no river cell drains into this one
             for (int d = 0; d < 8 && head; d++) {

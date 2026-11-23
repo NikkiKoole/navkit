@@ -14,6 +14,8 @@
 // Global state
 bool waterEnabled = true;
 bool waterEvaporationEnabled = true;
+bool waterEdgeOutflow = false;
+int waterEdgeSeaZ = -1;
 float waterEvapInterval = 4.0f;  // 4.0 game-hours (was 10.0 game-seconds at dayLength=60)
 int waterUpdateCount = 0;
 
@@ -525,6 +527,24 @@ static bool TryPressure(int x, int y, int z) {
     return false;
 }
 
+// Level of the water beyond the map edge at height z: a sea up to waterEdgeSeaZ, else none
+static inline int WaterEdgeLevel(int z) {
+    return z <= waterEdgeSeaZ ? WATER_MAX_LEVEL : 0;
+}
+
+static inline bool WaterOnEdge(int x, int y) {
+    return x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1;
+}
+
+// An edge cell trades with the water beyond the edge (one unit per visit, like spreading):
+// above that level it flows off the map, below it it fills up. true = the level changed
+static bool WaterEdgeExchange(int x, int y, int z) {
+    int level = WATER(x, y, z).level, beyond = WaterEdgeLevel(z);
+    if (level == beyond || (level < beyond && !CanHoldWater(x, y, z))) return false;
+    SetWaterLevel(x, y, z, level > beyond ? level - 1 : level + 1);
+    return true;
+}
+
 // Process a single water cell with DF-style rules
 // doEvap: interval has elapsed for evaporation
 static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
@@ -553,8 +573,12 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         }
     }
     
+    // The map edge: water above the level beyond it flows off, below it fills up
+    if (waterEdgeOutflow && !cell->isSource && WaterOnEdge(x, y) && WaterEdgeExchange(x, y, z)) moved = true;
+
     // No water to process
     if (cell->level == 0) {
+        if (moved) return true;
         cell->stable = true;
         cell->hasPressure = false;
         return false;
@@ -617,6 +641,9 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
             }
         }
         
+        if (waterEdgeOutflow && !cell->isSource && WaterOnEdge(x, y) &&
+            cell->level != WaterEdgeLevel(z)) balanced = false;
+
         // Level-1 water can evaporate, so keep it unstable
         if (balanced && cell->level != 1) {
             cell->stable = true;

@@ -1226,6 +1226,50 @@ describe(water_rest) {
     }
 }
 
+describe(water_map_edge) {
+    it("water at the map edge flows off the map when nothing lies beyond it") {
+        InitTestGridFromAscii(
+            ".....\n"
+            ".....\n"
+            ".....\n");
+        InitWater();
+        waterEvaporationEnabled = false;
+        waterEdgeOutflow = true;
+        waterEdgeSeaZ = -1;
+        SetWaterLevel(2, 1, 0, WATER_MAX_LEVEL);      // a pool in the middle
+        RunWaterTicks(400);
+        // spread to the edge and left; level-1 puddles don't spread (evaporation is off),
+        // so at most the 3 inner cells keep a unit
+        expect(CountTotalWater() <= 3);
+        int onEdge = 0;
+        for (int y = 0; y < 3; y++) for (int x = 0; x < 5; x++)
+            if (x == 0 || y == 0 || x == 4 || y == 2) onEdge += GetWaterLevel(x, y, 0);
+        expect(onEdge == 0);
+        waterEdgeOutflow = false;
+        waterEvaporationEnabled = true;
+    }
+
+    it("with a sea beyond the edge, edge water rests at sea level and refills") {
+        InitTestGridFromAscii(
+            ".....\n"
+            ".....\n"
+            ".....\n");
+        InitWater();
+        waterEvaporationEnabled = false;
+        waterEdgeOutflow = true;
+        waterEdgeSeaZ = 0;                            // the sea beyond is full at z 0
+        for (int y = 0; y < 3; y++) for (int x = 0; x < 5; x++) SetWaterLevel(x, y, 0, WATER_MAX_LEVEL);
+        RunWaterTicks(50);
+        expect(CountTotalWater() == 15 * WATER_MAX_LEVEL);   // nothing lost to the sea
+        SetWaterLevel(0, 1, 0, 0);                    // scoop the edge cell empty
+        RunWaterTicks(50);
+        expect(GetWaterLevel(0, 1, 0) == WATER_MAX_LEVEL);    // the sea fills it again
+        waterEdgeOutflow = false;
+        waterEdgeSeaZ = -1;
+        waterEvaporationEnabled = true;
+    }
+}
+
 describe(water_freezing) {
     it("should freeze water in every band of a big map within one sweep") {
         // 256x256x16 = 1M cells: UpdateWaterFreezing checks one band of rows per tick
@@ -1450,6 +1494,7 @@ int main(int argc, char* argv[]) {
     
     // Freezing tests
     test(water_rest);
+    test(water_map_edge);
     test(water_freezing);
     
     return summary();

@@ -564,6 +564,9 @@ bool SaveWorld(const char* filename) {
     fwrite(&elevatorDoorTime, sizeof(float), 1, f);
     fwrite(&elevatorCapacity, sizeof(int), 1, f);
     fwrite(&useElevatorWaitCost, sizeof(bool), 1, f);
+    // v101+: map-edge water
+    fwrite(&waterEdgeOutflow, sizeof(bool), 1, f);
+    fwrite(&waterEdgeSeaZ, sizeof(int), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1469,6 +1472,23 @@ bool LoadWorld(const char* filename) {
         elevatorDoorTime = 1.5f;
         elevatorCapacity = 4;
         useElevatorWaitCost = true;
+    }
+    if (version >= V101_WATER_EDGE) {
+        fread(&waterEdgeOutflow, sizeof(bool), 1, f);
+        fread(&waterEdgeSeaZ, sizeof(int), 1, f);
+    } else {
+        // Older islands kept their sea up with sources along the frame: that height is the
+        // sea beyond the edge now (and those sources go: the edge refills itself)
+        waterEdgeOutflow = true;
+        waterEdgeSeaZ = -1;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    if (x != 0 && y != 0 && x != gridWidth - 1 && y != gridHeight - 1) continue;
+                    if (!WATER(x, y, z).isSource) continue;
+                    if (z > waterEdgeSeaZ) waterEdgeSeaZ = z;
+                    SetWaterSource(x, y, z, false);
+                }
     }
 
     RecalcBalanceTable();

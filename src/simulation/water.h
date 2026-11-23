@@ -51,6 +51,11 @@ extern SparseLayer waterLayer;
 // Global state
 extern bool waterEnabled;           // Master toggle for water simulation
 extern bool waterEvaporationEnabled; // Toggle evaporation (disable for testing)
+// The map edge: beyond it lies water up to waterEdgeSeaZ (a sea, -1 = nothing). Edge cells
+// trade with it: water above that height flows off the map, below it the edge fills up.
+// Generated terrains turn it on (GenerateCurrentTerrain); off = the edge is a wall (tests)
+extern bool waterEdgeOutflow;
+extern int waterEdgeSeaZ;
 extern float waterEvapInterval;     // Game-seconds between evaporation attempts for level-1 water
 extern int waterUpdateCount;        // Cells updated last tick (for debug/profiling)
 

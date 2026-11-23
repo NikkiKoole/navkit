@@ -535,6 +535,8 @@ int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems)
 
 void GenerateCurrentTerrain(void) {
     TraceLog(LOG_INFO, "Generating terrain: %s", terrainNames[currentTerrain]);
+    waterEdgeOutflow = true;   // generated worlds drain off the map edge (an island sets its sea)
+    waterEdgeSeaZ = -1;
     switch (currentTerrain) {
         case 0: InitGrid(); break;
         case 1: GenerateSparse(0.10f); break;

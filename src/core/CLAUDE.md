@@ -4,7 +4,7 @@ Save/load, input handling, time, inspector, simulation manager.
 
 ## Save System
 
-**Save version**: see `CURRENT_SAVE_VERSION` in `save_migrations.h` (v100 as of 2026-11-23; v100: elevator settings saved); saves from `MIN_SAVE_VERSION` up load through migrations.
+**Save version**: see `CURRENT_SAVE_VERSION` in `save_migrations.h` (v101 as of 2026-11-23; v100: elevator settings, v101: map-edge water); saves from `MIN_SAVE_VERSION` up load through migrations.
 
 **Grid layers are run-length coded since v95** (`save_rle.h`): each layer is one stream in
 `[z][y][x]` order, written/read row by row through `SAVE_ROW`/`LOAD_ROW` (the stream starts at
