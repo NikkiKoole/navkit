@@ -131,6 +131,7 @@ typedef enum {
     ACTION_SANDBOX_LIGHT,       // Place/remove light sources
     ACTION_SANDBOX_BUSH,        // Place/remove bushes
     ACTION_SANDBOX_MOVER,       // Place mover at clicked cell
+    ACTION_WORK_BELT,           // Work > Build: conveyor belt blueprints (appended: keeps other values)
 } InputAction;
 
 // Current input state
@@ -160,6 +161,8 @@ extern bool quickEditEnabled;
 // Ramp direction selection (defined in input.c)
 #include "../world/grid.h"  // For CellType
 extern CellType selectedRampDirection;
+extern int selectedBeltDirection;            // BeltDir for new belt blueprints
+const char* GetSelectedBeltDirectionName(void);
 
 // Quit confirmation
 extern bool showQuitConfirm;

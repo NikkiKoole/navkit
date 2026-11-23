@@ -52,6 +52,7 @@ done <<'EOF'
 57  | 0 | --scenario transit-chain
 10  | 0 | --scenario belt
 10  | 0 | --scenario belt-lift
+31  | 0 | --scenario belt-build
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 21  | 0 | --scenario worksplit

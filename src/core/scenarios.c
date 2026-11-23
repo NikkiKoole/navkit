@@ -1558,6 +1558,60 @@ static bool BeltLiftCheck(char* why, int whyLen) {
     return true;
 }
 
+// belt-build: belts built by movers. A 12-cell belt line is only blueprinted; planks
+// and cordage lie by the movers. They haul materials and build the cells; as soon as
+// the line is whole, the rock stacks pre-stocked in A ride to B.
+static int beltBuildCells = 0;
+
+static void SetupBeltBuild(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    int spA = CreateStockpile(3, 7, 1, 4, 4);       // x 3..6
+    int spB = CreateStockpile(19, 7, 1, 4, 4);      // x 19..22
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {   // rocks only: planks and cordage stay for the builders
+        SetStockpileFilter(spA, (ItemType)t, t == ITEM_ROCK);
+        SetStockpileFilter(spB, (ItemType)t, t == ITEM_ROCK);
+    }
+    // Same priority (default) for A and B: haulers don't move rocks between them, only the belt does
+    for (int k = 0; k < 8; k++) {
+        int sx = 3 + k % 4, sy = 7 + k / 4;
+        int r = SpawnItem(sx * CELL_SIZE + CELL_SIZE * 0.5f, sy * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_ROCK);
+        if (r < 0) continue;
+        items[r].stackCount = 5;
+        PlaceItemInStockpile(spA, sx, sy, r);
+    }
+    beltBuildCells = 0;
+    for (int x = 7; x <= 18; x++) if (CreateBeltBlueprint(x, 9, 1, BELT_E) >= 0) beltBuildCells++;
+    // Materials: 2 planks + 1 cordage per cell, in a pile north of the line
+    for (int i = 0; i < beltBuildCells * 3; i++) {
+        int x = 8 + i % 10, y = 3 + i / 10;
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1,
+                  (i % 3 == 2) ? ITEM_CORDAGE : ITEM_PLANKS);
+    }
+    for (int i = 0; i < 3; i++) SpawnMoverAt(10 + i, 5, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Belt build: %d belt blueprints, materials north; then rocks ride A -> B", beltBuildCells), GREEN);
+}
+
+static void BeltBuildPrintStats(void) {
+    int built = 0, pending = 0;
+    for (int b = 0; b < beltCount; b++) if (belts[b].active) built++;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) if (blueprints[i].active && blueprints[i].recipeIndex == CONSTRUCTION_BELT) pending++;
+    printf("Belt build: %d of %d cells built, %d blueprints left; %d loads put on, %d dropped off\n",
+           built, beltBuildCells, pending, beltItemsIn, beltItemsOut);
+    printf("Rocks: %d in B\n", BeltCountTypeIn(ITEM_ROCK, 19, 7, 22, 10, 1));
+}
+
+static bool BeltBuildCheck(char* why, int whyLen) {
+    int built = 0;
+    for (int b = 0; b < beltCount; b++) if (belts[b].active) built++;
+    if (built < beltBuildCells || BeltCountTypeIn(ITEM_ROCK, 19, 7, 22, 10, 1) < 1) {
+        snprintf(why, (size_t)whyLen, "%d of %d belt cells built, %d rocks in B", built, beltBuildCells,
+                 BeltCountTypeIn(ITEM_ROCK, 19, 7, 22, 10, 1));
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1599,6 +1653,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBelt, NULL, BeltPrintStats, BeltCheck, 48, 24},
     {"belt-lift",  "Vertical belts: a lift carries logs up to a deck, a chute brings rocks down, 2 movers",
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
+    {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",
+                   NULL,        SetupBeltBuild, NULL, BeltBuildPrintStats, BeltBuildCheck, 32, 20},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

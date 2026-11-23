@@ -1902,52 +1902,55 @@ static void DrawTrackLines(void) {
         }
 }
 
-// Conveyor belts (spike): a dark strip with chevrons that crawl in the belt's direction
-static void DrawBelts(void) {
-    if (beltCount == 0) return;
-    float size = CELL_SIZE * zoom;
+// Conveyor belts: a dark strip with chevrons that crawl in the belt's direction; lifts and
+// chutes a framed shaft with a triangle. Belt blueprints draw the same, see-through and still.
+static void DrawBeltCell(int x, int y, int z, int dir, float phase, unsigned char alpha) {
     int viewZ = currentViewZ;
-    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    float size = CELL_SIZE * zoom;
+    if (z > viewZ || z < viewZ - MAX_VISIBLE_DEPTH) return;
+    if (z < viewZ && !IsCellVisibleFromAbove(x, y, z + 1, viewZ)) return;
+    float sx = offset.x + x * CELL_SIZE * zoom, sy = offset.y + y * CELL_SIZE * zoom;
+    if (sx < -size || sy < -size || sx > GetScreenWidth() || sy > GetScreenHeight()) return;
+    Color bed = (Color){ 52, 50, 48, alpha }, rim = (Color){ 30, 28, 26, alpha }, mark = (Color){ 150, 140, 110, alpha };
+    int dx, dy, dz;
+    BeltDirDelta3(dir, &dx, &dy, &dz);
+    float inset = size * 0.08f;
+    Rectangle r = { sx + inset, sy + inset, size - 2 * inset, size - 2 * inset };
+    if (dz != 0) {
+        DrawRectangleRec(r, rim);
+        DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.08f), mark);
+        float cx = sx + size * 0.5f, cy = sy + size * 0.5f, h = size * 0.22f;
+        float s = dz > 0 ? -1.0f : 1.0f;   // screen y of the tip: up = north
+        Vector2 tip = { cx, cy + s * h }, l = { cx - h, cy - s * h * 0.6f }, rr = { cx + h, cy - s * h * 0.6f };
+        if (s < 0) DrawTriangle(tip, l, rr, mark); else DrawTriangle(tip, rr, l, mark);
+        return;
+    }
+    DrawRectangleRec(r, bed);
+    DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.04f), rim);
+    // Two chevrons per cell, pointing along (dx, dy)
+    float cx = sx + size * 0.5f, cy = sy + size * 0.5f;
+    float px = (float)-dy, py = (float)dx;   // perpendicular
+    float w = size * 0.28f, back = size * 0.14f, thick = fmaxf(1.0f, size * 0.06f);
+    for (int k = 0; k < 2; k++) {
+        float t = (phase + k * 0.5f - 0.25f) * size;   // -0.25..0.75 cell along the belt
+        if (t > size * 0.4f) t -= size;                 // keep inside the cell
+        if (t < -size * 0.4f) continue;
+        Vector2 tip = { cx + dx * t, cy + dy * t };
+        Vector2 a = { tip.x - dx * back + px * w, tip.y - dy * back + py * w };
+        Vector2 c = { tip.x - dx * back - px * w, tip.y - dy * back - py * w };
+        DrawLineEx(a, tip, thick, mark);
+        DrawLineEx(c, tip, thick, mark);
+    }
+}
+
+static void DrawBelts(void) {
     // Chevron phase in cells: moves at the belt's speed, wraps every half cell
     float phase = fmodf((float)gameTime * beltSpeed * (60.0f / dayLength), 0.5f);
-    Color bed = (Color){ 52, 50, 48, 255 }, rim = (Color){ 30, 28, 26, 255 }, mark = (Color){ 150, 140, 110, 255 };
-    for (int i = 0; i < beltCount; i++) {
-        const Belt* b = &belts[i];
-        if (!b->active || b->z > viewZ || b->z < viewZ - MAX_VISIBLE_DEPTH) continue;
-        if (b->z < viewZ && !IsCellVisibleFromAbove(b->x, b->y, b->z + 1, viewZ)) continue;
-        float sx = offset.x + b->x * CELL_SIZE * zoom, sy = offset.y + b->y * CELL_SIZE * zoom;
-        if (sx < -size || sy < -size || sx > sw || sy > sh) continue;
-        int dx, dy, dz;
-        BeltDirDelta3(b->dir, &dx, &dy, &dz);
-        float inset = size * 0.08f;
-        Rectangle r = { sx + inset, sy + inset, size - 2 * inset, size - 2 * inset };
-        if (dz != 0) {
-            // Lift / chute: a framed shaft with a triangle pointing up (north) or down (south)
-            DrawRectangleRec(r, rim);
-            DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.08f), mark);
-            float cx = sx + size * 0.5f, cy = sy + size * 0.5f, h = size * 0.22f;
-            float s = dz > 0 ? -1.0f : 1.0f;   // screen y of the tip: up = north
-            Vector2 tip = { cx, cy + s * h }, l = { cx - h, cy - s * h * 0.6f }, rr = { cx + h, cy - s * h * 0.6f };
-            if (s < 0) DrawTriangle(tip, l, rr, mark); else DrawTriangle(tip, rr, l, mark);
-            continue;
-        }
-        DrawRectangleRec(r, bed);
-        DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.04f), rim);
-        // Two chevrons per cell, pointing along (dx, dy)
-        float cx = sx + size * 0.5f, cy = sy + size * 0.5f;
-        float px = (float)-dy, py = (float)dx;   // perpendicular
-        float w = size * 0.28f, back = size * 0.14f, thick = fmaxf(1.0f, size * 0.06f);
-        for (int k = 0; k < 2; k++) {
-            float t = (phase + k * 0.5f - 0.25f) * size;   // -0.25..0.75 cell along the belt
-            if (t > size * 0.4f) t -= size;                 // keep inside the cell
-            if (t < -size * 0.4f) continue;
-            Vector2 tip = { cx + dx * t, cy + dy * t };
-            Vector2 a = { tip.x - dx * back + px * w, tip.y - dy * back + py * w };
-            Vector2 c = { tip.x - dx * back - px * w, tip.y - dy * back - py * w };
-            DrawLineEx(a, tip, thick, mark);
-            DrawLineEx(c, tip, thick, mark);
-        }
-    }
+    for (int i = 0; i < beltCount; i++)
+        if (belts[i].active) DrawBeltCell(belts[i].x, belts[i].y, belts[i].z, belts[i].dir, phase, 255);
+    for (int i = 0; i < MAX_BLUEPRINTS; i++)
+        if (blueprints[i].active && blueprints[i].recipeIndex == CONSTRUCTION_BELT)
+            DrawBeltCell(blueprints[i].x, blueprints[i].y, blueprints[i].z, blueprints[i].workshopType, 0.0f, 110);
 }
 
 static void DrawTrains(void) {

@@ -16,6 +16,7 @@
 #include "action_registry.h"
 #include "pie_menu.h"
 #include "selection.h"
+#include "../entities/belts.h"
 
 // Forward declaration
 void HandleInput(void);
@@ -226,6 +227,14 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
 // Selected ramp direction - can be set manually or CELL_AIR for auto-detect
 // When CELL_AIR, direction is auto-detected based on terrain at placement time
 CellType selectedRampDirection = CELL_AIR;  // Default to auto-detect
+
+// Direction new conveyor belts point (BeltDir): arrows/HJKL, PageUp = lift, PageDown = chute
+int selectedBeltDirection = BELT_E;
+static const char* BeltDirName(int d) {
+    static const char* names[] = {"North", "East", "South", "West", "Up (lift)", "Down (chute)"};
+    return (d >= 0 && d <= BELT_DOWN) ? names[d] : "?";
+}
+const char* GetSelectedBeltDirectionName(void) { return BeltDirName(selectedBeltDirection); }
 
 static void ExecuteBuildRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
@@ -1138,6 +1147,35 @@ static void ExecuteDesignateDoor(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateBelt(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (CreateBeltBlueprint(dx, dy, z, selectedBeltDirection) >= 0) count++;
+    if (count > 0)
+        AddMessage(TextFormat("Created %d belt blueprint%s (%s)", count, count > 1 ? "s" : "",
+                              BeltDirName(selectedBeltDirection)), BLUE);
+}
+
+// Right-drag with the belt tool: cancel belt blueprints and take down built belts
+// (what rides one drops on the ground; each belt gives back one plank)
+static void ExecuteRemoveBelt(int x1, int y1, int x2, int y2, int z) {
+    int cancelled = 0, removed = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++) {
+            int bpIdx = GetBlueprintAt(dx, dy, z);
+            if (bpIdx >= 0 && blueprints[bpIdx].recipeIndex == CONSTRUCTION_BELT) { CancelBlueprint(bpIdx); cancelled++; }
+            if (BeltAt(dx, dy, z) >= 0) {
+                RemoveBelt(dx, dy, z);
+                SpawnItem(dx * CELL_SIZE + CELL_SIZE * 0.5f, dy * CELL_SIZE + CELL_SIZE * 0.5f, z, ITEM_PLANKS);
+                removed++;
+            }
+        }
+    if (cancelled + removed > 0)
+        AddMessage(TextFormat("Removed %d belt%s, cancelled %d blueprint%s", removed, removed == 1 ? "" : "s",
+                              cancelled, cancelled == 1 ? "" : "s"), ORANGE);
+}
+
 // Check if any cardinal neighbor of a workshop footprint has water
 static bool HasWaterNearWorkshop(int x, int y, int z, int w, int h) {
     for (int dy = 0; dy < h; dy++) {
@@ -1968,6 +2006,7 @@ RECT_TOOL(ExecuteDesignateBuild)     RECT_TOOL(ExecuteCancelBuild)
 RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
 RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
 RECT_TOOL(ExecuteDesignateDoor)
+RECT_TOOL(ExecuteDesignateBelt)      RECT_TOOL(ExecuteRemoveBelt)
 RECT_TOOL(ExecuteCreateGatherZone)   RECT_TOOL(ExecuteEraseGatherZone)
 RECT_TOOL(ExecuteDesignateChop)      RECT_TOOL(ExecuteCancelChop)
 RECT_TOOL(ExecuteDesignateChopFelled) RECT_TOOL(ExecuteCancelChopFelled)
@@ -2122,6 +2161,7 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_WORK_RAMP]          = PAIR(ExecuteDesignateRamp, ExecuteCancelBuild),
     [ACTION_WORK_FURNITURE]     = PAIR(ExecuteDesignateFurniture, ExecuteCancelBuild),
     [ACTION_WORK_DOOR]          = PAIR(ExecuteDesignateDoor, ExecuteCancelBuild),
+    [ACTION_WORK_BELT]          = PAIR(ExecuteDesignateBelt, ExecuteRemoveBelt),
     [ACTION_WORK_WORKSHOP_CAMPFIRE]     = WS_WORK(WORKSHOP_CAMPFIRE),
     [ACTION_WORK_WORKSHOP_GROUND_FIRE]  = WS_WORK(WORKSHOP_GROUND_FIRE),
     [ACTION_WORK_WORKSHOP_BUTCHER]      = WS_WORK(WORKSHOP_BUTCHER),
@@ -2935,6 +2975,24 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_A)) {
             selectedRampDirection = CELL_AIR;
             AddMessage("Ramp direction: Auto-detect", WHITE);
+        }
+    }
+
+    // ========================================================================
+    // Belt direction (belt tool): arrows/HJKL = N/E/S/W, PageUp = up (lift), PageDown = down (chute)
+    // ========================================================================
+    if (inputAction == ACTION_WORK_BELT) {
+        int d = -1;
+        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) d = BELT_N;
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_L)) d = BELT_E;
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_J)) d = BELT_S;
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_H)) d = BELT_W;
+        if (IsKeyPressed(KEY_PAGE_UP)) d = BELT_UP;
+        if (IsKeyPressed(KEY_PAGE_DOWN)) d = BELT_DOWN;
+        if (d >= 0) {
+            selectedBeltDirection = d;
+            AddMessage(TextFormat("Belt direction: %s", BeltDirName(d)), WHITE);
+            return;
         }
     }
 

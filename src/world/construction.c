@@ -1105,6 +1105,32 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_BELT] = {
+        .name = "Conveyor Belt",
+        .buildCategory = BUILD_BELT,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 1,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 0.5f,   // game hours: lay rollers, tie the band
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

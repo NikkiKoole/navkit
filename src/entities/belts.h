@@ -10,7 +10,8 @@
 // no stockpile: it is dropped on the ground ahead if no ground item lies there. Else it waits.
 // Items on a belt are ITEM_ON_BELT: not in the item spatial grid, so no job sees them.
 //
-// Not saved yet (spike): belts vanish on load and items on them stay where they were.
+// Saving: not yet (planned as v98: saveload.c writes beltCount + belts[], BeltsAfterLoad rebuilds
+// the rest). Until then belts vanish on load.
 #ifndef BELTS_H
 #define BELTS_H
 
@@ -43,6 +44,10 @@ int  PlaceBelt(int x, int y, int z, BeltDir dir);   // replaces the direction of
 void RemoveBelt(int x, int y, int z);               // drops what it carries on the ground
 int  BeltAt(int x, int y, int z);                   // belt index or -1
 void BeltsTick(float dt);
+// After belts[] / beltCount were read from a save (or reset for an older save): rebuild the
+// lookup and line order, drop belt slots whose item is gone, and put any ITEM_ON_BELT item no
+// belt holds back on the ground (saves from before v98 could hold those).
+void BeltsAfterLoad(void);
 void BeltDirDelta(int dir, int* dx, int* dy);               // horizontal part (0, 0 for UP/DOWN)
 void BeltDirDelta3(int dir, int* dx, int* dy, int* dz);
 

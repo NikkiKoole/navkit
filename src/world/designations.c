@@ -18,6 +18,7 @@
 #include "../entities/stacking.h"
 #include "../core/event_log.h"
 #include "../simulation/rooms.h"
+#include "../entities/belts.h"
 #include "../game_state.h"
 #include <string.h>
 #include <math.h>
@@ -2296,6 +2297,10 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
             }
         }
         if (!hasWallNeighbor) return -1;
+    } else if (recipe->buildCategory == BUILD_BELT) {
+        // Laid on walkable ground (the builder stands on it); one belt per cell
+        if (!IsCellWalkableAt(z, y, x)) return -1;
+        if (BeltAt(x, y, z) >= 0) return -1;
     } else if (recipe->buildCategory == BUILD_WORKSHOP) {
         // Workshop blueprints are placed at the work tile via CreateWorkshopBlueprint()
         // which handles full footprint validation. Just check work tile is walkable.
@@ -2557,7 +2562,14 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
         break;
     }
 
-    if (targetSlot < 0) return;  // no matching slot (shouldn't happen if WorkGiver is correct)
+    if (targetSlot < 0) {
+        // No slot wants it (another hauler filled it first): drop it here rather than leave
+        // it CARRIED with nobody carrying it (lost for good, and its blueprint never builds)
+        EventLog("Blueprint %d at (%d,%d,%d): no slot for item %d (%s), dropped", blueprintIdx,
+                 bp->x, bp->y, bp->z, itemIdx, ItemName(deliveredType));
+        SafeDropItem(itemIdx, items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z);
+        return;
+    }
 
     StageDelivery* sd = &bp->stageDeliveries[targetSlot];
     int remaining = stage->inputs[targetSlot].count - sd->deliveredCount;
@@ -2667,6 +2679,15 @@ static ItemType GetRecipeFinalSourceItem(const Blueprint* bp, const Construction
         }
     }
     return ITEM_NONE;  // fallback
+}
+
+// A belt blueprint keeps its direction in workshopType (unused by non-workshop blueprints,
+// so no save change): BeltDir, BELT_UP/BELT_DOWN included.
+int CreateBeltBlueprint(int x, int y, int z, int dir) {
+    if (dir < BELT_N || dir > BELT_DOWN) return -1;
+    int idx = CreateRecipeBlueprint(x, y, z, CONSTRUCTION_BELT);
+    if (idx >= 0) blueprints[idx].workshopType = dir;
+    return idx;
 }
 
 void CompleteBlueprint(int blueprintIdx) {
@@ -2821,6 +2842,15 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->assignedBuilder = -1;
         blueprintCount--;
         InvalidateRooms();
+        return;
+    }
+
+    if (recipe->buildCategory == BUILD_BELT) {
+        PlaceBelt(x, y, z, (BeltDir)bp->workshopType);
+        EventLog("Belt built at (%d,%d,%d) dir %d", x, y, z, bp->workshopType);
+        bp->active = false;
+        bp->assignedBuilder = -1;
+        blueprintCount--;
         return;
     }
 

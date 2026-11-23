@@ -59,13 +59,31 @@ Found on the way: `ClearStockpileSlot` counted an emptied partial stack as a new
 twice, and placing a load never updated `freeSlotCount`: the per-frame rebuild hid both, the
 state audit caught them on mid-run saves. Both now adjust the count by the slot's before/after.
 
+### Building belts in game
+
+Dev UI (TAB) → Work → Build → **Belt** (`b`). Arrows/HJKL pick N/E/S/W, PageUp a lift, PageDown
+a chute (the bar shows the direction). L-drag lays belt blueprints, R-drag cancels belt
+blueprints and takes down built belts (the load drops, each belt gives back one plank).
+Recipe `CONSTRUCTION_BELT`: 2 planks + 1 cordage, 0.5 game hours, on walkable ground, one belt
+per cell. Blueprints draw as see-through belts pointing their way. The direction lives in
+`Blueprint.workshopType` (unused by non-workshop blueprints, so no save change).
+
+- A belt end with a blueprint ahead waits instead of dropping: an unfinished line doesn't
+  spill onto its own building site (it did, and builders kept clearing it: an endless loop).
+- Found on the way: two haulers could bring planks for the same blueprint slot; the second
+  found the slot full and `DeliverMaterialToBlueprint` returned, leaving the planks CARRIED with
+  no carrier (lost, and the blueprint waited forever). Now it drops them. The double reservation
+  itself (a stack hauled for a slot another stack already fills) is still there.
+
+Scenario `belt-build` (32x20): 12 belt blueprints, planks and cordage nearby, 3 movers. 3000
+ticks: all 12 built, 20 of 40 rocks moved; 6000: all 40.
+Not yet: a play HUD tool (only the dev UI menu), deconstruction as a job (removal is instant).
+
 ### Not in the spike (known gaps)
 
 - **Not saved.** Belts vanish on load, and items that were riding stay `ITEM_ON_BELT` where
   they were (invisible to jobs). Fix: save belts (version bump) or turn riding items back to
   ground on save.
-- **No way to build belts in game**: only the scenario places them (`PlaceBelt`). Needs a
-  blueprint/recipe (and materials).
 - Belts don't care about walls, water or fire; movers walk over them and are not carried.
 - Lifts and chutes are free: no power, no speed difference, no lift capacity.
 - Belt ends find the stockpile slot by scanning it (fine at spike sizes).

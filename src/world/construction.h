@@ -19,6 +19,7 @@ typedef enum {
     BUILD_FURNITURE,
     BUILD_WORKSHOP,
     BUILD_DOOR,
+    BUILD_BELT,         // conveyor belt cell (belts.c); direction in Blueprint.workshopType
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -107,6 +108,7 @@ typedef enum {
     CONSTRUCTION_WORKSHOP_STOVE,         // 1 stage: 4 bricks + 2 clay
     CONSTRUCTION_WORKSHOP_COUNTER,       // 1 stage: 3 planks
     CONSTRUCTION_TABLE,                  // 1 stage: 3 planks (furniture; append only, saves store the index)
+    CONSTRUCTION_BELT,                   // 1 stage: 2 planks + 1 cordage (conveyor belt cell)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

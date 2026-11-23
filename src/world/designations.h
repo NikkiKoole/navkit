@@ -453,6 +453,8 @@ int CountFarmDesignations(void);
 
 // Create a blueprint using a specific construction recipe
 int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex);
+// Conveyor belt blueprint pointing dir (BeltDir); -1 if the cell can't take one
+int CreateBeltBlueprint(int x, int y, int z, int dir);
 
 // Create a workshop blueprint (validates full footprint, places blueprint at work tile)
 int CreateWorkshopBlueprint(int originX, int originY, int z, int recipeIndex);

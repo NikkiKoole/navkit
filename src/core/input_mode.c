@@ -334,6 +334,12 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
                 break;
+            case ACTION_WORK_BELT:
+                n = AddItem(items, n, TextFormat("Dir: %s", GetSelectedBeltDirectionName()), 0, -1, false, true, false);
+                n = AddItem(items, n, "Arrows / PgUp lift / PgDn chute", 0, -1, false, true, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_RAMP:
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);

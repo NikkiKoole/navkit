@@ -7,6 +7,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
+#include "../world/designations.h"
 #include <string.h>
 
 Belt belts[MAX_BELTS];
@@ -140,6 +141,23 @@ void RemoveBelt(int x, int y, int z) {
     RebuildBeltCaches();
 }
 
+void BeltsAfterLoad(void) {
+    if (beltCount < 0 || beltCount > MAX_BELTS) beltCount = 0;
+    for (int b = beltCount; b < MAX_BELTS; b++) belts[b] = (Belt){ .item = -1, .next = -1 };
+    static bool held[MAX_ITEMS];
+    memset(held, 0, sizeof(held));
+    for (int b = 0; b < beltCount; b++) {
+        int it = belts[b].item;
+        if (!belts[b].active || it < 0 || it >= MAX_ITEMS || !items[it].active || items[it].state != ITEM_ON_BELT)
+            belts[b].item = -1;
+        else held[it] = true;
+    }
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].state == ITEM_ON_BELT && !held[i]) items[i].state = ITEM_ON_GROUND;
+    beltItemsIn = beltItemsOut = 0;
+    RebuildBeltCaches();
+}
+
 // Item position from the belt cell and progress across it
 static void BeltItemPos(const Belt* bl, float progress, float* px, float* py) {
     int dx, dy;
@@ -198,6 +216,9 @@ static bool BeltDropOut(int b) {
     int ox = bl->x + dx, oy = bl->y + dy, z = bl->z + dz;   // UP/DOWN: the cell above/below
     if (ox < 0 || oy < 0 || ox >= gridWidth || oy >= gridHeight || z < 0 || z >= gridDepth) return false;
     if (!IsCellWalkableAt(z, oy, ox)) return false;
+    // A blueprint ahead (often the next belt of an unfinished line): wait, don't drop
+    // the load on a building site
+    if (HasBlueprint(ox, oy, z)) return false;
     int it = bl->item;
     float cx = (ox + 0.5f) * CELL_SIZE, cy = (oy + 0.5f) * CELL_SIZE;
 
