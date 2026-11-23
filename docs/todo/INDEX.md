@@ -7,7 +7,7 @@
 
 ## Recently active
 
-- **2026-11-23 Conveyor belts** — `world/conveyors.md`: spike done (scenario `belt`), items and crates between stockpiles; stockpile transfer points (`StockpileTakeStack` / `StockpilePutLoad`)
+- **2026-11-23 Conveyor belts** — `world/conveyors.md`: spike done (scenario `belt`), items and crates between stockpiles; stockpile transfer points (`StockpileTakeStack` / `StockpilePutLoad`); vertical belts: lifts and chutes (scenario `belt-lift`)
 - **2026-11-23 Trains** — `world/trains.md`: coloured lines, trip choice over a transit graph (any number of changes), subway across levels (scenarios `metro`, `transfer`, `subway`, `subway-deep`); research `../research/metro.md`
 - **2026-11-23 Island** — `world/island.md`: terrain + game `island` (survival rules, 3 settlers ashore by a river mouth); sizes 256-1024
 - **2026-11-23 Taller worlds** — `architecture/chunked-world-plan.md` "Taller worlds: block palettes": a much higher world costs little more (memory follows the surface); decision point 4
@@ -57,7 +57,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
 - `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
 - `world/elevators.md` — Moving platforms with state, capacity, queuing
-- `world/conveyors.md` — Conveyor belts: spike done (scenario `belt`, items + crates, stockpile pick-up/drop-off); brainstorm and open design questions
+- `world/conveyors.md` — Conveyor belts: spike done (scenarios `belt`, `belt-lift`: items + crates, lifts and chutes, stockpile pick-up/drop-off); brainstorm and open design questions
 - `pathfinding/per-chunk-edge-storage.md` — Incremental HPA* updates touch all edges (67 ms per mining update on 512x512 hills); store edges per chunk
 - `pathfinding/service-points-and-queues.md` — (steps 1, 2, 4 done; left: station waiting lists as service points, saved state) General wait-your-turn system (ladders, train doors, elevators, ...): explicit first-come-first-served lines, emergent follow-the-one-ahead queue shape, measured expected wait as route cost
 - `pathfinding/astar-priority-queue-and-extraction.md` — `RunAStar()` linear-scans instead of using the existing heap (~32s/path at 256×256, measured); plus what it'd take to lift the pathfinder into another project

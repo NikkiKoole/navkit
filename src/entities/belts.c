@@ -28,10 +28,15 @@ static unsigned BeltKey(int x, int y, int z) {
 }
 static unsigned BeltSlot(unsigned key) { return (key * 2654435761u) & (BELT_HASH_SIZE - 1); }
 
+void BeltDirDelta3(int dir, int* dx, int* dy, int* dz) {
+    static const int DX[6] = {0, 1, 0, -1, 0, 0}, DY[6] = {-1, 0, 1, 0, 0, 0}, DZ[6] = {0, 0, 0, 0, 1, -1};
+    if (dir < 0 || dir > BELT_DOWN) dir = BELT_N;
+    *dx = DX[dir]; *dy = DY[dir]; *dz = DZ[dir];
+}
+
 void BeltDirDelta(int dir, int* dx, int* dy) {
-    static const int DX[4] = {0, 1, 0, -1}, DY[4] = {-1, 0, 1, 0};
-    *dx = DX[dir & 3];
-    *dy = DY[dir & 3];
+    int dz;
+    BeltDirDelta3(dir, dx, dy, &dz);
 }
 
 int BeltAt(int x, int y, int z) {
@@ -57,14 +62,14 @@ static void RebuildBeltCaches(void) {
         Belt* bl = &belts[b];
         bl->next = -1;
         if (!bl->active) continue;
-        int dx, dy;
-        BeltDirDelta(bl->dir, &dx, &dy);
-        int n = BeltAt(bl->x + dx, bl->y + dy, bl->z);
+        int dx, dy, dz;
+        BeltDirDelta3(bl->dir, &dx, &dy, &dz);
+        int n = BeltAt(bl->x + dx, bl->y + dy, bl->z + dz);
         // Two belts pointing at each other would trade items forever: treat as ends
         if (n >= 0) {
-            int ndx, ndy;
-            BeltDirDelta(belts[n].dir, &ndx, &ndy);
-            if (ndx == -dx && ndy == -dy) n = -1;
+            int ndx, ndy, ndz;
+            BeltDirDelta3(belts[n].dir, &ndx, &ndy, &ndz);
+            if (ndx == -dx && ndy == -dy && ndz == -dz) n = -1;
         }
         bl->next = n;
         if (n >= 0) belts[n].fed = true;
@@ -167,11 +172,12 @@ static bool BeltTakeInput(int b) {
         return true;
     }
     if (bl->fed) return false;
-    int dx, dy;
-    BeltDirDelta(bl->dir, &dx, &dy);
-    int bx = bl->x - dx, by = bl->y - dy;
+    int dx, dy, dz;
+    BeltDirDelta3(bl->dir, &dx, &dy, &dz);
+    int bx = bl->x - dx, by = bl->y - dy, bz = bl->z - dz;
+    if (bz < 0 || bz >= gridDepth) return false;
     int sp;
-    if (!IsPositionInStockpile((bx + 0.5f) * CELL_SIZE, (by + 0.5f) * CELL_SIZE, bl->z, &sp) || sp < 0)
+    if (!IsPositionInStockpile((bx + 0.5f) * CELL_SIZE, (by + 0.5f) * CELL_SIZE, bz, &sp) || sp < 0)
         return false;
     // The stockpile is the pick-up point: any slot of it, the one right behind first
     Stockpile* s = &stockpiles[sp];
@@ -183,13 +189,14 @@ static bool BeltTakeInput(int b) {
     return true;
 }
 
-// Past the line's last belt: drop on the ground ahead if there is room
+// Past the line's last belt (ahead, or above/below for UP/DOWN): into a stockpile there,
+// or on the ground if there is room
 static bool BeltDropOut(int b) {
     Belt* bl = &belts[b];
-    int dx, dy;
-    BeltDirDelta(bl->dir, &dx, &dy);
-    int ox = bl->x + dx, oy = bl->y + dy, z = bl->z;
-    if (ox < 0 || oy < 0 || ox >= gridWidth || oy >= gridHeight) return false;
+    int dx, dy, dz;
+    BeltDirDelta3(bl->dir, &dx, &dy, &dz);
+    int ox = bl->x + dx, oy = bl->y + dy, z = bl->z + dz;   // UP/DOWN: the cell above/below
+    if (ox < 0 || oy < 0 || ox >= gridWidth || oy >= gridHeight || z < 0 || z >= gridDepth) return false;
     if (!IsCellWalkableAt(z, oy, ox)) return false;
     int it = bl->item;
     float cx = (ox + 0.5f) * CELL_SIZE, cy = (oy + 0.5f) * CELL_SIZE;

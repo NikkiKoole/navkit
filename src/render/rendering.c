@@ -1913,15 +1913,26 @@ static void DrawBelts(void) {
     Color bed = (Color){ 52, 50, 48, 255 }, rim = (Color){ 30, 28, 26, 255 }, mark = (Color){ 150, 140, 110, 255 };
     for (int i = 0; i < beltCount; i++) {
         const Belt* b = &belts[i];
-        if (!b->active || b->z != viewZ) continue;
+        if (!b->active || b->z > viewZ || b->z < viewZ - MAX_VISIBLE_DEPTH) continue;
+        if (b->z < viewZ && !IsCellVisibleFromAbove(b->x, b->y, b->z + 1, viewZ)) continue;
         float sx = offset.x + b->x * CELL_SIZE * zoom, sy = offset.y + b->y * CELL_SIZE * zoom;
         if (sx < -size || sy < -size || sx > sw || sy > sh) continue;
-        int dx, dy;
-        BeltDirDelta(b->dir, &dx, &dy);
+        int dx, dy, dz;
+        BeltDirDelta3(b->dir, &dx, &dy, &dz);
         float inset = size * 0.08f;
-        DrawRectangleRec((Rectangle){ sx + inset, sy + inset, size - 2 * inset, size - 2 * inset }, bed);
-        DrawRectangleLinesEx((Rectangle){ sx + inset, sy + inset, size - 2 * inset, size - 2 * inset },
-                             fmaxf(1.0f, size * 0.04f), rim);
+        Rectangle r = { sx + inset, sy + inset, size - 2 * inset, size - 2 * inset };
+        if (dz != 0) {
+            // Lift / chute: a framed shaft with a triangle pointing up (north) or down (south)
+            DrawRectangleRec(r, rim);
+            DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.08f), mark);
+            float cx = sx + size * 0.5f, cy = sy + size * 0.5f, h = size * 0.22f;
+            float s = dz > 0 ? -1.0f : 1.0f;   // screen y of the tip: up = north
+            Vector2 tip = { cx, cy + s * h }, l = { cx - h, cy - s * h * 0.6f }, rr = { cx + h, cy - s * h * 0.6f };
+            if (s < 0) DrawTriangle(tip, l, rr, mark); else DrawTriangle(tip, rr, l, mark);
+            continue;
+        }
+        DrawRectangleRec(r, bed);
+        DrawRectangleLinesEx(r, fmaxf(1.0f, size * 0.04f), rim);
         // Two chevrons per cell, pointing along (dx, dy)
         float cx = sx + size * 0.5f, cy = sy + size * 0.5f;
         float px = (float)-dy, py = (float)dx;   // perpendicular

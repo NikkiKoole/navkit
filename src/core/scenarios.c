@@ -1461,6 +1461,103 @@ static bool BeltCheck(char* why, int whyLen) {
     return true;
 }
 
+// belt-lift: vertical belts. Ground at z=1, a deck at z=3 (x >= 16) with two shaft
+// holes. Lift: logs the movers stock in A (ground, west) ride east, UP two levels at
+// (16,9) and on along the deck into B. Chute: rock stacks pre-stocked in C (deck) ride
+// east, DOWN two levels at (34,15) and into D on the ground.
+static void SetupBeltLift(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    const int deckZ = 3;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 16; x < gridWidth; x++) {
+            SET_FLOOR(x, y, deckZ);
+            SetFloorMaterial(x, y, deckZ, MAT_OAK);
+        }
+    CLEAR_FLOOR(16, 9, deckZ);    // lift shaft
+    CLEAR_FLOOR(34, 15, deckZ);   // chute shaft
+
+    int spA = CreateStockpile(3, 7, 1, 4, 4);          // ground, x 3..6
+    int spB = CreateStockpile(24, 7, deckZ, 4, 4);     // deck, x 24..27
+    int spC = CreateStockpile(24, 14, deckZ, 4, 4);    // deck, x 24..27, y 14..17
+    int spD = CreateStockpile(40, 13, 1, 4, 4);        // ground under the deck, x 40..43
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        SetStockpileFilter(spA, (ItemType)t, t == ITEM_LOG);
+        SetStockpileFilter(spC, (ItemType)t, t == ITEM_ROCK);
+    }
+    // The deck has no way up for movers: only the lift fills B. Lowest priority keeps
+    // haulers from picking B (or C) for a log they could store in A.
+    SetStockpilePriority(spB, 1);
+    SetStockpilePriority(spC, 1);
+    (void)spD;
+
+    // Lift: ground east, up two levels, deck east into B
+    BeltRun(7, 9, 15, 9, BELT_E);
+    PlaceBelt(16, 9, 1, BELT_UP);
+    PlaceBelt(16, 9, 2, BELT_UP);
+    for (int x = 16; x <= 23; x++) PlaceBelt(x, 9, deckZ, BELT_E);
+    // Chute: from C (deck) east, down two levels, ground east into D
+    for (int x = 28; x <= 33; x++) PlaceBelt(x, 15, deckZ, BELT_E);
+    PlaceBelt(34, 15, deckZ, BELT_DOWN);
+    PlaceBelt(34, 15, 2, BELT_DOWN);
+    BeltRun(34, 15, 39, 15, BELT_E);
+
+    // C starts stocked: 8 rock stacks of 5
+    for (int k = 0; k < 8; k++) {
+        int sx = 24 + k % 4, sy = 14 + k / 4;
+        int r = SpawnItem(sx * CELL_SIZE + CELL_SIZE * 0.5f, sy * CELL_SIZE + CELL_SIZE * 0.5f, deckZ, ITEM_ROCK);
+        if (r < 0) continue;
+        items[r].stackCount = 5;
+        PlaceItemInStockpile(spC, sx, sy, r);
+    }
+    // Logs to haul into A
+    int logs = 0;
+    for (int tries = 0; logs < 30 && tries < 2000; tries++) {
+        int x = GetRandomValue(1, 14), y = GetRandomValue(1, 22);
+        if (BeltAt(x, y, 1) >= 0 || IsPositionInStockpile(x * CELL_SIZE + 4, y * CELL_SIZE + 4, 1, NULL)) continue;
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_LOG);
+        logs++;
+    }
+    beltLogsAtStart = logs;
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+
+    SpawnMoverAt(8, 4, 1);
+    SpawnMoverAt(9, 4, 1);
+    currentViewZ = deckZ;
+    AddMessage(TextFormat("Belt lift: %d logs go up to the deck, 40 rocks come down a chute", logs), GREEN);
+}
+
+static int BeltCountTypeIn(ItemType type, int x0, int y0, int x1, int y1, int z) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || items[i].type != type || (int)items[i].z != z) continue;
+        if (items[i].state == ITEM_ON_BELT) continue;
+        int x = (int)(items[i].x / CELL_SIZE), y = (int)(items[i].y / CELL_SIZE);
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1) n += items[i].stackCount;
+    }
+    return n;
+}
+
+static void BeltLiftPrintStats(void) {
+    int riding = 0;
+    for (int b = 0; b < beltCount; b++) if (belts[b].active && belts[b].item >= 0) riding++;
+    printf("Belts: %d cells, %d loads put on, %d dropped off, %d riding now\n",
+           beltCount, beltItemsIn, beltItemsOut, riding);
+    printf("Lift:  %d logs at start, %d up in B (deck)\n", beltLogsAtStart, BeltCountTypeIn(ITEM_LOG, 24, 7, 27, 10, 3));
+    printf("Chute: 40 rocks in C at start, %d left in C, %d down in D (ground)\n",
+           BeltCountTypeIn(ITEM_ROCK, 24, 14, 27, 17, 3), BeltCountTypeIn(ITEM_ROCK, 40, 13, 43, 16, 1));
+}
+
+static bool BeltLiftCheck(char* why, int whyLen) {
+    int up = BeltCountTypeIn(ITEM_LOG, 24, 7, 27, 10, 3), down = BeltCountTypeIn(ITEM_ROCK, 40, 13, 43, 16, 1);
+    if (up < 1 || down < 1) {
+        snprintf(why, (size_t)whyLen, "lift brought %d logs up, chute %d rocks down (want >= 1 each)", up, down);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1500,6 +1597,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupTransitChain, MetroTickStats, TransferPrintStats, TransitChainCheck, 700, 700},
     {"belt",       "Conveyor spike: movers stock a log pile, a belt carries the stacks (and a crate) to a second pile, 3 movers",
                    NULL,        SetupBelt, NULL, BeltPrintStats, BeltCheck, 48, 24},
+    {"belt-lift",  "Vertical belts: a lift carries logs up to a deck, a chute brings rocks down, 2 movers",
+                   NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

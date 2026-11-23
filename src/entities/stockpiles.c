@@ -942,14 +942,26 @@ void DecrementStockpileSlot(Stockpile* sp, int slotIdx) {
 }
 
 __attribute__((noinline))
+// Does this slot count in freeSlotCount? Same rule as the per-frame rebuild.
+static bool SlotCountsAsFree(const Stockpile* sp, int s) {
+    if (!sp->cells[s] || sp->groundItemIdx[s] >= 0) return false;
+    if (!IsCellWalkableAt(sp->z, sp->y + s / sp->width, sp->x + s % sp->width)) return false;
+    if (sp->slotIsContainer[s] && sp->slots[s] >= 0) {
+        const ContainerDef* def = GetContainerDef(items[sp->slots[s]].type);
+        return def && items[sp->slots[s]].contentCount + sp->reservedBy[s] < def->maxContents;
+    }
+    return sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize;
+}
+
 void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
-    bool wasOccupied = (sp->slots[slotIdx] >= 0);
+    // A partial stack already counted as free: emptying it must not count it twice
+    bool wasFree = SlotCountsAsFree(sp, slotIdx);
     sp->slots[slotIdx] = -1;
     sp->slotTypes[slotIdx] = -1;
     sp->slotMaterials[slotIdx] = MAT_NONE;
     sp->slotCounts[slotIdx] = 0;
     sp->slotIsContainer[slotIdx] = false;
-    if (wasOccupied) sp->freeSlotCount++;
+    sp->freeSlotCount += (int)SlotCountsAsFree(sp, slotIdx) - (int)wasFree;
 }
 
 // Remove an item from a stockpile slot at world position (x, y, z)
@@ -1472,7 +1484,11 @@ bool StockpilePutLoad(int sp, int itemIdx) {
     if (it->contentCount > 0) MoveContainer(itemIdx, px, py, (float)z);
     ItemType type = it->type;           // read before placing: it may merge into the
     uint8_t mat = it->material;         // slot's stack and be deleted
+    Stockpile* s = &stockpiles[sp];
+    int slot = (sy - s->y) * s->width + (sx - s->x);
+    bool wasFree = SlotCountsAsFree(s, slot);
     PlaceItemInStockpile(sp, sx, sy, itemIdx);
+    s->freeSlotCount += (int)SlotCountsAsFree(s, slot) - (int)wasFree;   // a slot that just filled up
     InvalidateStockpileSlotCache(type, mat);
     return true;
 }

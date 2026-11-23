@@ -18,7 +18,9 @@
 
 #define MAX_BELTS 4096
 
-typedef enum { BELT_N, BELT_E, BELT_S, BELT_W } BeltDir;
+// UP/DOWN move the load to the cell above/below (a lift, or a chute when going down);
+// the line goes on from whatever belt is there.
+typedef enum { BELT_N, BELT_E, BELT_S, BELT_W, BELT_UP, BELT_DOWN } BeltDir;
 
 typedef struct {
     short x, y;
@@ -41,6 +43,7 @@ int  PlaceBelt(int x, int y, int z, BeltDir dir);   // replaces the direction of
 void RemoveBelt(int x, int y, int z);               // drops what it carries on the ground
 int  BeltAt(int x, int y, int z);                   // belt index or -1
 void BeltsTick(float dt);
-void BeltDirDelta(int dir, int* dx, int* dy);
+void BeltDirDelta(int dir, int* dx, int* dy);               // horizontal part (0, 0 for UP/DOWN)
+void BeltDirDelta3(int dir, int* dx, int* dy, int* dz);
 
 #endif

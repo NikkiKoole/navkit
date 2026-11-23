@@ -39,6 +39,26 @@ Measured (seed 0): 3000 ticks: 37 loads on, 16 delivered, 21 riding (the movers 
 than the line drains it). 12000 ticks: all 40 logs delivered. Haulers bring logs one at a time,
 so they ride one per cell; the line would carry 10x as much with full stacks.
 
+### Vertical belts (lifts and chutes)
+
+`BELT_UP` / `BELT_DOWN` move the load to the cell above / below; the line goes on from whatever
+belt is there, and a line can end going up or down (a stockpile above/below takes the load).
+The load stays centred in the shaft. Drawn as a framed square with a triangle (up = pointing
+north); belts on lower levels show when the cell is visible from above. No power and no speed
+difference yet: a chute is just a line going down.
+
+Scenario `belt-lift` (48x24): ground at z=1, a deck at z=3 (x >= 16) with two shaft holes.
+Lift: logs the movers stock in A (ground) ride east, up two levels at (16,9), along the deck
+into B. Chute: 8 rock stacks pre-stocked in C (deck) ride east, down at (34,15), into D on the
+ground. 3000 ticks: 21 of 30 logs up, all 40 rocks down; 12000: all 30 logs up.
+The deck has no way up for movers, so B and C get stockpile priority 1: otherwise haulers pick
+B for a log and stand stuck below it (a hauler choosing an unreachable stockpile is an old gap,
+not a belt one).
+
+Found on the way: `ClearStockpileSlot` counted an emptied partial stack as a newly free slot
+twice, and placing a load never updated `freeSlotCount`: the per-frame rebuild hid both, the
+state audit caught them on mid-run saves. Both now adjust the count by the slot's before/after.
+
 ### Not in the spike (known gaps)
 
 - **Not saved.** Belts vanish on load, and items that were riding stay `ITEM_ON_BELT` where
@@ -47,7 +67,7 @@ so they ride one per cell; the line would carry 10x as much with full stacks.
 - **No way to build belts in game**: only the scenario places them (`PlaceBelt`). Needs a
   blueprint/recipe (and materials).
 - Belts don't care about walls, water or fire; movers walk over them and are not carried.
-- One level only: no chutes, ramps or lifts.
+- Lifts and chutes are free: no power, no speed difference, no lift capacity.
 - Belt ends find the stockpile slot by scanning it (fine at spike sizes).
 - `ClearBelts` runs on scenario reset only, not on game start or load.
 
@@ -94,7 +114,7 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 |            | Items                                   | People                     |
 |------------|-----------------------------------------|----------------------------|
 | Horizontal | belts (this spike), train cargo (planned) | trains (built)           |
-| Vertical   | vertical belts / hoist, chutes (next)   | elevator (`world/elevators.md`) |
+| Vertical   | vertical belts / hoist, chutes (done)   | elevator (`world/elevators.md`) |
 
 - **One transfer rule for all item carriers**: a stockpile is the transfer point; loads go
   straight into a slot at the drop-off and haulers do the last mile
@@ -114,6 +134,7 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 1. Save/load belts; clear them on game start.
 2. Build belts in game (recipe + blueprint), remove them (drops the load).
 3. A belt end feeding a workshop input / taking from a workshop output.
-4. Vertical belts + chutes (agreed as the next belt step, see the table above).
+4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Next there: power (water wheel,
+   steam) and gravity (chutes fast and free, lifts slow or powered).
 5. Train cargo through the same transfer-point idea.
 6. Only if routing becomes the fun part: splitters, filters, labels.
