@@ -599,8 +599,38 @@ flags + vegetation (the layers that say what a cell *is*; simulation layers not 
   active blocks. `CELL_AT` is still the single place that knows the layout, which is what makes
   a storage change like this possible at all.
 
-Next measurement worth doing before any design: the same count on a lived-in colony save, and
-which simulation layers are non-default in what fraction of blocks.
+### A lived-in island (measured 2026-11-23)
+
+Scenario `island-colony` (scripted, `src/core/scenarios.c`): the seed-3 island at 256, 20
+settlers at the landing beach, 80 trees to chop, 40 cells to dig, 150 grass cells, a stockpile,
+two stone huts with thatch floors (58 blueprints); needs on, nobody dies. Three game days =
+64,800 ticks: `--headless --seed 3 --scenario island-colony --ticks 64800 --profile --save f`.
+
+**Tick cost:** world simulation (`TickWithDt`) 2.4 ms per tick (water 1.9 of it), steady.
+**Jobs: 7.3 ms per tick on average, worst tick 458 ms, 18,677 ticks over 5 ms**, and growing
+(about 2 ms after one game day). A `sample` of the loaded day-3 save puts nearly all of it in
+`AssignJobs_P4_Designations` -> `WorkGiver_BlueprintHaul` -> `FindPathOrRoute` -> HPA* (4,856 of
+5,045 job samples): blueprints waiting for scarce stone run full path searches for their haul,
+over and over. That is the first real-play hot spot on a big map, ahead of every simulation. Not
+fixed here (job system); the scenario reproduces it.
+
+**Blocks after three days** (same tool, `--save` loaded): 16x16x4 blocks with one value 43%
+(fresh island 44%), mean 5.0 distinct values per block (fresh 4.4), index 1.7 bits per cell:
+a young colony barely changes the palette picture. Simulation layers, share of 16x16x4 blocks
+holding any non-default value: water 29%, tree growth timers 24%, tree target height 10%, tree
+harvest state 8%, ground wear 6%, designations 0.8%, floor dirt 0.1%; temperature offsets,
+torch light, snow, rooms, fire and smoke 0%. So in this colony every simulation layer lives in
+under a third of the blocks, most in under a tenth: active-block storage fits them well.
+
+**Not covered** (so not proof for the simulation layers): fire, campfires and torches (temperature
+and light), winter (snow), rooms, digging deep, a colony months old. A next colony should add a
+campfire, torches and a winter.
+
+**Side findings:** with work times in game hours a tree takes 10-15 real seconds to chop, so the
+`--check` stuck rule (no movement for 2 s) counts working settlers as stuck: 7-12 of 20 early on,
+0 at the end. The scenario is therefore not in `scenarios-check`. `--save f.bin.gz` writes an
+uncompressed file while `--load` gunzips by the `.gz` extension, so such a save only loads after
+renaming it to `.bin`.
 
 ## Allocation model (for steps 2-3)
 

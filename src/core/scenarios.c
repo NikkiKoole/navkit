@@ -623,6 +623,171 @@ static void DryGroundPrintStats(void) {
            dry, reach, dry ? 100.0 * reach / dry : 0.0);
 }
 
+// ---------------------------------------------------------------------------
+// island-colony: a lived-in island, scripted. 20 settlers at the landing beach with colony
+// work around it: trees to chop, a hill to dig into, grass to gather, a stockpile, two
+// stone huts with thatch floors. Needs on, nobody dies (sandbox rules). The measuring target
+// for big maps (docs/todo/architecture/chunked-world-plan.md): run it for game days with
+// --profile, --save the result.
+// ---------------------------------------------------------------------------
+
+#define COLONY_SETTLERS 20
+#define COLONY_RADIUS   40
+
+// The nearest cell to (cx, cy) at walk level z (or z +-1 when free) reachable from the main area
+static Point ColonyCellNear(int cx, int cy, int z, Point anchor) {
+    for (int r = 0; r <= 48; r++)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int x = cx + dx, y = cy + dy;
+                if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+                for (int zz = z - 1; zz <= z + 1; zz++) {
+                    if (zz < 1 || zz >= gridDepth || !IsCellWalkableAt(zz, y, x)) continue;
+                    if (GetWaterLevel(x, y, zz) > 0) continue;
+                    Point p = {x, y, zz};
+                    if (anchor.x < 0 || IsReachable(anchor, p)) return p;
+                }
+            }
+    return (Point){-1, -1, -1};
+}
+
+// A w x h area of dry, walkable, empty cells at one level, near (cx, cy), reachable; not
+// overlapping 'avoid' (x, y, w, h; w = 0 for none). Top-left in *ox, *oy, *oz.
+static bool ColonyFlatArea(int cx, int cy, int w, int h, Point anchor, const int avoid[4],
+                           int* ox, int* oy, int* oz) {
+    for (int r = 0; r <= COLONY_RADIUS; r++)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int x0 = cx + dx, y0 = cy + dy;
+                if (x0 < 1 || y0 < 1 || x0 + w >= gridWidth - 1 || y0 + h >= gridHeight - 1) continue;
+                if (avoid[2] > 0 && x0 < avoid[0] + avoid[2] + 2 && x0 + w + 2 > avoid[0] &&
+                    y0 < avoid[1] + avoid[3] + 2 && y0 + h + 2 > avoid[1]) continue;
+                int z = -1;
+                for (int zz = 1; zz < gridDepth && z < 0; zz++)
+                    if (IsCellWalkableAt(zz, y0, x0)) z = zz;
+                if (z < 0) continue;
+                bool ok = true;
+                for (int y = y0; y < y0 + h && ok; y++)
+                    for (int x = x0; x < x0 + w && ok; x++)
+                        ok = IsCellWalkableAt(z, y, x) && GRID(x, y, z) == CELL_AIR &&
+                             GetWaterLevel(x, y, z) == 0 && !CellIsRamp(GRID(x, y, z - 1));
+                if (!ok || (anchor.x >= 0 && !IsReachable(anchor, (Point){x0, y0, z}))) continue;
+                *ox = x0; *oy = y0; *oz = z;
+                return true;
+            }
+    return false;
+}
+
+static int colonyStats[6];   // chop, mine, grass, stockpile cells, hut walls, hut floors
+
+static void SetupIslandColony(void) {
+    // sandbox rules (nobody dies) with the games' needs and pace
+    gameMode = GAME_MODE_SANDBOX;
+    hungerEnabled = true; thirstEnabled = true; energyEnabled = true; bodyTempEnabled = true;
+    bladderEnabled = false; moodEnabled = true; toolRequirementsEnabled = false;
+    jobDistanceWeight = 0.2f;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 1200.0f;   // before the settlers spawn: they take it from here
+    memset(colonyStats, 0, sizeof colonyStats);
+
+    Point anchor = GetMainRegionAnchor();
+    int lx, ly, lz;
+    if (!IslandLandingSpot(&lx, &ly, &lz)) { lx = gridWidth / 2; ly = gridHeight / 2; lz = 4; }
+    Point land = ColonyCellNear(lx, ly, lz, anchor);
+    if (land.x < 0) land = GetRandomWalkableCellReachableFrom(anchor);
+    if (land.x < 0) return;
+    int n = scenarioMovers > 0 ? scenarioMovers : COLONY_SETTLERS;
+    for (int i = 0; i < n; i++) {
+        Point p = ColonyCellNear(land.x + (i % 5) * 2 - 4, land.y + (i / 5) * 2 - 4, land.z, anchor);
+        SpawnMoverAt(p.x >= 0 ? p.x : land.x, p.x >= 0 ? p.y : land.y, p.x >= 0 ? p.z : land.z);
+    }
+
+    // Stockpile (8x6) and two huts (6x5 stone walls, thatch floor inside), on flat ground
+    int none[4] = {0, 0, 0, 0}, sx, sy, sz;
+    int stockRect[4] = {0, 0, 0, 0};
+    if (ColonyFlatArea(land.x, land.y, 8, 6, anchor, none, &sx, &sy, &sz)) {
+        CreateStockpile(sx, sy, sz, 8, 6);
+        stockRect[0] = sx; stockRect[1] = sy; stockRect[2] = 8; stockRect[3] = 6;
+        colonyStats[3] = 48;
+    }
+    int hutAvoid[4] = {stockRect[0], stockRect[1], stockRect[2], stockRect[3]};
+    for (int hut = 0; hut < 2; hut++) {
+        int hx, hy, hz;
+        if (!ColonyFlatArea(land.x + (hut ? 12 : -12), land.y + 8, 6, 5, anchor, hutAvoid, &hx, &hy, &hz)) continue;
+        for (int y = hy; y < hy + 5; y++)
+            for (int x = hx; x < hx + 6; x++) {
+                bool edge = x == hx || x == hx + 5 || y == hy || y == hy + 4;
+                bool door = x == hx + 2 && y == hy + 4;
+                if (edge && !door) { if (CreateRecipeBlueprint(x, y, hz, CONSTRUCTION_DRY_STONE_WALL) >= 0) colonyStats[4]++; }
+                else if (!edge && CreateRecipeBlueprint(x, y, hz, CONSTRUCTION_THATCH_FLOOR) >= 0) colonyStats[5]++;
+            }
+        hutAvoid[0] = hx; hutAvoid[1] = hy; hutAvoid[2] = 6; hutAvoid[3] = 5;   // next hut not on this one
+    }
+
+    // Trees to chop, grass to gather (every other cell), within the radius
+    for (int y = land.y - COLONY_RADIUS; y <= land.y + COLONY_RADIUS; y++)
+        for (int x = land.x - COLONY_RADIUS; x <= land.x + COLONY_RADIUS; x++) {
+            if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+            for (int z = 1; z < gridDepth; z++) {
+                if (GRID(x, y, z) == CELL_TREE_TRUNK && GRID(x, y, z - 1) != CELL_TREE_TRUNK) {
+                    if (colonyStats[0] < 80 && DesignateChop(x, y, z)) colonyStats[0]++;
+                    break;
+                }
+                if (((x + y) & 1) == 0 && colonyStats[2] < 150 && abs(x - land.x) < 20 && abs(y - land.y) < 20 &&
+                    IsCellWalkableAt(z, y, x) && DesignateGatherGrass(x, y, z)) { colonyStats[2]++; break; }
+            }
+        }
+
+    // Dig into the nearest rise: solid ground at the settlers' walk level with an open face
+    // beside it, then a 9x9 patch around it at that level and the one above
+    int hillX = -1, hillY = -1, best = 1 << 30;
+    for (int y = land.y - COLONY_RADIUS; y <= land.y + COLONY_RADIUS; y++)
+        for (int x = land.x - COLONY_RADIUS; x <= land.x + COLONY_RADIUS; x++) {
+            if (x < 1 || y < 1 || x >= gridWidth - 1 || y >= gridHeight - 1) continue;
+            if (GRID(x, y, land.z) != CELL_WALL) continue;   // ground rising above the walk level (the slope cap keeps steps to one level)
+            bool face = IsCellWalkableAt(land.z, y, x - 1) || IsCellWalkableAt(land.z, y, x + 1) ||
+                        IsCellWalkableAt(land.z, y - 1, x) || IsCellWalkableAt(land.z, y + 1, x);
+            int d = abs(x - land.x) + abs(y - land.y);
+            if (face && d < best && d > 6) { best = d; hillX = x; hillY = y; }
+        }
+    if (hillX >= 0)
+        for (int z = land.z; z <= land.z + 1 && z < gridDepth; z++)
+            for (int y = hillY - 4; y <= hillY + 4; y++)
+                for (int x = hillX - 4; x <= hillX + 4; x++) {
+                    if (x < 1 || y < 1 || x >= gridWidth - 1 || y >= gridHeight - 1) continue;
+                    if (GRID(x, y, z) == CELL_WALL && GetWaterLevel(x, y, z + 1) == 0 && DesignateMine(x, y, z)) colonyStats[1]++;
+                }
+
+    currentViewZ = land.z;
+    offset.x = GetScreenWidth() / 2.0f - land.x * CELL_SIZE * zoom;
+    offset.y = GetScreenHeight() / 2.0f - land.y * CELL_SIZE * zoom;
+    AddMessage(TextFormat("Island colony: %d settlers at (%d,%d,z%d); chop %d, mine %d, grass %d, stockpile %d, hut walls %d, floors %d",
+               moverCount, land.x, land.y, land.z, colonyStats[0], colonyStats[1], colonyStats[2],
+               colonyStats[3], colonyStats[4], colonyStats[5]), GREEN);
+}
+
+static void IslandColonyPrintStats(void) {
+    int chop = 0, mine = 0, grass = 0, bpLeft = 0, alive = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                const Designation* d = GetDesignation(x, y, z);
+                if (!d) continue;
+                if (d->type == DESIGNATION_CHOP) chop++;
+                else if (d->type == DESIGNATION_MINE) mine++;
+                else if (d->type == DESIGNATION_GATHER_GRASS) grass++;
+            }
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) if (blueprints[i].active) bpLeft++;
+    for (int i = 0; i < moverCount; i++) if (movers[i].active) alive++;
+    printf("island-colony: designated chop %d, mine %d, grass %d, hut walls %d + floors %d\n",
+           colonyStats[0], colonyStats[1], colonyStats[2], colonyStats[4], colonyStats[5]);
+    printf("island-colony: still open: chop %d, mine %d, grass %d, blueprints %d; items %d; movers %d active\n",
+           chop, mine, grass, bpLeft, itemCount, alive);
+    DryGroundPrintStats();
+}
+
 static void SetupHubs(void) {
     // Hubs: walkable cells in the biggest reachability region, spread out (a
     // jittered grid over the map, each snapped to the nearest good cell)
@@ -1708,6 +1873,8 @@ static const Scenario scenarios[] = {
                    "HillsSoilsWater", SetupWorld, NULL, DryGroundPrintStats, NULL, 256, 256},
     {"island",     "A finite island grown from a seed (drainage, rivers, lakes, sea, cover), 100 wandering movers; scenarioSize sets the map",
                    "Island",    SetupWorld, NULL, DryGroundPrintStats, NULL, 256, 256},
+    {"island-colony", "Lived-in island: 20 settlers chop, dig, gather and build two huts by the landing beach; needs on, nobody dies (big-map measuring target)",
+                   "Island",    SetupIslandColony, NULL, IslandColonyPrintStats, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"dayrhythm",  "8 movers, beds, dried berries, endless mining: who is in bed at 03:00 and 13:00 (setting sleepRhythm)",
