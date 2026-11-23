@@ -122,6 +122,8 @@ come from trampling, `groundwear`), buildings.
   cut-off patch a two-way ramp, or turns ramps leading into an unfixable pocket back into ground
   (never re-placed there, so it ends). Now 0 pocket cells on seeds 1-5 at 256 and 1024, main land
   (there and back) unchanged within 0.5%, test "should leave no one-way pockets".
+  Cost (seed 3): generation 2.8 -> 3.5 s at 1024, 10.8 -> 13.7 s at 2048 (two whole-world
+  searches per round, 5-10 rounds); peak memory unchanged.
   Other terrains (same count): hills 0-1 pocket cells, hills+water 10-58, perlin 0; not changed.
 - **128 islands are mostly cut off** (on master before this too): only 12-26% of dry ground is
   main land at 128 (90-93% at 256). The `cs` scaling makes 128 steep and narrow; the game uses

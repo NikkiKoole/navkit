@@ -442,11 +442,11 @@ static void IslandSearch(NavPoint a, bool reverse, unsigned char* mark, int* q) 
     int start = (a.z * gridHeight + a.y) * gridWidth + a.x;
     mark[start] = 1;
     q[tail++] = start;
-    NavPoint st[16];
+    NavPoint st[NAV_MAX_STEPS];
     while (head < tail) {
         int id = q[head++];
         NavPoint p = {id % gridWidth, (id / gridWidth) % gridHeight, id / (gridWidth * gridHeight)};
-        int k = NavSteps(NavGame(), p, reverse, st, 16);
+        int k = NavSteps(NavGame(), p, reverse, st, NAV_MAX_STEPS);
         for (int i = 0; i < k; i++) {
             int t = (st[i].z * gridHeight + st[i].y) * gridWidth + st[i].x;
             if (!mark[t]) { mark[t] = 1; q[tail++] = t; }

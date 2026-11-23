@@ -564,7 +564,7 @@ static void nav_GetChunkBounds(const NavWorld* w, int chunk, int* minX, int* min
 // so ladders and ramps inside a chunk are plain steps, not graph nodes.
 
 typedef struct { int x, y, z, cost; } nav_Step;
-#define NAV_MAX_STEPS 16
+// NAV_MAX_STEPS (nav.h): the most single steps out of or into one cell
 // nav_Steps / nav_LocalSearch options
 #define NAV_STEP_REVERSE    1   // steps INTO the cell (costs from each cell to the origin)
 #define NAV_STEP_CLIMB      2   // add NAV_CLIMB_EXTRA (query time; graph edges leave it out)

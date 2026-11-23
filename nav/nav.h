@@ -243,7 +243,9 @@ int NavFindRouteHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* route,
 int NavRefineLeg(NavWorld* w, NavPoint from, NavPoint to, NavPoint* out, int maxLen);
 // The single steps A* takes out of p (reverse: every step INTO p, i.e. the cells it can be
 // entered from), same rules as the searches (ramps, side entry, ladders). Returns the count,
-// at most max (16 is always enough). For checks like "cells you can reach but not leave".
+// at most max (NAV_MAX_STEPS is always enough). For checks like "cells you can reach but not
+// leave".
+#define NAV_MAX_STEPS 16
 int NavSteps(NavWorld* w, NavPoint p, bool reverse, NavPoint* out, int max);
 
 // ---- flow fields ----

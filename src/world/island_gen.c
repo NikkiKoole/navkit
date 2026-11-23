@@ -243,12 +243,12 @@ static int IsNavBfs(NavPoint a, bool reverse, unsigned char* mark, int* q) {
     memset(mark, 0, (size_t)n);
     mark[(a.z * H + a.y) * W + a.x] = 1;
     q[tail++] = (a.z * H + a.y) * W + a.x;
-    NavPoint st[16];
+    NavPoint st[NAV_MAX_STEPS];
     NavWorld* w = NavGame();
     while (head < tail) {
         int id = q[head++];
         NavPoint p = {id % W, (id / W) % H, id / (W * H)};
-        int k = NavSteps(w, p, reverse, st, 16);
+        int k = NavSteps(w, p, reverse, st, NAV_MAX_STEPS);
         for (int i = 0; i < k; i++) {
             int j = (st[i].z * H + st[i].y) * W + st[i].x;
             if (!mark[j]) { mark[j] = 1; q[tail++] = j; }
@@ -274,7 +274,9 @@ static int IslandFixPockets(const int* top, const int* waterTop, unsigned char* 
     NavPoint anchor = {-1, -1, -1};
     int best = 0;
     unsigned char* banned = (unsigned char*)calloc((size_t)(W * H), 1);   // ramps removed here stay gone
-    for (int k = 0; k < 8 && banned; k++) {
+    int dryColumns = 0;
+    for (int i = 0; i < W * H; i++) dryColumns += waterTop[i] < 0;
+    for (int k = 0; k < 8 && banned && best * 2 <= dryColumns; k++) {   // usually the first will do
         unsigned h = (unsigned)(k * 2654435761u) ^ (unsigned)worldSeed;
         h = (h ^ (h >> 15)) * 2246822519u;
         int x = W / 4 + (int)(h % (unsigned)(W / 2)), y = H / 4 + (int)((h >> 12) % (unsigned)(H / 2));
@@ -324,12 +326,12 @@ static int IslandFixPockets(const int* top, const int* waterTop, unsigned char* 
                     // that pocket or cut-off patch is served: mark it (its cells, by steps either way)
                     int head = 0, tail = 0, start = exitUp ? lw : uw;
                     F[start] = 3; q[tail++] = start;
-                    NavPoint st[16];
+                    NavPoint st[NAV_MAX_STEPS];
                     while (head < tail) {
                         int id = q[head++];
                         NavPoint p = {id % W, (id / W) % H, id / (W * H)};
                         for (int r = 0; r < 2; r++) {
-                            int k = NavSteps(NavGame(), p, r, st, 16);
+                            int k = NavSteps(NavGame(), p, r, st, NAV_MAX_STEPS);
                             for (int j = 0; j < k; j++) {
                                 int t = (st[j].z * H + st[j].y) * W + st[j].x;
                                 if (F[t] == 0 || F[t] == 2) { F[t] = 3; q[tail++] = t; }
@@ -345,14 +347,14 @@ static int IslandFixPockets(const int* top, const int* waterTop, unsigned char* 
         // (the only one-way step), so that ramp becomes plain ground again (same height: no
         // new cliff); so does a ramp inside the pocket that leads nowhere.
         int closed = 0;
-        NavPoint st[16];
+        NavPoint st[NAV_MAX_STEPS];
         for (int i = 0; i < n3; i++) {
             if (F[i] != 2) continue;
             NavPoint p = {i % W, (i / W) % H, i / (W * H)};
-            NavPoint fix[17];
+            NavPoint fix[NAV_MAX_STEPS + 1];
             int nf = 0;
             if (CellIsRamp(GRID(p.x, p.y, p.z))) fix[nf++] = p;
-            int k = NavSteps(NavGame(), p, true, st, 16);
+            int k = NavSteps(NavGame(), p, true, st, NAV_MAX_STEPS);
             for (int j = 0; j < k; j++) {
                 int t = (st[j].z * H + st[j].y) * W + st[j].x;
                 if (F[t] == 1 && CellIsRamp(GRID(st[j].x, st[j].y, st[j].z))) fix[nf++] = st[j];
