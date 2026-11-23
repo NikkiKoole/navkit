@@ -27,6 +27,7 @@
 #include "../entities/tool_quality.h"
 #include "../entities/items.h"
 #include "../entities/belts.h"
+#include "../simulation/tide.h"
 #include "../entities/elevators.h"
 #include "../world/construction.h"
 #include "../core/sim_manager.h"
@@ -262,6 +263,19 @@ static void StartIsland(void) {
         RevealAroundPoint(p.x, p.y, p.z, balance.spawnVisionRadius);
     }
     if (moverCount > 0) SpawnStartingSupplies(movers[0].x, movers[0].y, movers[0].z);
+
+    // The tide (setting islandTide): only now, so the settlers and their supplies were placed
+    // with the sea full (never on flats that flood later). Ramps from the beach down to the
+    // flats, the sea set to the current tide, the nav graph again.
+    tideEnabled = false;
+    if (islandTide && TideMarkSea(waterEdgeSeaZ) > 0) {
+        TidePrepareShore();
+        tideEnabled = true;
+        tideLowLevel = 0;
+        TideSettle();
+        BuildEntrances();
+        BuildGraph();
+    }
 
     zoom = 0.5f;
     if (moverCount > 0) {
@@ -581,6 +595,7 @@ bool StartGame(const char* name) {
         return false;
     }
     ClearBelts();   // games that don't go through ScenarioResetWorld (survival, island, dollhouse)
+    ClearTide();
     ClearElevators();
     g->start();
     devUI = g->devUI;

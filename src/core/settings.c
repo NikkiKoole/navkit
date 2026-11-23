@@ -257,6 +257,8 @@ static const Setting settings[] = {
       "Game hours from high tide to high tide (North Sea: 12.42).", NULL),
     SET_INT("tideLowLevel", "Tide low level", "Simulation/Water", tideLowLevel, 1.0f, 0, 7,
       "Water level of the sea's top level at low tide (0 = the flats fall dry, 3 = wading).", NULL),
+    SET_BOOL("islandTide", "Island tide", "Simulation/Water", islandTide,
+      "The island game starts with the tide on its sea: mud flats fall dry twice a day, ramps from the beach down to them (experiment)."),
     SET_FLOAT("tideWaveHours", "Tide wave (h)", "Simulation/Water", tideWaveHours, 0.25f, 0.0f, 12.0f,
       "Game hours the tide takes to sweep across the map: the water crosses wading depth strip by strip (0 = all at once). Not saved.", NULL),
     SET_FLOAT("tideWaveAngle", "Tide wave angle", "Simulation/Water", tideWaveAngle, 15.0f, 0.0f, 359.0f,

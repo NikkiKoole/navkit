@@ -10,6 +10,7 @@
 #include <stdbool.h>
 
 extern bool tideEnabled;          // off: sea cells keep whatever level they have
+extern bool islandTide;           // the island game starts with the tide on (games.c StartIsland)
 extern float tidePeriodHours;     // game hours from high tide to high tide (North Sea: 12.42)
 extern int tideLowLevel;          // water level of the top sea level at low tide (0 = dry)
 extern int tideLevel;             // current level of the top sea level (0..7)

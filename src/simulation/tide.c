@@ -11,6 +11,7 @@
 #include <time.h>
 
 bool tideEnabled = false;
+bool islandTide = false;
 float tidePeriodHours = 12.42f;
 int tideLowLevel = 0;
 int tideLevel = WATER_MAX_LEVEL;

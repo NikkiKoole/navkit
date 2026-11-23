@@ -128,7 +128,15 @@ same). Seed 3, 256, 2000 ticks, 100 wandering movers:
   8 -> 24 (with navkit-8e): they wade to the islet and wait out high tide (deep-water
   mover-ticks 3045 -> 1294 in `tide`; its arrivals floor 16 -> 5: waiting isn't arriving).
 
-Not yet: the island game itself (`--game island` has no tide), food on the flats, dikes.
+**In the island game**: setting `islandTide` (off by default): `StartIsland` places the settlers
+and supplies with the sea full, then marks the sea, adds the shore ramps, settles the tide and
+rebuilds the nav graph, so nobody starts on a flat that floods. `StartGame` clears any tide a
+scenario left on. `--game island --set islandTide 1`, 3000 ticks: check passes (32 arrivals vs
+29 without); water 113k cells at tick 300 vs 126k without. The water sim reports ~90k
+unstable cells with the tide on (vs 2-9k): sea cells woken by the steps; the water cost was no
+higher in the profile (0.73 vs 1.19 ms, noisy machine), worth a look if it shows later.
+
+Not yet: food on the flats, dikes, storm surge; `islandTide` on by default (the user's call).
 
 ## Open questions
 
