@@ -1813,7 +1813,7 @@ describe(elevator_rides) {
         expect(ride < 3 * board + 3 * (level + 10));
     }
 
-    it("a built ramp is stairs: climbed slower and costing more than a slope, ladders slower still") {
+    it("a built ramp is stairs: climbed slower and costing more than a slope") {
         SetupClean();
         GRID(5, 5, 1) = CELL_RAMP_N;    // a terrain slope: no source item
         GRID(7, 5, 1) = CELL_RAMP_N;    // built stairs
@@ -1824,7 +1824,7 @@ describe(elevator_rides) {
         expect(RampEffortCost(7, 5, 1, -1) > 0);
         float up = StairsSpeedFactor(7, 5, 1, 1), down = StairsSpeedFactor(7, 5, 1, -1);
         expect(up < 1.0f && down > up && down <= 1.0f);
-        expect(LadderClimbSpeedFactor() < up);   // a ladder is the slowest way up
+        expect(up == stairsClimbSpeed);          // (a storey in one ramp cell: slow, like a ladder)
         expect(RampEffortCost(1, 1, 1, 1) == 0); // not a ramp
     }
 

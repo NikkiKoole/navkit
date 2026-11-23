@@ -19,6 +19,7 @@
 
 #define MAX_ELEVATORS 64
 #define ELEVATOR_MAX_RIDERS 8
+#define ELEVATOR_STAT_LEVELS 64
 
 typedef enum { CAR_IDLE, CAR_MOVING, CAR_DOORS } CarState;
 
@@ -31,6 +32,10 @@ typedef struct {
     int riders[ELEVATOR_MAX_RIDERS];
     int riderCount;
     int trips;                 // stats: stops with doors opened
+    // Measured (seconds at dayLength 60), for the route cost: ride time per level and
+    // the wait to board on each level, running averages (n = samples so far)
+    float rideSecPerLevel; int rideN;
+    float levelWait[ELEVATOR_STAT_LEVELS]; unsigned char levelWaitN[ELEVATOR_STAT_LEVELS];
 } Elevator;
 
 extern Elevator elevators[MAX_ELEVATORS];
@@ -41,7 +46,8 @@ extern int elevatorCapacity;     // riders per car (setting, <= ELEVATOR_MAX_RID
 extern float elevatorDoorTime;   // seconds the doors stay open at a stop (dayLength 60)
 extern int elevatorRides;        // stats: boardings since the last clear
 extern bool useElevatorWaitCost; // routes count the expected wait for the car (setting)
-extern bool elevatorDirectionalPickup;   // an empty car on its way to calls doesn't turn round for others (setting)
+extern bool elevatorDirectionalPickup;
+extern int elevatorPlanningMover;   // MoverPlanPath: the mover whose route is being searched (-1 none)   // an empty car on its way to calls doesn't turn round for others (setting)
 // Stats since the last clear: seconds waited in line (sum, count, longest); detours = an
 // empty car took someone the other way while calls further on still waited
 extern double elevatorWaitSum;

@@ -60,10 +60,10 @@ done <<'EOF'
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo
-458 | 0 | --scenario elevator
+380 | 0 | --scenario elevator
 36  | 0 | --scenario elevator-build
 45  | 0 | --scenario elevator-tall
-163 | 0 | --scenario elevator-stairs
+140 | 0 | --scenario elevator-stairs
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit

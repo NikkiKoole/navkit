@@ -25,12 +25,15 @@ float elevatorDoorTime = 0.75f;
 int elevatorRides = 0;
 bool useElevatorWaitCost = true;
 bool elevatorDirectionalPickup = true;
+int elevatorPlanningMover = -1;   // set by MoverPlanPath while that mover's route is searched
 // Wait and ride samples (seconds), for the distribution
 #define ELEV_SAMPLES 8192
 static float waitSamples[ELEV_SAMPLES], rideSamples[ELEV_SAMPLES];
 static int waitFloor[ELEV_SAMPLES], rideFloors[ELEV_SAMPLES];
 static int waitSampleCount = 0, rideSampleCount = 0;
 static int lineJoins = 0, lineLeaves = 0;   // joined a line; left one without boarding
+static int leaveWhy[4];                     // debug: 0 after my re-plan, 1 other new path, 2 mid-climb/no path, 3 no car
+static unsigned long moverReplanTick[MAX_MOVERS];
 static double moverRideStart[MAX_MOVERS];
 static int moverRideFromZ[MAX_MOVERS];
 double elevatorWaitSum = 0.0;
@@ -103,6 +106,9 @@ void RebuildElevators(void) {
                         if (old[k].x == x && old[k].y == y && old[k].z >= z0 && old[k].z <= z) {
                             e->z = old[k].z; e->dir = old[k].dir; e->state = old[k].state;
                             e->timer = old[k].timer; e->trips = old[k].trips;
+                            e->rideSecPerLevel = old[k].rideSecPerLevel; e->rideN = old[k].rideN;
+                            memcpy(e->levelWait, old[k].levelWait, sizeof(e->levelWait));
+                            memcpy(e->levelWaitN, old[k].levelWaitN, sizeof(e->levelWaitN));
                             e->riderCount = old[k].riderCount;
                             memcpy(e->riders, old[k].riders, sizeof(e->riders));
                             break;
@@ -280,6 +286,13 @@ static int PathShaftDest(int i, const Elevator* e, int fromZ) {
     return PathShaftDestFrom(i, e, movers[i].pathIndex, fromZ);
 }
 
+// Measured seconds -> seconds at dayLength 60 (what the costs are in)
+static float At60(float sec) { return dayLength > 0.0f ? sec * 60.0f / dayLength : sec; }
+
+static void NoteAvg(float* avg, int n, float v) {
+    *avg = n == 0 ? v : *avg * 0.8f + v * 0.2f;
+}
+
 static void HoldStill(Mover* m) {
     m->timeWithoutProgress = 0.0f;   // waiting for / riding the car is not being stuck
     m->lastX = m->x;
@@ -391,6 +404,8 @@ static float moverLineWait[MAX_MOVERS];            // seconds in this line
 #define ELEV_REPLAN_AT_1 4.0f    // a waiting mover re-plans at these wait times (x patience):
 #define ELEV_REPLAN_AT_2 10.0f   // with the wait in the route cost, the stairs may now be quicker
 #define ELEV_REPLAN_EVERY 15.0f  // and again every this long after that (x patience)
+#define ELEV_REPLAN_MIN 3.0f     // never before this, however impatient
+#define ELEV_STAY_FACTOR 0.75f   // a waiter re-planning sees its own line's wait at this much
 
 static void JoinLine(int i, int k, int fromZ) {
     if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == fromZ) return;
@@ -436,6 +451,11 @@ static bool TryBoard(int i, int shaftWp) {
     if (waitSampleCount < ELEV_SAMPLES) {
         waitFloor[waitSampleCount] = fromZ;
         waitSamples[waitSampleCount++] = moverLineWait[i];
+    {
+        int lv = fromZ < ELEVATOR_STAT_LEVELS ? fromZ : ELEVATOR_STAT_LEVELS - 1;
+        NoteAvg(&e->levelWait[lv], e->levelWaitN[lv], At60(moverLineWait[i]));
+        if (e->levelWaitN[lv] < 255) e->levelWaitN[lv]++;
+    }
     }
     moverRideStart[i] = gameTime;
     moverRideFromZ[i] = fromZ;
@@ -456,7 +476,7 @@ bool ElevatorQueueTick(int i, float dt) {
     if (i < 0 || i >= MAX_MOVERS || moverElevState[i] == ELEV_RIDING) return false;
     Mover* m = &movers[i];
     bool waiting = moverElevState[i] == ELEV_WAITING;
-    if (m->z != floorf(m->z) || m->pathIndex < 0) { if (waiting) ForgetMover(i); return false; }
+    if (m->z != floorf(m->z) || m->pathIndex < 0) { if (waiting) { leaveWhy[2]++; lineLeaves++; ForgetMover(i); } return false; }
     int mz = (int)m->z;
     // The next level change on the path, if it is a shaft on this level
     int wp = -1;
@@ -483,7 +503,7 @@ bool ElevatorQueueTick(int i, float dt) {
             }
         }
     }
-    if (wp < 0) { if (waiting) { lineLeaves++; ForgetMover(i); } return false; }
+    if (wp < 0) { if (waiting) { leaveWhy[elevTick - moverReplanTick[i] < 30 ? 0 : 1]++; lineLeaves++; ForgetMover(i); } return false; }
     Point sp = moverPaths[i][wp];
     float sx = sp.x * CELL_SIZE + CELL_SIZE * 0.5f, sy = sp.y * CELL_SIZE + CELL_SIZE * 0.5f;
     if (!waiting && (fabsf(sx - m->x) > ELEV_JOIN_RADIUS || fabsf(sy - m->y) > ELEV_JOIN_RADIUS)) return false;
@@ -498,10 +518,12 @@ bool ElevatorQueueTick(int i, float dt) {
         float before = moverLineWait[i], pat = MoverPatience(m);
         moverLineWait[i] += dt;
         float r1 = ELEV_REPLAN_AT_1 * pat, r2 = ELEV_REPLAN_AT_2 * pat;
+        if (r1 < ELEV_REPLAN_MIN) r1 = ELEV_REPLAN_MIN;
+        if (r2 < r1 + ELEV_REPLAN_MIN) r2 = r1 + ELEV_REPLAN_MIN;
         float re = ELEV_REPLAN_EVERY * pat;
         bool again = moverLineWait[i] > r2 && floorf((moverLineWait[i] - r2) / re) > floorf((before - r2) / re);
         if (useElevatorWaitCost && ((before < r1 && moverLineWait[i] >= r1) || (before < r2 && moverLineWait[i] >= r2) || again))
-m->needsRepath = true;   // maybe the stairs are quicker now
+{ m->needsRepath = true; moverReplanTick[i] = elevTick; }   // maybe the stairs are quicker now
         float tx, ty;
         LineSpot(k, mz, PlaceInLine(i), &tx, &ty);
         LineDetour(k, mz, m, &tx, &ty);
@@ -559,6 +581,13 @@ bool ElevatorRiderTick(int i, float dt) {
         rideFloors[rideSampleCount] = abs(level - moverRideFromZ[i]);
         rideSamples[rideSampleCount++] = (float)(gameTime - moverRideStart[i]);
     }
+    {
+        int floors = abs(level - moverRideFromZ[i]);
+        if (floors > 0) {
+            NoteAvg(&e->rideSecPerLevel, e->rideN, At60((float)(gameTime - moverRideStart[i])) / (float)floors);
+            e->rideN++;
+        }
+    }
     m->z = (float)level;
     while (m->pathIndex >= 0 && moverPaths[i][m->pathIndex].x == e->x && moverPaths[i][m->pathIndex].y == e->y)
         m->pathIndex--;
@@ -605,10 +634,13 @@ int ElevatorBoardCost(int x, int y, int z) {
     float wait = 2.0f * elevatorDoorTime;   // the doors where it gets on, and where it gets off
     if (useElevatorWaitCost) {
         int line = 0;
-        float longest = 0.0f;   // the longest anyone in this line has waited so far
+        float longest = 0.0f;   // the longest anyone else in this line has waited so far
+        int me = elevatorPlanningMover;
+        bool mine = me >= 0 && me < MAX_MOVERS && moverElevState[me] == ELEV_WAITING &&
+                    moverElev[me] == k && moverElevFrom[me] == z;
         for (int i = 0; i < moverCount; i++)
-            if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z) {
-                line++;
+            if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z && i != me) {
+                if (!mine || moverLineOrder[i] < moverLineOrder[me]) line++;   // in my own line: who is ahead
                 if (moverLineWait[i] > longest) longest = moverLineWait[i];
             }
         int cap = elevatorCapacity < 1 ? 1 : elevatorCapacity;
@@ -616,7 +648,13 @@ int ElevatorBoardCost(int x, int y, int z) {
         wait += fabsf(e->z - (float)z) / speed + (float)(line / cap) * roundTrip;
         // What we can see beats the estimate: a floor the car keeps passing full has
         // people who waited long; then the stairs look better to them and to newcomers
-        if (longest > wait) wait = longest;
+        if (At60(longest) > wait) wait = At60(longest);
+        int lv = z < ELEVATOR_STAT_LEVELS ? z : ELEVATOR_STAT_LEVELS - 1;
+        if (e->levelWaitN[lv] >= 3 && e->levelWait[lv] + 2.0f * elevatorDoorTime > wait)   // measured here
+            wait = e->levelWait[lv] + 2.0f * elevatorDoorTime;
+        // Re-planning in its own line: what it already waited is gone (not a reason to
+        // leave), and staying gets 25% off, so it leaves only for a clearly better way
+        if (mine) wait *= ELEV_STAY_FACTOR;
     }
     return SecondsToCost(wait);
 }
@@ -640,7 +678,11 @@ int ElevatorExtraCost(int x, int y, int z, int dz) {
     if (k < 0 || ElevatorAt(x, y, z + dz) != k) return 0;
     float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
     float sec = 1.0f / speed;
-    if (useElevatorWaitCost) sec += StopChancePerLevel(k) * elevatorDoorTime;   // stops on the way
+    if (useElevatorWaitCost) {
+        sec += StopChancePerLevel(k) * elevatorDoorTime;   // stops on the way
+        const Elevator* e = &elevators[k];
+        if (e->rideN >= 3) sec = e->rideSecPerLevel;      // what rides here really take
+    }
     int extra = SecondsToCost(sec) - 10;   // one cell is already charged
     return extra > 0 ? extra : 0;
 }
@@ -652,7 +694,7 @@ int ElevatorExtraCost(int x, int y, int z, int dz) {
 // quicker than a ladder (ladderClimbSpeed). Routes see the extra time plus a little
 // effort (stairsEffort cells of walking up, half down), so movers take the elevator for
 // long trips. Natural slopes stay as they were.
-float stairsClimbSpeed = 0.7f;
+float stairsClimbSpeed = 0.2f;   // a storey in one ramp cell: ~7 cells of walking (0.7 made stairs beat any car)
 float stairsEffort = 2.0f;
 
 static bool IsBuiltStairs(int x, int y, int z) {
@@ -779,6 +821,7 @@ void ElevatorPrintWaitStats(void) {
     printf("Time scale: a game hour is %.1f s; a mover walks %.1f cells in it\n", hourSec, walkCellsPerSec * hourSec);
     printf("Lines: %d joined, %d boarded, %d left after re-planning (walked to the shaft for nothing)\n",
            lineJoins, waitSampleCount, lineLeaves);
+    printf("  left: %d after a wait re-plan, %d other new path, %d no path/mid-climb, %d no car\n", leaveWhy[0], leaveWhy[1], leaveWhy[2], leaveWhy[3]);
     const char* names[2] = {"wait in line", "ride"};
     for (int which = 0; which < 2; which++) {
         int n = which ? rideSampleCount : waitSampleCount;

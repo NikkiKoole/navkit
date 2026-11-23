@@ -47,6 +47,19 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
 
     Faster cars mean *fewer* arrivals: the ride cost is optimistic (it leaves out the
     car's stops for others on the way and stepping in). Next: an honest ride cost.
+- **Honest costs and real stairs** (2026-11-23), `elevator-stairs` with trip times:
+  - Stairs were walked at full speed: movers cross a ramp in the walking code, so the
+    climb-branch slowdown never applied. Now walking speed is multiplied by the stairs
+    factor on a built ramp, and `stairsClimbSpeed` is 0.2 (a storey in one ramp cell is
+    ladder-steep: ~5 cells of walking per level). Ladders stay at 0.5.
+  - Ride cost: doors at both ends, the chance of stops for others on the way, and once
+    measured (3+ rides) the car's real seconds per level and each level's real average
+    wait (running averages on the Elevator).
+  - A waiter re-planning in its own line doesn't count its own past wait and sees the
+    line at 75% (leaves only for a clearly better way); first re-plan at 3 s at least.
+  - 15 movers, 18000 ticks, car 3 / 8 floors/s: arrivals 1012 / 1008 (a faster car no
+    longer means fewer); left a line without boarding 41% / 28% (was up to 54%);
+    9-floor trip 9.5 / 6.9 s by elevator vs 11.4 / 8.9 s by stairs.
 - **Sweep pickup** (`elevatorDirectionalPickup`, on): an empty car on its way to calls
   further on picks up only people going its way; the others ride on its way back. Before,
   an empty car stopped for anyone and turned round, and the calls further on waited.

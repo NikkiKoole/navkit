@@ -1068,7 +1068,9 @@ int MoverPlanPath(int i, Point start, Point goal) {
     static Point route[MAX_MOVER_ROUTE];
     Mover* m = &movers[i];
     int routeLen = 0;
+    elevatorPlanningMover = i;   // a mover in an elevator line weighs its own line differently
     int len = FindPathOrRoute(moverPathAlgorithm, start, goal, cells, MAX_PATH, route, MAX_MOVER_ROUTE, &routeLen);
+    elevatorPlanningMover = -1;
     moverPlanExplored = NavGame()->explored;   // (refining the first legs resets the counter)
     pathExploredThisTick += moverPlanExplored;
     moverRouteLen[i] = moverRouteNext[i] = 0;
@@ -1894,6 +1896,9 @@ void UpdateMovers(void) {
         {
             int terrainCost = GetCellMoveCost(currentX, currentY, currentZ);
             float terrainSpeedMult = 10.0f / (float)terrainCost;
+            // Built stairs (a built ramp) are walked up and down slowly
+            if (CellIsDirectionalRamp(GRID(currentX, currentY, currentZ)))
+                terrainSpeedMult *= StairsSpeedFactor(currentX, currentY, currentZ, target.z >= currentZ ? 1 : -1);
 
             if (m->currentJobId >= 0) {
                 Job* job = GetJob(m->currentJobId);
@@ -1992,8 +1997,7 @@ void UpdateMovers(void) {
                     float zDir = (target.z > cellZ) ? 1.0f : -1.0f;
                     float zRate = effectiveSpeed / (float)CELL_SIZE;
                     if (isLadderTransition) zRate *= LadderClimbSpeedFactor();   // climbing is slower than walking
-                    else if (target.z > cellZ) zRate *= StairsSpeedFactor(rampX, rampY, cellZ, 1);   // built stairs too
-                    else zRate *= StairsSpeedFactor(target.x, target.y, target.z, -1);
+                    // (built stairs: effectiveSpeed is already slowed on the ramp cell)
                     m->z += zDir * zRate * dt;
                     bool zArrived = (zDir > 0.0f) ? (m->z >= (float)target.z)
                                                    : (m->z <= (float)target.z);
