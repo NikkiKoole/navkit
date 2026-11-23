@@ -8,7 +8,7 @@
 ## Recently active
 
 - **2026-11-23 Conveyor belts** — `world/conveyors.md`: spike done (scenario `belt`), items and crates between stockpiles; stockpile transfer points (`StockpileTakeStack` / `StockpilePutLoad`); vertical belts: lifts and chutes (scenario `belt-lift`); built in game from blueprints, Work → Build → Belt (scenario `belt-build`); saved since v98; feeds a sawmill through a hopper stockpile, a belt on the output tile carries the planks (scenario `belt-workshop`); play HUD Build Belt tool (with planks); cleared on game start
-- **2026-11-23 Trains** — `world/trains.md`: coloured lines, trip choice over a transit graph (any number of changes), subway across levels (scenarios `metro`, `transfer`, `transit-chain`, `subway`, `subway-deep`); freight: cargo stockpiles at stops, haulers leave loads there (scenario `cargo`, save v97, setting `trainFreight`); research `../research/metro.md`. Next: passenger elevator as a transit line (agreed in `world/conveyors.md`). Open: haulers barely resume after loading a cargo save (not freight-specific)
+- **2026-11-23 Trains + elevator** — `world/trains.md`: coloured lines, trip choice over a transit graph (any number of changes), subway across levels (scenarios `metro`, `transfer`, `transit-chain`, `subway`, `subway-deep`); freight: cargo stockpiles at stops (scenario `cargo`, save v97); lines rebuilt after a load (fixed: haulers stalled after loading); train settings saved (v99). `world/elevators.md`: passenger elevator as a pathfinder link (shaft cells, one car, capacity, SCAN), scenario `elevator`; next there: a waiting line at the door, wait cost in routes
 - **2026-11-23 Lived-in island measured** — `architecture/chunked-world-plan.md` "A lived-in island": scenario `island-colony` (20 settlers, 3 game days); world sim ~2.9 ms/tick (water 2.1) is the biggest cost, jobs 0.2-0.3 ms (an earlier 7.3 ms figure came from a dirty build, retracted); simulation layers live in under a third of the blocks
 - **2026-11-23 Island** — `world/island.md`: terrain + game `island` (survival rules, 3 settlers ashore by a river mouth); sizes 256-1024
 - **2026-11-23 Taller worlds** — `architecture/chunked-world-plan.md` "Taller worlds: block palettes": a much higher world costs little more (memory follows the surface); decision point 4
@@ -58,7 +58,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - ~~`gameplay/water-dependent-crafting.md`~~ — moved to done/ (mud mixer implemented)
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
 - `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
-- `world/elevators.md` — Moving platforms with state, capacity, queuing
+- `world/elevators.md` — (partial: passenger car as a pathfinder link built, scenario `elevator`) Moving platforms with state, capacity, queuing
 - `world/conveyors.md` — Conveyor belts: spike done (scenarios `belt`, `belt-lift`: items + crates, lifts and chutes, stockpile pick-up/drop-off); brainstorm and open design questions
 - `pathfinding/per-chunk-edge-storage.md` — Incremental HPA* updates touch all edges (67 ms per mining update on 512x512 hills); store edges per chunk
 - `pathfinding/service-points-and-queues.md` — (steps 1, 2, 4 done; left: station waiting lists as service points, saved state) General wait-your-turn system (ladders, train doors, elevators, ...): explicit first-come-first-served lines, emergent follow-the-one-ahead queue shape, measured expected wait as route cost

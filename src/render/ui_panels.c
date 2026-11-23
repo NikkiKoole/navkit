@@ -703,6 +703,12 @@ void DrawUI(void) {
         DrawSettingsGroup("Entities/Trains", ix + 10, &y);
         y += 22;
 
+        // --- Elevators ---
+        DrawTextShadow("Elevators:", ix, y, 14, GRAY);
+        y += 18;
+        DrawSettingsGroup("Entities/Elevators", ix + 10, &y);
+        y += 22;
+
         // --- Belts ---
         DrawTextShadow("Belts:", ix, y, 14, GRAY);
         y += 18;

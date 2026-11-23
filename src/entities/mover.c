@@ -1,5 +1,6 @@
 #include "mover.h"
 #include "trains.h"
+#include "elevators.h"
 #include "namegen.h"
 #include "animals.h"
 #include "../core/time.h"
@@ -1062,6 +1063,7 @@ void ClearMovers(void) {
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
     LaddersClear();
+    for (int i = 0; i < MAX_MOVERS; i++) ElevatorForgetMover(i);
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
     memset(moverYielding, 0, sizeof(moverYielding));
     // Drop carried items on the ground at mover's position
@@ -1506,10 +1508,12 @@ void UpdateMovers(void) {
     // Phase 3: Movement (all the rest)
     PROFILE_BEGIN(Move);
     if (useSingleFileLadders) LaddersUpdate(dt);
+    ElevatorsUpdate(dt);
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         moverYielding[i] = false;
         if (!m->active) continue;
+        if (ElevatorRiderTick(i)) continue;   // in an elevator car: it carries the mover
         
         // Decrement fall timer for visual feedback
         if (m->fallTimer > 0) {
@@ -1872,6 +1876,12 @@ void UpdateMovers(void) {
                 int cellZ = (float)target.z > m->z ? (int)floorf(m->z) : (int)ceilf(m->z - 0.0001f);
                 bool isLadderTransition = IsLadderCell(GRID(target.x, target.y, cellZ)) &&
                                           IsLadderCell(GRID(target.x, target.y, target.z));
+                // Elevator shaft: wait for the car on this level, board it (it carries the
+                // mover from the next tick on). Without a car (none found) climb like a ladder.
+                if (CellIsShaft(GRID(target.x, target.y, cellZ)) && CellIsShaft(GRID(target.x, target.y, target.z))) {
+                    if (m->z == (float)cellZ && ElevatorWaitAt(i, target, cellZ)) continue;
+                    isLadderTransition = true;
+                }
 
                 bool isRampTransition = false;
                 int rampX, rampY;

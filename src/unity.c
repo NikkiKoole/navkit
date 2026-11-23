@@ -61,6 +61,7 @@
 #include "entities/belts.c"
 #include "entities/service.c"
 #include "entities/ladders.c"
+#include "entities/elevators.c"
 #include "entities/mover.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"

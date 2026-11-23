@@ -159,10 +159,12 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 - **Train cargo** (trains code): a cargo stop = a stockpile within 2 cells of a platform; a train
   loads an item only if a stop further down the line has a higher-priority stockpile with room.
   The take/put code in `BeltTakeInput`/`BeltDropOut` then moves to a shared helper in `stockpiles.c`.
-- **Elevator** (trains code): not stacked track. A shaft entity (car, one stop per floor,
-  station-style waiting list, doors, capacity) that feeds the transit graph as a line: stops in
-  cycle order + travel time. Trip choice, changes and elevator-to-train changes then work
-  unchanged. A freight elevator is the same car carrying crates.
+- **Elevator** (trains code): not stacked track. Changed 2026-11-23 (user's call): a
+  *pathfinder link*, not a transit-graph line, so floors reachable only by elevator work for
+  jobs and needs. A shaft is a column of `CELL_ELEVATOR` cells that the pathfinder links like a
+  ladder; one car per shaft, doors, capacity (`src/entities/elevators.c`, scenario `elevator`).
+  Elevator-to-train changes work through the walking cost to stations. A freight elevator
+  (the car carrying crates) is still open.
 
 ## Next steps if the spike earns it
 

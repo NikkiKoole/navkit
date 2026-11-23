@@ -119,6 +119,7 @@ bool bladderEnabled = false;
 #include "../src/entities/belts.c"
 #include "../src/entities/service.c"
 #include "../src/entities/ladders.c"
+#include "../src/entities/elevators.c"
 #include "../src/entities/mover.c"
 #include "../src/entities/namegen.c"
 #include "../src/entities/workshops.c"

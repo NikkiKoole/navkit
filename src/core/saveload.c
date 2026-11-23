@@ -8,6 +8,7 @@ void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
+#include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -1491,6 +1492,7 @@ bool LoadWorld(const char* filename) {
         RebuildStations();
     }
     TrainsAfterLoad();   // lines + transit graph are derived, not saved
+    ElevatorsAfterLoad();   // cars come from the shaft cells; nobody aboard
 
     // v96: temperatures became offsets from the level's ambient (save_migrations.h). Weather
     // and time are loaded by now, so GetAmbientTemperature is the loaded moment's.

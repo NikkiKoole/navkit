@@ -788,6 +788,7 @@ void DrawAgents(void);
 void DrawMovers(void);
 void DrawAnimals(void);
 void DrawTrains(void);
+void DrawElevators(void);
 void DrawBelts(void);
 void DrawJobLines(void);
 void DrawItems(void);
@@ -1828,6 +1829,7 @@ int main(int argc, char** argv) {
         }
         DrawAnimals();
         DrawTrains();
+        DrawElevators();
         DrawJobLines();
 
         // Phase 5: Mist overlay (after all world elements, before UI)

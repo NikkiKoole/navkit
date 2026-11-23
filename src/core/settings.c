@@ -16,6 +16,7 @@
 #include "../entities/items.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/elevators.h"
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
 #include "../world/pathfinding.h"
@@ -572,6 +573,14 @@ static const Setting settings[] = {
       "Trains carry loads between cargo stockpiles (a stockpile within 2 cells of a platform), to a stop whose cargo stockpile has a higher priority. Haulers that would ride with an item leave it at the boarding stop's cargo stockpile instead."),
     SET_BOOL("useTrainTransfers", "Transfers", "Entities/Trains", useTrainTransfers,
       "Trip choice may plan a change of line: ride one line, walk to another line's platform, ride on. Off = one line per trip (a mover may still change by chance after a ride)."),
+
+    // --- Elevators ---
+    SET_FLOAT("elevatorSpeed", "Speed (levels/s)", "Entities/Elevators", elevatorSpeed, 0.1f, 0.2f, 10.0f,
+      "Elevator car speed in levels per second (at dayLength 60, like trains).", NULL),
+    SET_INT("elevatorCapacity", "Capacity", "Entities/Elevators", elevatorCapacity, 1.0f, 1, ELEVATOR_MAX_RIDERS,
+      "Movers one car carries at a time; the others wait for its next trip.", NULL),
+    SET_FLOAT("elevatorDoorTime", "Door Time (s)", "Entities/Elevators", elevatorDoorTime, 0.1f, 0.2f, 10.0f,
+      "Seconds the doors stay open at a stop (at dayLength 60).", NULL),
 
     // --- Belts ---
     SET_FLOAT("beltSpeed", "Speed (cells/s)", "Entities/Belts", beltSpeed, 0.1f, 0.1f, 20.0f,

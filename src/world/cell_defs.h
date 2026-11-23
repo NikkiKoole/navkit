@@ -21,13 +21,14 @@ typedef struct {
     // Future: uint8_t hardness;
 } CellDef;
 
-// Physics flags (6 bits used, 2 reserved)
+// Physics flags (7 bits used, 1 reserved)
 #define CF_BLOCKS_MOVEMENT  (1 << 0)  // Can't walk through (walls, closed doors, grates)
 #define CF_WALKABLE         (1 << 1)  // Can stand on (ground, floors, ladders) - legacy
 #define CF_LADDER           (1 << 2)  // Vertical climbing - slower movement
 #define CF_RAMP             (1 << 3)  // Vertical walking - normal speed (stairs)
 #define CF_BLOCKS_FLUIDS    (1 << 4)  // Blocks water/smoke/steam
 #define CF_SOLID            (1 << 5)  // Can stand ON this cell from above (DF-style walkability)
+#define CF_SHAFT            (1 << 6)  // Elevator shaft: level changes by car, not climbing (elevators.c)
 
 // Common flag combinations
 #define CF_GROUND  (CF_WALKABLE | CF_SOLID)
@@ -58,6 +59,7 @@ extern CellDef cellDefs[];
 #define CellIsWalkable(c)       CellHasFlag(c, CF_WALKABLE)
 #define CellIsLadder(c)         CellHasFlag(c, CF_LADDER)
 #define CellIsRamp(c)           CellHasFlag(c, CF_RAMP)
+#define CellIsShaft(c)          CellHasFlag(c, CF_SHAFT)
 #define CellBlocksFluids(c)     CellHasFlag(c, CF_BLOCKS_FLUIDS)
 #define CellIsSolid(c)          CellHasFlag(c, CF_SOLID)
 
@@ -107,8 +109,8 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     // Movers can wade through shallow water (1-3) but not swim through deep water
     if (!ignoreWater && WATER(x, y, z).level >= WATER_BLOCKS_MOVEMENT) return false;
     
-    // Ladders are always walkable (special case - they provide their own support)
-    if (CellIsLadder(cellHere)) return true;
+    // Ladders and elevator shafts are always walkable (they provide their own support)
+    if (CellIsLadder(cellHere) || CellIsShaft(cellHere)) return true;
     
     // Ramps are always walkable (special case)
     if (CellIsRamp(cellHere)) return true;
@@ -190,7 +192,8 @@ static inline bool CanClimbUpAt(int x, int y, int z) {
     // Need ladder at both levels AND upper level must be walkable
     bool hasLadderHere = CellIsLadder(low);
     bool hasLadderAbove = CellIsLadder(high);
-    return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
+    bool shaft = CellIsShaft(low) && CellIsShaft(high);   // an elevator: the car carries you
+    return ((hasLadderHere && hasLadderAbove) || shaft) && IsCellWalkableAt(z + 1, y, x);
 }
 
 // Can climb DOWN from z to z-1 at position (x, y)?
@@ -203,7 +206,8 @@ static inline bool CanClimbDownAt(int x, int y, int z) {
     // Need ladder at both levels AND lower level must be walkable
     bool hasLadderHere = CellIsLadder(high);
     bool hasLadderBelow = CellIsLadder(low);
-    return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
+    bool shaft = CellIsShaft(high) && CellIsShaft(low);
+    return ((hasLadderHere && hasLadderBelow) || shaft) && IsCellWalkableAt(z - 1, y, x);
 }
 
 // =============================================================================

@@ -5,6 +5,7 @@
 #include "../src/world/cell_defs.h"
 #include "../assets/atlas.h"
 #include "../src/entities/mover.h"
+#include "../src/entities/elevators.h"
 #include "../src/entities/trains.h"
 #include "../src/simulation/mood.h"
 #include "../src/entities/items.h"
@@ -43,6 +44,7 @@ static void SetupClean(void) {
     ClearWorkshops();
     ClearJobs();
     ClearTrains();
+    ClearElevators();
     InitDesignations();
     InitLighting();
     gameDeltaTime = TICK_DT;
@@ -1677,6 +1679,90 @@ describe(train_freight) {
     }
 }
 
+// A tower: floor at z4 over (10..20, 10..20), shaft at (15,15) from z1 to z4
+static void SetupTower(void) {
+    SetupClean();
+    for (int y = 10; y <= 20; y++)
+        for (int x = 10; x <= 20; x++) {
+            GRID(x, y, 4) = CELL_AIR;
+            SET_FLOOR(x, y, 4);
+        }
+    for (int z = 1; z <= 4; z++) {
+        GRID(15, 15, z) = CELL_ELEVATOR;
+        CELL_FLAGS(15, 15, z) &= ~CELL_FLAG_HAS_FLOOR;
+    }
+    RebuildElevators();
+    BuildEntrances();
+    BuildGraph();
+    elevatorCapacity = 4;
+    elevatorRides = 0;
+}
+
+describe(elevator_rides) {
+    it("a shaft is one elevator and links its levels for the pathfinder") {
+        SetupTower();
+        expect(elevatorCount == 1);
+        expect(elevators[0].zMin == 1 && elevators[0].zMax == 4);
+        expect(ElevatorAt(15, 15, 3) == 0 && ElevatorAt(14, 15, 3) == -1);
+        expect(CanClimbUpAt(15, 15, 1) && CanClimbUpAt(15, 15, 3) && !CanClimbUpAt(15, 15, 4));
+        expect(CanClimbDownAt(15, 15, 4) && !CanClimbDownAt(15, 15, 1));
+    }
+
+    it("a mover waits for the car, rides it and gets off on its floor") {
+        SetupTower();
+        elevators[0].z = 4.0f;   // the car starts at the top: it must come down first
+        moverCount = 1;
+        InitMover(&movers[0], 5 * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, (Point){18, 18, 4}, MOVER_SPEED);
+        movers[0].needsRepath = true;
+        bool waited = false, rode = false, fractional = false;
+        for (int t = 0; t < 4000; t++) {
+            Tick();
+            waited |= ElevatorMoverWaiting(0);
+            if (ElevatorMoverAboard(0)) { rode = true; fractional |= movers[0].z != floorf(movers[0].z); }
+            if (movers[0].z == 4.0f && (int)(movers[0].x / CELL_SIZE) == 18 && (int)(movers[0].y / CELL_SIZE) == 18) break;
+        }
+        expect(waited && rode && fractional);   // the car moved between levels with it aboard
+        expect(movers[0].z == 4.0f);
+        expect((int)(movers[0].x / CELL_SIZE) == 18 && (int)(movers[0].y / CELL_SIZE) == 18);
+        expect(elevatorRides == 1);
+        expect(!ElevatorMoverAboard(0));
+    }
+
+    it("the car takes at most its capacity; the others wait for the next trip") {
+        SetupTower();
+        elevatorCapacity = 2;
+        moverCount = 5;
+        for (int i = 0; i < 5; i++) {
+            InitMover(&movers[i], (12 + i) * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, (Point){11 + i * 2, 19, 4}, MOVER_SPEED);
+            movers[i].needsRepath = true;
+        }
+        int most = 0, up = 0;
+        for (int t = 0; t < 12000 && up < 5; t++) {
+            Tick();
+            if (elevators[0].riderCount > most) most = elevators[0].riderCount;
+            up = 0;
+            for (int i = 0; i < 5; i++) up += movers[i].z == 4.0f && !ElevatorMoverAboard(i);
+        }
+        expect(most == 2);
+        expect(up == 5);
+        expect(elevatorRides == 5);
+        elevatorCapacity = 4;
+    }
+
+    it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {
+        SetupTower();
+        moverCount = 1;
+        InitMover(&movers[0], 15 * CELL_SIZE + 16, 15 * CELL_SIZE + 16, 2.6f, (Point){18, 18, 4}, MOVER_SPEED);
+        movers[0].needsRepath = false;
+        elevators[0].z = 2.6f;
+        ElevatorsAfterLoad();
+        expect(elevatorCount == 1 && elevators[0].z == 1.0f && elevators[0].riderCount == 0);
+        expect(movers[0].z == 3.0f);
+        expect(movers[0].needsRepath);
+        expect(!ElevatorMoverAboard(0) && !ElevatorMoverWaiting(0));
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1698,6 +1784,7 @@ int main(int argc, char* argv[]) {
     test(station_lines);
     test(queue_positions);
     test(track_connections);
+    test(elevator_rides);
     test(track_lines);
     test(train_transfers);
     test(train_freight);

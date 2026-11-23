@@ -35,6 +35,8 @@ CellDef cellDefs[] = {
     [CELL_DOOR]        = {"door",        SPRITE_door,            CF_BLOCKS_FLUIDS|CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR, ITEM_NONE, 0},  // Walkable, blocks fluids/light, solid for support, burns
     // === WINDOWS ===
     [CELL_WINDOW]      = {"window",      SPRITE_door,            CF_WALL,                   INSULATION_TIER_STONE, 0, CELL_AIR, ITEM_GLASS, 1},  // Wall that transmits light
+    // === ELEVATORS ===
+    [CELL_ELEVATOR]    = {"elevator shaft", SPRITE_dark_shade,   CF_WALKABLE|CF_SHAFT,      INSULATION_TIER_AIR,   0, CELL_AIR, ITEM_NONE, 0},  // Self-supporting like a ladder; the car moves movers between levels
 };
 
 // 4-bit cardinal bitmask: N=1, E=2, S=4, W=8

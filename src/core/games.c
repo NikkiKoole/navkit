@@ -27,6 +27,7 @@
 #include "../entities/tool_quality.h"
 #include "../entities/items.h"
 #include "../entities/belts.h"
+#include "../entities/elevators.h"
 #include "../world/construction.h"
 #include "../core/sim_manager.h"
 #include "../core/input_mode.h"
@@ -579,6 +580,7 @@ bool StartGame(const char* name) {
         return false;
     }
     ClearBelts();   // games that don't go through ScenarioResetWorld (survival, island, dollhouse)
+    ClearElevators();
     g->start();
     devUI = g->devUI;
     if (!devUI) InputMode_ExitToNormal();

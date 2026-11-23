@@ -18,6 +18,7 @@
 #include "../core/sim_manager.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/elevators.h"
 #include "../simulation/balance.h"
 #include <math.h>
 
@@ -1951,6 +1952,37 @@ static void DrawBelts(void) {
     for (int i = 0; i < MAX_BLUEPRINTS; i++)
         if (blueprints[i].active && blueprints[i].recipeIndex == CONSTRUCTION_BELT)
             DrawBeltCell(blueprints[i].x, blueprints[i].y, blueprints[i].z, blueprints[i].workshopType, 0.0f, 110);
+}
+
+// Elevator shafts: a frame on the viewed level; the car as a box when it is on (or
+// passing) this level, with its doors open as a gap; elsewhere a mark showing which way
+// it is (above: top edge, below: bottom edge).
+static void DrawElevators(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    for (int k = 0; k < elevatorCount; k++) {
+        const Elevator* e = &elevators[k];
+        if (viewZ < e->zMin || viewZ > e->zMax) continue;
+        float sx = offset.x + e->x * CELL_SIZE * zoom, sy = offset.y + e->y * CELL_SIZE * zoom;
+        if (sx < -size || sy < -size || sx > GetScreenWidth() || sy > GetScreenHeight()) continue;
+        float t = fmaxf(1.0f, size * 0.08f);
+        DrawRectangleLinesEx((Rectangle){sx, sy, size, size}, t, (Color){90, 90, 100, 255});
+        float d = e->z - (float)viewZ;
+        if (fabsf(d) < 1.0f) {
+            float a = 1.0f - fabsf(d);   // fades in as it arrives
+            Color car = (Color){200, 170, 90, (unsigned char)(220 * a)};
+            float in = size * 0.12f;
+            DrawRectangleRec((Rectangle){sx + in, sy + in, size - 2 * in, size - 2 * in}, car);
+            if (e->state == CAR_DOORS && fabsf(d) < 0.01f)
+                DrawRectangleRec((Rectangle){sx + size * 0.35f, sy + size - in - t, size * 0.3f, t + in}, (Color){40, 40, 45, 255});
+        } else {
+            Color mark = (Color){200, 170, 90, 200};
+            float my = d > 0 ? sy + t : sy + size - 2 * t;
+            DrawRectangleRec((Rectangle){sx + size * 0.25f, my, size * 0.5f, t}, mark);
+        }
+        if (e->riderCount > 0 && fabsf(d) < 1.0f && size >= 24.0f)
+            DrawText(TextFormat("%d", e->riderCount), (int)(sx + size * 0.4f), (int)(sy + size * 0.3f), (int)(size * 0.4f), BLACK);
+    }
 }
 
 static void DrawTrains(void) {

@@ -1,6 +1,36 @@
 # Elevators
 
-> Status: spec
+> Status: partial (2026-11-23: passenger elevator built: shaft cells, one car per shaft,
+> waiting, riding, capacity, SCAN calls; scenario `elevator`)
+
+## Built (2026-11-23)
+
+Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_defs.h`
+(`CF_SHAFT`, `CanClimbUpAt`/`CanClimbDownAt`), `rendering.c` (`DrawElevators`).
+
+- **Shaft** = a column of `CELL_ELEVATOR` cells (one per level, self-supporting like a
+  ladder). The pathfinder links neighbouring shaft cells like ladder cells (Option C below):
+  every system (jobs, needs, wandering) reaches floors served only by an elevator.
+- **Car**: one per shaft, found from the grid (`RebuildElevators`, also lazily when a mover
+  finds a shaft with no car). Idle until called; moves at `elevatorSpeed` levels/s, doors open
+  `elevatorDoorTime` s at a stop; SCAN: keeps its direction while anyone rides or waits that
+  way, then turns.
+- **Movers**: a path that changes level in a shaft makes the mover wait on the shaft cell
+  of its level. It boards when the doors open there, if the car has room (`elevatorCapacity`)
+  and its riders go the same way. Riding, its z follows the car. It gets off at the last
+  shaft waypoint of its path (a new path while aboard sets a new stop).
+- **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
+  caught between levels is put on the nearest level and re-plans.
+- Scenario `elevator`: a six-floor tower reachable only by its elevator, 16 movers, half of
+  their goals in the tower. One car of 4 is a real bottleneck: ~10 movers wait at any time.
+
+Left (in order of use):
+1. Waiting line in front of the door (today the waiters stand on the shaft cell, on top of
+   each other): reuse the service-point lines from `ladders.c`.
+2. Route cost of the wait (`NAV_CLIMB_EXTRA` hook, like ladder queues): today a shaft costs
+   the same as a ladder, so a mover never prefers stairs to a busy elevator.
+3. Building shafts in game (blueprint), a proper shaft sprite (today `dark_shade`).
+4. Elevator settings in the save (v100), freight elevator (crates in the car).
 
 Full simulation elevators for colony sim: moving platforms with state, queuing, capacity, and wait times.
 
