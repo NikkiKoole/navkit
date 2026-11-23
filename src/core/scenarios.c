@@ -2082,8 +2082,11 @@ static void SetupBeltWorkshop(void) {
     // Sawmill 3x3 at (20,8): "#O#" / ".X." / "#.." -> output (21,8), work (21,9)
     int ws = CreateWorkshop(20, 8, 1, WORKSHOP_SAWMILL);
     if (ws >= 0) {
-        AddBill(ws, 0, BILL_DO_FOREVER, 0);         // Saw Planks: 1 log -> 4 planks
-        LinkStockpileToWorkshop(ws, spH);           // the crafter takes logs from the hopper only
+        int bill = AddBill(ws, 0, BILL_DO_FOREVER, 0);   // Saw Planks: 1 log -> 4 planks
+        // The crafter takes logs from the hopper only: a linked stockpile is not enforced by
+        // the craft job (only drawn), the bill's search radius is (5 cells reaches H, not A)
+        if (bill >= 0) workshops[ws].bills[bill].ingredientSearchRadius = 5;
+        LinkStockpileToWorkshop(ws, spH);
     }
     BeltRun(7, 9, 17, 9, BELT_E);                   // A -> hopper (drops on (18,9))
     BeltRun(21, 8, 21, 6, BELT_N);                  // output tile north
@@ -2128,6 +2131,48 @@ static bool BeltWorkshopCheck(char* why, int whyLen) {
         return false;
     }
     return true;
+}
+
+
+// belt-play: a playground for building belts by hand in the play HUD (starts with the dev UI
+// off). Logs stocked in A (west), a sawmill with an empty hopper H, an empty plank pile P
+// (east), and a store M of planks + cordage for ~30 belts. No belts: Huisje -> Build Belt.
+static void PlaceStack(int sp, int x, int y, ItemType type, int count) {
+    int it = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, type);
+    if (it < 0) return;
+    items[it].stackCount = count;
+    PlaceItemInStockpile(sp, x, y, it);
+}
+
+static void SetupBeltPlay(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    int spA = CreateStockpile(3, 7, 1, 4, 4);       // logs, x 3..6, y 7..10
+    int spH = CreateStockpile(19, 8, 1, 2, 3);      // hopper, x 19..20, y 8..10
+    int spP = CreateStockpile(40, 3, 1, 4, 4);      // planks out, x 40..43, y 3..6
+    int spM = CreateStockpile(8, 17, 1, 6, 2);      // building store, x 8..13, y 17..18
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        SetStockpileFilter(spA, (ItemType)t, t == ITEM_LOG);
+        SetStockpileFilter(spH, (ItemType)t, t == ITEM_LOG);
+        SetStockpileFilter(spP, (ItemType)t, t == ITEM_PLANKS);
+        SetStockpileFilter(spM, (ItemType)t, t == ITEM_PLANKS || t == ITEM_CORDAGE);
+    }
+    for (int k = 0; k < 16; k++) PlaceStack(spA, 3 + k % 4, 7 + k / 4, ITEM_LOG, 2);
+    for (int k = 0; k < 6; k++) PlaceStack(spM, 8 + k, 17, ITEM_PLANKS, 10);   // 60 planks
+    for (int k = 0; k < 6; k++) PlaceStack(spM, 8 + k, 18, ITEM_CORDAGE, 5);   // 30 cordage
+    // Sawmill 3x3 at (22,8): output tile (23,8), work tile (23,9); saws only from the hopper
+    int ws = CreateWorkshop(22, 8, 1, WORKSHOP_SAWMILL);
+    if (ws >= 0) {
+        int bill = AddBill(ws, 0, BILL_DO_FOREVER, 0);
+        if (bill >= 0) workshops[ws].bills[bill].ingredientSearchRadius = 5;   // hopper, not A
+        LinkStockpileToWorkshop(ws, spH);
+    }
+    SpawnMoverAt(10, 13, 1);
+    SpawnMoverAt(12, 13, 1);
+    SpawnMoverAt(26, 12, 1);
+    currentViewZ = 1;
+    devUI = false;   // the play HUD: Huisje -> Build Belt
+    AddMessage("Belt playground: Huisje -> Build Belt. Lay A -> hopper (west of the sawmill), "
+               "and from the sawmill's output tile (top middle) to P", GREEN);
 }
 
 static const Scenario scenarios[] = {
@@ -2183,6 +2228,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupElevator, ElevatorTickStats, ElevatorPrintStats, ElevatorCheck, 48, 32},
     {"belt-workshop", "A belt feeds a sawmill's hopper stockpile, a second belt carries the planks from its output tile, 3 movers",
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
+    {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
+                   NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
