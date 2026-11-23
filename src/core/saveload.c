@@ -1473,6 +1473,7 @@ bool LoadWorld(const char* filename) {
     if (version < 86) {
         RebuildStations();
     }
+    TrainsAfterLoad();   // lines + transit graph are derived, not saved
 
     // v96: temperatures became offsets from the level's ambient (save_migrations.h). Weather
     // and time are loaded by now, so GetAmbientTemperature is the loaded moment's.

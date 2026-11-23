@@ -952,6 +952,18 @@ bool TrainsIsPersonalTrip(int moverIdx) {
            movers[moverIdx].transportState != TRANSPORT_NONE;
 }
 
+// After a load: stations and trains come from the save, but lines, the transit graph and
+// the runtime estimates are derived and were never saved (RebuildStations is skipped for
+// v86+ saves). Without this every station is on no line: no freight, no transfers.
+void TrainsAfterLoad(void) {
+    RebuildTrackLines();
+    transitGen++;
+    trackDistReady = false;
+    moverGaveUpInit = false;
+    memset(personalTrip, 0, sizeof(personalTrip));
+    memset(plannedRoute, 0, sizeof(plannedRoute));
+}
+
 int StationBoardings(int stationIdx) {
     return (trackDistReady && stationIdx >= 0 && stationIdx < MAX_STATIONS) ? stationBoardings[stationIdx] : 0;
 }

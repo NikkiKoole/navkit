@@ -92,6 +92,7 @@ int  SpawnTrainHeading(int x, int y, int z, int carCount, int dx, int dy);   // 
 // RebuildStations also rebuilds the lines.
 #define TRACK_LINE_COLORS 8
 void RebuildTrackLines(void);
+void TrainsAfterLoad(void);   // derived train state after LoadWorld
 int  TrackLineCount(void);
 int  TrackLineAt(int x, int y, int z);   // -1 = no track
 int  StationLine(int stationIdx);

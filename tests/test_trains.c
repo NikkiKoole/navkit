@@ -17,6 +17,8 @@
 #include "test_helpers.h"
 #include <string.h>
 #include <math.h>
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 
 static bool test_verbose = false;
 
@@ -1449,6 +1451,24 @@ describe(track_lines) {
         RebuildStations();
         expect(TrackLineCount() == 1);
         expect(TrackLineAt(2, 5, 1) == TrackLineAt(2, 6, 1));
+    }
+
+    it("lines and the stations' lines come back after save + load") {
+        SetupClean();
+        PlaceTrackLine(2, 20, 5, 1);
+        PlaceTrackLine(2, 20, 15, 1);
+        PlacePlatform(10, 6, 1);
+        PlacePlatform(10, 16, 1);
+        RebuildStations();
+        expect(TrackLineCount() == 2);
+        expect(SaveWorld("/tmp/test_trains_lines_save.bin"));
+        ClearTrains();   // a fresh session: nothing derived left over
+        expect(TrackLineCount() == 0);
+        expect(LoadWorld("/tmp/test_trains_lines_save.bin"));
+        expect(TrackLineCount() == 2);
+        int a = StationLine(GetStationAt(10, 5, 1)), b = StationLine(GetStationAt(10, 15, 1));
+        expect(a >= 0 && b >= 0 && a != b);
+        remove("/tmp/test_trains_lines_save.bin");
     }
 
     it("ClearTrains forgets the lines") {
