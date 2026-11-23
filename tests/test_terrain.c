@@ -7,6 +7,7 @@
 #include "../src/world/pathfinding.h"
 #include "../src/game_state.h"
 #include "../src/simulation/water.h"
+#include "../src/simulation/plants.h"
 #include "../src/entities/items.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/mover.h"
@@ -306,10 +307,17 @@ describe(connectivity_fix_preserves_largest) {
         bool origFix = hillsWaterConnectivityFixSmall;
         int origThreshold = hillsWaterConnectivitySmallThreshold;
 
+        uint64_t origSeed = worldSeed;
+
         hillsWaterConnectivityReport = false;
         hillsWaterConnectivityFixSmall = true;
         hillsWaterConnectivitySmallThreshold = 50;
 
+        // its own map: it used to inherit an 8x8 grid from an earlier test, where rivers
+        // to the map edge left 20 of 640 cells walkable in some runs
+        gridDepth = 16;                              // before init: it sizes the levels
+        InitGridWithSizeAndChunkSize(64, 64, 16, 16);
+        worldSeed = 1;
         GenerateHillsSoilsWater();
 
         int walkableAfter = 0;
@@ -327,6 +335,7 @@ describe(connectivity_fix_preserves_largest) {
                    walkableAfter, totalCells * gridDepth);
         }
 
+        worldSeed = origSeed;
         hillsWaterConnectivityReport = origReport;
         hillsWaterConnectivityFixSmall = origFix;
         hillsWaterConnectivitySmallThreshold = origThreshold;
@@ -342,6 +351,8 @@ describe(connectivity_fix_preserves_largest) {
         hillsWaterConnectivityFixSmall = true;
         hillsWaterConnectivitySmallThreshold = 50;
 
+        gridDepth = 16;
+        InitGridWithSizeAndChunkSize(64, 64, 16, 16);
         bool allHaveWalkable = true;
         for (int seed = 0; seed < 5; seed++) {
             worldSeed = (uint64_t)(seed * 7777 + 1);
@@ -362,6 +373,71 @@ describe(connectivity_fix_preserves_largest) {
         hillsWaterConnectivityReport = origReport;
         hillsWaterConnectivityFixSmall = origFix;
         hillsWaterConnectivitySmallThreshold = origThreshold;
+    }
+}
+
+// =============================================================================
+// Same seed, same map: generation must not depend on leftover memory
+// =============================================================================
+
+static unsigned HillsChecksum(void) {
+    unsigned h = 2166136261u;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                h = (h ^ (unsigned)GRID(x, y, z)) * 16777619u;
+                h = (h ^ (unsigned)GetWaterLevel(x, y, z)) * 16777619u;
+                h = (h ^ (unsigned)GetWallMaterial(x, y, z)) * 16777619u;
+            }
+    return h;
+}
+
+// Fill freed heap memory with a pattern, so a buffer the generator reads before writing
+// comes back different from the first run
+static void ScribbleHeap(unsigned char pattern) {
+    for (int i = 0; i < 48; i++) {
+        unsigned char* p = malloc((size_t)1 << 20);
+        if (!p) break;
+        memset(p, pattern ^ i, (size_t)1 << 20);
+        free(p);
+    }
+}
+
+describe(hills_water_deterministic) {
+    // The same seed must give the same map. 035ff9f8 (rivers to the map edge) made one binary
+    // give different maps run to run on a tiny grid. Generated twice with the heap filled with
+    // a pattern in between, so a buffer read before it is written shows up as a difference.
+    // Plants, items and water are cleared first, as the game's generate paths do: generators
+    // place trees and items, and leftovers from the previous map change how many random
+    // numbers get drawn (seed 4 after seed 3 came out different from seed 4 after seed 4).
+    it("should give the same map for the same seed, whatever was in memory before") {
+        uint64_t origSeed = worldSeed;
+        bool origReport = hillsWaterConnectivityReport;
+        hillsWaterConnectivityReport = false;
+        int sizes[2] = {32, 128}, diffs = 0;
+        for (int k = 0; k < 2; k++) {
+            gridDepth = 16;
+            InitGridWithSizeAndChunkSize(sizes[k], sizes[k], 16, 16);
+            for (uint64_t seed = 1; seed <= 6; seed++) {
+                unsigned sum[2];
+                for (int r = 0; r < 2; r++) {
+                    ScribbleHeap(r ? 0xA5 : 0x00);
+                    ClearItems();
+                    InitPlants();
+                    ClearWater();
+                    worldSeed = seed;
+                    GenerateHillsSoilsWater();
+                    sum[r] = HillsChecksum();
+                }
+                if (sum[0] != sum[1]) {
+                    diffs++;
+                    if (test_verbose) printf("hills-water %d seed %d: maps differ\n", sizes[k], (int)seed);
+                }
+            }
+        }
+        expect(diffs == 0);
+        worldSeed = origSeed;
+        hillsWaterConnectivityReport = origReport;
     }
 }
 
@@ -628,6 +704,7 @@ int main(int argc, char* argv[]) {
     test(terrain_regen_clears_water);
     test(ramp_north_duplicate_prevention);
     test(connectivity_fix_preserves_largest);
+    test(hills_water_deterministic);
     test(caves_keep_surface_support);
     test(island_generator);
 
