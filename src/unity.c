@@ -27,6 +27,7 @@
 // Simulation systems
 #include "core/sim_manager.c"
 #include "simulation/water.c"
+#include "simulation/tide.c"
 #include "simulation/fire.c"
 #include "simulation/smoke.c"
 #include "simulation/steam.c"

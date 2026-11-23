@@ -39,6 +39,7 @@ typedef struct {
     uint16_t pressureSourceZ: 4;   // z-level of the pressure source (water can rise to sourceZ - 1)
     uint16_t isFrozen       : 1;   // true = water is frozen (blocks flow, can be harvested as ice)
     uint16_t pressureDirty  : 1;   // true = pressure BFS needs to run (water moved nearby)
+    uint16_t isSea          : 1;   // part of the sea body: its level follows the tide (tide.c)
 } WaterCell;
 
 // Water grid (same dimensions as main grid)

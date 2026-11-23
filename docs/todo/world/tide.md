@@ -1,6 +1,6 @@
 # Tide (getij)
 
-**Status: idea, measured; next experiment** (2026-11-23). Started from a brainstorm on sea, beach
+**Status: spike running** (2026-11-23). Range one level, no dikes yet (defaults, open below). Started from a brainstorm on sea, beach
 and surf ("branding"); the user picked tide: "interesting gameplay, emergent behaviors". Surf
 (foam drawing, wash-up items) is a cheap side idea, kept at the end.
 
@@ -31,7 +31,10 @@ Crude low tide = load the save with `--set waterEdgeSeaZ 2`:
 | 2 (low) | 600 | 93,559 | 36,554 | 0.34 |
 | 2 (low) | 3000 | 92,506 | 37,495 | 0.33 |
 
-3000 ticks is about 20 game hours: only ~2,800 water cells left. **A tide can't be "move the edge
+3000 ticks is about 20 game hours: only ~2,800 water cells left. (Measured on navkit-8e's then
+uncommitted edge-sea build; the edge sea stays for rivers running off and deeper levels, the
+tide owns the sea's top level: agreed with 8e, their edge exchange skips sea cells when the tide
+is on.) **A tide can't be "move the edge
 level"**: water leaves the map only through edge cells, one unit per visit, under the 4096
 cells/tick budget, so the sea drains from the edge inward over days. Cost stays flat (capped);
 speed is the problem.
@@ -64,6 +67,36 @@ on coastal chunks (`MarkChunkDirty` + `UpdateDirtyChunks`), a few times per tide
 Scenario `tide`: an island piece with a beach, a shelf of flats and an islet with something on
 it (berries, cockles); movers with jobs out there. Measure: flats area dry over a day, mover
 time on the flats, strandings, water and pathfinding ms per tide step.
+
+## Spike (scenario `tide`)
+
+`src/simulation/tide.c`: `TideMarkSea(z)` flood-fills water at level z from the map edge and sets
+`WaterCell.isSea`; `TideTick` (top of `UpdateWater`) walks the level one step toward
+`TideLevelAt(game hours)` and sets every sea cell, marking chunks dirty where a cell crosses
+wading depth; `ProcessWaterCell` puts a visited sea cell back to the tide level. Settings
+`tide`, `tidePeriod`, `tideLowLevel`. Tests: `test_tide`.
+
+Scenario `tide` (64x40): land in the west (walk level 3), flats (floor z 1, sea z 2), a channel
+two levels deep with a ford, an islet in the east with 12 logs, a log stockpile on land, 4
+movers, ramps down to the flats. `TIDE_TRACE=1` prints every 100 ticks where the movers are.
+
+What happened with no mover logic added (3000 ticks):
+
+| ticks | tide level | movers |
+|---|---|---|
+| 300 | 0 (low) | step onto the dry flats, off to the islet for logs |
+| 400-600 | 1-3 | the water rises while they wade (slow) |
+| 700-800 | 4-5 | some in water too deep to walk, push on to the islet |
+| 900-1600 | high | cut off on the islet, waiting with their logs |
+| 1700-2300 | falling | walk back over the flats |
+| 2400 | 2 | logs in the stockpile |
+
+Going out at low tide, getting cut off, waiting for the next low tide: emergent. 1639 sea
+cells, a tide step 0.03 ms (max 0.1); 14 steps per tide. 6 of 12 logs on land after 6000 ticks.
+
+Not yet: the sea list after loading a save (the tide stops: `TideTick` finds the list stale);
+movers walking on in water deeper than wading depth (they were already on their way); a route
+cost for cells the tide will close; the island (its shore has no ramps down to z 3 flats).
 
 ## Open questions
 

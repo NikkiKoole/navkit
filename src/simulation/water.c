@@ -6,6 +6,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
+#include "tide.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -539,6 +540,7 @@ static inline bool WaterOnEdge(int x, int y) {
 // An edge cell trades with the water beyond the edge (one unit per visit, like spreading):
 // above that level it flows off the map, below it it fills up. true = the level changed
 static bool WaterEdgeExchange(int x, int y, int z) {
+    if (WATER(x, y, z).isSea && tideEnabled) return false;   // the tide sets the sea's top level
     int level = WATER(x, y, z).level, beyond = WaterEdgeLevel(z);
     if (level == beyond || (level < beyond && !CanHoldWater(x, y, z))) return false;
     SetWaterLevel(x, y, z, level > beyond ? level - 1 : level + 1);
@@ -550,6 +552,12 @@ static bool WaterEdgeExchange(int x, int y, int z) {
 static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     WaterCell* cell = &WATER_MUT(x, y, z);
     bool moved = false;
+
+    // The sea follows the tide: back to its level (what flowed in or out is the sea's)
+    if (cell->isSea && tideEnabled && cell->level != tideLevel) {
+        SetWaterLevel(x, y, z, tideLevel);
+        moved = true;
+    }
     
     // Handle sources - refill to max and add pressure
     if (cell->isSource) {
@@ -642,7 +650,7 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         }
         
         if (waterEdgeOutflow && !cell->isSource && WaterOnEdge(x, y) &&
-            cell->level != WaterEdgeLevel(z)) balanced = false;
+            cell->level != WaterEdgeLevel(z) && !(cell->isSea && tideEnabled)) balanced = false;
 
         // Level-1 water can evaporate, so keep it unstable
         if (balanced && cell->level != 1) {
@@ -657,6 +665,7 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
 // Falling sand style: bottom-to-top, single buffer, randomized spread
 void UpdateWater(void) {
     if (!waterEnabled) return;
+    TideTick();
     
     // Early exit: no water activity at all
     if (waterActiveCells == 0) {

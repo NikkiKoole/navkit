@@ -24,6 +24,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../ui/console.h"
+#include "../simulation/tide.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -246,6 +247,16 @@ static const Setting settings[] = {
       "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends."),
     SET_BOOL("waterEvaporation", "Evaporation", "Simulation/Water", waterEvaporationEnabled,
       "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics."),
+    SET_BOOL("waterEdgeOutflow", "Edge Outflow", "Simulation/Water", waterEdgeOutflow,
+      "Water at the map edge trades with what lies beyond it: above waterEdgeSeaZ it flows off the map, below it the edge fills up. Generated worlds turn it on."),
+    SET_INT("waterEdgeSeaZ", "Sea Beyond Edge (z)", "Simulation/Water", waterEdgeSeaZ, 0.1f, -1, 63,
+      "Height of the sea beyond the map edge (-1 = none: all edge water flows off). The island sets its sea level.", NULL),
+    SET_BOOL("tide", "Tide", "Simulation/Water", tideEnabled,
+      "The sea's top level rises and falls (experiment, docs/todo/world/tide.md). Needs a marked sea: the tide scenario."),
+    SET_FLOAT("tidePeriod", "Tide period (h)", "Simulation/Water", tidePeriodHours, 0.5f, 1.0f, 48.0f,
+      "Game hours from high tide to high tide (North Sea: 12.42).", NULL),
+    SET_INT("tideLowLevel", "Tide low level", "Simulation/Water", tideLowLevel, 1.0f, 0, 7,
+      "Water level of the sea's top level at low tide (0 = the flats fall dry, 3 = wading).", NULL),
     SET_FLOAT("waterEvapInterval", "Evap Interval (GH)", "Simulation/Water", waterEvapInterval, 0.5f, 0.5f, 120.0f,
       "Game hours between evaporation attempts for level-1 water.", DescWaterEvap),
     SET_FLOAT("waterSpeedShallow", "Speed: Shallow (1-2)", "Simulation/Water/Advanced", waterSpeedShallow, 0.05f, 0.1f, 1.0f,
