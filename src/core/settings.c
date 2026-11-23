@@ -233,6 +233,13 @@ static void RescaleMoverSpeeds(float oldBaseSpeed) {
 #define SET_BALANCE(name, label, group, field, speed, lo, hi, help) \
     SET_FLOAT_HOOK(name, label, group, balance.field, speed, lo, hi, help, NULL, RecalcBalance)
 
+// Stairs effort is cached in the pathfinder's graph: rebuild it
+static void RebuildGraphForStairs(float oldValue) {
+    (void)oldValue;
+    BuildEntrances();
+    BuildGraph();
+}
+
 static const Setting settings[] = {
     // --- Water ---
     SET_BOOL("water", "Enabled", "Simulation/Water", waterEnabled,
@@ -583,6 +590,8 @@ static const Setting settings[] = {
       "Seconds the doors stay open at a stop (at dayLength 60).", NULL),
     SET_BOOL("elevatorDirectionalPickup", "Sweep Pickup", "Entities/Elevators", elevatorDirectionalPickup,
       "An empty car on its way to calls further on picks up only people going its way; the others ride on its way back. Off: it stops for anyone and turns round, and the calls further on wait."),
+    SET_FLOAT_HOOK("stairsEffort", "Stairs Effort (cells)", "Entities/Elevators", stairsEffort, 0.5f, 0.0f, 40.0f,
+      "Route cost of a level up stairs or a ramp, in cells of walking on top of the step (down: half). Movers then take the elevator for long trips and the stairs for short ones. Rebuilds the pathfinder graph.", NULL, RebuildGraphForStairs),
     SET_BOOL("elevatorWaitCost", "Wait Cost", "Entities/Elevators", useElevatorWaitCost,
       "Routes count the expected wait for the car (doors, the car coming, the line ahead): with stairs nearby, movers take them when the elevator is busy. Waiting movers re-plan after a while."),
 

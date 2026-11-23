@@ -61,6 +61,7 @@ done <<'EOF'
 458 | 0 | --scenario elevator
 28  | 0 | --scenario elevator-build
 33  | 0 | --scenario elevator-tall
+63  | 0 | --scenario elevator-stairs
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit

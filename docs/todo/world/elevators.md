@@ -40,13 +40,33 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   help there, not the order of service.
 - **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
   caught between levels is put on the nearest level and re-plans.
-- **Route cost** (`ClimbExtraCost`, the `NAV_CLIMB_EXTRA` hook; ladders keep their queue
-  cost): a level in a shaft costs the car's travel time plus half the expected wait (doors,
-  the car coming to this level, one round trip per full car already in this level's line).
-  Charged per level, so a ride of n levels pays n halves: right for the short rides where
-  stairs compete, generous for long ones. Movers in a line re-plan at 4 s and 10 s
-  (x patience), so they switch to the stairs when the line is long. Setting
-  `elevatorWaitCost` (off = travel time only).
+- **Route cost**: the wait is paid **once**, the levels are travel. Two optional hooks in
+  the nav library (`nav/nav.h`, default 0): `NAV_ENTER_EXTRA` (query time: entering a cell
+  by any step but a ladder link; graph edges add it where they end at an entrance) and
+  `NAV_RAMP_EXTRA` (static: a ramp level, cached in the graph).
+  - Boarding (`ElevatorBoardCost`, `NAV_ENTER_EXTRA` on shaft cells): the expected wait at
+    that level: doors, the car coming here, one round trip per full car already in the
+    line (`elevatorWaitCost` off: the doors only).
+  - Each level (`ElevatorExtraCost`, `NAV_CLIMB_EXTRA`): the car's travel time.
+  - Before (until 2026-11-23): half the wait on every level, and the car's distance
+    re-counted at every level: a 1->10 ride cost ~25 s for ~7.5 s of real time.
+  - Movers in a line re-plan at 4 s and 10 s (x patience): stairs when the line is long.
+  - Scenario `elevator`: 543 -> 591 arrivals with the one-time wait (nothing else changes).
+- **Stairs effort** (`stairsEffort`, cells of walking per level up a ramp, down half;
+  `NAV_RAMP_EXTRA`): **0 by default, scope open.** Our ramps cost ~1.4 cells per level
+  and are climbed at walking speed, so even a fair elevator loses long trips to the stairs.
+  `elevator-stairs` (10 floors, one car, one straight staircase), 6 movers, 18000 ticks:
+
+  | | 1-2 floors ride/climb | 6+ floors ride/climb | long trips riding | arrivals |
+  |---|---|---|---|---|
+  | old cost | 45 / 2 | 24 / 15 | 62% | 182 |
+  | one-time wait | 33 / 8 | 27 / 17 | 61% | 174 |
+  | + stairsEffort 4 | 37 / 3 | 32 / 9 | 78% | 162 |
+
+  With effort on all ramps, routes avoid climbing but climbing is still as fast as
+  walking, so detours make trips slower: hubs 910 -> 867, island 366 -> 341, elevator
+  543 -> 472 arrivals. Options: effort on built stairs only (not hill slopes); climbing
+  physically slower too (like ladders), so cost and time agree.
 - Scenario `elevator`: a six-floor tower, two shafts and a straight staircase up the west
   side, 24 movers, half of their goals in the tower (up there 70% of next goals on the same
   floor). 12000 ticks with the wait cost: 2172 arrivals, 2-4 in line, 1926 levels on the

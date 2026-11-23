@@ -90,6 +90,16 @@ static inline int NavAffectedZ(void* host, int z, int* outZ) {
 // elevator shaft costs the car's travel and the expected wait (entities/elevators.c)
 int ClimbExtraCost(int x, int y, int z, int dz);
 #define NAV_CLIMB_EXTRA(host, x, y, z, dz) ClimbExtraCost((x), (y), (z), (dz))
+// Stairs effort: going up or down a ramp costs more than the walk (setting stairsEffort)
+int RampEffortCost(int x, int y, int z, int dz);
+#define NAV_RAMP_EXTRA(host, x, y, z, dz) RampEffortCost((x), (y), (z), (dz))
+// Boarding an elevator: stepping into a shaft cell costs the expected wait, once per ride
+int ElevatorBoardCost(int x, int y, int z);
+static inline int NavEnterExtraHost(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return 0;
+    return CellIsShaft(GRID(x, y, z)) ? ElevatorBoardCost(x, y, z) : 0;
+}
+#define NAV_ENTER_EXTRA(host, x, y, z) NavEnterExtraHost((x), (y), (z))
 
 // Lighting caches walkability-adjacent data; the pathfinder shouldn't know that.
 void InvalidateLightingAt(int x, int y, int z);

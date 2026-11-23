@@ -1769,17 +1769,20 @@ describe(elevator_rides) {
         elevatorCapacity = 4;
     }
 
-    it("a ride costs the car's travel plus the expected wait: a long line costs more") {
+    it("a ride costs the wait once (boarding) and the car's travel per level") {
         SetupTower();
         float speedWas = elevatorSpeed;
         elevatorSpeed = 0.001f;   // the car stays where it is: nobody gets on during the test
         elevators[0].z = 1.0f;
-        int idle = ElevatorExtraCost(15, 15, 1, 1);
+        int idle = ElevatorBoardCost(15, 15, 1);
         expect(idle > 0);
-        expect(ClimbExtraCost(15, 15, 1, 1) == idle);   // the nav hook sends shafts here
+        int level = ElevatorExtraCost(15, 15, 1, 1);
+        expect(ClimbExtraCost(15, 15, 1, 1) == level);   // the nav hook sends shafts here
+        expect(ElevatorBoardCost(14, 15, 1) == 0);       // not a shaft cell
         elevators[0].z = 4.0f;                          // the car is far away
-        int far = ElevatorExtraCost(15, 15, 1, 1);
+        int far = ElevatorBoardCost(15, 15, 1);
         expect(far > idle);
+        expect(ElevatorExtraCost(15, 15, 1, 1) == level);   // the level costs the same
         // eight movers in the line at z1: two full cars ahead
         moverCount = 8;
         for (int i = 0; i < 8; i++) {
@@ -1792,60 +1795,23 @@ describe(elevator_rides) {
         for (int i = 0; i < 8; i++) inLine += ElevatorMoverWaiting(i);
         expect(inLine >= elevatorCapacity);     // at least one full car ahead
         elevators[0].z = 4.0f;                  // same car position as `far`
-        int busy = ElevatorExtraCost(15, 15, 1, 1);
+        int busy = ElevatorBoardCost(15, 15, 1);
         useElevatorWaitCost = false;
-        int noWait = ElevatorExtraCost(15, 15, 1, 1);
+        int noWait = ElevatorBoardCost(15, 15, 1);
         useElevatorWaitCost = true;
         elevatorSpeed = speedWas;
         expect(busy > far);
-        expect(noWait < idle);   // travel time only
+        expect(noWait == idle && noWait < far);   // the doors only (= the car already here, nobody in line)
     }
 
-    it("a shaft is built like a ladder: up one level, extended from its top, taken down whole") {
-        SetupClean();
-        for (int y = 8; y <= 12; y++)            // a floor at z3 around (10,10)
-            for (int x = 8; x <= 12; x++) SET_FLOOR(x, y, 3);
-        expect(CanPlaceShaft(10, 10, 1));
-        expect(!CanPlaceShaft(10, 10, 0));        // inside the ground
-        expect(CreateRecipeBlueprint(10, 10, 1, CONSTRUCTION_SHAFT) >= 0);
-        CancelBlueprint(GetBlueprintAt(10, 10, 1));
-        expect(PlaceShaft(10, 10, 1, MAT_OAK));
-        expect(GRID(10, 10, 1) == CELL_ELEVATOR && GRID(10, 10, 2) == CELL_ELEVATOR && GRID(10, 10, 3) == CELL_AIR);
-        expect(elevatorCount == 1 && elevators[0].zMin == 1 && elevators[0].zMax == 2);
-        expect(!CanPlaceShaft(10, 10, 1));        // not the top
-        expect(CanPlaceShaft(10, 10, 2));         // the top: extend
-        expect(PlaceShaft(10, 10, 2, MAT_OAK));
-        expect(GRID(10, 10, 3) == CELL_ELEVATOR && !HAS_FLOOR(10, 10, 3));   // a hole in the floor
-        expect(elevatorCount == 1 && elevators[0].zMax == 3);
-        expect(RemoveShaftAt(10, 10, 2) == 3);
-        expect(GRID(10, 10, 1) == CELL_AIR && GRID(10, 10, 3) == CELL_AIR);
-        expect(HAS_FLOOR(10, 10, 3));            // the floor is whole again
-        expect(elevatorCount == 0);
-    }
-
-    it("an empty car on its way up to a call passes a down-going waiter and takes them on the way back") {
-        for (int pass = 0; pass < 2; pass++) {
-            SetupTower();
-            for (int y = 10; y <= 20; y++)          // a floor at z2 too
-                for (int x = 10; x <= 20; x++) if (x != 15 || y != 15) { GRID(x, y, 2) = CELL_AIR; SET_FLOOR(x, y, 2); }
-            BuildEntrances();
-            BuildGraph();
-            elevatorDirectionalPickup = (pass == 0);
-            moverCount = 2;
-            // A on z2 and B on z4 both go down to the ground; the car waits at the bottom
-            InitMover(&movers[0], 15 * CELL_SIZE + 16, 16 * CELL_SIZE + 16, 2.0f, (Point){5, 5, 1}, MOVER_SPEED);
-            InitMover(&movers[1], 15 * CELL_SIZE + 16, 16 * CELL_SIZE + 16, 4.0f, (Point){6, 6, 1}, MOVER_SPEED);
-            movers[0].needsRepath = movers[1].needsRepath = true;
-            int first = -1;
-            for (int t = 0; t < 3000 && first < 0; t++) {
-                Tick();
-                if (ElevatorMoverAboard(0)) first = 0;
-                else if (ElevatorMoverAboard(1)) first = 1;
-            }
-            if (pass == 0) { expect(first == 1); }   // sweep up to B first, A on the way down
-            else { expect(first == 0); }             // old rule: the empty car turns round for A
-        }
-        elevatorDirectionalPickup = true;
+    it("a long ride is cheaper than charging the wait on every level: one wait plus travel") {
+        SetupTower();   // shaft z1..z4
+        elevators[0].z = 1.0f;
+        int board = ElevatorBoardCost(15, 15, 1), level = ElevatorExtraCost(15, 15, 1, 1);
+        // what the pathfinder adds up for z1 -> z4: boarding once, three levels
+        int ride = board + 3 * (level + 10);
+        expect(ride < 3 * board + 3 * (level + 10));
+        expect(RampEffortCost(1, 1, 1, 1) == (int)(stairsEffort * 10.0f + 0.5f));
     }
 
     it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {

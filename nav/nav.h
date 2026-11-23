@@ -43,6 +43,12 @@
 //        by dz via a ladder/ramp there, e.g. a queue's expected wait. Read at query
 //        time by all searches; cached NavHFlow results need NavHFlowInvalidate when
 //        it changes.
+//   NAV_RAMP_EXTRA(host, x, y, z, dz)    fixed extra cost (>= 0) of going up (+1) or down (-1)
+//        the ramp at (x,y,z) (stairs effort); static, part of cached graph edges
+//   NAV_ENTER_EXTRA(host, x, y, z)       extra cost (>= 0) of entering (x,y,z) by any step
+//        but a ladder link, read at query time (e.g. boarding an elevator whose shaft
+//        cell this is: paid once per ride). Graph edges add it where they end at an
+//        entrance, so keep it 0 except on ladder cells (which are entrances).
 // Out-of-bounds coordinates may be passed; return false / a safe default.
 // =============================================================================
 

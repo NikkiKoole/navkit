@@ -2078,6 +2078,96 @@ static bool ElevatorTallCheck(char* why, int whyLen) {
     return true;
 }
 
+// elevator-stairs: ten floors (z2..z11) with one elevator in the middle and one straight
+// staircase (ramps up the west side, ground to top). 15 movers go to random levels.
+// Counts what each trip used by how far it went: elevator rides and stair climbs by
+// number of floors. Shows how the route cost weighs a ride against the stairs.
+#define ES_X0 14
+#define ES_Y0 6
+#define ES_W 12
+#define ES_TOP 11
+#define ES_SX (ES_X0 + ES_W / 2)
+#define ES_SY (ES_Y0 + ES_W / 2)
+static int esRide[4], esStair[4];          // by floors: 1-2, 3-5, 6-8, 9-10
+static int esRun[MAX_MOVERS], esStill[MAX_MOVERS];
+static float esPrevZ[MAX_MOVERS];
+static int esPrevRides;
+static bool esAboard[MAX_MOVERS];
+static int esBoardZ[MAX_MOVERS];
+
+static int EsBucket(int floors) { return floors <= 2 ? 0 : floors <= 5 ? 1 : floors <= 8 ? 2 : 3; }
+
+static bool ElevStairsGoalPicker(int moverIdx, Point* goal) {
+    (void)moverIdx;
+    int z = GetRandomValue(1, ES_TOP);
+    for (;;) {
+        *goal = (Point){ES_X0 + 1 + GetRandomValue(0, ES_W - 2), ES_Y0 + GetRandomValue(0, ES_W - 1), z};
+        if (goal->x != ES_SX || goal->y != ES_SY) return true;
+    }
+}
+
+static void SetupElevatorStairs(void) {
+    for (int z = 2; z <= ES_TOP; z++)
+        for (int y = ES_Y0; y < ES_Y0 + ES_W; y++)
+            for (int x = ES_X0; x < ES_X0 + ES_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
+    for (int z = 1; z <= ES_TOP; z++) {
+        GRID(ES_SX, ES_SY, z) = CELL_ELEVATOR;
+        CELL_FLAGS(ES_SX, ES_SY, z) &= ~CELL_FLAG_HAS_FLOOR;
+    }
+    int sx = ES_X0, sy = ES_Y0 + ES_W - 1;
+    RampUp(sx, sy, 0, -1, 1, ES_TOP);
+    for (int k = 0; k < ES_TOP - 1; k++) CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+    RebuildElevators();
+    BuildEntrances();
+    BuildGraph();
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    moverGoalPicker = ElevStairsGoalPicker;
+    memset(esRide, 0, sizeof(esRide)); memset(esStair, 0, sizeof(esStair));
+    memset(esRun, 0, sizeof(esRun)); memset(esStill, 0, sizeof(esStill)); memset(esAboard, 0, sizeof(esAboard));
+    for (int i = 0; i < MAX_MOVERS; i++) esPrevZ[i] = 1.0f;
+    esPrevRides = 0;
+    int n = scenarioMovers > 0 ? scenarioMovers : 15;
+    for (int i = 0; i < n; i++) SpawnMoverAt(ES_X0 + 1 + i % (ES_W - 1), ES_Y0 - 3, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Elevator + stairs: %d floors, %d movers", ES_TOP - 1, n), GREEN);
+}
+
+static void ElevatorStairsTick(void) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        if (!m->active) continue;
+        int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+        bool inShaft = cx == ES_SX && cy == ES_SY;
+        if (m->z == floorf(m->z) && m->z != esPrevZ[i]) {
+            if (!inShaft) esRun[i] += (int)fabsf(m->z - esPrevZ[i]);   // a level on the stairs
+            esPrevZ[i] = m->z;
+            esStill[i] = 0;
+        } else if (esRun[i] > 0 && ++esStill[i] > 90) {   // off the stairs for a while: one trip
+            esStair[EsBucket(esRun[i])]++;
+            esRun[i] = 0;
+        }
+        bool aboard = ElevatorMoverAboard(i);
+        if (aboard && !esAboard[i]) esBoardZ[i] = (int)floorf(m->z + 0.5f);
+        if (!aboard && esAboard[i]) esRide[EsBucket(abs((int)m->z - esBoardZ[i]))]++;
+        esAboard[i] = aboard;
+        if (aboard) esPrevZ[i] = floorf(m->z + 0.5f);
+    }
+}
+
+static void ElevatorStairsPrintStats(void) {
+    printf("Trips by floors:        1-2   3-5   6-8  9-10\n");
+    printf("  elevator rides:     %5d %5d %5d %5d\n", esRide[0], esRide[1], esRide[2], esRide[3]);
+    printf("  stair climbs:       %5d %5d %5d %5d\n", esStair[0], esStair[1], esStair[2], esStair[3]);
+    printf("Elevator: %d boardings, wait in line avg %.1f s\n", elevatorRides,
+           elevatorWaitCount > 0 ? elevatorWaitSum / elevatorWaitCount : 0.0);
+}
+
+static bool ElevatorStairsCheck(char* why, int whyLen) {
+    if (elevatorRides == 0) { snprintf(why, (size_t)whyLen, "nobody rode the elevator"); return false; }
+    return true;
+}
+
 // elevator-build: movers build an elevator. Two decks (floors at z2 and z3, no stairs)
 // stand east of a shaft blueprint on the ground; planks and cordage lie in the west. The
 // first blueprint makes a shaft up to z2; once that stands, a second one on its top
@@ -2361,6 +2451,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
     {"elevator-tall", "A ten-floor tower with one elevator, 30 movers going up and down: waits and detours (compare elevatorDirectionalPickup 0)",
                    NULL,        SetupElevatorTall, ElevatorTallTick, ElevatorTallPrintStats, ElevatorTallCheck, 40, 28},
+    {"elevator-stairs", "Ten floors, one elevator and one staircase, 15 movers: which trips ride and which climb, by distance",
+                   NULL,        SetupElevatorStairs, ElevatorStairsTick, ElevatorStairsPrintStats, ElevatorStairsCheck, 40, 28},
     {"elevator-build", "Movers build an elevator shaft from blueprints (planks + cordage), level by level, then ride it up to two decks, 3 movers",
                    NULL,        SetupElevatorBuild, ElevatorBuildTick, ElevatorBuildPrintStats, ElevatorBuildCheck, 32, 20},
     {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",

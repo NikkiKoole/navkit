@@ -556,34 +556,53 @@ bool ElevatorMoverWaiting(int i) {
 }
 
 // --- Route cost -------------------------------------------------------------------
-// The pathfinder charges a level change in a shaft one cell's move cost (like a ladder);
-// this adds the rest of a ride, in path cost at the base walking pace:
-//  - the car's travel time for the level
-//  - half the expected wait to get on at this level (charged per level, a ride of n levels
-//    pays n halves: about right for the short rides where stairs compete): the doors,
-//    the car coming here, and one round trip of the car per full car of people already
-//    in this level's line
-// With useElevatorWaitCost off only the travel time counts. A shaft without a car (not
-// rebuilt yet) costs like a ladder.
-int ElevatorExtraCost(int x, int y, int z, int dz) {
+// A ride costs, in path cost at the base walking pace:
+//  - boarding, once (ElevatorBoardCost, NAV_ENTER_EXTRA: stepping into the shaft cell on
+//    the level where the ride starts): the expected wait there, i.e. the doors, the car
+//    coming to this level, and one round trip of the car per full car of people already
+//    in this level's line (with useElevatorWaitCost off: the doors only)
+//  - each level (ElevatorExtraCost, NAV_CLIMB_EXTRA on top of the one cell a ladder link
+//    costs): the car's travel time for the level
+// A shaft without a car (not rebuilt yet) costs like a ladder.
+static float SecPerCellAt60(void) {
+    float base = balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f;
+    return (float)CELL_SIZE / base;   // seconds per cell of walking, at dayLength 60 like the car
+}
+
+static int SecondsToCost(float sec) { return (int)(sec / SecPerCellAt60() * 10.0f + 0.5f); }
+
+int ElevatorBoardCost(int x, int y, int z) {
     int k = ElevatorAt(x, y, z);
-    if (k < 0 || ElevatorAt(x, y, z + dz) != k) return 0;
+    if (k < 0) return 0;
     const Elevator* e = &elevators[k];
     float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
-    float base = balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f;
-    float secPerCell = (float)CELL_SIZE / base;   // both at dayLength 60
-    float sec = 1.0f / speed;
+    float wait = elevatorDoorTime;
     if (useElevatorWaitCost) {
         int line = 0;
         for (int i = 0; i < moverCount; i++)
             if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z) line++;
         int cap = elevatorCapacity < 1 ? 1 : elevatorCapacity;
         float roundTrip = 2.0f * (float)(e->zMax - e->zMin) / speed + 2.0f * elevatorDoorTime;
-        float wait = elevatorDoorTime + fabsf(e->z - (float)z) / speed + (float)(line / cap) * roundTrip;
-        sec += 0.5f * wait;
+        wait += fabsf(e->z - (float)z) / speed + (float)(line / cap) * roundTrip;
     }
-    int extra = (int)(sec / secPerCell * 10.0f + 0.5f) - 10;   // one cell is already charged
+    return SecondsToCost(wait);
+}
+
+int ElevatorExtraCost(int x, int y, int z, int dz) {
+    int k = ElevatorAt(x, y, z);
+    if (k < 0 || ElevatorAt(x, y, z + dz) != k) return 0;
+    float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
+    int extra = SecondsToCost(1.0f / speed) - 10;   // one cell is already charged
     return extra > 0 ? extra : 0;
+}
+
+// Stairs effort: a level up a ramp costs stairsEffort cells of walking on top of the
+// step, a level down half that. Static (the pathfinder caches it in its graph).
+float stairsEffort = 0.0f;   // off by default: see docs/todo/world/elevators.md (scope still open)
+int RampEffortCost(int x, int y, int z, int dz) {
+    (void)x; (void)y; (void)z;
+    float cells = dz > 0 ? stairsEffort : stairsEffort * 0.5f;
+    return cells > 0.0f ? (int)(cells * 10.0f + 0.5f) : 0;
 }
 
 int ClimbExtraCost(int x, int y, int z, int dz) {

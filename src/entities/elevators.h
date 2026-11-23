@@ -48,7 +48,10 @@ extern double elevatorWaitSum;
 extern float elevatorWaitMax;
 extern int elevatorWaitCount, elevatorDetours;
 
-int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change
+int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change (travel)
+int ElevatorBoardCost(int x, int y, int z);           // route cost of boarding at (x,y,z): the wait
+extern float stairsEffort;   // cells of walking a level up a ramp adds to a route (down: half)
+int RampEffortCost(int x, int y, int z, int dz);
 int ClimbExtraCost(int x, int y, int z, int dz);      // NAV_CLIMB_EXTRA: ladders + elevators
 
 void RebuildElevators(void);     // after shaft cells change (keeps cars that still exist)
