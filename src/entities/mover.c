@@ -1990,6 +1990,8 @@ void UpdateMovers(void) {
                     float zDir = (target.z > cellZ) ? 1.0f : -1.0f;
                     float zRate = effectiveSpeed / (float)CELL_SIZE;
                     if (isLadderTransition) zRate *= LadderClimbSpeedFactor();   // climbing is slower than walking
+                    else if (target.z > cellZ) zRate *= StairsSpeedFactor(rampX, rampY, cellZ, 1);   // built stairs too
+                    else zRate *= StairsSpeedFactor(target.x, target.y, target.z, -1);
                     m->z += zDir * zRate * dt;
                     bool zArrived = (zDir > 0.0f) ? (m->z >= (float)target.z)
                                                    : (m->z <= (float)target.z);

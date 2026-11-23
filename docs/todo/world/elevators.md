@@ -52,6 +52,52 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
     re-counted at every level: a 1->10 ride cost ~25 s for ~7.5 s of real time.
   - Movers in a line re-plan at 4 s and 10 s (x patience): stairs when the line is long.
   - Scenario `elevator`: 543 -> 591 arrivals with the one-time wait (nothing else changes).
+- **Built ramps are stairs** (2026-11-23): a ramp built from an item (CONSTRUCTION_RAMP
+  records its source item; scenarios use `MarkBuiltStairs`) is climbed at
+  `stairsClimbSpeed` 0.7 of walking (down x1.4, at most walking), and routes see that time
+  plus `stairsEffort` (2 cells up, 1 down) through `NAV_RAMP_EXTRA`. Terrain slopes and
+  ramps dug into natural rock have no source item: unchanged. Ladders stay the slowest
+  (0.5). (The natural flag can't tell: no generator marks its ramps natural.)
+  `elevator-stairs` (10 floors, one car, one staircase), 6 movers, 18000 ticks:
+
+  | | 1-2 floors ride/climb | 6+ floors ride/climb | long trips riding | arrivals |
+  |---|---|---|---|---|
+  | wait per level, free stairs (before) | 45 / 2 | 24 / 15 | 62% | 182 |
+  | wait once | 33 / 8 | 27 / 17 | 61% | 174 |
+  | wait once + built stairs | 44 / 9 | 33 / 11 | 75% | 174 |
+
+  With 15 movers the line averages ~21 s and half the long trips climb: quicker then.
+  scenarios-check: only the elevator scenarios change (elevator 591 -> 508: its 24 movers
+  relied on a staircase that now takes real time; elevator-stairs 79 -> 71); hubs, island,
+  subway and the games are unchanged.
+- **Sweep pickup** (`elevatorDirectionalPickup`, on): an empty car on its way to calls
+  further on picks up only people going its way; the others ride on its way back. Before,
+  an empty car stopped for anyone and turned round, and the calls further on waited.
+  Scenario `elevator-tall` (10 floors, one car, no stairs), 18000 ticks:
+
+  | movers | rule | detours | avg wait | longest | boardings |
+  |---|---|---|---|---|---|
+  | 8  | old / sweep | 0 / 0 | 11.1 / 11.1 s | 76 / 76 s | 132 / 132 |
+  | 15 | old / sweep | 5 / 0 | 25.8 / 22.0 s | 186 / 135 s | 124 / 134 |
+  | 30 | old / sweep | 4 / 0 | 30.2 / 33.5 s | 155 / 139 s | 139 / 135 |
+
+  It matters at medium load. At 30 movers the one car is simply saturated (never idle,
+  doors open 62% of the time, ~3 of 4 places taken, ~17 in line): more cars or capacity
+  help there, not the order of service.
+- **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
+  caught between levels is put on the nearest level and re-plans.
+- **Route cost**: the wait is paid **once**, the levels are travel. Two optional hooks in
+  the nav library (`nav/nav.h`, default 0): `NAV_ENTER_EXTRA` (query time: entering a cell
+  by any step but a ladder link; graph edges add it where they end at an entrance) and
+  `NAV_RAMP_EXTRA` (static: a ramp level, cached in the graph).
+  - Boarding (`ElevatorBoardCost`, `NAV_ENTER_EXTRA` on shaft cells): the expected wait at
+    that level: doors, the car coming here, one round trip per full car already in the
+    line (`elevatorWaitCost` off: the doors only).
+  - Each level (`ElevatorExtraCost`, `NAV_CLIMB_EXTRA`): the car's travel time.
+  - Before (until 2026-11-23): half the wait on every level, and the car's distance
+    re-counted at every level: a 1->10 ride cost ~25 s for ~7.5 s of real time.
+  - Movers in a line re-plan at 4 s and 10 s (x patience): stairs when the line is long.
+  - Scenario `elevator`: 543 -> 591 arrivals with the one-time wait (nothing else changes).
 - **Stairs effort** (`stairsEffort`, cells of walking per level up a ramp, down half;
   `NAV_RAMP_EXTRA`): **0 by default, scope open.** Our ramps cost ~1.4 cells per level
   and are climbed at walking speed, so even a fair elevator loses long trips to the stairs.

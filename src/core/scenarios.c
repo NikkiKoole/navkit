@@ -1954,7 +1954,10 @@ static void SetupElevator(void) {
     // from the ground under the tower to the top floor; each floor steps on and off it
     int sx = ELEV_TOWER_X0, sy = ELEV_TOWER_Y0 + ELEV_TOWER_H - 2;
     Point top = RampUp(sx, sy, 0, -1, 1, ELEV_TOP);
-    for (int k = 0; k < ELEV_TOP - 1; k++) CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+    for (int k = 0; k < ELEV_TOP - 1; k++) {
+        CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+        MarkBuiltStairs(sx, sy - k, 1 + k);   // built ramps: stairs (stairsClimbSpeed, stairsEffort)
+    }
     (void)top;
     RebuildElevators();
     BuildEntrances();
@@ -2116,7 +2119,10 @@ static void SetupElevatorStairs(void) {
     }
     int sx = ES_X0, sy = ES_Y0 + ES_W - 1;
     RampUp(sx, sy, 0, -1, 1, ES_TOP);
-    for (int k = 0; k < ES_TOP - 1; k++) CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+    for (int k = 0; k < ES_TOP - 1; k++) {
+        CELL_FLAGS(sx, sy - k, 1 + k) &= ~CELL_FLAG_HAS_FLOOR;
+        MarkBuiltStairs(sx, sy - k, 1 + k);   // built ramps: stairs
+    }
     RebuildElevators();
     BuildEntrances();
     BuildGraph();

@@ -1811,7 +1811,21 @@ describe(elevator_rides) {
         // what the pathfinder adds up for z1 -> z4: boarding once, three levels
         int ride = board + 3 * (level + 10);
         expect(ride < 3 * board + 3 * (level + 10));
-        expect(RampEffortCost(1, 1, 1, 1) == (int)(stairsEffort * 10.0f + 0.5f));
+    }
+
+    it("a built ramp is stairs: climbed slower and costing more than a slope, ladders slower still") {
+        SetupClean();
+        GRID(5, 5, 1) = CELL_RAMP_N;    // a terrain slope: no source item
+        GRID(7, 5, 1) = CELL_RAMP_N;    // built stairs
+        MarkBuiltStairs(7, 5, 1);
+        expect(RampEffortCost(5, 5, 1, 1) == 0 && RampEffortCost(5, 5, 1, -1) == 0);
+        expect(StairsSpeedFactor(5, 5, 1, 1) == 1.0f);
+        expect(RampEffortCost(7, 5, 1, 1) > RampEffortCost(7, 5, 1, -1));   // up costs more than down
+        expect(RampEffortCost(7, 5, 1, -1) > 0);
+        float up = StairsSpeedFactor(7, 5, 1, 1), down = StairsSpeedFactor(7, 5, 1, -1);
+        expect(up < 1.0f && down > up && down <= 1.0f);
+        expect(LadderClimbSpeedFactor() < up);   // a ladder is the slowest way up
+        expect(RampEffortCost(1, 1, 1, 1) == 0); // not a ramp
     }
 
     it("after a load nobody is aboard and a mover caught mid-shaft stands on a level") {

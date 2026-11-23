@@ -50,8 +50,12 @@ extern int elevatorWaitCount, elevatorDetours;
 
 int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change (travel)
 int ElevatorBoardCost(int x, int y, int z);           // route cost of boarding at (x,y,z): the wait
-extern float stairsEffort;   // cells of walking a level up a ramp adds to a route (down: half)
-int RampEffortCost(int x, int y, int z, int dz);
+// Built stairs (built ramps, not natural slopes): climbed slower, and routes see it
+extern float stairsClimbSpeed;   // climbing speed on built stairs vs walking (down: a bit quicker)
+extern float stairsEffort;       // cells of walking a level up built stairs adds to a route (down: half)
+float StairsSpeedFactor(int rampX, int rampY, int rampZ, int dz);   // 1 on natural slopes
+void MarkBuiltStairs(int x, int y, int z);   // scenarios: this ramp was built (from planks)
+int RampEffortCost(int x, int y, int z, int dz);                    // NAV_RAMP_EXTRA
 int ClimbExtraCost(int x, int y, int z, int dz);      // NAV_CLIMB_EXTRA: ladders + elevators
 
 void RebuildElevators(void);     // after shaft cells change (keeps cars that still exist)

@@ -596,12 +596,44 @@ int ElevatorExtraCost(int x, int y, int z, int dz) {
     return extra > 0 ? extra : 0;
 }
 
-// Stairs effort: a level up a ramp costs stairsEffort cells of walking on top of the
-// step, a level down half that. Static (the pathfinder caches it in its graph).
-float stairsEffort = 0.0f;   // off by default: see docs/todo/world/elevators.md (scope still open)
+// --- Built stairs ----------------------------------------------------------------
+// A built ramp (made from an item: CONSTRUCTION_RAMP records its source item; terrain
+// slopes and dug ramps have none) is stairs:
+// climbed at stairsClimbSpeed of walking (down a bit quicker), slower than a slope but
+// quicker than a ladder (ladderClimbSpeed). Routes see the extra time plus a little
+// effort (stairsEffort cells of walking up, half down), so movers take the elevator for
+// long trips. Natural slopes stay as they were.
+float stairsClimbSpeed = 0.7f;
+float stairsEffort = 2.0f;
+
+static bool IsBuiltStairs(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    return CellIsDirectionalRamp(GRID(x, y, z)) && GetWallSourceItem(x, y, z) != ITEM_NONE;
+}
+
+// Scenarios: mark a ramp as built (planks), as CONSTRUCTION_RAMP would
+void MarkBuiltStairs(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return;
+    SetWallSourceItem(x, y, z, ITEM_PLANKS);
+    SetWallFinish(x, y, z, FINISH_SMOOTH);
+    ClearWallNatural(x, y, z);
+}
+
+static float StairsSpeed(int dz) {
+    float up = stairsClimbSpeed < 0.1f ? 0.1f : (stairsClimbSpeed > 1.0f ? 1.0f : stairsClimbSpeed);
+    if (dz > 0) return up;
+    float down = up * 1.4f;   // going down is quicker
+    return down > 1.0f ? 1.0f : down;
+}
+
+float StairsSpeedFactor(int rampX, int rampY, int rampZ, int dz) {
+    return IsBuiltStairs(rampX, rampY, rampZ) ? StairsSpeed(dz) : 1.0f;
+}
+
+// NAV_RAMP_EXTRA: the ramp at (x,y,z) taken up (dz +1) or down (-1)
 int RampEffortCost(int x, int y, int z, int dz) {
-    (void)x; (void)y; (void)z;
-    float cells = dz > 0 ? stairsEffort : stairsEffort * 0.5f;
+    if (!IsBuiltStairs(x, y, z)) return 0;
+    float cells = (1.0f / StairsSpeed(dz) - 1.0f) + (dz > 0 ? stairsEffort : stairsEffort * 0.5f);
     return cells > 0.0f ? (int)(cells * 10.0f + 0.5f) : 0;
 }
 
