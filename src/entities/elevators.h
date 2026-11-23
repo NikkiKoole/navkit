@@ -47,13 +47,18 @@ void ElevatorsUpdate(float dt);  // once per tick, before movement: cars move, d
 
 int ElevatorAt(int x, int y, int z);   // the elevator whose shaft holds (x,y,z), or -1
 
-// Mover hooks (mover.c movement loop)
-// A rider: the car carries it (z follows the car) until it gets off. True = handled
-// this tick (skip normal movement).
-bool ElevatorRiderTick(int moverIdx);
-// The mover's next waypoint is a level change in a shaft: wait for the car (true =
-// waiting, skip movement this tick) or board it.
+// Mover hooks (mover.c movement loop), in this order; true = handled this tick (skip
+// normal movement)
+// A rider: walks into the car, then the car carries it (z follows the car) until it
+// gets off where its path leaves the shaft.
+bool ElevatorRiderTick(int moverIdx, float dt);
+// The path changes level in a shaft a few waypoints ahead and the mover is near it:
+// join the line at the door (first come, first served), step in when the doors open.
+bool ElevatorQueueTick(int moverIdx, float dt);
+// Fallback: the mover stands in the shaft cell with a level change next (it never
+// passed the line): wait there (true) or board.
 bool ElevatorWaitAt(int moverIdx, Point target, int fromZ);
+bool ElevatorCarBoarding(int k);   // a rider is still stepping in: the doors wait
 bool ElevatorMoverAboard(int moverIdx);
 bool ElevatorMoverWaiting(int moverIdx);
 void ElevatorForgetMover(int moverIdx);   // mover removed / teleported

@@ -1892,8 +1892,9 @@ static bool CargoCheck(char* why, int whyLen) {
 
 // elevator: a tower of six floors on open ground. The floors (constructed, no stairs)
 // are reachable only by the elevator shaft in the middle: one car, capacity 4. Movers
-// walk to random goals, half of them on a random floor of the tower, so they wait for
-// the car, ride and get off where their path leaves the shaft.
+// walk to random goals, half of them on a random floor of the tower (up there, most next
+// goals are on the same floor), so they line up at the door, ride, and get off where
+// their path leaves the shaft.
 #define ELEV_TOWER_X0 18
 #define ELEV_TOWER_Y0 8
 #define ELEV_TOWER_W 12
@@ -1903,7 +1904,13 @@ static int elevShaftX, elevShaftY;
 static int elevMaxRiders = 0;
 
 static bool ElevatorGoalPicker(int moverIdx, Point* goal) {
-    (void)moverIdx;
+    int mz = (int)movers[moverIdx].z;
+    if (mz >= 2 && GetRandomValue(0, 99) < 70) {   // up in the tower: mostly stay on this floor a while
+        *goal = (Point){ELEV_TOWER_X0 + GetRandomValue(0, ELEV_TOWER_W - 1),
+                        ELEV_TOWER_Y0 + GetRandomValue(0, ELEV_TOWER_H - 1), mz};
+        if (goal->x == elevShaftX && goal->y == elevShaftY) goal->x++;
+        return true;
+    }
     if (GetRandomValue(0, 1) == 0) {
         *goal = (Point){GetRandomValue(1, gridWidth - 2), GetRandomValue(1, gridHeight - 2), 1};
         if (goal->x >= ELEV_TOWER_X0 && goal->x < ELEV_TOWER_X0 + ELEV_TOWER_W &&

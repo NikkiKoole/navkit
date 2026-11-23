@@ -1728,7 +1728,7 @@ describe(elevator_rides) {
         expect(!ElevatorMoverAboard(0));
     }
 
-    it("the car takes at most its capacity; the others wait for the next trip") {
+    it("the car takes at most its capacity; the others wait in a line at the door for the next trip") {
         SetupTower();
         elevatorCapacity = 2;
         moverCount = 5;
@@ -1736,14 +1736,30 @@ describe(elevator_rides) {
             InitMover(&movers[i], (12 + i) * CELL_SIZE + 16, 5 * CELL_SIZE + 16, 1.0f, (Point){11 + i * 2, 19, 4}, MOVER_SPEED);
             movers[i].needsRepath = true;
         }
-        int most = 0, up = 0;
+        int most = 0, up = 0, maxWaiting = 0;
+        bool overlap = false, waitInShaft = false;
         for (int t = 0; t < 12000 && up < 5; t++) {
             Tick();
             if (elevators[0].riderCount > most) most = elevators[0].riderCount;
+            // the line: waiters stand apart, outside the shaft (once they reached their spot)
+            int waiting = 0;
+            for (int i = 0; i < 5; i++) {
+                if (!ElevatorMoverWaiting(i)) continue;
+                waiting++;
+                float scx = 15 * CELL_SIZE + CELL_SIZE * 0.5f, scy = scx;   // standing in the shaft
+                if (fabsf(movers[i].x - scx) < 4.0f && fabsf(movers[i].y - scy) < 4.0f) waitInShaft = true;
+                for (int j = i + 1; j < 5; j++)
+                    if (ElevatorMoverWaiting(j) && t > 600 && fabsf(movers[i].x - movers[j].x) < 2.0f &&
+                        fabsf(movers[i].y - movers[j].y) < 2.0f && movers[i].z == movers[j].z) overlap = true;
+            }
+            if (waiting > maxWaiting) maxWaiting = waiting;
             up = 0;
             for (int i = 0; i < 5; i++) up += movers[i].z == 4.0f && !ElevatorMoverAboard(i);
         }
         expect(most == 2);
+        expect(maxWaiting >= 3);              // a line formed
+        expect(!overlap);       // one per spot
+        expect(!waitInShaft);   // at the door, not in the shaft
         expect(up == 5);
         expect(elevatorRides == 5);
         elevatorCapacity = 4;

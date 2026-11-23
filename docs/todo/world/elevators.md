@@ -15,18 +15,23 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   finds a shaft with no car). Idle until called; moves at `elevatorSpeed` levels/s, doors open
   `elevatorDoorTime` s at a stop; SCAN: keeps its direction while anyone rides or waits that
   way, then turns.
-- **Movers**: a path that changes level in a shaft makes the mover wait on the shaft cell
-  of its level. It boards when the doors open there, if the car has room (`elevatorCapacity`)
-  and its riders go the same way. Riding, its z follows the car. It gets off at the last
-  shaft waypoint of its path (a new path while aboard sets a new stop).
+- **Movers**: a path that changes level in a shaft (within 8 waypoints, 4 cells of the
+  shaft) makes the mover join the **line at the door** of its level: it starts next to the
+  shaft on the side with the longest straight run of free cells and goes straight out (a
+  second row beside it when longer), first come first served; walkers go around the shaft,
+  not through it. When the doors open, the first in line whose trip goes the car's way steps
+  in, if there is room (`elevatorCapacity`); the doors wait for it. Riding, its z follows
+  the car. It gets off at the last shaft waypoint of its path (a new path while aboard sets
+  a new stop). A coarse path's window that ends at the shaft door is refined right away
+  (`MoverRefillRouteNow`), so the ride is on the path before the mover lines up.
 - **Not saved**: after a load the cars start at the bottom, nobody is aboard, and a mover
   caught between levels is put on the nearest level and re-plans.
 - Scenario `elevator`: a six-floor tower reachable only by its elevator, 16 movers, half of
-  their goals in the tower. One car of 4 is a real bottleneck: ~10 movers wait at any time.
+  their goals in the tower; up there 70% of next goals are on the same floor. One car of 4 is
+  a real bottleneck: 7-13 movers in line at any time (12000 ticks: 106 rides, 331 arrivals).
 
 Left (in order of use):
-1. Waiting line in front of the door (today the waiters stand on the shaft cell, on top of
-   each other): reuse the service-point lines from `ladders.c`.
+1. ~~Waiting line in front of the door~~ done.
 2. Route cost of the wait (`NAV_CLIMB_EXTRA` hook, like ladder queues): today a shaft costs
    the same as a ladder, so a mover never prefers stairs to a busy elevator.
 3. Building shafts in game (blueprint), a proper shaft sprite (today `dark_shade`).

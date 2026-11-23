@@ -1043,6 +1043,15 @@ static void MoverContinueRoute(int i) {
     }
 }
 
+// elevators.c: the window ends at an elevator shaft and the route goes on (the ride is
+// in the next legs): refine them now, so the mover can line up for the car. The new
+// window starts at the shaft cell. False if there is no route to continue.
+bool MoverRefillRouteNow(int i) {
+    if (movers[i].pathLength <= 0 || moverRouteNext[i] >= moverRouteLen[i]) return false;
+    MoverContinueRoute(i);
+    return movers[i].pathIndex >= 0 && !movers[i].needsRepath;
+}
+
 float MoverRouteCellsLeft(int i) {
     const Mover* m = &movers[i];
     if (moverRouteNext[i] >= moverRouteLen[i] || !SameCell(moverRouteGoal[i], m->goal)) return 0.0f;
@@ -1513,7 +1522,8 @@ void UpdateMovers(void) {
         Mover* m = &movers[i];
         moverYielding[i] = false;
         if (!m->active) continue;
-        if (ElevatorRiderTick(i)) continue;   // in an elevator car: it carries the mover
+        if (ElevatorRiderTick(i, dt)) continue;   // in an elevator car: it carries the mover
+        if (ElevatorQueueTick(i, dt)) continue;   // in the line at an elevator door
         
         // Decrement fall timer for visual feedback
         if (m->fallTimer > 0) {

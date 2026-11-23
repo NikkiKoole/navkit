@@ -29,7 +29,10 @@ static unsigned long lastLazyRebuild = 0;
 
 #define ELEV_MAX_LEVELS 256
 
+static bool moverSteppingIn[MAX_MOVERS];   // boarded, still walking from the line into the car
+static void ResetDoors(void);
 static void ForgetMover(int i) {
+    moverSteppingIn[i] = false;
     moverElevState[i] = ELEV_NONE;
     moverElev[i] = -1;
 }
@@ -59,6 +62,7 @@ void RebuildElevators(void) {
     int oldCount = elevatorCount;
     memcpy(old, elevators, sizeof(Elevator) * (size_t)oldCount);
     elevatorCount = 0;
+    ResetDoors();
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
             int z = 0;
@@ -166,6 +170,8 @@ static bool RequestsBeyond(int k, int level, int dir) {
     return false;
 }
 
+bool ElevatorCarBoarding(int k);
+
 static void OpenDoors(Elevator* e, int level) {
     e->z = (float)level;
     e->state = CAR_DOORS;
@@ -192,7 +198,7 @@ void ElevatorsUpdate(float dt) {
         }
         if (e->state == CAR_DOORS) {
             e->timer -= dt * scale;
-            if (e->timer > 0.0f) continue;
+            if (e->timer > 0.0f || ElevatorCarBoarding(k)) continue;   // doors wait for who steps in
             e->state = CAR_IDLE;
         }
         if (e->state == CAR_IDLE) {
@@ -227,17 +233,20 @@ void ElevatorsUpdate(float dt) {
     }
 }
 
-// Last level of the shaft run on the mover's path from its next waypoint on (the level
-// where it gets off); fromZ if the next waypoint isn't in this shaft.
-static int PathShaftDest(int i, const Elevator* e, int fromZ) {
-    const Mover* m = &movers[i];
+// Last level of the shaft run on the mover's path from waypoint `from` on (the level
+// where it gets off); fromZ if that waypoint isn't in this shaft.
+static int PathShaftDestFrom(int i, const Elevator* e, int from, int fromZ) {
     int dest = fromZ;
-    for (int k = m->pathIndex; k >= 0; k--) {
+    for (int k = from; k >= 0; k--) {
         Point p = moverPaths[i][k];
         if (p.x != e->x || p.y != e->y || p.z < e->zMin || p.z > e->zMax) break;
         dest = p.z;
     }
     return dest;
+}
+
+static int PathShaftDest(int i, const Elevator* e, int fromZ) {
+    return PathShaftDestFrom(i, e, movers[i].pathIndex, fromZ);
 }
 
 static void HoldStill(Mover* m) {
@@ -246,53 +255,246 @@ static void HoldStill(Mover* m) {
     m->lastY = m->y;
 }
 
-bool ElevatorWaitAt(int i, Point target, int fromZ) {
-    if (i < 0 || i >= MAX_MOVERS) return false;
-    Mover* m = &movers[i];
-    int k = ElevatorAt(target.x, target.y, fromZ);
+static float WalkPxPerSec(const Mover* m) { return m->speed * (60.0f / dayLength); }
+
+// Step toward (tx, ty) at walking speed; true once there
+static bool StepToward(Mover* m, float tx, float ty, float dt) {
+    float dx = tx - m->x, dy = ty - m->y, d = sqrtf(dx * dx + dy * dy);
+    float step = WalkPxPerSec(m) * dt;
+    if (d <= step || d < 1.0f) { m->x = tx; m->y = ty; return true; }
+    m->x += dx / d * step;
+    m->y += dy / d * step;
+    return false;
+}
+
+static int LazyElevatorAt(int x, int y, int z) {
+    int k = ElevatorAt(x, y, z);
     if (k < 0 && elevTick != lastLazyRebuild) {   // shaft built since the last rebuild
         lastLazyRebuild = elevTick;
         RebuildElevators();
-        k = ElevatorAt(target.x, target.y, fromZ);
+        k = ElevatorAt(x, y, z);
     }
+    return k;
+}
+
+// --- The line at the door -------------------------------------------------------
+// On each level the line starts next to the shaft, on the side with the longest
+// straight run of walkable cells, and goes straight out from there (a second row
+// beside it when it is longer than the run).
+#define ELEV_LINE_MAX_RUN 6
+static signed char doorDir[MAX_ELEVATORS][ELEV_MAX_LEVELS];   // 0..3, -1 none, -2 not computed yet
+static unsigned char doorRun[MAX_ELEVATORS][ELEV_MAX_LEVELS];
+static const int DOOR_DX[4] = {0, 1, 0, -1}, DOOR_DY[4] = {1, 0, -1, 0};   // S first: in front on screen
+
+static void ResetDoors(void) { memset(doorDir, -2, sizeof(doorDir)); }
+
+static bool LineCellOk(int x, int y, int z) {
+    return x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && IsCellWalkableAt(z, y, x) &&
+           !CellIsShaft(GRID(x, y, z));
+}
+
+static int DoorDir(int k, int level, int* run) {
+    if (level < 0 || level >= ELEV_MAX_LEVELS) { *run = 0; return -1; }
+    if (doorDir[k][level] == -2) {
+        const Elevator* e = &elevators[k];
+        int best = -1, bestRun = 0;
+        for (int d = 0; d < 4; d++) {
+            int n = 0;
+            while (n < ELEV_LINE_MAX_RUN && LineCellOk(e->x + DOOR_DX[d] * (n + 1), e->y + DOOR_DY[d] * (n + 1), level)) n++;
+            if (n > bestRun) { bestRun = n; best = d; }
+        }
+        doorDir[k][level] = (signed char)best;
+        doorRun[k][level] = (unsigned char)bestRun;
+    }
+    *run = doorRun[k][level];
+    return doorDir[k][level];
+}
+
+// Where the waiter with this place in the line (0 = front) stands, in pixels
+static void LineSpot(int k, int level, int place, float* px, float* py) {
+    const Elevator* e = &elevators[k];
+    int run, d = DoorDir(k, level, &run);
+    int cx = e->x, cy = e->y;   // no room: wait in the shaft cell (the old way)
+    if (d >= 0 && run > 0) {
+        int col = place % run, row = place / run;
+        cx = e->x + DOOR_DX[d] * (col + 1);
+        cy = e->y + DOOR_DY[d] * (col + 1);
+        if (row > 0) {   // rows beside the first, alternating sides
+            int side = (row % 2) ? 1 : -1, off = (row + 1) / 2;
+            int rx = cx + DOOR_DY[d] * side * off, ry = cy - DOOR_DX[d] * side * off;
+            if (LineCellOk(rx, ry, level)) { cx = rx; cy = ry; }
+        }
+    }
+    *px = cx * CELL_SIZE + CELL_SIZE * 0.5f;
+    *py = cy * CELL_SIZE + CELL_SIZE * 0.5f;
+}
+
+// Walking to its spot, a mover goes around the shaft, not through it: if the straight
+// line passes the shaft's middle, head for the free cell beside the shaft nearest to it.
+static void LineDetour(int k, int level, const Mover* m, float* tx, float* ty) {
+    const Elevator* e = &elevators[k];
+    float cx = e->x * CELL_SIZE + CELL_SIZE * 0.5f, cy = e->y * CELL_SIZE + CELL_SIZE * 0.5f;
+    float dx = *tx - m->x, dy = *ty - m->y, len2 = dx * dx + dy * dy;
+    if (len2 < 1.0f) return;
+    float t = ((cx - m->x) * dx + (cy - m->y) * dy) / len2;
+    if (t <= 0.0f || t >= 1.0f) return;
+    float px = m->x + dx * t - cx, py = m->y + dy * t - cy;
+    if (px * px + py * py > (CELL_SIZE * 0.6f) * (CELL_SIZE * 0.6f)) return;
+    float best = 1e30f;
+    for (int oy = -1; oy <= 1; oy++)
+        for (int ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            if (!LineCellOk(e->x + ox, e->y + oy, level)) continue;
+            float wx = cx + ox * CELL_SIZE, wy = cy + oy * CELL_SIZE;
+            // a side cell: not across the shaft from the mover, closest to the mover
+            if ((wx - cx) * (m->x - cx) + (wy - cy) * (m->y - cy) < 0.0f) continue;
+            float d = (wx - m->x) * (wx - m->x) + (wy - m->y) * (wy - m->y);
+            if (fabsf((float)(ox * dx + oy * dy)) > 0.9f * sqrtf(len2) * sqrtf((float)(ox * ox + oy * oy))) continue;   // in line with the walk
+            if (d < best) { best = d; *tx = wx; *ty = wy; }
+        }
+}
+
+static unsigned long lineOrderNext = 1;
+static unsigned long moverLineOrder[MAX_MOVERS];   // when it joined the line (first come, first served)
+
+static void JoinLine(int i, int k, int fromZ) {
+    if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == fromZ) return;
+    moverElevState[i] = ELEV_WAITING;
+    moverElev[i] = k;
+    moverElevFrom[i] = fromZ;
+    moverLineOrder[i] = lineOrderNext++;
+}
+
+static int PlaceInLine(int i) {
+    int n = 0;
+    for (int j = 0; j < moverCount; j++)
+        if (j != i && moverElevState[j] == ELEV_WAITING && moverElev[j] == moverElev[i] &&
+            moverElevFrom[j] == moverElevFrom[i] && moverLineOrder[j] < moverLineOrder[i]) n++;
+    return n;
+}
+
+// No one ahead in the line who could get on this car now
+static bool FirstToBoard(int i) {
+    const Elevator* e = &elevators[moverElev[i]];
+    for (int j = 0; j < moverCount; j++)
+        if (j != i && moverElevState[j] == ELEV_WAITING && moverElev[j] == moverElev[i] &&
+            moverElevFrom[j] == moverElevFrom[i] && moverLineOrder[j] < moverLineOrder[i] &&
+            CanBoard(e, moverElevFrom[i], moverElevDest[j])) return false;
+    return true;
+}
+
+// The doors are open on the waiter's level, it is first and there is room: get on. Its
+// path continues at the shaft waypoint `shaftWp` (the first level change).
+static bool TryBoard(int i, int shaftWp) {
+    Elevator* e = &elevators[moverElev[i]];
+    int fromZ = moverElevFrom[i];
+    if (e->state != CAR_DOORS || (int)floorf(e->z + 0.5f) != fromZ) return false;
+    if (!CanBoard(e, fromZ, moverElevDest[i]) || !FirstToBoard(i)) return false;
+    e->riders[e->riderCount++] = i;
+    moverElevState[i] = ELEV_RIDING;
+    moverSteppingIn[i] = true;
+    movers[i].pathIndex = shaftWp;
+    elevatorRides++;
+    EventLog("Mover %d boards elevator %d at z%d for z%d", i, moverElev[i], fromZ, moverElevDest[i]);
+    return true;
+}
+
+#define ELEV_LOOKAHEAD 8                       // waypoints scanned for an upcoming shaft
+#define ELEV_JOIN_RADIUS (CELL_SIZE * 4.0f)    // join the line this close to the shaft
+
+bool ElevatorQueueTick(int i, float dt) {
+    if (i < 0 || i >= MAX_MOVERS || moverElevState[i] == ELEV_RIDING) return false;
+    Mover* m = &movers[i];
+    bool waiting = moverElevState[i] == ELEV_WAITING;
+    if (m->z != floorf(m->z) || m->pathIndex < 0) { if (waiting) ForgetMover(i); return false; }
+    int mz = (int)m->z;
+    // The next level change on the path, if it is a shaft on this level
+    int wp = -1;
+    bool levelChange = false;
+    for (int q = m->pathIndex; q >= 0 && q >= m->pathIndex - ELEV_LOOKAHEAD; q--) {
+        Point p = moverPaths[i][q];
+        if (p.z == mz) continue;
+        if (CellIsShaft(GRID(p.x, p.y, p.z)) && CellIsShaft(GRID(p.x, p.y, mz))) wp = q;
+        levelChange = true;
+        break;
+    }
+    // A coarse path's window may end at the shaft door, the ride in the next legs
+    if (wp < 0 && !levelChange && m->pathIndex <= ELEV_LOOKAHEAD) {
+        Point end = moverPaths[i][0];
+        float ex = end.x * CELL_SIZE + CELL_SIZE * 0.5f, ey = end.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        if (end.z == mz && CellIsShaft(GRID(end.x, end.y, mz)) &&
+            fabsf(ex - m->x) <= ELEV_JOIN_RADIUS && fabsf(ey - m->y) <= ELEV_JOIN_RADIUS &&
+            MoverRefillRouteNow(i)) {
+            for (int q = m->pathIndex; q >= 0 && q >= m->pathIndex - ELEV_LOOKAHEAD; q--) {
+                Point p = moverPaths[i][q];
+                if (p.z == mz) continue;
+                if (CellIsShaft(GRID(p.x, p.y, p.z)) && CellIsShaft(GRID(p.x, p.y, mz))) wp = q;
+                break;
+            }
+        }
+    }
+    if (wp < 0) { if (waiting) ForgetMover(i); return false; }
+    Point sp = moverPaths[i][wp];
+    float sx = sp.x * CELL_SIZE + CELL_SIZE * 0.5f, sy = sp.y * CELL_SIZE + CELL_SIZE * 0.5f;
+    if (!waiting && (fabsf(sx - m->x) > ELEV_JOIN_RADIUS || fabsf(sy - m->y) > ELEV_JOIN_RADIUS)) return false;
+    int k = LazyElevatorAt(sp.x, sp.y, mz);
+    if (k < 0) { if (waiting) ForgetMover(i); return false; }
+    int dest = PathShaftDestFrom(i, &elevators[k], wp, mz);
+    if (dest == mz) { if (waiting) ForgetMover(i); return false; }
+    JoinLine(i, k, mz);
+    moverElevDest[i] = dest;
+    moverElevSeen[i] = elevTick;
+    if (!TryBoard(i, wp)) {
+        float tx, ty;
+        LineSpot(k, mz, PlaceInLine(i), &tx, &ty);
+        LineDetour(k, mz, m, &tx, &ty);
+        StepToward(m, tx, ty, dt);
+    }
+    HoldStill(m);
+    return true;
+}
+
+bool ElevatorWaitAt(int i, Point target, int fromZ) {
+    if (i < 0 || i >= MAX_MOVERS) return false;
+    Mover* m = &movers[i];
+    int k = LazyElevatorAt(target.x, target.y, fromZ);
     if (k < 0) return false;
     Elevator* e = &elevators[k];
     int dest = PathShaftDest(i, e, fromZ);
     if (dest == fromZ) return false;
-    if (moverElevState[i] != ELEV_WAITING || moverElev[i] != k || moverElevFrom[i] != fromZ) {
-        moverElevState[i] = ELEV_WAITING;
-        moverElev[i] = k;
-        moverElevFrom[i] = fromZ;
-    }
+    JoinLine(i, k, fromZ);   // reached the shaft without passing the line (spawned there, ...)
     moverElevDest[i] = dest;
     moverElevSeen[i] = elevTick;
     m->x = e->x * CELL_SIZE + CELL_SIZE * 0.5f;
     m->y = e->y * CELL_SIZE + CELL_SIZE * 0.5f;
     m->z = (float)fromZ;
     HoldStill(m);
-    if (e->state == CAR_DOORS && (int)floorf(e->z + 0.5f) == fromZ && CanBoard(e, fromZ, dest)) {
-        e->riders[e->riderCount++] = i;
-        moverElevState[i] = ELEV_RIDING;
-        elevatorRides++;
-        EventLog("Mover %d boards elevator %d at z%d for z%d", i, k, fromZ, dest);
-    }
+    TryBoard(i, m->pathIndex);
+    moverSteppingIn[i] = false;   // already in the shaft cell
     return true;
 }
 
-bool ElevatorRiderTick(int i) {
+bool ElevatorRiderTick(int i, float dt) {
     if (i < 0 || i >= MAX_MOVERS || moverElevState[i] != ELEV_RIDING) return false;
     Mover* m = &movers[i];
     Elevator* e = &elevators[moverElev[i]];
+    float cx = e->x * CELL_SIZE + CELL_SIZE * 0.5f, cy = e->y * CELL_SIZE + CELL_SIZE * 0.5f;
+    HoldStill(m);
+    if (moverSteppingIn[i]) {   // walking from the line into the car (the doors wait)
+        m->z = (float)moverElevFrom[i];
+        if (StepToward(m, cx, cy, dt)) moverSteppingIn[i] = false;
+        HoldStill(m);
+        return true;
+    }
     // A new path while aboard: get off where it leaves the shaft (or at the next level)
     Point next = m->pathIndex >= 0 ? moverPaths[i][m->pathIndex] : (Point){-1, -1, -1};
     if (next.x == e->x && next.y == e->y && next.z >= e->zMin && next.z <= e->zMax) {
         int dest = PathShaftDest(i, e, (int)floorf(e->z + 0.5f));
         if (dest != (int)floorf(e->z + 0.5f) || e->state == CAR_DOORS) moverElevDest[i] = dest;
     }
-    m->x = e->x * CELL_SIZE + CELL_SIZE * 0.5f;
-    m->y = e->y * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->x = cx;
+    m->y = cy;
     m->z = e->z;
-    HoldStill(m);
     int level = (int)floorf(e->z + 0.5f);
     if (e->state != CAR_DOORS || level != moverElevDest[i]) return true;
     // Off: skip the shaft waypoints the ride covered
@@ -302,6 +504,12 @@ bool ElevatorRiderTick(int i) {
     m->timeNearWaypoint = 0.0f;
     ElevatorForgetMover(i);
     return true;
+}
+
+bool ElevatorCarBoarding(int k) {
+    const Elevator* e = &elevators[k];
+    for (int r = 0; r < e->riderCount; r++) if (moverSteppingIn[e->riders[r]]) return true;
+    return false;
 }
 
 bool ElevatorMoverAboard(int i) {
