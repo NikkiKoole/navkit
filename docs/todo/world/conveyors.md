@@ -93,9 +93,10 @@ ordinary stockpile (transfer point), and a belt already takes an unreserved grou
 its own cell, which is what a finished craft is. 12000 ticks: all 30 logs sawn, 120 planks in
 P. With `beltSpeed 0.01` P gets 0 planks: the belt carries them, not the haulers (the output
 belt picks a new stack up before a hauler claims it).
-Found on the way: *linking* a stockpile to a workshop is not enforced by the craft job (it
-fetches from anywhere within the bill's `ingredientSearchRadius`), so the scenarios set that
-radius to 5 cells (reaches the hopper, not pile A). Without it the crafter walked to A itself.
+Found on the way: *linking* a stockpile to a workshop was never enforced (the 2026-02 linking
+doc said it was; the craft job fetched from anywhere). Fixed: `WorkshopTakesInputFrom` gates
+recipe inputs (craft job, passive delivery, the has-input status) to linked stockpiles; fuel
+is not restricted. The hopper is now just a linked stockpile.
 
 Scenario `belt-play` is the hand-built version: same pieces (logs in A, sawmill with an empty
 hopper, empty plank pile P, a store with 60 planks + 30 cordage), no belts, starts in the play

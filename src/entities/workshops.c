@@ -411,6 +411,7 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
         if (!RecipeInputMatches(recipe, item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
+        if (!WorkshopTakesInputFrom(ws, i)) continue;
         int iz = (int)item->z;
         if (iz < ws->z - 1 || iz > ws->z + 1) continue;
 
@@ -427,10 +428,9 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
     // Check containers
     if (recipe->inputItemMatch != ITEM_MATCH_ANY_FUEL) {
         int containerIdx = -1;
-        if (FindItemInContainers(recipe->inputType, ws->z, ws->x, ws->y,
-                                  searchRadius, -1, NULL, NULL, &containerIdx) >= 0) {
-            return true;
-        }
+        int found = FindItemInContainers(recipe->inputType, ws->z, ws->x, ws->y,
+                                         searchRadius, -1, NULL, NULL, &containerIdx);
+        if (found >= 0 && WorkshopTakesInputFrom(ws, found)) return true;
     }
 
     return false;
@@ -528,6 +528,20 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
     }
 
     return bestIdx;
+}
+
+bool WorkshopTakesInputFrom(const Workshop* ws, int itemIdx) {
+    if (ws->linkedInputCount <= 0) return true;
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return false;
+    int root = itemIdx;
+    for (int depth = 0; depth < 16 && items[root].containedIn >= 0; depth++) root = items[root].containedIn;
+    const Item* it = &items[root];
+    if (it->state != ITEM_IN_STOCKPILE) return false;
+    int sp = -1;
+    if (!IsPositionInStockpile(it->x, it->y, (int)it->z, &sp) || sp < 0) return false;
+    for (int i = 0; i < ws->linkedInputCount; i++)
+        if (ws->linkedInputStockpiles[i] == sp) return true;
+    return false;
 }
 
 bool RecipeInputMatches(const Recipe* recipe, const Item* item) {

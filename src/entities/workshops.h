@@ -217,6 +217,10 @@ void PassiveWorkshopsTick(float dt);
 // Recipe lookup
 const Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);
 bool RecipeInputMatches(const Recipe* recipe, const Item* item);
+// Linked input stockpiles: a workshop with links takes recipe inputs only from them (the item,
+// or the container it is in, lies in a linked stockpile). No links: anything (true). Fuel is
+// not restricted.
+bool WorkshopTakesInputFrom(const Workshop* ws, int itemIdx);
 
 // Bill management
 int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount);

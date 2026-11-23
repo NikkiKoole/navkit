@@ -5944,6 +5944,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
             if (item->unreachableCooldown > 0.0f) continue;
             if (!RecipeInputMatches(recipe, item)) continue;
+            if (!WorkshopTakesInputFrom(ws, j)) continue;
 
             int cellX = (int)(item->x / CELL_SIZE);
             int cellY = (int)(item->y / CELL_SIZE);
@@ -5972,6 +5973,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             int moverTileY = (int)(m->y / CELL_SIZE);
             bestItemIdx = FindItemInContainers(recipe->inputType, moverZ, moverTileX, moverTileY,
                                                100, -1, NULL, NULL, &containerIdx);
+            if (bestItemIdx >= 0 && !WorkshopTakesInputFrom(ws, bestItemIdx)) bestItemIdx = -1;
         }
 
         if (bestItemIdx < 0) continue;
@@ -6765,6 +6767,7 @@ int WorkGiver_Craft(int moverIdx) {
                 if (item->reservedBy != -1) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
                 if (item->stackCount < recipe->inputCount) continue;
+                if (!WorkshopTakesInputFrom(ws, i)) continue;
 
                 // Check distance from workshop
                 int itemTileX = (int)(item->x / CELL_SIZE);
@@ -6784,6 +6787,7 @@ int WorkGiver_Craft(int moverIdx) {
                 int containerIdx = -1;
                 itemIdx = FindItemInContainers(recipe->inputType, ws->z, ws->x, ws->y,
                                                searchRadius, -1, NULL, NULL, &containerIdx);
+                if (itemIdx >= 0 && !WorkshopTakesInputFrom(ws, itemIdx)) itemIdx = -1;
             }
 
             if (itemIdx < 0) continue;  // No materials available
@@ -6838,6 +6842,7 @@ int WorkGiver_Craft(int moverIdx) {
                     if (item2->reservedBy != -1) continue;
                     if (item2->unreachableCooldown > 0.0f) continue;
                     if (i == itemIdx) continue;  // Can't use same item as first input
+                    if (!WorkshopTakesInputFrom(ws, i)) continue;
 
                     int item2TileX = (int)(item2->x / CELL_SIZE);
                     int item2TileY = (int)(item2->y / CELL_SIZE);
@@ -6855,6 +6860,7 @@ int WorkGiver_Craft(int moverIdx) {
                     int containerIdx = -1;
                     item2Idx = FindItemInContainers(recipe->inputType2, ws->z, ws->x, ws->y,
                                                     searchRadius, itemIdx, NULL, NULL, &containerIdx);
+                    if (item2Idx >= 0 && !WorkshopTakesInputFrom(ws, item2Idx)) item2Idx = -1;
                 }
 
                 if (item2Idx < 0) continue;  // Second input not available
@@ -6881,6 +6887,7 @@ int WorkGiver_Craft(int moverIdx) {
                     if (item3->unreachableCooldown > 0.0f) continue;
                     if (i == itemIdx) continue;      // Can't use same item as first input
                     if (i == item2Idx) continue;     // Can't use same item as second input
+                    if (!WorkshopTakesInputFrom(ws, i)) continue;
 
                     int item3TileX = (int)(item3->x / CELL_SIZE);
                     int item3TileY = (int)(item3->y / CELL_SIZE);
@@ -6900,6 +6907,7 @@ int WorkGiver_Craft(int moverIdx) {
                                                     searchRadius, itemIdx, NULL, NULL, &containerIdx);
                     // Also exclude item2Idx
                     if (item3Idx == item2Idx) item3Idx = -1;
+                    if (item3Idx >= 0 && !WorkshopTakesInputFrom(ws, item3Idx)) item3Idx = -1;
                 }
 
                 if (item3Idx < 0) continue;  // Third input not available

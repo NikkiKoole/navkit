@@ -85,6 +85,10 @@ Allows players to link specific stockpiles to workshops, restricting ingredient 
 - All reachable stockpiles are candidates
 
 ### With Links
+
+(Enforced only since 2026-11-23: until then the craft job ignored links. `WorkshopTakesInputFrom`
+in workshops.c; recipe inputs only, not fuel.)
+
 - Workshop ONLY searches linked stockpiles for ingredients
 - If linked stockpiles have no matching items, bill can't run
 - Items in other stockpiles are ignored even if closer

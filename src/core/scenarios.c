@@ -2082,11 +2082,8 @@ static void SetupBeltWorkshop(void) {
     // Sawmill 3x3 at (20,8): "#O#" / ".X." / "#.." -> output (21,8), work (21,9)
     int ws = CreateWorkshop(20, 8, 1, WORKSHOP_SAWMILL);
     if (ws >= 0) {
-        int bill = AddBill(ws, 0, BILL_DO_FOREVER, 0);   // Saw Planks: 1 log -> 4 planks
-        // The crafter takes logs from the hopper only: a linked stockpile is not enforced by
-        // the craft job (only drawn), the bill's search radius is (5 cells reaches H, not A)
-        if (bill >= 0) workshops[ws].bills[bill].ingredientSearchRadius = 5;
-        LinkStockpileToWorkshop(ws, spH);
+        AddBill(ws, 0, BILL_DO_FOREVER, 0);         // Saw Planks: 1 log -> 4 planks
+        LinkStockpileToWorkshop(ws, spH);           // the crafter takes logs from the hopper only
     }
     BeltRun(7, 9, 17, 9, BELT_E);                   // A -> hopper (drops on (18,9))
     BeltRun(21, 8, 21, 6, BELT_N);                  // output tile north
@@ -2162,9 +2159,8 @@ static void SetupBeltPlay(void) {
     // Sawmill 3x3 at (22,8): output tile (23,8), work tile (23,9); saws only from the hopper
     int ws = CreateWorkshop(22, 8, 1, WORKSHOP_SAWMILL);
     if (ws >= 0) {
-        int bill = AddBill(ws, 0, BILL_DO_FOREVER, 0);
-        if (bill >= 0) workshops[ws].bills[bill].ingredientSearchRadius = 5;   // hopper, not A
-        LinkStockpileToWorkshop(ws, spH);
+        AddBill(ws, 0, BILL_DO_FOREVER, 0);
+        LinkStockpileToWorkshop(ws, spH);           // logs from the hopper only, not from A
     }
     SpawnMoverAt(10, 13, 1);
     SpawnMoverAt(12, 13, 1);

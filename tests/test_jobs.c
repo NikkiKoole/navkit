@@ -14708,6 +14708,68 @@ describe(construction_cancellation) {
     }
 }
 
+describe(workshop_linked_inputs) {
+    // Shared setup: sawmill at (8,1) with Saw Planks, a planks pile at (0,0), a loose log
+    // close to the sawmill at (8,6), a log pile L far east at (16,6) holding one log,
+    // crafter at (9,7). Returns L.
+    #define LINKED_SETUP(logInPile) \
+        InitGridFromAsciiWithChunkSize( \
+            "....................\n" "....................\n" "....................\n" \
+            "....................\n" "....................\n" "....................\n" \
+            "....................\n" "....................\n" "....................\n" \
+            "....................\n", 20, 10); \
+        moverPathAlgorithm = PATH_ALGO_ASTAR; \
+        ClearMovers(); ClearItems(); ClearStockpiles(); ClearWorkshops(); ClearJobs(); \
+        int wsIdx = CreateWorkshop(8, 1, 0, WORKSHOP_SAWMILL); \
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0); \
+        int out = CreateStockpile(0, 0, 0, 2, 2); \
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(out, (ItemType)t, t == ITEM_PLANKS); \
+        int pile = CreateStockpile(16, 6, 0, 2, 2); \
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(pile, (ItemType)t, t == ITEM_LOG); \
+        int nearLog = SpawnItemWithMaterial(CELL_SIZE * 8.5f, CELL_SIZE * 6.5f, 0.0f, ITEM_LOG, MAT_OAK); \
+        int pileLog = -1; \
+        if (logInPile) { \
+            pileLog = SpawnItemWithMaterial(CELL_SIZE * 16.5f, CELL_SIZE * 6.5f, 0.0f, ITEM_LOG, MAT_OAK); \
+            PlaceItemInStockpile(pile, 16, 6, pileLog); \
+        } \
+        Mover* m = &movers[0]; \
+        Point goal = {9, 7, 0}; \
+        InitMover(m, CELL_SIZE * 9.5f, CELL_SIZE * 7.5f, 0.0f, goal, 200.0f); \
+        moverCount = 1; \
+        (void)nearLog; (void)pileLog;
+
+    it("takes inputs only from a linked stockpile, even when a loose log is closer") {
+        LINKED_SETUP(true)
+        expect(LinkStockpileToWorkshop(wsIdx, pile));
+        RebuildIdleMoverList();
+        AssignJobs();
+        expect(m->currentJobId >= 0);
+        Job* job = GetJob(m->currentJobId);
+        expect(job && job->type == JOBTYPE_CRAFT);
+        expect(job && job->targetItem == pileLog);   // before: the closer loose log
+    }
+
+    it("has no craft job when the linked stockpile is empty") {
+        LINKED_SETUP(false)
+        expect(LinkStockpileToWorkshop(wsIdx, pile));
+        RebuildIdleMoverList();
+        AssignJobs();
+        bool crafting = m->currentJobId >= 0 && GetJob(m->currentJobId)->type == JOBTYPE_CRAFT;
+        expect(!crafting);
+    }
+
+    it("takes the closest input from anywhere without links") {
+        LINKED_SETUP(true)
+        RebuildIdleMoverList();
+        AssignJobs();
+        expect(m->currentJobId >= 0);
+        Job* job = GetJob(m->currentJobId);
+        expect(job && job->type == JOBTYPE_CRAFT);
+        expect(job && job->targetItem == nearLog);
+    }
+    #undef LINKED_SETUP
+}
+
 describe(table_construction) {
     it("a table blueprint takes 3 planks and becomes a table of their wood") {
         InitTestGridFromAscii(
@@ -14997,6 +15059,7 @@ int main(int argc, char* argv[]) {
     // Distance against priority in job assignment
     test(job_distance_weighting);
     test(table_construction);
+    test(workshop_linked_inputs);
     
     return summary();
 }
