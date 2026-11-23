@@ -102,6 +102,29 @@ int TideLevelAt(float gameHours) {
     return low + (int)lroundf(high * (float)(WATER_MAX_LEVEL - low));
 }
 
+int TidePrepareShore(void) {
+    int z = tideSeaZ;
+    if (z < 1 || z + 1 >= gridDepth) return 0;
+    static const int DX[4] = {0, 1, 0, -1}, DY[4] = {-1, 0, 1, 0};   // rising N, E, S, W
+    static const CellType RAMP[4] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
+    int placed = 0;
+    for (int y = 1; y < gridHeight - 1; y++)
+        for (int x = 1; x < gridWidth - 1; x++) {
+            if (GRID(x, y, z) != CELL_WALL || GRID(x, y, z + 1) != CELL_AIR) continue;
+            for (int d = 0; d < 4; d++) {
+                int sx = x - DX[d], sy = y - DY[d];       // low side: a flat
+                int ex = x + DX[d], ey = y + DY[d];       // high side: land at the beach level
+                if (!WATER(sx, sy, z).isSea || GRID(sx, sy, z) != CELL_AIR) continue;
+                if (!CellIsSolid(GRID(sx, sy, z - 1))) continue;
+                if (!CellIsSolid(GRID(ex, ey, z)) || GRID(ex, ey, z + 1) != CELL_AIR) continue;
+                GRID(x, y, z) = RAMP[d];
+                placed++;
+                break;
+            }
+        }
+    return placed;
+}
+
 void TideTick(void) {
     if (!tideEnabled || tideSeaZ < 0 || tideSeaCells == 0) return;
     // The world was replaced under us (scenario reset, load): forget the sea

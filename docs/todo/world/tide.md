@@ -101,6 +101,25 @@ Not yet:
 movers walking on in water deeper than wading depth (they were already on their way); a route
 cost for cells the tide will close; the island (its shore has no ramps down to z 3 flats).
 
+## On the island (scenario `tide-island`)
+
+The island already has flats: the shallowest sea floor band (`h` in [-1, 0) off the coast) has its
+top one level under the sea surface (z 2 under z 3). The beach is one level higher, so
+`TidePrepareShore` turns land cells at the sea's level between a flat and land into ramps rising
+from the flat (a beach is a slope); `island_gen.c` is untouched (the island without tide is the
+same). Seed 3, 256, 2000 ticks, 100 wandering movers:
+
+- 37,533 sea cells on z 3, 861 shore ramps; 7,692 cells walkable at low tide (a quarter of the
+  island's dry ground appears twice a day)
+- up to 6 movers out on the flats at once, up to 5 caught in deep water; none stuck
+- tide step 0.8 ms (max 2.2), 14 per tide; average tick unchanged (1.17 vs 1.13 ms, water
+  0.45 vs 0.47)
+- **spikes**: when the whole sea crosses wading depth in one step, every coastal chunk is
+  rebuilt at once: HPA up to 28 ms and lighting up to 18 ms in that tick, twice per tide. Fix
+  later: spread the crossing over ticks (cells change in bands) or budget chunk rebuilds.
+
+Not yet: the island game itself (`--game island` has no tide), food on the flats, dikes.
+
 ## Open questions
 
 - Range: one level (flats only) or two (a real intertidal zone)?

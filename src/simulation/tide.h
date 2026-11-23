@@ -23,6 +23,10 @@ int TideMarkSea(int z);
 void ClearTide(void);             // forget the sea (bits stay in the water layer until it is cleared)
 void TideAfterLoad(void);         // rebuild the sea list from the loaded isSea bits (keeps the settings)
 int TideLevelAt(float gameHours); // the level the tide wants at that time
+// Ramps from the flats up to the land: a land cell whose solid top is the sea's level, with a
+// flat (sea cell over solid floor) on one side and land on the other, becomes a ramp rising
+// from the flat (the beach as a slope). Call after TideMarkSea, then rebuild the nav graph.
+int TidePrepareShore(void);
 void TideTick(void);              // called from UpdateWater
 
 #endif

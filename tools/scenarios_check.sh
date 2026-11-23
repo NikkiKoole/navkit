@@ -56,6 +56,7 @@ done <<'EOF'
 17  | 0 | --scenario belt-workshop
 0   | 0 | --scenario belt-play
 16  | 0 | --scenario tide
+260 | 0 | --scenario tide-island
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo

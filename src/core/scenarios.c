@@ -2476,12 +2476,12 @@ static void TideTickStats(void) {
         const Mover* m = &movers[i];
         if (!m->active) continue;
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
-        if (z == 2 && x > TIDE_LAND_X && !TideIsIslet(x, y)) onFlats++;
+        if (z == tideSeaZ && WATER(x, y, z).isSea) onFlats++;
         if (GetWaterLevel(x, y, z) >= WATER_BLOCKS_MOVEMENT) deep++;
     }
     if (getenv("TIDE_TRACE") && currentTick % 100 == 0) {   // experiment trace
-        printf("t%5lld lvl %d |", (long long)currentTick, tideLevel);
-        for (int i = 0; i < moverCount; i++) {
+        printf("t%5lld lvl %d flats %d deep %d |", (long long)currentTick, tideLevel, onFlats, deep);
+        for (int i = 0; i < moverCount && i < 8; i++) {
             const Mover* m = &movers[i];
             int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
             const Job* j = m->currentJobId >= 0 ? GetJob(m->currentJobId) : NULL;
@@ -2494,10 +2494,10 @@ static void TideTickStats(void) {
     tideMoverTicksDeep += deep;
     if (deep > tideMaxDeep) tideMaxDeep = deep;
     if (tideLevel < tideMinLevel) tideMinLevel = tideLevel;
-    if (tideLevel == tideLowLevel && tideMaxDryFlats == 0) {
+    if (tideLevel == tideLowLevel && tideMaxDryFlats == 0 && tideSeaZ >= 0) {
         for (int y = 0; y < gridHeight; y++)
-            for (int x = TIDE_LAND_X + 1; x < gridWidth; x++)
-                if (GRID(x, y, 2) == CELL_AIR && IsCellWalkableAt(2, y, x)) tideMaxDryFlats++;
+            for (int x = 0; x < gridWidth; x++)
+                if (WATER(x, y, tideSeaZ).isSea && IsCellWalkableAt(tideSeaZ, y, x)) tideMaxDryFlats++;
     }
 }
 
@@ -2513,13 +2513,40 @@ static void TidePrintStats(void) {
            tideSeaCells, tideSeaZ, tideLevel, tideMinLevel, tideSteps, tideLastStepMs, tideMaxStepMs);
     printf("Flats walkable at low tide: %d cells; movers on the flats: max %d at once, %ld mover-ticks\n",
            tideMaxDryFlats, tideMaxOnFlats, tideFlatsMoverTicks);
-    printf("Movers in deep water: max %d at once, %d mover-ticks; logs on land %d of %d\n",
-           tideMaxDeep, tideMoverTicksDeep, TideLogsOnLand(), tideLogsAtStart);
+    printf("Movers in deep water: max %d at once, %d mover-ticks", tideMaxDeep, tideMoverTicksDeep);
+    if (tideLogsAtStart > 0) printf("; logs on land %d of %d", TideLogsOnLand(), tideLogsAtStart);
+    printf("\n");
 }
 
 static bool TideCheck(char* why, int whyLen) {
     if (tideSteps < 7) { snprintf(why, (size_t)whyLen, "tide moved %d steps (want >= 7)", tideSteps); return false; }
     return true;
+}
+
+// tide-island: the island (scenarioSize, seed) with the tide on its sea. The shallowest sea
+// floor band is one level under the surface: those cells fall dry at low tide. The beach is one
+// level higher, so TidePrepareShore turns its edge into ramps down to the flats. 100 wandering
+// movers (endless mode): some wander out at low tide.
+static int tideIslandRamps = 0;
+static void SetupTideIsland(void) {
+    SetupWorld();
+    int sea = TideMarkSea(waterEdgeSeaZ);
+    tideIslandRamps = TidePrepareShore();
+    BuildEntrances();
+    BuildGraph();
+    tideEnabled = true;
+    tideLowLevel = 0;
+    tideMaxOnFlats = tideMoverTicksDeep = tideMaxDeep = tideMaxDryFlats = 0;
+    tideFlatsMoverTicks = 0;
+    tideMinLevel = WATER_MAX_LEVEL;
+    tideLogsAtStart = 0;
+    AddMessage(TextFormat("Tide island: %d sea cells at z%d, %d shore ramps", sea, tideSeaZ, tideIslandRamps), GREEN);
+}
+
+static void TideIslandPrintStats(void) {
+    printf("Shore ramps: %d\n", tideIslandRamps);
+    TidePrintStats();
+    DryGroundPrintStats();
 }
 
 static const Scenario scenarios[] = {
@@ -2585,6 +2612,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",
                    NULL,        SetupTide, TideTickStats, TidePrintStats, TideCheck, 64, 40},
+    {"tide-island", "The island with the tide on its sea: flats fall dry, ramps from the beach down, 100 wandering movers; scenarioSize sets the map",
+                   "Island",    SetupTideIsland, TideTickStats, TideIslandPrintStats, TideCheck, 256, 256},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
