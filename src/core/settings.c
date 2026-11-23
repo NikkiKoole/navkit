@@ -251,6 +251,8 @@ static const Setting settings[] = {
       "Water at the map edge trades with what lies beyond it: above waterEdgeSeaZ it flows off the map, below it the edge fills up. Generated worlds turn it on."),
     SET_INT("waterEdgeSeaZ", "Sea Beyond Edge (z)", "Simulation/Water", waterEdgeSeaZ, 0.1f, -1, 63,
       "Height of the sea beyond the map edge (-1 = none: all edge water flows off). The island sets its sea level.", NULL),
+    SET_FLOAT("waterFlowHalfLife", "Current half-life (ticks)", "Simulation/Water", waterFlowHalfLife, 10.0f, 10.0f, 3600.0f,
+      "Water ticks for the remembered current (water flow overlay) to fade to half. Longer = steadier arrows, slower to show a change.", NULL),
     SET_BOOL("tide", "Tide", "Simulation/Water", tideEnabled,
       "The sea's top level rises and falls (experiment, docs/todo/world/tide.md). Needs a marked sea: the tide scenario."),
     SET_FLOAT("tidePeriod", "Tide period (h)", "Simulation/Water", tidePeriodHours, 0.5f, 1.0f, 48.0f,
@@ -684,6 +686,8 @@ static const Setting settings[] = {
       "Mark simulation source cells on the current z-level."),
     SET_BOOL("tempOverlay", "Temperature", "Rendering & Debug/Debug/Overlays", showTemperatureOverlay,
       "Color cells by temperature."),
+    SET_BOOL("flowOverlay", "Water Flow", "Rendering & Debug/Debug/Overlays", showWaterFlow,
+      "Arrows showing which way water has been moving (the current) on the current z-level and the one below. Zoomed out, an arrow sums a block of cells."),
 };
 #undef SET_BOOL
 #undef SET_BOOL_HOOK

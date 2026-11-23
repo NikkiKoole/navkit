@@ -111,6 +111,23 @@ void UpdateWaterFreezing(void);                        // Check temps and freeze
 // Mark cell and neighbors as unstable (needs processing)
 void DestabilizeWater(int x, int y, int z);
 
+// Water flow (current): which way water has been moving through a cell lately. Bookkeeping
+// only, the sim doesn't read it. Every unit that moves sideways (spreading, a pressure push
+// along its whole path, the map edge) adds its direction to the cells it leaves and enters;
+// the sum fades with a half-life of waterFlowHalfLife water ticks (lazily, on read and write).
+// Sparse: only chunks where water has moved get a block. Not saved (rebuilds in seconds).
+typedef struct {
+    int16_t fx, fy;      // summed direction, WATER_FLOW_SCALE per unit moved
+    uint32_t tick;       // waterFlowTick when fx, fy were last decayed
+} WaterFlowCell;
+#define WATER_FLOW_SCALE 64
+extern SparseLayer waterFlowLayer;
+extern float waterFlowHalfLife;   // water ticks for the current to fade to half
+extern uint32_t waterFlowTick;    // counts UpdateWater calls
+// Current at a cell in units moved per half-life (decayed to now). false = no current there.
+bool GetWaterFlow(int x, int y, int z, float* fx, float* fy);
+void ClearWaterFlow(void);
+
 // Displace water from a cell (push to neighbors/up, then clear)
 // Call before placing a wall or other fluid-blocking structure
 void DisplaceWater(int x, int y, int z);

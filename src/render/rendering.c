@@ -3721,3 +3721,48 @@ static void DrawFrontView(void) {
     PROFILE_END(FrontView);
 }
 
+
+// Water flow overlay (setting flowOverlay): an arrow per cell pointing the way water has been
+// moving (GetWaterFlow), on the view level or the one below (where the water you see lies).
+// Zoomed out, one arrow sums a block of cells. Length and brightness grow with the current.
+void DrawWaterFlow(void) {
+    if (!showWaterFlow) return;
+    float size = CELL_SIZE * zoom;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    int step = size >= 10.0f ? 1 : (int)ceilf(10.0f / size);
+    int z0 = currentViewZ, z1 = currentViewZ - 1;
+    for (int by = minY - minY % step; by < maxY; by += step) {
+        for (int bx = minX - minX % step; bx < maxX; bx += step) {
+            float sx = 0.0f, sy = 0.0f;
+            int n = 0;
+            for (int y = by; y < by + step && y < gridHeight; y++) {
+                for (int x = bx; x < bx + step && x < gridWidth; x++) {
+                    if (x < 0 || y < 0) continue;
+                    float fx, fy;
+                    if (GetWaterFlow(x, y, z0, &fx, &fy) || (z1 >= 0 && GetWaterFlow(x, y, z1, &fx, &fy))) {
+                        sx += fx; sy += fy; n++;
+                    }
+                }
+            }
+            if (n == 0) continue;
+            sx /= n; sy /= n;
+            float m = sqrtf(sx * sx + sy * sy);
+            if (m < 0.05f) continue;
+            float t = log2f(1.0f + m) / log2f(1.0f + 32.0f);   // 0..1, saturates at 32 units per half-life
+            if (t > 1.0f) t = 1.0f;
+            float cell = size * step;
+            float len = cell * (0.25f + 0.6f * t);
+            float ux = sx / m, uy = sy / m;
+            float cx = offset.x + (bx + step * 0.5f) * size, cy = offset.y + (by + step * 0.5f) * size;
+            Vector2 a = {cx - ux * len * 0.5f, cy - uy * len * 0.5f};
+            Vector2 b = {cx + ux * len * 0.5f, cy + uy * len * 0.5f};
+            Color c = {(unsigned char)(60 + 195 * t), (unsigned char)(200 + 55 * t), 255, (unsigned char)(140 + 115 * t)};
+            float w = cell >= 16.0f ? 2.0f : 1.0f;
+            DrawLineEx(a, b, w, c);
+            float h = len * 0.35f;   // arrow head
+            DrawLineEx(b, (Vector2){b.x - (ux - uy * 0.6f) * h, b.y - (uy + ux * 0.6f) * h}, w, c);
+            DrawLineEx(b, (Vector2){b.x - (ux + uy * 0.6f) * h, b.y - (uy - ux * 0.6f) * h}, w, c);
+        }
+    }
+}

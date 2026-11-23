@@ -159,6 +159,7 @@ bool sectionSmoke = false;
 bool sectionSteam = false;
 bool sectionTemperature = false;
 bool showTemperatureOverlay = false;
+bool showWaterFlow = false;
 bool sectionEntropy = false;
 bool sectionTrees = false;
 bool sectionMoverWalls = false;
@@ -782,6 +783,7 @@ void DrawSmoke(void);
 void DrawSteam(void);
 void DrawTemperature(void);
 void DrawSimSources(void);
+void DrawWaterFlow(void);
 void DrawChunkBoundaries(void);
 void DrawEntrances(void);
 void DrawGraph(void);
@@ -1527,7 +1529,16 @@ int main(int argc, char** argv) {
     }
     if (screenshotPath) {
         SetTargetFPS(0);   // time real frames, not the 60 fps cap
+        // --screenshot-ticks N: run N sim ticks first (to show what the sim builds up: currents,
+        // smoke, ...); then paused as usual
+        for (int i = 1; i + 1 < argc; i++) {
+            if (strcmp(argv[i], "--screenshot-ticks") != 0) continue;
+            int n = atoi(argv[i + 1]);
+            for (int t = 0; t < n; t++) SimStep(TICK_DT);
+            if (n > 0) ApplyExecArgs(argc, argv);   // the view settings again (the game may have moved the camera)
+        }
         paused = true;
+        followMoverIdx = -1;   // a fixed view: games that follow a settler would move it
         UpdateLighting();   // normally computed by the first sim tick, which never runs paused
         offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
@@ -1791,6 +1802,7 @@ int main(int argc, char** argv) {
         DrawTemperature();
         WorldBatchEnd();
         DrawSimSources();
+        DrawWaterFlow();
         PROFILE_END(DrawCells);
         if (inputAction == ACTION_WORK_GATHER) {
             DrawGatherZones();

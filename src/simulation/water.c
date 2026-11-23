@@ -41,11 +41,62 @@ typedef struct {
 } WaterPos;
 
 static WaterPos pressureQueue[WATER_PRESSURE_SEARCH_LIMIT];
+static int pressureParent[WATER_PRESSURE_SEARCH_LIMIT];   // queue index it was reached from, -1 = the start cell
 
 // Generation-based visited tracking (avoids expensive memset each call)
 uint16_t* pressureVisitedGen = NULL;   // per-cell scratch layer (allocated in grid_layers.c)
 #define WATER_PRESSURE_VISITED(x, y, z) (pressureVisitedGen CELL_AT((x), (y), (z)))
 static uint16_t currentPressureGen = 0;
+
+// ---- Water flow (current), see water.h ----
+float waterFlowHalfLife = 120.0f;
+uint32_t waterFlowTick = 0;
+
+// Fraction of a flow value left after `ticks` water ticks
+static inline float WaterFlowFade(uint32_t ticks) {
+    if (ticks == 0) return 1.0f;
+    float hl = waterFlowHalfLife > 1.0f ? waterFlowHalfLife : 1.0f;
+    if ((float)ticks > hl * 16.0f) return 0.0f;
+    return exp2f(-(float)ticks / hl);
+}
+
+// One unit of water moved (dx, dy) through this cell
+static void WaterFlowAdd(int x, int y, int z, int dx, int dy) {
+    if (dx == 0 && dy == 0) return;
+    WaterFlowCell* f = (WaterFlowCell*)SparseLayerWrite(&waterFlowLayer, x, y, z);
+    float fade = WaterFlowFade(waterFlowTick - f->tick);
+    float fx = f->fx * fade + dx * WATER_FLOW_SCALE;
+    float fy = f->fy * fade + dy * WATER_FLOW_SCALE;
+    if (fx > 32767.0f) fx = 32767.0f; else if (fx < -32767.0f) fx = -32767.0f;
+    if (fy > 32767.0f) fy = 32767.0f; else if (fy < -32767.0f) fy = -32767.0f;
+    f->fx = (int16_t)fx;
+    f->fy = (int16_t)fy;
+    f->tick = waterFlowTick;
+}
+
+// Water moved one unit from (x, y, z) to the neighbour (nx, ny, nz): both cells carry it
+static inline void WaterFlowMove(int x, int y, int z, int nx, int ny, int nz) {
+    int dx = nx - x, dy = ny - y;
+    if (dx == 0 && dy == 0) return;
+    WaterFlowAdd(x, y, z, dx, dy);
+    WaterFlowAdd(nx, ny, nz, dx, dy);
+}
+
+bool GetWaterFlow(int x, int y, int z, float* fx, float* fy) {
+    *fx = *fy = 0.0f;
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    const WaterFlowCell* f = (const WaterFlowCell*)SparseLayerRead(&waterFlowLayer, x, y, z);
+    if (f->fx == 0 && f->fy == 0) return false;
+    float fade = WaterFlowFade(waterFlowTick - f->tick) / WATER_FLOW_SCALE;
+    *fx = f->fx * fade;
+    *fy = f->fy * fade;
+    return *fx != 0.0f || *fy != 0.0f;
+}
+
+void ClearWaterFlow(void) {
+    SparseLayerClear(&waterFlowLayer);
+    waterFlowTick = 0;
+}
 
 // Initialize water system
 void InitWater(void) {
@@ -58,6 +109,7 @@ void ClearWater(void) {
     // WaterCell is a uint16_t bitfield: stable is bit 3, so value 0x0008.
     // Every cell empty and stable (the layer's empty value): drop all blocks
     SparseLayerClear(&waterLayer);
+    ClearWaterFlow();
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
     wetnessSyncAccum = 0.0f;
@@ -413,6 +465,7 @@ static bool WaterTrySpread(int x, int y, int z) {
             neighbor->pressureDirty = 1;
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
+            WaterFlowMove(x, y, z, nx, ny, z);
             moved = true;
             
             // Stop if we're now at level 1
@@ -433,6 +486,7 @@ static bool WaterTrySpread(int x, int y, int z) {
             neighbor->pressureDirty = 1;
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
+            WaterFlowMove(x, y, z, nx, ny, z);
             moved = true;
             
             // Only give to one neighbor when diff=1 to prevent oscillation
@@ -485,6 +539,7 @@ static bool TryPressure(int x, int y, int z) {
         if (WATER_PRESSURE_VISITED(nx, ny, nz) == currentPressureGen) continue;
         
         WATER_PRESSURE_VISITED(nx, ny, nz) = currentPressureGen;
+        pressureParent[queueTail] = -1;
         pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
         
         if (queueTail >= WATER_PRESSURE_SEARCH_LIMIT) break;
@@ -523,6 +578,14 @@ static bool TryPressure(int x, int y, int z) {
                 current->pressureDirty = 1;
                 DestabilizeWater(x, y, z);
                 DestabilizeWater(pos.x, pos.y, pos.z);
+
+                // The unit went from the start cell through full water to here: every step of
+                // that path carries the current (sideways steps only, WaterFlowMove skips dz)
+                for (int k = queueHead - 1; k >= 0; k = pressureParent[k]) {
+                    WaterPos to = pressureQueue[k];
+                    WaterPos from = pressureParent[k] < 0 ? (WaterPos){x, y, z} : pressureQueue[pressureParent[k]];
+                    WaterFlowMove(from.x, from.y, from.z, to.x, to.y, to.z);
+                }
                 
                 // Clear pressure if we're no longer full
                 if (cell->level < WATER_MAX_LEVEL) {
@@ -547,6 +610,7 @@ static bool TryPressure(int x, int y, int z) {
                 WATER_PRESSURE_VISITED(nx, ny, nz) = currentPressureGen;
                 
                 if (queueTail < WATER_PRESSURE_SEARCH_LIMIT) {
+                    pressureParent[queueTail] = queueHead - 1;
                     pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
                 }
             }
@@ -572,6 +636,10 @@ static bool WaterEdgeExchange(int x, int y, int z) {
     int level = WATER(x, y, z).level, beyond = WaterEdgeLevel(z);
     if (level == beyond || (level < beyond && !CanHoldWater(x, y, z))) return false;
     SetWaterLevel(x, y, z, level > beyond ? level - 1 : level + 1);
+    // The current at the edge points off the map (outflow) or onto it (filling up)
+    int ox = x == 0 ? -1 : x == gridWidth - 1 ? 1 : 0, oy = y == 0 ? -1 : y == gridHeight - 1 ? 1 : 0;
+    if (level < beyond) { ox = -ox; oy = -oy; }
+    WaterFlowAdd(x, y, z, ox, oy);
     return true;
 }
 
@@ -702,6 +770,7 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
 // Falling sand style: bottom-to-top, single buffer, randomized spread
 void UpdateWater(void) {
     if (!waterEnabled) return;
+    waterFlowTick++;
     TideTick();
     
     // Early exit: no water activity at all

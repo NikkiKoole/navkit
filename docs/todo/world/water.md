@@ -38,6 +38,24 @@ cells are processed per tick, scanning bottom to top.
   `test_water` "should not freeze the sea", `test_snow` under water / on ice. Open: freezing is
   still instant (a lake is walkable ice hours after the first frost).
 
+- **Water flow (current) layer + overlay** (bookkeeping only, the sim doesn't read it): every
+  unit that moves sideways (spreading, a pressure push along its whole search path, the map edge)
+  adds its direction to the cells it leaves and enters; the sum fades with `waterFlowHalfLife`
+  water ticks (lazily). `GetWaterFlow(x, y, z, &fx, &fy)`, sparse layer `waterFlowLayer`, not
+  saved. Overlay: setting `flowOverlay` (dev UI Overlays "Water Flow"), arrows on the view level
+  and the one below. Cost on the 256 island: ~0.03 ms/tick (1.02 -> 1.05), ~3 MB. Screenshot
+  with a built-up current: `--game island --seed 1 --exec reveal --exec "set flowOverlay 1"
+  --exec "set viewZ 5" --exec "set zoom 0.25" --look-at 128,128 --screenshot-ticks 3600
+  --screenshot f.png` (`--screenshot-ticks N` runs N ticks first; screenshots no longer follow a
+  settler).
+  **What it showed:** with the 4096 cap the island's rivers have no current at all. The cap is
+  hit every tick (5,800 never-settling shallow cells on z4 plus the river mouths at z3), and the
+  scan runs bottom to top, so nothing above z4 gets a turn: after 3600 ticks, 4,689 cells with
+  flow, all on z3/z4. With the cap at 65536 for a test: 17,820 cells, ~31k updates/tick, and
+  clean currents (the central valley drains south then west to the sea, the coasts flow out to
+  the edge), but the tick goes 1.12 -> 2.04 ms. So "fair update order" (open item 2) is what
+  rivers need before a current can mean anything, and the shallow churn on z4 is worth a look.
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.
@@ -48,7 +66,8 @@ source with no way out floods until it finds one. Every source needs an outlet.
    today refills to 7 every visit: unlimited flow. A spring could add a little per tick instead,
    and water standing on soil could soak away slowly (ties into the wetness/mud layer), so a
    spring-fed pond settles where inflow = soaking + evaporation. Rain balance belongs here too.
-2. **Fair update order** (measure first, at 1024 islands). The 4096 cap with a fixed bottom-to-top
+2. **Fair update order** (measured 2026-11-23 with the flow overlay: on the 256 island the cap
+   starves every river above z4, see "Water flow" above; still measure at 1024). The 4096 cap with a fixed bottom-to-top
    scan starves cells late in the order whenever more than 4096 are active; the island still hits
    the cap after settling (5-11k cells active: real river flow). An active-cell list processed in
    rotation would give every cell its turn.

@@ -79,8 +79,10 @@ SparseLayer smokeLayer = { NULL, 0, sizeof(SmokeCell), zeroElem, 0, "smoke" };
 SparseLayer steamLayer = { NULL, 0, sizeof(SteamCell), zeroElem, 0, "steam" };
 SparseLayer farmLayer  = { NULL, 0, sizeof(FarmCell),  zeroElem, 0, "farm" };
 
+SparseLayer waterFlowLayer = { NULL, 0, sizeof(WaterFlowCell), zeroElem, 0, "waterFlow" };
+
 static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer, &fireLayer, &smokeLayer,
-                                             &steamLayer, &farmLayer };
+                                             &steamLayer, &farmLayer, &waterFlowLayer };
 #define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
 
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {

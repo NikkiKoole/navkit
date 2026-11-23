@@ -772,6 +772,7 @@ bool LoadWorld(const char* filename) {
     
     // Water grid
     SparseLayerClear(&waterLayer);   // sparse: load writes only non-empty cells
+    ClearWaterFlow();                 // the current is not saved: it rebuilds as water moves
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             LOAD_ROW_SPARSE(f, waterLayer, WATER_MUT, y, z);
