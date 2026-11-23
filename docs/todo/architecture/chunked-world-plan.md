@@ -621,6 +621,16 @@ way" per mover until it moves, a cell's walkability changes, or 10 s pass. From 
 3000 ticks, clean builds: Jobs 1.0 -> 0.14 ms per tick, ticks over 5 ms 215 -> 5, worst 94 -> 16 ms.
 Still open: one-way pockets themselves (settlers can strand themselves; regions can't see them).
 
+**Water 4-5x faster (2026-11-23):** a full cell on top of full water re-marked the cell below
+as under pressure on every visit (`TryFall`), waking it and its neighbours: full lakes and the
+sea never came to rest, every tick spent the whole 4096-update budget, and the cells late in
+scan order were starved (real flow slowed down). Now written only when the pressure height
+differs. Day-3 save, clean builds: Water 2.0-2.9 -> 0.4-0.55 ms per tick, ticks over 5 ms
+120-276 -> 1-3; fresh 512 world 2.7 -> 0.75 ms. Still at the cap: about 3,000 cells stay active
+because the rivers pour into a sea with no outlet and a thin sheet keeps spreading over it
+(also: survival springs keep flooding). Not a speed bug; seas/springs need an outlet or a
+"full" state.
+
 *Retracted:* the first measurement here said Jobs 7.3 ms per tick (worst 458 ms). That binary
 was built from the shared main tree while other sessions had uncommitted changes in it, so it
 did not match any commit and does not reproduce. Measure only from a clean build (a worktree at
