@@ -21,6 +21,7 @@ extern double tideLastStepMs, tideMaxStepMs;
 // Mark the sea: water cells at level z, connected to the map edge. Returns the cell count.
 int TideMarkSea(int z);
 void ClearTide(void);             // forget the sea (bits stay in the water layer until it is cleared)
+void TideAfterLoad(void);         // rebuild the sea list from the loaded isSea bits (keeps the settings)
 int TideLevelAt(float gameHours); // the level the tide wants at that time
 void TideTick(void);              // called from UpdateWater
 

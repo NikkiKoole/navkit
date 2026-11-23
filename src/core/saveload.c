@@ -10,6 +10,7 @@ void RebuildPostLoadState(void);
 #include "../entities/belts.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
+#include "../simulation/tide.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/trees.h"
@@ -567,6 +568,10 @@ bool SaveWorld(const char* filename) {
     // v101+: map-edge water
     fwrite(&waterEdgeOutflow, sizeof(bool), 1, f);
     fwrite(&waterEdgeSeaZ, sizeof(int), 1, f);
+    // v102+: tide
+    fwrite(&tideEnabled, sizeof(bool), 1, f);
+    fwrite(&tidePeriodHours, sizeof(float), 1, f);
+    fwrite(&tideLowLevel, sizeof(int), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1490,6 +1495,16 @@ bool LoadWorld(const char* filename) {
                     SetWaterSource(x, y, z, false);
                 }
     }
+    if (version >= V102_TIDE) {
+        fread(&tideEnabled, sizeof(bool), 1, f);
+        fread(&tidePeriodHours, sizeof(float), 1, f);
+        fread(&tideLowLevel, sizeof(int), 1, f);
+    } else {
+        tideEnabled = false;
+        tidePeriodHours = 12.42f;
+        tideLowLevel = 0;
+    }
+    TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 
     RecalcBalanceTable();
 

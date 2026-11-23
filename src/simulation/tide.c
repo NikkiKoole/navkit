@@ -80,6 +80,21 @@ int TideMarkSea(int z) {
     return tideSeaCells;
 }
 
+void TideAfterLoad(void) {
+    tideSeaCells = 0;
+    tideSeaZ = -1;
+    tideSteps = 0;
+    tideLastStepMs = tideMaxStepMs = 0.0;
+    for (int z = 0; z < gridDepth && tideSeaZ < 0; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (WATER(x, y, z).isSea) {
+                    if (tideSeaZ < 0) tideSeaZ = z;
+                    SeaPush(x, y);
+                }
+    tideLevel = tideSeaCells > 0 ? WATER(seaCells[0].x, seaCells[0].y, tideSeaZ).level : WATER_MAX_LEVEL;
+}
+
 int TideLevelAt(float gameHours) {
     float period = tidePeriodHours > 0.1f ? tidePeriodHours : 0.1f;
     float high = 0.5f + 0.5f * cosf(2.0f * 3.14159265f * gameHours / period);   // 1 = high water

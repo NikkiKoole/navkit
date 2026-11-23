@@ -69,6 +69,19 @@ describe(tide) {
         tidePeriodHours = 12.42f;
     }
 
+    it("finds its sea again after a load (the isSea bits in the water cells)") {
+        TideTestWorld();
+        int marked = TideMarkSea(2);
+        tideSeaCells = 0; tideSeaZ = -1;       // as after loading: the list is gone, the bits are not
+        TideAfterLoad();
+        expect(tideSeaCells == marked);
+        expect(tideSeaZ == 2);
+        expect(tideLevel == WATER_MAX_LEVEL);
+        ClearWater();
+        TideAfterLoad();                       // a save without a sea
+        expect(tideSeaCells == 0 && tideSeaZ == -1);
+    }
+
     it("does nothing when off") {
         TideTestWorld();
         TideMarkSea(2);

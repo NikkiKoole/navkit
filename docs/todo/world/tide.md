@@ -94,7 +94,10 @@ What happened with no mover logic added (3000 ticks):
 Going out at low tide, getting cut off, waiting for the next low tide: emergent. 1639 sea
 cells, a tide step 0.03 ms (max 0.1); 14 steps per tide. 6 of 12 logs on land after 6000 ticks.
 
-Not yet: the sea list after loading a save (the tide stops: `TideTick` finds the list stale);
+Saved since v102 (settings after the v101 water-edge fields; the sea rides in the water cells'
+`isSea` bit, `TideAfterLoad` rebuilds the list). Checked: a save at tick 1500 loaded and run on
+has the flats dry at 2000 and flooded at 2800, like an unbroken run; a v101 save loads (no tide).
+Not yet:
 movers walking on in water deeper than wading depth (they were already on their way); a route
 cost for cells the tide will close; the island (its shore has no ramps down to z 3 flats).
 

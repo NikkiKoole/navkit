@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 101
+#define CURRENT_SAVE_VERSION 102
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -58,6 +58,10 @@
 // waterEdgeSeaZ int). Older saves: outflow on, sea height from the edge sources the island
 // used to place (none: -1).
 #define V101_WATER_EDGE 101
+// v102: tide settings after the v101 water-edge fields (tideEnabled bool, tidePeriodHours
+// float, tideLowLevel int). The sea itself rides in the water cells (WaterCell.isSea, a bit
+// that was spare: 0 in older saves). Older saves: no tide.
+#define V102_TIDE 102
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
