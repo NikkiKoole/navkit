@@ -1,8 +1,20 @@
 # Tide (getij)
 
-**Status: spike running** (2026-11-23). Range one level, no dikes yet (defaults, open below). Started from a brainstorm on sea, beach
-and surf ("branding"); the user picked tide: "interesting gameplay, emergent behaviors". Surf
-(foam drawing, wash-up items) is a cheap side idea, kept at the end.
+**Status: partial, parked** (2026-11-23: "tide is done for now"). The tide, the tide wave, surf as
+real water (flats at low tide, beach at high tide), save/load (v102) and the island game option
+(`islandTide`, off by default) are in; next steps below. Started from a brainstorm on sea, beach
+and surf ("branding"); the user picked tide: "interesting gameplay, emergent behaviors".
+
+## Next (when picked up again)
+
+1. **Food on the flats**: cockles, mussels, worms to gather at low tide, so going out is a
+   choice with a risk (the water comes back). The suggested first step.
+2. **Dikes**: walls that keep the sea out of a low area (a polder); storm surge later (weather).
+3. **`islandTide` on by default** in the island game (the user's call).
+4. Movers stay naive about the tide (user: "pretty good as is"); only add a route cost for cells
+   that flood soon if play shows a need.
+5. Loose ends: the wave settings (`tideWave*`, `tideSurf*`, `tideBeachReach`) aren't saved; the
+   island's shore ramps come from `TidePrepareShore`, not the generator (island_gen.c untouched).
 
 ## The idea
 
