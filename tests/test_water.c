@@ -1225,6 +1225,7 @@ describe(water_rest) {
         // pressure, which is no news. (It used to re-mark it and wake it every visit, so
         // full lakes and seas never came to rest.)
         WATER_MUT(2, 1, 2).stable = false;
+        WaterWakeAll();   // written behind DestabilizeWater's back: let the scan look everywhere
         UpdateWater();
         expect(WATER(2, 1, 1).stable);
         expect(WATER(2, 1, 2).stable);

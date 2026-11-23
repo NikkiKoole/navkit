@@ -67,15 +67,33 @@ cells are processed per tick, scanning bottom to top.
   highest). Test `test_water` pressure height: now a real pressure test (wall across the top).
   Cost of fairness: with ~25k unstable cells and 4096 updates a tick, a cell gets a turn about
   every 6 ticks, so water moves slower than real time; less churn would help (next item).
-- **Churn (parked, branch `water-churn-experiment`, ca3ffe80):** most unstable cells on the island
-  are a level-1 film over the lowlands (24k cells uncapped) that may never rest ("keep it
-  unstable for evaporation"), plus 2|1 pairs swapping forever. Tried: level-1 may rest with
-  evaporation as a sweep every waterEvapInterval (also fixes: puddles past the cap never
-  evaporated), and one-level steps only when the unit can keep going (receiver has a lower
-  neighbour, or momentum: the giver's current points that way). Unstable z4 ~6-7k -> 1.6k, but
-  the cap was still hit (water that was stuck now moves) and survival water cost more. A plain
-  local "lower neighbour" rule left terraces (staircase test); a bounded search fixed that but
-  cost 2.5x. Retry on top of fair order, judged by the flow overlay.
+- **Less churn** (2026-11-24, on top of fair order; first tried alone on branch
+  `water-churn-experiment`, ca3ffe80, superseded): most unstable island cells were a level-1 film
+  over the lowlands that could never rest ("keep it unstable for evaporation") and 2|1 pairs
+  swapping forever.
+  - Level-1 water may rest; evaporation is a sweep every `waterEvapInterval` (`WaterEvaporateSweep`;
+    also fixes: puddles past the update cap never evaporated).
+  - A one-level step moves only when the unit can keep going (`WaterStepCarries`): the receiver
+    has a lower neighbour, or the giver's current points that way (momentum from the flow layer).
+    Terraces still flatten (the staircase test now ends 3 3 3 3 3 4 4 4 4 4: the momentum sloshes
+    the water to the far end), a bump on a flat sheet runs on to an edge or a wall and rests.
+    Tried first: a local lower-neighbour rule (left terraces), a bounded plateau search (2.5x cost).
+  - **Run bits** (`waterRunBits`): one bit per 16-cell run of the scan, set by every wake, cleared
+    when the run is found idle; the scan skips sleeping runs (island: 30,000 runs read per tick ->
+    1,500). Woken all on clear, on load (`WaterWakeAll`) and every 256 water ticks as a safety
+    net for wakes that bypass `DestabilizeWater`.
+  - **Water depth tells the pathfinder** (`WaterDepthChanged`): every level write that crosses
+    wading depth is reported (only the tide and freezing did; ordinary flow left the nav graph
+    stale: in the tide scenario settlers waited on the islet for a path that was open). Batched:
+    flowing water crosses ~180 times a tick in survival (river cells flicker 3 <-> 4); the first
+    crossing in a window remembers what nav knew, and every 60 water ticks only cells whose state
+    really differs are reported (HPA 0.92 -> 0.03-0.07 ms/tick).
+  Results against fair order alone (min of 4 runs, 12k ticks): island unstable ~25k -> ~5.9k (a
+  cell's turn every ~1.4 ticks instead of ~6), tick 1.20 -> 1.33 ms, water 0.39 -> 0.48; survival
+  tick 0.92 -> 1.01 ms, water back to 2.3-3.6k cells (fair alone: 3.9-4.9k). Flow overlay: stronger,
+  cleaner currents. Open: island lowland water still grows slowly (z4 22.6k -> 31k cells over
+  36k ticks, slowing) and freezing costs ~0.6 ms with that much water (`GetTemperature` calls
+  `sinf` per cell).
 
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
@@ -87,8 +105,8 @@ source with no way out floods until it finds one. Every source needs an outlet.
    today refills to 7 every visit: unlimited flow. A spring could add a little per tick instead,
    and water standing on soil could soak away slowly (ties into the wetness/mud layer), so a
    spring-fed pond settles where inflow = soaking + evaporation. Rain balance belongs here too.
-2. ~~**Fair update order**~~ done 2026-11-23 (see Done). Next: less churn (parked branch), then
-   threads (checkerboard chunks; the pressure search crosses chunks) if water still binds at 1024+.
+2. ~~**Fair update order**~~ and ~~**less churn**~~ done (see Done). Threads (checkerboard chunks;
+   the pressure search crosses chunks) only if water still binds at 1024+.
 3. **Old saves:** hills-water saves made before f444e432 keep their old rivers (sources along the
    river, inland ends): they still flood slowly. New worlds only.
 4. **Inspector mismatch:** `--inspect --cell` says "Walkable: YES" for cells in deep water (or on a

@@ -110,6 +110,7 @@ void UpdateWaterFreezing(void);                        // Check temps and freeze
 
 // Mark cell and neighbors as unstable (needs processing)
 void DestabilizeWater(int x, int y, int z);
+void WaterWakeAll(void);   // every cell gets looked at on the next tick (after a load)
 
 // Water flow (current): which way water has been moving through a cell lately. Bookkeeping
 // only, the sim doesn't read it. Every unit that moves sideways (spreading, a pressure push
