@@ -2222,6 +2222,15 @@ void GenerateHillsSoilsWater(void) {
                 }
             }
 
+            // The mouth is on the map edge itself: the river runs off the map there (edge water
+            // flows off, waterEdgeOutflow) instead of ending in a low spot it floods
+            switch (endEdge) {
+                case 0: endY = 0; break;
+                case 1: endY = gridHeight - 1; break;
+                case 2: endX = 0; break;
+                default: endX = gridWidth - 1; break;
+            }
+
             // --- Midpoint displacement to build control points ---
             // Start with 2 endpoints, subdivide 4 times
             #define MAX_RIVER_CTRL 33  // 2 + up to 31 from 4 levels of subdivision
@@ -2344,13 +2353,18 @@ void GenerateHillsSoilsWater(void) {
             for (int i = 0; i < pathLen; i++) {
                 int cx = (int)(pathX[i] + 0.5f);
                 int cy = (int)(pathY[i] + 0.5f);
-                if (cx < 1 || cx >= gridWidth - 1 || cy < 1 || cy >= gridHeight - 1) continue;
+                if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
 
                 // Width grows from 1 to baseWidth along the path
                 float progress = (float)i / (float)(pathLen - 1);
                 int radius = 1 + (int)(progress * (baseWidth - 1) + 0.5f);
                 if (radius < 1) radius = 1;
                 if (radius > baseWidth) radius = baseWidth;
+                // The map's border cells stay, except one at the mouth: the outlet where the river
+                // leaves the map (carving the frame along the way ate small maps whole)
+                bool mouth = (i == pathLen - 1);
+                bool centerOnFrame = cx == 0 || cy == 0 || cx == gridWidth - 1 || cy == gridHeight - 1;
+                if (centerOnFrame && !mouth) continue;
 
                 // Find local terrain height at center
                 int terrainH = heightmap[cy * gridWidth + cx];
@@ -2363,10 +2377,9 @@ void GenerateHillsSoilsWater(void) {
                 } else if (targetBed <= runningBed) {
                     // Terrain goes down — follow it down freely
                     runningBed = targetBed;
-                } else {
-                    // Terrain rises — smooth over bumps, only rise slowly
-                    runningBed = runningBed * 0.9f + targetBed * 0.1f;
                 }
+                // Terrain rises: the bed doesn't (the river cuts through), so the water runs
+                // all the way to the mouth instead of pooling behind a rise
                 int bedZ = (int)(runningBed + 0.5f);
                 if (bedZ < 0) bedZ = 0;
                 // Never carve above local terrain
@@ -2379,7 +2392,9 @@ void GenerateHillsSoilsWater(void) {
                         if (dx * dx + dy * dy > radius * radius) continue;
                         int nx = cx + dx;
                         int ny = cy + dy;
-                        if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        bool onFrame = nx == 0 || ny == 0 || nx == gridWidth - 1 || ny == gridHeight - 1;
+                        if (onFrame && !(mouth && dx == 0 && dy == 0)) continue;
 
                         int nidx = ny * gridWidth + nx;
                         int currentHeight = heightmap[nidx];
@@ -2409,10 +2424,19 @@ void GenerateHillsSoilsWater(void) {
                     }
                 }
 
-                // Place water sources along the river to keep it filled
+                // Place water sources along the river to keep it filled, only where the banks
+                // hold the water: next to lower ground a source spilled over the land forever
                 if (i % 8 == 0) {
                     int sourceWaterZ = bedZ + 1;
-                    if (sourceWaterZ < gridDepth) {
+                    bool banksHold = true;
+                    for (int dy = -radius - 1; dy <= radius + 1 && banksHold; dy++)
+                        for (int dx = -radius - 1; dx <= radius + 1; dx++) {
+                            int bx = cx + dx, by = cy + dy;
+                            if (bx < 0 || by < 0 || bx >= gridWidth || by >= gridHeight) continue;
+                            if (riverMask[by * gridWidth + bx]) continue;      // the channel itself
+                            if (heightmap[by * gridWidth + bx] < sourceWaterZ) { banksHold = false; break; }
+                        }
+                    if (banksHold && sourceWaterZ < gridDepth) {
                         SetWaterSource(cx, cy, sourceWaterZ, true);
                         SetWaterLevel(cx, cy, sourceWaterZ, WATER_MAX_LEVEL);
                     }
@@ -2481,9 +2505,8 @@ void GenerateHillsSoilsWater(void) {
             }
         }
 
-        if (lakeSurfaceZ < gridDepth) {
-            SetWaterSource(centerX, centerY, lakeSurfaceZ, true);
-        }
+        // No source: a lake is a fixed body of water (it may spill once where its rim is low,
+        // then rests). A source at its centre refilled it forever, an endless flood downhill
     }
 
     // --------------------------------------------------------------------
