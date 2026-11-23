@@ -300,6 +300,15 @@ static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, 
     return fromLowSide || fromHighSide;
 }
 
+// A step between two cells on the same level: onto a ramp and off a ramp only along
+// its length (low side / high side), never sideways. Checking only the cell stepped onto
+// made a ramp a one-way door: a mover could step off it sideways but not back on, and
+// a survival settler walked into a hollow it could never leave (seed 2, died of thirst).
+static inline bool CanStepAcrossRamps(int fromX, int fromY, int toX, int toY, int z) {
+    return CanEnterRampFromSide(toX, toY, z, fromX, fromY) &&
+           CanEnterRampFromSide(fromX, fromY, z, toX, toY);
+}
+
 // Find if there's a ramp adjacent to (x,y,z) that points TO this cell
 // Used for detecting ramp exits - the ramp itself is one cell away
 // Returns true if found, and optionally sets outRampX/outRampY to the ramp's position

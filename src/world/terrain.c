@@ -454,7 +454,7 @@ static bool CanStepTo(int fromX, int fromY, int fromZ, int toX, int toY, int toZ
     if (!IsCellWalkableAt(toZ, toY, toX)) return false;
 
     if (toZ == fromZ) {
-        return CanEnterRampFromSide(toX, toY, toZ, fromX, fromY);
+        return CanStepAcrossRamps(fromX, fromY, toX, toY, toZ);
     }
 
     if (toX != fromX || toY != fromY) {

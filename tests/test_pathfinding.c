@@ -2698,6 +2698,41 @@ describe(hpa_ramp_pathfinding) {
         int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
         expect(astarLen > 0);
     }
+
+    it("a ramp is no one-way door: no stepping off it sideways into a hollow") {
+        // Survival seed 2: the settler climbed onto a ramp from its low side and stepped
+        // off it sideways into a hollow. Stepping back on sideways is not allowed, so it
+        // could never leave and died of thirst. Now neither way is a step.
+        //
+        // z0:  . . E #      E = ramp up to the east (high side (3,1) at z1)
+        //      # # H #      H = the hollow (2,2), its only neighbour is the ramp's side
+        const char* map =
+            "floor:0\n"
+            "######\n"
+            "..E###\n"
+            "##.###\n"
+            "######\n"
+            "######\n"
+            "######\n"
+            "floor:1\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n";
+        InitMultiFloorGridFromAscii(map, 6, 6);
+        BuildEntrances();
+        BuildGraph();
+        Point out[MAX_PATH];
+        Point outside = {0, 1, 0}, hollow = {2, 2, 0}, rampTop = {3, 1, 1};
+        expect(FindPath(PATH_ALGO_ASTAR, outside, rampTop, out, MAX_PATH) > 0);   // the ramp works
+        int in  = FindPath(PATH_ALGO_ASTAR, outside, hollow, out, MAX_PATH);
+        int back = FindPath(PATH_ALGO_ASTAR, hollow, outside, out, MAX_PATH);
+        expect(back == 0);
+        expect(in == 0);   // was > 0: in, but never out again
+        expect(FindPath(PATH_ALGO_HPA, outside, hollow, out, MAX_PATH) == 0);
+    }
 }
 
 // ============== FLOW FIELD (nav library) VS A* ==============
