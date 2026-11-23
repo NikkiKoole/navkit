@@ -30,6 +30,7 @@ bool elevatorDirectionalPickup = true;
 static float waitSamples[ELEV_SAMPLES], rideSamples[ELEV_SAMPLES];
 static int waitFloor[ELEV_SAMPLES], rideFloors[ELEV_SAMPLES];
 static int waitSampleCount = 0, rideSampleCount = 0;
+static int lineJoins = 0, lineLeaves = 0;   // joined a line; left one without boarding
 static double moverRideStart[MAX_MOVERS];
 static int moverRideFromZ[MAX_MOVERS];
 double elevatorWaitSum = 0.0;
@@ -75,6 +76,7 @@ void ClearElevators(void) {
     elevatorRides = 0;
     elevatorWaitSum = 0.0; elevatorWaitMax = 0.0f; elevatorWaitCount = 0; elevatorDetours = 0;
     waitSampleCount = rideSampleCount = 0;
+    lineJoins = lineLeaves = 0;
     ClearMoverState();
 }
 
@@ -395,6 +397,7 @@ static void JoinLine(int i, int k, int fromZ) {
     moverElevState[i] = ELEV_WAITING;
     moverElev[i] = k;
     moverElevFrom[i] = fromZ;
+    lineJoins++;
     moverLineOrder[i] = lineOrderNext++;
     moverLineWait[i] = 0.0f;
 }
@@ -480,7 +483,7 @@ bool ElevatorQueueTick(int i, float dt) {
             }
         }
     }
-    if (wp < 0) { if (waiting) ForgetMover(i); return false; }
+    if (wp < 0) { if (waiting) { lineLeaves++; ForgetMover(i); } return false; }
     Point sp = moverPaths[i][wp];
     float sx = sp.x * CELL_SIZE + CELL_SIZE * 0.5f, sy = sp.y * CELL_SIZE + CELL_SIZE * 0.5f;
     if (!waiting && (fabsf(sx - m->x) > ELEV_JOIN_RADIUS || fabsf(sy - m->y) > ELEV_JOIN_RADIUS)) return false;
@@ -599,7 +602,7 @@ int ElevatorBoardCost(int x, int y, int z) {
     if (k < 0) return 0;
     const Elevator* e = &elevators[k];
     float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
-    float wait = elevatorDoorTime;
+    float wait = 2.0f * elevatorDoorTime;   // the doors where it gets on, and where it gets off
     if (useElevatorWaitCost) {
         int line = 0;
         float longest = 0.0f;   // the longest anyone in this line has waited so far
@@ -618,11 +621,27 @@ int ElevatorBoardCost(int x, int y, int z) {
     return SecondsToCost(wait);
 }
 
+// Chance that the car stops at a given level of its ride for someone else: the people
+// it carries or will pick up (riders + everyone in its lines), spread over the shaft's
+// levels, at most 1. Each such stop costs a door cycle.
+static float StopChancePerLevel(int k) {
+    const Elevator* e = &elevators[k];
+    int people = e->riderCount;
+    for (int i = 0; i < moverCount; i++)
+        if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k) people++;
+    int levels = e->zMax - e->zMin;
+    if (levels < 1) levels = 1;
+    float p = (float)people / (float)levels;
+    return p > 1.0f ? 1.0f : p;
+}
+
 int ElevatorExtraCost(int x, int y, int z, int dz) {
     int k = ElevatorAt(x, y, z);
     if (k < 0 || ElevatorAt(x, y, z + dz) != k) return 0;
     float speed = elevatorSpeed > 0.05f ? elevatorSpeed : 0.05f;
-    int extra = SecondsToCost(1.0f / speed) - 10;   // one cell is already charged
+    float sec = 1.0f / speed;
+    if (useElevatorWaitCost) sec += StopChancePerLevel(k) * elevatorDoorTime;   // stops on the way
+    int extra = SecondsToCost(sec) - 10;   // one cell is already charged
     return extra > 0 ? extra : 0;
 }
 
@@ -758,6 +777,8 @@ void ElevatorPrintWaitStats(void) {
     float walkCellsPerSec = (balance.baseMoverSpeed > 0.0f ? balance.baseMoverSpeed : 200.0f)
                             * (60.0f / dayLength) / (float)CELL_SIZE;
     printf("Time scale: a game hour is %.1f s; a mover walks %.1f cells in it\n", hourSec, walkCellsPerSec * hourSec);
+    printf("Lines: %d joined, %d boarded, %d left after re-planning (walked to the shaft for nothing)\n",
+           lineJoins, waitSampleCount, lineLeaves);
     const char* names[2] = {"wait in line", "ride"};
     for (int which = 0; which < 2; which++) {
         int n = which ? rideSampleCount : waitSampleCount;

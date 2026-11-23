@@ -2097,6 +2097,14 @@ static int esRide[4], esStair[4];          // by floors: 1-2, 3-5, 6-8, 9-10
 static int esRun[MAX_MOVERS], esStill[MAX_MOVERS];
 static float esPrevZ[MAX_MOVERS];
 static int esPrevRides;
+// Whole trips (goal picked -> goal reached): time by how they went and how far
+static Point esTripGoal[MAX_MOVERS];
+static double esTripStart[MAX_MOVERS];
+static int esTripFromZ[MAX_MOVERS];
+static bool esTripRode[MAX_MOVERS];
+static double esTripSec[2][12];
+static int esTripN[2][12];
+
 static bool esAboard[MAX_MOVERS];
 static int esBoardZ[MAX_MOVERS];
 
@@ -2133,6 +2141,9 @@ static void SetupElevatorStairs(void) {
     moverGoalPicker = ElevStairsGoalPicker;
     memset(esRide, 0, sizeof(esRide)); memset(esStair, 0, sizeof(esStair));
     memset(esRun, 0, sizeof(esRun)); memset(esStill, 0, sizeof(esStill)); memset(esAboard, 0, sizeof(esAboard));
+    memset(esTripSec, 0, sizeof(esTripSec)); memset(esTripN, 0, sizeof(esTripN));
+    memset(esTripStart, 0, sizeof(esTripStart)); memset(esTripRode, 0, sizeof(esTripRode));
+    for (int i = 0; i < MAX_MOVERS; i++) esTripGoal[i] = (Point){-1, -1, -1};
     for (int i = 0; i < MAX_MOVERS; i++) esPrevZ[i] = 1.0f;
     esPrevRides = 0;
     int n = scenarioMovers > 0 ? scenarioMovers : 15;
@@ -2145,6 +2156,18 @@ static void ElevatorStairsTick(void) {
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         if (!m->active) continue;
+        if (!PointsEqual(m->goal, esTripGoal[i])) {   // a new goal: the last trip ended
+            int floors = abs(esTripGoal[i].z - esTripFromZ[i]);
+            if (esTripStart[i] > 0.0 && floors < 12) {
+                esTripSec[esTripRode[i]][floors] += gameTime - esTripStart[i];
+                esTripN[esTripRode[i]][floors]++;
+            }
+            esTripGoal[i] = m->goal;
+            esTripStart[i] = gameTime;
+            esTripFromZ[i] = (int)floorf(m->z + 0.5f);
+            esTripRode[i] = false;
+        }
+        if (ElevatorMoverAboard(i)) esTripRode[i] = true;
         int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
         bool inShaft = cx == ES_SX && cy == ES_SY;
         if (m->z == floorf(m->z) && m->z != esPrevZ[i]) {
@@ -2170,6 +2193,15 @@ static void ElevatorStairsPrintStats(void) {
     printf("Elevator: %d boardings, wait in line avg %.1f s\n", elevatorRides,
            elevatorWaitCount > 0 ? elevatorWaitSum / elevatorWaitCount : 0.0);
     ElevatorPrintWaitStats();
+    printf("Trip time (s) by floors:");
+    for (int f = 0; f <= 10; f++) printf(" %4d", f);
+    printf("\n  by stairs/walk:       ");
+    for (int f = 0; f <= 10; f++) printf(" %4.1f", esTripN[0][f] ? esTripSec[0][f] / esTripN[0][f] : 0.0);
+    printf("\n  with a ride:          ");
+    for (int f = 0; f <= 10; f++) printf(" %4.1f", esTripN[1][f] ? esTripSec[1][f] / esTripN[1][f] : 0.0);
+    printf("\n  rides counted:        ");
+    for (int f = 0; f <= 10; f++) printf(" %4d", esTripN[1][f]);
+    printf("\n");
 }
 
 static bool ElevatorStairsCheck(char* why, int whyLen) {
