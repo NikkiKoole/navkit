@@ -166,6 +166,34 @@ void SetWaterLevel(int x, int y, int z, int level) {
     }
 }
 
+void SetSeaLevel(int x, int y, int z, int level) {
+    if (!WaterInBounds(x, y, z)) return;
+    if (level < 0) level = 0;
+    if (level > WATER_MAX_LEVEL) level = WATER_MAX_LEVEL;
+    WaterCell* c = &WATER_MUT(x, y, z);
+    int oldLevel = c->level;
+    if (oldLevel == level) return;
+    bool wasActive = oldLevel > 0 || c->isSource || c->isDrain;
+    c->level = (uint8_t)level;
+    bool isActive = level > 0 || c->isSource || c->isDrain;
+    if (!wasActive && isActive) waterActiveCells++;
+    else if (wasActive && !isActive) waterActiveCells--;
+    c->pressureDirty = 1;
+    bool spill = false;
+    static const int ndx[6] = {-1, 1, 0, 0, 0, 0}, ndy[6] = {0, 0, -1, 1, 0, 0}, ndz[6] = {0, 0, 0, 0, -1, 1};
+    for (int i = 0; i < 6; i++) {
+        int nx = x + ndx[i], ny = y + ndy[i], nz = z + ndz[i];
+        if (!WaterInBounds(nx, ny, nz)) continue;
+        const WaterCell* n = &WATER(nx, ny, nz);
+        if (n->isSea) continue;
+        if (n->level > 0) WATER_MUT(nx, ny, nz).stable = false;
+        // An empty or lower non-sea neighbour it could flow into (a pool behind the beach, a
+        // ramp at high tide, a hole below): the sea cell itself must run to spread into it
+        if (nz <= z && n->level < level && CanHoldWater(nx, ny, nz)) spill = true;
+    }
+    c->stable = !spill;
+}
+
 // Add water to a cell
 void AddWater(int x, int y, int z, int amount) {
     if (!WaterInBounds(x, y, z)) return;
@@ -554,9 +582,11 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     bool moved = false;
 
     // The sea follows the tide: back to its level (what flowed in or out is the sea's)
-    if (cell->isSea && tideEnabled && cell->level != TideCellLevel(x, y)) {
-        SetWaterLevel(x, y, z, TideCellLevel(x, y));
-        moved = true;
+    if (cell->isSea && tideEnabled) {
+        int lo, hi;
+        TideCellRange(x, y, &lo, &hi);   // tide level .. tide + surf
+        int l = cell->level, want = l < lo ? lo : l > hi ? hi : l;
+        if (want != l) { SetSeaLevel(x, y, z, want); moved = true; }
     }
     
     // Handle sources - refill to max and add pressure

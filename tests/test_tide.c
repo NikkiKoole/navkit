@@ -82,6 +82,30 @@ describe(tide) {
         expect(tideSeaCells == 0 && tideSeaZ == -1);
     }
 
+    it("sets a sea cell without waking the sea around it; the surf range stays below wading depth") {
+        TideTestWorld();
+        TideMarkSea(2);
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) WATER_MUT(x, y, 2).stable = true;
+        SetSeaLevel(10, 3, 2, 3);
+        expect(WATER(10, 3, 2).level == 3);
+        expect(WATER(11, 3, 2).stable);          // sea neighbour: still asleep
+        expect(WATER(10, 4, 2).stable);
+        tideEnabled = true;
+        tideSurf = true;
+        tideSurfHeight = 3;
+        timeOfDay = 6.0f; dayNumber = 0;          // low tide
+        tidePeriodHours = 12.0f;
+        TideSettle();
+        int lo, hi;
+        TideCellRange(10, 3, &lo, &hi);
+        expect(lo == 0);
+        expect(hi < WATER_BLOCKS_MOVEMENT);     // the surf never changes who can walk there
+        tideSurfHeight = 2;
+        ClearTide();
+        tidePeriodHours = 12.42f;
+    }
+
     it("does nothing when off") {
         TideTestWorld();
         TideMarkSea(2);

@@ -155,6 +155,28 @@ ramp at high tide). Not darkened with depth and tinted by the sky, not the cell'
 low tide and on top of them at high tide: the tide is visible. Maps without a tide: no isSea
 bits, no foam, same picture. `reveal` (console) lifts the fog to look at it in the island game.
 
+## Surf as real water (2026-11-23)
+
+The user wanted surf as water, not drawing, and accepted that waves and tide are both
+"game-like" (closer in time than real: a wave every 1.5 game hours, the tide 12.42).
+- **Swash, not a second tide**: on flat flats a level change floods everything at once, so a
+  wave runs *up* the flats instead: `BuildSurf` (at marking) gives each flat its distance
+  from deep sea (breadth-first, up to `tideSurfReach` 6); every `tideSurfPeriod` a wave runs up
+  that far and back (`tideSurfHeight` 2 near the sea, 1 at the tip), its phase varying along
+  the coast. A cell's level = tide + wave.
+- **Never past wading depth**: tide + wave is capped at 3 while the tide is below 4, and there
+  is no wave on cells at 4+: walkability never changes, the nav graph never sees a wave.
+- **The water sim accepts a range**: `ProcessWaterCell` keeps a sea cell anywhere in
+  `TideCellRange` (tide .. tide + surf) instead of forcing one level.
+- **`SetSeaLevel`** (water.c, with navkit-8e): sets a sea cell without waking the sea around it,
+  only non-sea neighbours; the cell itself stays awake only if it can spill into a non-sea
+  neighbour (pools, ramps at high tide). The island had ~90k unstable water cells with the
+  tide on; now 13-20k, and with the tide held still ~4.3k after 2400 ticks (the plain island
+  without tide: 10.9k): river mouths settle against the sea's range.
+- Seed 3, 256, low tide: 4154 surf cells, ~109 change per tick; water 0.45 vs 0.44 ms with it
+  off, nav unchanged; ~1.4k more wet cells on the flats. Settings `tideSurf`, `tideSurfReach`,
+  `tideSurfPeriod`, `tideSurfHeight` (not saved).
+
 ## Side idea: surf (branding), cheap
 
 - Drawing only: per sea cell the distance to shore and the shore direction (computed once);

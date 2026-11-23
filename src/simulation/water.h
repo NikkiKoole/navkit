@@ -82,6 +82,10 @@ void UpdateWater(void);
 
 // Place/remove water
 void SetWaterLevel(int x, int y, int z, int level);
+// A sea cell's level, set by the tide (tide.c): like SetWaterLevel, but the sea cell stays asleep
+// and only neighbours that aren't sea are woken (the whole sea waking every tide step ate the
+// update budget rivers need). Stays awake itself only if it can spill into a non-sea neighbour.
+void SetSeaLevel(int x, int y, int z, int level);
 void AddWater(int x, int y, int z, int amount);
 void RemoveWater(int x, int y, int z, int amount);
 
