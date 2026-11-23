@@ -105,7 +105,9 @@ static inline int clampi(int v, int lo, int hi) {
 // cell at half speed. Breadth-first over cells that would be walkable without their
 // water, up to WADE_RADIUS cells away; a flooded ramp whose top end is dry is a way out
 // too (up onto the next level). false = no way out found (stays put as before).
-#define WADE_RADIUS 8
+// 24, not 8: the tide floods wide mud flats around movers out there (tide.c); within 8 cells
+// there is often no dry cell and they stood in deep water until it ebbed.
+#define WADE_RADIUS 24
 static bool WadeTowardDryCell(Mover* m, int cx, int cy, int cz, float dt) {
     enum { W = 2 * WADE_RADIUS + 1 };
     static signed char from[W][W];          // direction we came from + 1 (0 = unvisited)

@@ -18,6 +18,19 @@ int tideSeaZ = -1;
 int tideSeaCells = 0;
 int tideSteps = 0;
 double tideLastStepMs = 0.0, tideMaxStepMs = 0.0;
+float tideWaveHours = 2.0f;
+float tideWaveAngle = 0.0f;
+
+// The tide wave: the sea is cut into strips across the map (along tideWaveAngle); each strip
+// follows the tide tideWaveHours * (its position) later than the first, so the water crosses
+// wading depth strip by strip and each step rebuilds only the chunks under the front.
+// seaCells is sorted by strip: strip s is seaCells[stripStart[s] .. stripStart[s+1]).
+// Strips are about a chunk wide (16 cells): each chunk is rebuilt about once per crossing.
+#define TIDE_STRIPS 64
+static int stripCount = 1;
+static int stripLevel[TIDE_STRIPS];
+static int stripStart[TIDE_STRIPS + 1];
+static float stripDirX = 1.0f, stripDirY = 0.0f, stripMin = 0.0f, stripSpan = 1.0f;
 
 // Sea cells of the top level (x, y; z = tideSeaZ), for the level changes
 typedef struct { short x, y; } TideCell;
@@ -39,6 +52,74 @@ static void SeaPush(int x, int y) {
         seaCap = cap;
     }
     seaCells[tideSeaCells++] = (TideCell){(short)x, (short)y};
+}
+
+static void StripSetup(void) {
+    float a = tideWaveAngle * 3.14159265f / 180.0f;
+    stripDirX = cosf(a); stripDirY = sinf(a);
+    float lo = 1e30f, hi = -1e30f;
+    for (int c = 0; c < 4; c++) {   // the map's corners bound the projection
+        float p = (c & 1 ? (float)gridWidth : 0.0f) * stripDirX + (c & 2 ? (float)gridHeight : 0.0f) * stripDirY;
+        if (p < lo) lo = p;
+        if (p > hi) hi = p;
+    }
+    stripMin = lo;
+    stripSpan = hi - lo > 1.0f ? hi - lo : 1.0f;
+    stripCount = (int)(stripSpan / 16.0f + 0.5f);
+    if (stripCount < 1) stripCount = 1;
+    if (stripCount > TIDE_STRIPS) stripCount = TIDE_STRIPS;
+}
+
+static int StripOf(int x, int y) {
+    float p = ((x + 0.5f) * stripDirX + (y + 0.5f) * stripDirY - stripMin) / stripSpan;
+    int s = (int)(p * stripCount);
+    return s < 0 ? 0 : s >= stripCount ? stripCount - 1 : s;
+}
+
+// Sort seaCells by strip (counting sort) and take each strip's level from its first cell
+// The level of the first strip that has sea in it (the wave's front), for stats and tests
+static int TideFrontLevel(void) {
+    for (int s = 0; s < stripCount; s++)
+        if (stripStart[s] < stripStart[s + 1]) return stripLevel[s];
+    return WATER_MAX_LEVEL;
+}
+
+static void StripSort(void) {
+    StripSetup();
+    int count[TIDE_STRIPS] = {0};
+    for (int i = 0; i < tideSeaCells; i++) count[StripOf(seaCells[i].x, seaCells[i].y)]++;
+    stripStart[0] = 0;
+    for (int s = 0; s < TIDE_STRIPS; s++) stripStart[s + 1] = stripStart[s] + count[s];
+    TideCell* sorted = malloc(sizeof(TideCell) * (size_t)(tideSeaCells > 0 ? tideSeaCells : 1));
+    if (!sorted) return;
+    int fill[TIDE_STRIPS];
+    memcpy(fill, stripStart, sizeof(fill));
+    for (int i = 0; i < tideSeaCells; i++) sorted[fill[StripOf(seaCells[i].x, seaCells[i].y)]++] = seaCells[i];
+    memcpy(seaCells, sorted, sizeof(TideCell) * (size_t)tideSeaCells);
+    free(sorted);
+    for (int s = 0; s < TIDE_STRIPS; s++)
+        stripLevel[s] = stripStart[s] < stripStart[s + 1]
+            ? WATER(seaCells[stripStart[s]].x, seaCells[stripStart[s]].y, tideSeaZ).level : WATER_MAX_LEVEL;
+    tideLevel = TideFrontLevel();
+}
+
+// The level every strip wants now, set at once (no chunk marking: the caller builds the nav
+// graph after). For setup: otherwise the first ticks step the whole sea together.
+void TideSettle(void) {
+    if (tideSeaZ < 0 || tideSeaCells == 0) return;
+    float hours = (float)dayNumber * 24.0f + timeOfDay;
+    for (int s = 0; s < stripCount; s++) {
+        float lag = stripCount > 1 ? tideWaveHours * (float)s / (float)(stripCount - 1) : 0.0f;
+        int want = TideLevelAt(hours - lag);
+        for (int i = stripStart[s]; i < stripStart[s + 1]; i++)
+            SetWaterLevel(seaCells[i].x, seaCells[i].y, tideSeaZ, want);
+        stripLevel[s] = want;
+    }
+    tideLevel = TideFrontLevel();
+}
+
+int TideCellLevel(int x, int y) {
+    return stripLevel[StripOf(x, y)];
 }
 
 void ClearTide(void) {
@@ -76,7 +157,7 @@ int TideMarkSea(int z) {
     }
     tideSeaZ = z;
     tideSteps = 0;
-    tideLevel = WATER(seaCells[0].x, seaCells[0].y, z).level;
+    StripSort();
     return tideSeaCells;
 }
 
@@ -92,7 +173,8 @@ void TideAfterLoad(void) {
                     if (tideSeaZ < 0) tideSeaZ = z;
                     SeaPush(x, y);
                 }
-    tideLevel = tideSeaCells > 0 ? WATER(seaCells[0].x, seaCells[0].y, tideSeaZ).level : WATER_MAX_LEVEL;
+    if (tideSeaCells > 0) StripSort();
+    else tideLevel = WATER_MAX_LEVEL;
 }
 
 int TideLevelAt(float gameHours) {
@@ -129,24 +211,34 @@ void TideTick(void) {
     if (!tideEnabled || tideSeaZ < 0 || tideSeaCells == 0) return;
     // The world was replaced under us (scenario reset, load): forget the sea
     if (tideSeaZ >= gridDepth || !WATER(seaCells[0].x, seaCells[0].y, tideSeaZ).isSea) { ClearTide(); return; }
-    int want = TideLevelAt((float)dayNumber * 24.0f + timeOfDay);
-    if (want == tideLevel) return;
-    // One step at a time (a big time jump still walks the levels in order)
-    int next = want > tideLevel ? tideLevel + 1 : tideLevel - 1;
-    double t0 = TideNowMs();
+    float hours = (float)dayNumber * 24.0f + timeOfDay;
     int z = tideSeaZ;
-    for (int i = 0; i < tideSeaCells; i++) {
-        int x = seaCells[i].x, y = seaCells[i].y;
-        const WaterCell* wc = &WATER(x, y, z);
-        if (!wc->isSea || wc->isFrozen) continue;
-        int old = wc->level;
-        if (old == next) continue;
-        SetWaterLevel(x, y, z, next);
-        // Crossing wading depth changes who can walk there
-        if ((old >= WATER_BLOCKS_MOVEMENT) != (next >= WATER_BLOCKS_MOVEMENT)) MarkChunkDirty(x, y, z);
+    double t0 = 0.0;
+    bool stepped = false;
+    for (int s = 0; s < TIDE_STRIPS; s++) {
+        if (stripStart[s] == stripStart[s + 1]) continue;
+        float lag = stripCount > 1 ? tideWaveHours * (float)s / (float)(stripCount - 1) : 0.0f;
+        int want = TideLevelAt(hours - lag);
+        if (want == stripLevel[s]) continue;
+        // One step at a time (a big time jump still walks the levels in order)
+        int next = want > stripLevel[s] ? stripLevel[s] + 1 : stripLevel[s] - 1;
+        if (!stepped) { t0 = TideNowMs(); stepped = true; }
+        for (int i = stripStart[s]; i < stripStart[s + 1]; i++) {
+            int x = seaCells[i].x, y = seaCells[i].y;
+            const WaterCell* wc = &WATER(x, y, z);
+            if (!wc->isSea || wc->isFrozen) continue;
+            int old = wc->level;
+            if (old == next) continue;
+            SetWaterLevel(x, y, z, next);
+            // Crossing wading depth changes who can walk there
+            if ((old >= WATER_BLOCKS_MOVEMENT) != (next >= WATER_BLOCKS_MOVEMENT)) MarkChunkDirty(x, y, z);
+        }
+        stripLevel[s] = next;
+        tideSteps++;
     }
-    tideLevel = next;
-    tideSteps++;
-    tideLastStepMs = TideNowMs() - t0;
-    if (tideLastStepMs > tideMaxStepMs) tideMaxStepMs = tideLastStepMs;
+    tideLevel = TideFrontLevel();
+    if (stepped) {
+        tideLastStepMs = TideNowMs() - t0;
+        if (tideLastStepMs > tideMaxStepMs) tideMaxStepMs = tideLastStepMs;
+    }
 }

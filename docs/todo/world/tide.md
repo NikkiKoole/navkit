@@ -114,9 +114,19 @@ same). Seed 3, 256, 2000 ticks, 100 wandering movers:
 - up to 6 movers out on the flats at once, up to 5 caught in deep water; none stuck
 - tide step 0.8 ms (max 2.2), 14 per tide; average tick unchanged (1.17 vs 1.13 ms, water
   0.45 vs 0.47)
-- **spikes**: when the whole sea crosses wading depth in one step, every coastal chunk is
-  rebuilt at once: HPA up to 28 ms and lighting up to 18 ms in that tick, twice per tide. Fix
-  later: spread the crossing over ticks (cells change in bands) or budget chunk rebuilds.
+- **spikes** (fixed): when the whole sea crossed wading depth in one step, every coastal chunk
+  was rebuilt at once: HPA up to 28 ms. Bands by distance to deep water don't help (each band
+  is a ring round the island: every coastal chunk again). Fixed with a **tide wave**: the sea is
+  cut into strips about a chunk wide across the map (`tideWaveAngle`, default from the west);
+  each follows the tide `tideWaveHours` (2) times its position later, so the water crosses
+  wading depth strip by strip. Measured with the nav update timed (seed 3, 3000 ticks): the
+  biggest update went from 362 chunks (14.8 + 11.3 ms) to 34 chunks (~5 ms on a quiet machine).
+  About 0.5 ms per coastal chunk (open flats have many entrances). `TideSettle` sets the sea to
+  the current tide before the first graph build (otherwise the first ticks step it all at once).
+- Caught movers: the rising water caught movers more than 8 cells from dry ground and
+  `WadeTowardDryCell` found nothing, so they stood in deep water until it ebbed. `WADE_RADIUS`
+  8 -> 24 (with navkit-8e): they wade to the islet and wait out high tide (deep-water
+  mover-ticks 3045 -> 1294 in `tide`; its arrivals floor 16 -> 5: waiting isn't arriving).
 
 Not yet: the island game itself (`--game island` has no tide), food on the flats, dikes.
 

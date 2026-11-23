@@ -2451,7 +2451,7 @@ static void SetupTide(void) {
     TideMarkSea(2);
     tideEnabled = true;
     tideLowLevel = 0;
-    tideLevel = WATER_MAX_LEVEL;
+    TideSettle();
 
     int sp = CreateStockpile(4, 16, 3, 4, 4);
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_LOG);
@@ -2532,10 +2532,11 @@ static void SetupTideIsland(void) {
     SetupWorld();
     int sea = TideMarkSea(waterEdgeSeaZ);
     tideIslandRamps = TidePrepareShore();
-    BuildEntrances();
-    BuildGraph();
     tideEnabled = true;
     tideLowLevel = 0;
+    TideSettle();
+    BuildEntrances();
+    BuildGraph();
     tideMaxOnFlats = tideMoverTicksDeep = tideMaxDeep = tideMaxDryFlats = 0;
     tideFlatsMoverTicks = 0;
     tideMinLevel = WATER_MAX_LEVEL;

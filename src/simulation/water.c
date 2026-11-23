@@ -554,8 +554,8 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     bool moved = false;
 
     // The sea follows the tide: back to its level (what flowed in or out is the sea's)
-    if (cell->isSea && tideEnabled && cell->level != tideLevel) {
-        SetWaterLevel(x, y, z, tideLevel);
+    if (cell->isSea && tideEnabled && cell->level != TideCellLevel(x, y)) {
+        SetWaterLevel(x, y, z, TideCellLevel(x, y));
         moved = true;
     }
     

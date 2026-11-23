@@ -17,6 +17,10 @@ extern int tideSeaZ;              // the sea's top level (-1 = no sea marked)
 extern int tideSeaCells;          // cells marked isSea
 extern int tideSteps;             // level changes since TideMarkSea (stats)
 extern double tideLastStepMs, tideMaxStepMs;
+extern float tideWaveHours;       // the tide wave: game hours from the first strip of the sea to the last
+extern float tideWaveAngle;       // direction the wave travels (degrees, 0 = from the west going east)
+int TideCellLevel(int x, int y);  // the level the tide gives this sea cell now (its strip's)
+void TideSettle(void);            // every sea cell to the level the tide wants now (setup, before the nav graph)
 
 // Mark the sea: water cells at level z, connected to the map edge. Returns the cell count.
 int TideMarkSea(int z);
