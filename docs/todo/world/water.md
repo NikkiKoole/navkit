@@ -56,6 +56,27 @@ cells are processed per tick, scanning bottom to top.
   the edge), but the tick goes 1.12 -> 2.04 ms. So "fair update order" (open item 2) is what
   rivers need before a current can mean anything, and the shallow churn on z4 is worth a look.
 
+- **Fair update order** (`waterResumeRow` in `water.c`): a tick that runs out of budget remembers
+  the row it stopped at, and the next tick starts there (bottom to top, wrapping once). Every
+  unstable cell gets its turn, at the same cost. Island seed 1: rivers above z4 move again (z5:
+  245 cells frozen -> 737 and changing); after 3600 ticks the flow overlay shows the same clean
+  currents as the uncapped test (valley drains south then west, coasts flow out), tick 0.96 ->
+  0.92 ms. Wetness sync (water wetting the soil) now runs on capped ticks too: it was skipped
+  every tick the cap was hit. Survival seeds 0-2 still level off, but at 3,900-4,900 water cells
+  (was 2,400-2,700: water reaches what was starved), water 0.23-0.31 -> 0.28-0.80 ms (seed 1
+  highest). Test `test_water` pressure height: now a real pressure test (wall across the top).
+  Cost of fairness: with ~25k unstable cells and 4096 updates a tick, a cell gets a turn about
+  every 6 ticks, so water moves slower than real time; less churn would help (next item).
+- **Churn (parked, branch `water-churn-experiment`, ca3ffe80):** most unstable cells on the island
+  are a level-1 film over the lowlands (24k cells uncapped) that may never rest ("keep it
+  unstable for evaporation"), plus 2|1 pairs swapping forever. Tried: level-1 may rest with
+  evaporation as a sweep every waterEvapInterval (also fixes: puddles past the cap never
+  evaporated), and one-level steps only when the unit can keep going (receiver has a lower
+  neighbour, or momentum: the giver's current points that way). Unstable z4 ~6-7k -> 1.6k, but
+  the cap was still hit (water that was stuck now moves) and survival water cost more. A plain
+  local "lower neighbour" rule left terraces (staircase test); a bounded search fixed that but
+  cost 2.5x. Retry on top of fair order, judged by the flow overlay.
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.
@@ -66,11 +87,8 @@ source with no way out floods until it finds one. Every source needs an outlet.
    today refills to 7 every visit: unlimited flow. A spring could add a little per tick instead,
    and water standing on soil could soak away slowly (ties into the wetness/mud layer), so a
    spring-fed pond settles where inflow = soaking + evaporation. Rain balance belongs here too.
-2. **Fair update order** (measured 2026-11-23 with the flow overlay: on the 256 island the cap
-   starves every river above z4, see "Water flow" above; still measure at 1024). The 4096 cap with a fixed bottom-to-top
-   scan starves cells late in the order whenever more than 4096 are active; the island still hits
-   the cap after settling (5-11k cells active: real river flow). An active-cell list processed in
-   rotation would give every cell its turn.
+2. ~~**Fair update order**~~ done 2026-11-23 (see Done). Next: less churn (parked branch), then
+   threads (checkerboard chunks; the pressure search crosses chunks) if water still binds at 1024+.
 3. **Old saves:** hills-water saves made before f444e432 keep their old rivers (sources along the
    river, inland ends): they still flood slowly. New worlds only.
 4. **Inspector mismatch:** `--inspect --cell` says "Walkable: YES" for cells in deep water (or on a

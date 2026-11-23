@@ -34,6 +34,10 @@ float wetnessSyncInterval = 0.8f;  // 0.8 game-hours (was 2.0 game-seconds)
 // Internal accumulators
 static float waterEvapAccum = 0.0f;
 static float wetnessSyncAccum = 0.0f;
+// Fair update order: the row (z * gridHeight + y) where the last tick ran out of budget. The
+// next tick starts there, so with more unstable cells than WATER_MAX_UPDATES_PER_TICK every
+// cell still gets its turn (a fixed bottom-to-top scan starved everything above the low ground)
+static int waterResumeRow = 0;
 
 // BFS queue for pressure propagation
 typedef struct {
@@ -114,6 +118,7 @@ void ClearWater(void) {
     waterEvapAccum = 0.0f;
     wetnessSyncAccum = 0.0f;
     waterActiveCells = 0;
+    waterResumeRow = 0;
 }
 
 // Bounds check helper
@@ -789,9 +794,15 @@ void UpdateWater(void) {
     bool doEvap = waterEvapAccum >= evapIntervalGS;
     if (doEvap) waterEvapAccum -= evapIntervalGS;
     
-    // Process from bottom to top (simple iteration, keeps early exit optimization)
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
+    // Process rows bottom to top, starting where the last tick ran out of budget (fair update
+    // order: see waterResumeRow). Within a tick the order stays bottom to top, wrapping once.
+    int rows = gridDepth * gridHeight;
+    int start = (waterResumeRow >= 0 && waterResumeRow < rows) ? waterResumeRow : 0;
+    waterResumeRow = 0;   // a full pass without running out: next tick starts at the bottom
+    for (int k = 0; k < rows; k++) {
+        int row = start + k < rows ? start + k : start + k - rows;
+        int z = row / gridHeight, y = row - z * gridHeight;
+        {
             // Chunks without a water block are all empty and stable: skipped by the iterator.
             FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
                 // At the start of each 16-cell run, skip the whole run if no cell in it would get
@@ -799,8 +810,8 @@ void UpdateWater(void) {
                 if ((x & STORE_MASK) == 0) {
                     int runLen = gridWidth - x < STORE_CHUNK ? gridWidth - x : STORE_CHUNK;
                     unsigned anyWork = 0;
-                    for (int k = 0; k < runLen; k++) {
-                        WaterCell c = wp[k];
+                    for (int k2 = 0; k2 < runLen; k2++) {
+                        WaterCell c = wp[k2];
                         anyWork |= !c.isFrozen & (!c.stable | c.isSource | c.isDrain);
                     }
                     if (!anyWork) { x += runLen - 1; continue; }
@@ -825,13 +836,15 @@ void UpdateWater(void) {
                 ProcessWaterCell(x, y, z, doEvap);
                 waterUpdateCount++;
                 
-                // Cap updates per tick
+                // Out of budget: the next tick starts at this row
                 if (waterUpdateCount >= WATER_MAX_UPDATES_PER_TICK) {
-                    return;
+                    waterResumeRow = row;
+                    goto budgetSpent;
                 }
             }
         }
     }
+budgetSpent:
     
     // Sync water presence to cell wetness on soil (interval-based)
     wetnessSyncAccum += gameDeltaTime;
