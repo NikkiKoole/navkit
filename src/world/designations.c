@@ -2530,6 +2530,11 @@ int FindBlueprintReadyToBuild(void) {
 }
 
 void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
+    DeliverMaterialToBlueprintUnits(blueprintIdx, itemIdx, 1);
+}
+
+// reservedUnits: how much of the slot's reservedCount this delivery held (the haul job's units)
+void DeliverMaterialToBlueprintUnits(int blueprintIdx, int itemIdx, int reservedUnits) {
     if (blueprintIdx < 0 || blueprintIdx >= MAX_BLUEPRINTS) return;
     if (itemIdx < 0 || itemIdx >= MAX_ITEMS) return;
     
@@ -2568,6 +2573,13 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
         EventLog("Blueprint %d at (%d,%d,%d): no slot for item %d (%s), dropped", blueprintIdx,
                  bp->x, bp->y, bp->z, itemIdx, ItemName(deliveredType));
         SafeDropItem(itemIdx, items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z);
+        // ...and give back the units this load held, or the slot stays "on its way" forever
+        for (int s = 0; s < stage->inputCount; s++) {
+            StageDelivery* rsd = &bp->stageDeliveries[s];
+            if (rsd->reservedCount <= 0 || !ConstructionInputAcceptsItem(&stage->inputs[s], deliveredType)) continue;
+            rsd->reservedCount -= (reservedUnits < rsd->reservedCount) ? reservedUnits : rsd->reservedCount;
+            break;
+        }
         return;
     }
 
@@ -2588,7 +2600,7 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
     }
 
     sd->deliveredCount += toDeliver;
-    if (sd->reservedCount > 0) sd->reservedCount--;
+    sd->reservedCount -= (reservedUnits < sd->reservedCount) ? reservedUnits : sd->reservedCount;
     sd->deliveredMaterial = mat;
 
     // Lock alternative on first delivery if not already locked

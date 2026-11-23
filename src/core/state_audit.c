@@ -335,7 +335,7 @@ int AuditBlueprintReservations(bool verbose) {
                 if (!job->active) continue;
                 if (job->type != JOBTYPE_HAUL_TO_BLUEPRINT) continue;
                 if (job->targetBlueprint != b) continue;
-                jobCount++;
+                jobCount += JobBlueprintUnits(job) > 0 ? JobBlueprintUnits(job) : 0;   // units, like reservedCount
             }
 
             if (sd->reservedCount > jobCount) {

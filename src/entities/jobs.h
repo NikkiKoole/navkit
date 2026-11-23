@@ -166,6 +166,13 @@ typedef struct {
     int targetAnimalIdx;  // Animal index for hunt jobs, -1 = none
 } Job;
 
+// JOBTYPE_HAUL_TO_BLUEPRINT keeps the units it reserved in its blueprint slot in targetAdjX
+// (only mining-style jobs use that field; no own field, so the saved Job layout stays).
+// <= 0 after delivery or release; an unset field (-1) counts as 1, the old rule.
+static inline int JobBlueprintUnits(const Job* job) {
+    return job->targetAdjX < 0 ? 1 : job->targetAdjX;
+}
+
 #define MAX_JOBS 10000
 
 // Job pool

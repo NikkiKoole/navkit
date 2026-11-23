@@ -3,6 +3,7 @@
 #include "../src/world/grid.h"
 #include "test_helpers.h"
 #include "../src/world/cell_defs.h"
+#include "../src/core/state_audit.h"
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
@@ -4897,6 +4898,52 @@ describe(building_haul_job) {
 
         // Cancel job — reservedCount must still be decremented
         CancelJob(m, 0);
+        expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
+    }
+
+    it("should reserve a stack's units so a second hauler isn't sent to a slot it fills") {
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        for (int i = 0; i < 2; i++) {
+            Point goal = {0, i, 0};
+            InitMover(&movers[i], CELL_SIZE * 0.5f, (i + 0.5f) * CELL_SIZE, 0.0f, goal, 100.0f);
+        }
+        moverCount = 2;
+        // One stack of 5 planks; a belt needs 2 planks (slot 0) and 1 cordage (none here)
+        int planks = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_PLANKS);
+        items[planks].stackCount = 5;
+        int planks2 = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_PLANKS);
+        items[planks2].stackCount = 5;
+        int bpIdx = CreateRecipeBlueprint(6, 4, 0, CONSTRUCTION_BELT);
+        expect(bpIdx >= 0);
+
+        AssignJobs();
+        int haulers = MoverHasHaulToBlueprintJob(&movers[0]) + MoverHasHaulToBlueprintJob(&movers[1]);
+        expect(haulers == 1);   // was 2: one job counted as 1 of the 2 planks needed
+        expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 2);
+        expect(RunStateAudit(false) == 0);
+
+        // Cancel the job while carrying: the 2 units go back
+        Mover* h = MoverHasHaulToBlueprintJob(&movers[0]) ? &movers[0] : &movers[1];
+        Job* job = GetJob(h->currentJobId);
+        int it = job->targetItem;
+        ReleaseItemReservation(it);
+        items[it].reservedBy = (int)(h - movers);
+        items[it].state = ITEM_CARRIED;
+        job->carryingItem = it;
+        job->targetItem = -1;
+        job->step = STEP_CARRYING;
+        CancelJob(h, (int)(h - movers));
         expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
     }
 

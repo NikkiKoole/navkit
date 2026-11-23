@@ -488,6 +488,7 @@ int FindBlueprintReadyToBuild(void);
 // Deliver material to a blueprint (called when hauler arrives)
 // Consumes the item and updates blueprint state
 void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx);
+void DeliverMaterialToBlueprintUnits(int blueprintIdx, int itemIdx, int reservedUnits);
 
 // Complete a blueprint (called when building finishes)
 // Converts floor to wall and removes the blueprint

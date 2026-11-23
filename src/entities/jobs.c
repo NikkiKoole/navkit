@@ -1685,7 +1685,8 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
 
         if (onBlueprint || adjacentToBlueprint) {
             // Deliver material to blueprint
-            DeliverMaterialToBlueprint(bpIdx, itemIdx);
+            DeliverMaterialToBlueprintUnits(bpIdx, itemIdx, JobBlueprintUnits(job));
+            job->targetAdjX = 0;
             job->carryingItem = -1;
             return JOBRUN_DONE;
         }
@@ -3622,6 +3623,35 @@ static void SafeDropItemNearMover(int itemIdx, Mover* m) {
 }
 
 // Cancel job and release all reservations (public, called from workshops.c and internally)
+// A haul-to-blueprint job holds JobBlueprintUnits(job) units of one slot's reservedCount
+// (units, like deliveredCount). Give them back: the item it was going to pick up, or the one
+// it is carrying (a job cancelled on the way to the blueprint used to keep its units forever).
+static void ReleaseBlueprintHaulUnits(Job* job, const char* who) {
+    if (job->type != JOBTYPE_HAUL_TO_BLUEPRINT) return;
+    if (job->targetBlueprint < 0 || job->targetBlueprint >= MAX_BLUEPRINTS) return;
+    Blueprint* bp = &blueprints[job->targetBlueprint];
+    if (!bp->active) return;
+    // Don't check items[].active: the item may have been deleted, the units must still go back
+    int item = job->targetItem >= 0 ? job->targetItem : job->carryingItem;
+    if (item < 0) return;
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    if (!recipe) return;
+    const ConstructionStage* stage = &recipe->stages[bp->stage];
+    ItemType itemType = items[item].type;
+    int units = JobBlueprintUnits(job);
+    for (int s = 0; s < stage->inputCount; s++) {
+        StageDelivery* sd = &bp->stageDeliveries[s];
+        if (sd->reservedCount <= 0) continue;
+        if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
+        sd->reservedCount -= (units < sd->reservedCount) ? units : sd->reservedCount;
+        job->targetAdjX = 0;   // released: a second call gives back nothing more
+        return;
+    }
+    EventLog("WARNING: %s bp %d slot reservedCount NOT decremented! item=%d type=%s active=%d",
+             who, job->targetBlueprint, item, items[item].active ? ItemName(itemType) : "DELETED",
+             items[item].active);
+}
+
 void CancelJob(void* moverPtr, int moverIdx) {
     Mover* m = (Mover*)moverPtr;
 
@@ -3699,31 +3729,7 @@ void CancelJob(void* moverPtr, int moverIdx) {
         if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
             Blueprint* bp = &blueprints[job->targetBlueprint];
             if (bp->active) {
-                // Decrement reservedCount for the cancelled item's slot
-                // Note: don't check items[].active — item may have been deleted
-                // but reservedCount was incremented at job creation and must be balanced
-                if (job->targetItem >= 0) {
-                    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-                    if (recipe) {
-                        const ConstructionStage* stage = &recipe->stages[bp->stage];
-                        ItemType itemType = items[job->targetItem].type;
-                        bool decremented = false;
-                        for (int s = 0; s < stage->inputCount; s++) {
-                            StageDelivery* sd = &bp->stageDeliveries[s];
-                            if (sd->reservedCount <= 0) continue;
-                            if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
-                            sd->reservedCount--;
-                            decremented = true;
-                            break;
-                        }
-                        if (!decremented) {
-                            EventLog("WARNING: CancelJob bp %d slot reservedCount NOT decremented! item=%d type=%s active=%d",
-                                     job->targetBlueprint, job->targetItem,
-                                     items[job->targetItem].active ? ItemName(itemType) : "DELETED",
-                                     items[job->targetItem].active);
-                        }
-                    }
-                }
+                ReleaseBlueprintHaulUnits(job, "CancelJob");
                 // If we were building, release the builder assignment
                 if (bp->assignedBuilder == moverIdx) {
                     bp->assignedBuilder = -1;
@@ -3850,30 +3856,7 @@ void UnassignJob(void* moverPtr, int moverIdx) {
         if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
             Blueprint* bp = &blueprints[job->targetBlueprint];
             if (bp->active) {
-                // Note: don't check items[].active — item may have been deleted
-                // but reservedCount was incremented at job creation and must be balanced
-                if (job->targetItem >= 0) {
-                    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-                    if (recipe) {
-                        const ConstructionStage* stage = &recipe->stages[bp->stage];
-                        ItemType itemType = items[job->targetItem].type;
-                        bool decremented = false;
-                        for (int s = 0; s < stage->inputCount; s++) {
-                            StageDelivery* sd = &bp->stageDeliveries[s];
-                            if (sd->reservedCount <= 0) continue;
-                            if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
-                            sd->reservedCount--;
-                            decremented = true;
-                            break;
-                        }
-                        if (!decremented) {
-                            EventLog("WARNING: UnassignJob bp %d slot reservedCount NOT decremented! item=%d type=%s active=%d",
-                                     job->targetBlueprint, job->targetItem,
-                                     items[job->targetItem].active ? ItemName(itemType) : "DELETED",
-                                     items[job->targetItem].active);
-                        }
-                    }
-                }
+                ReleaseBlueprintHaulUnits(job, "UnassignJob");
                 if (bp->assignedBuilder == moverIdx) {
                     bp->assignedBuilder = -1;
                     bp->state = BLUEPRINT_READY_TO_BUILD;
@@ -8323,6 +8306,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
 
     // Find which slot this reservation is for and increment reservedCount
+    int reservedUnits = 1;
     {
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
         if (recipe) {
@@ -8333,7 +8317,13 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
                 if (sd->deliveredCount + sd->reservedCount >= stage->inputs[s].count) continue;
                 if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
 
-                sd->reservedCount++;
+                // Reserve as many units as this stack brings (up to what the slot still
+                // needs): counting 1 per job sent a second hauler to a slot the first
+                // hauler's stack already fills, and the second load had nowhere to go
+                int need = stage->inputs[s].count - sd->deliveredCount - sd->reservedCount;
+                int stack = items[bestItemIdx].stackCount > 0 ? items[bestItemIdx].stackCount : 1;
+                reservedUnits = stack < need ? stack : need;
+                sd->reservedCount += reservedUnits;
 
                 // Lock alternative on first reservation
                 if (sd->chosenAlternative < 0 && !stage->inputs[s].anyBuildingMat) {
@@ -8365,7 +8355,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
                 StageDelivery* sd = &bp->stageDeliveries[s];
                 if (sd->reservedCount <= 0) continue;
                 if (!ConstructionInputAcceptsItem(&undoStage->inputs[s], undoItemType)) continue;
-                sd->reservedCount--;
+                sd->reservedCount -= (reservedUnits < sd->reservedCount) ? reservedUnits : sd->reservedCount;
                 break;
             }
         }
@@ -8378,6 +8368,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     job->assignedMover = moverIdx;
     job->targetItem = bestItemIdx;
     job->targetBlueprint = bestBpIdx;
+    job->targetAdjX = reservedUnits;   // see JobBlueprintUnits
     job->targetSlotX = bp->x;
     job->targetSlotY = bp->y;
     job->step = 0;  // STEP_MOVING_TO_PICKUP

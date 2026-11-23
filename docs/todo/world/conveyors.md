@@ -73,7 +73,10 @@ per cell. Blueprints draw as see-through belts pointing their way. The direction
 - Found on the way: two haulers could bring planks for the same blueprint slot; the second
   found the slot full and `DeliverMaterialToBlueprint` returned, leaving the planks CARRIED with
   no carrier (lost, and the blueprint waited forever). Now it drops them. The double reservation
-  itself (a stack hauled for a slot another stack already fills) is still there.
+  itself is fixed too: a slot's `reservedCount` counted haul *jobs* but `deliveredCount` counts
+  *units*, so a stack of 5 for a slot of 2 left it looking half empty. It now reserves units
+  (the job keeps them in `targetAdjX`, `JobBlueprintUnits`), and a job cancelled while carrying
+  gives its units back (it kept them before: the slot waited forever).
 
 Scenario `belt-build` (32x20): 12 belt blueprints, planks and cordage nearby, 3 movers. 3000
 ticks: all 12 built, 20 of 40 rocks moved; 6000: all 40.

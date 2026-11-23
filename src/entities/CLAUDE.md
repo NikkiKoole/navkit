@@ -91,4 +91,7 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 
 - **Enum shifts**: adding ItemType/MaterialType shifts `ITEM_TYPE_COUNT`/`MAT_COUNT` — stockpile `allowedTypes[]` array sizes change, breaking save compat. Always add migration.
 - **Mover struct is ~12.4KB** due to embedded `path[1024]` (Point = 12 bytes). See `docs/todo/architecture/simd-optimization-candidates.md`.
+- **Blueprint slot reservations are units**: `StageDelivery.reservedCount` counts units in
+  transit (like `deliveredCount`), not haul jobs. A haul-to-blueprint job keeps its units in
+  `targetAdjX` (`JobBlueprintUnits`); release goes through `ReleaseBlueprintHaulUnits`.
 - **Stacked item blueprint delivery**: `DeliverMaterialToBlueprint` must increment `deliveredCount` by `stackCount`, not 1 — otherwise excess items silently destroyed
