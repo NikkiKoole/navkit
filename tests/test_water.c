@@ -643,6 +643,12 @@ describe(water_pressure) {
         // Right side: wall at z=1 only (water can rise to z=2 but path blocked at z=1)
         GRID(6, 1, 1) = CELL_WALL;
         GRID(7, 1, 1) = CELL_WALL;
+
+        // A wall across z=3 between the two sides: the right side's z=3 can only get water from
+        // below, which is what pressure may not do. (Without it the source, which sits at z=3,
+        // fills the closed box's top layer by plain spreading: that says nothing about pressure.)
+        for (int y = 0; y < 4; y++)
+            for (int x = 3; x <= 5; x++) GRID(x, y, 3) = CELL_WALL;
         
         InitWater();
         waterEvaporationEnabled = false;
@@ -663,9 +669,9 @@ describe(water_pressure) {
         // Water SHOULD reach z=2 on the right (sourceZ - 1 = 3 - 1 = 2)
         expect(GetWaterLevel(7, 1, 2) > 0);
         
-        // Water should NOT reach z=3 on the right (that's the source level)
-        // It might have a small amount from spreading, but shouldn't be full
-        expect(GetWaterLevel(7, 1, 3) < WATER_MAX_LEVEL);
+        // Water should NOT reach z=3 on the right (that's the source level): only pressure
+        // could lift it there, and pressure stops at sourceZ - 1
+        expect(GetWaterLevel(7, 1, 3) == 0);
         
         waterEvaporationEnabled = true;
     }
