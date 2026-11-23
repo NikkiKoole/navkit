@@ -1667,6 +1667,13 @@ void UpdateMovers(void) {
                         break;
                     }
                 }
+                // Flooded rather than walled in (deep water on a ramp that is also a ramp's
+                // top comes down this path): wade out instead. Survival seed 6 lost its
+                // settler here, asleep on a river-bank ramp when the water rose.
+                if (!pushed && WATER(currentX, currentY, currentZ).level > 0 &&
+                    WadeTowardDryCell(m, currentX, currentY, currentZ, dt)) {
+                    continue;
+                }
                 if (!pushed) {
                     m->active = false;
                     EventLog("%s (#%d) deactivated: trapped in wall at (%d,%d,%d)", MoverDisplayName(i), i, currentX, currentY, currentZ);

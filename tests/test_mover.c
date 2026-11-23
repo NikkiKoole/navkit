@@ -288,6 +288,42 @@ describe(wading_out_of_water) {
         InitWater();
     }
 
+    it("a mover on a flooded ramp that is also the top of a ramp below wades out, not 'trapped in a wall'") {
+        // Survival seed 6: the settler slept on a ramp at the river's edge that was also
+        // the exit of a ramp one level down. The river rose to depth 4 there; that path
+        // ended in "stuck in blocked cell with no escape" (no dry cell beside it) and the
+        // settler was removed, though it could wade one cell to dry ground.
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n"
+            "......\n");
+        for (int y = 0; y < 3; y++) for (int x = 0; x < 6; x++) {
+            GRID(x, y, 0) = CELL_WALL; GRID(x, y, 1) = CELL_WALL; GRID(x, y, 2) = CELL_AIR;
+        }
+        GRID(1, 1, 0) = CELL_RAMP_E;   // its top is (2,1) at z1
+        GRID(2, 1, 1) = CELL_RAMP_E;   // the mover's cell: a ramp, and a ramp's top
+        GRID(3, 1, 1) = CELL_AIR;      // flooded too
+        GRID(4, 1, 1) = CELL_AIR;      // dry
+        BuildEntrances();
+        BuildGraph();
+        InitWater();
+        bool wasEnabled = waterEnabled;
+        waterEnabled = false;
+        SetWaterLevel(2, 1, 1, 5);
+        SetWaterLevel(3, 1, 1, 5);
+        ClearMovers();
+        Mover* m = &movers[0];
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, (Point){2, 1, 1}, 100.0f);
+        moverCount = 1;
+        expect(!IsCellWalkableAt(1, 1, 2));
+        expect(IsCellWalkableAt(1, 1, 4));
+        for (int t = 0; t < 600 && m->active && !IsCellWalkableAt((int)m->z, (int)(m->y / CELL_SIZE), (int)(m->x / CELL_SIZE)); t++) Tick();
+        expect(m->active);
+        expect(IsCellWalkableAt((int)m->z, (int)(m->y / CELL_SIZE), (int)(m->x / CELL_SIZE)));
+        waterEnabled = wasEnabled;
+        InitWater();
+    }
+
     it("a mover on a flooded ramp climbs off its top") {
         InitTestGridFromAscii(
             "......\n"
