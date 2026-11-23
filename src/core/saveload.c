@@ -552,6 +552,12 @@ bool SaveWorld(const char* filename) {
     #undef WRITE_SETTING
     // v60+: diurnal amplitude
     fwrite(&diurnalAmplitude, sizeof(int), 1, f);
+    // v99+: train settings and endless mode (scenarios change them; a load kept the old values)
+    fwrite(&trainSpeed, sizeof(float), 1, f);
+    fwrite(&useTrainTimeChoice, sizeof(bool), 1, f);
+    fwrite(&useTrainTransfers, sizeof(bool), 1, f);
+    fwrite(&trainFreight, sizeof(bool), 1, f);
+    fwrite(&endlessMoverMode, sizeof(bool), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1436,6 +1442,17 @@ bool LoadWorld(const char* filename) {
 
     // Diurnal amplitude
     fread(&diurnalAmplitude, sizeof(int), 1, f);
+    if (version >= V99_TRAIN_SETTINGS) {
+        fread(&trainSpeed, sizeof(float), 1, f);
+        fread(&useTrainTimeChoice, sizeof(bool), 1, f);
+        fread(&useTrainTransfers, sizeof(bool), 1, f);
+        fread(&trainFreight, sizeof(bool), 1, f);
+        fread(&endlessMoverMode, sizeof(bool), 1, f);
+    } else {
+        trainSpeed = TRAIN_DEFAULT_SPEED;
+        useTrainTimeChoice = useTrainTransfers = trainFreight = true;
+        endlessMoverMode = true;
+    }
 
     RecalcBalanceTable();
 

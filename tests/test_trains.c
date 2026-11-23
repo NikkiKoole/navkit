@@ -1471,6 +1471,24 @@ describe(track_lines) {
         remove("/tmp/test_trains_lines_save.bin");
     }
 
+    it("train settings and endless mode are saved (v99)") {
+        SetupClean();
+        PlaceTrackLine(2, 20, 5, 1);
+        RebuildStations();
+        trainSpeed = 50.0f;
+        useTrainTimeChoice = false; useTrainTransfers = false; trainFreight = false;
+        endlessMoverMode = false;
+        expect(SaveWorld("/tmp/test_trains_settings_save.bin"));
+        trainSpeed = TRAIN_DEFAULT_SPEED;
+        useTrainTimeChoice = useTrainTransfers = trainFreight = endlessMoverMode = true;
+        expect(LoadWorld("/tmp/test_trains_settings_save.bin"));
+        expect(trainSpeed == 50.0f);
+        expect(!useTrainTimeChoice && !useTrainTransfers && !trainFreight && !endlessMoverMode);
+        trainSpeed = TRAIN_DEFAULT_SPEED;
+        useTrainTimeChoice = useTrainTransfers = trainFreight = endlessMoverMode = true;
+        remove("/tmp/test_trains_settings_save.bin");
+    }
+
     it("ClearTrains forgets the lines") {
         SetupClean();
         PlaceTrackLine(2, 20, 5, 1);

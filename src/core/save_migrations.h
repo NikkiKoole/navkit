@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 98
+#define CURRENT_SAVE_VERSION 99
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -47,6 +47,10 @@
 // beltCount + Belt[beltCount] (raw structs; next/fed are rebuilt by BeltsAfterLoad).
 // Older saves: no belts.
 #define V98_BELTS 98
+// v99: train settings + endlessMoverMode in the settings section, after diurnalAmplitude
+// (trainSpeed float; useTrainTimeChoice, useTrainTransfers, trainFreight, endlessMoverMode
+// bool). Older saves: the defaults.
+#define V99_TRAIN_SETTINGS 99
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
