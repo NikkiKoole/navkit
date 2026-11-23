@@ -63,6 +63,12 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   - 15 movers, 18000 ticks, car 3 / 8 floors/s: arrivals 1012 / 1008 (a faster car no
     longer means fewer); left a line without boarding 41% / 28% (was up to 54%);
     9-floor trip 9.5 / 6.9 s by elevator vs 11.4 / 8.9 s by stairs.
+- **Leaving a line is left as is** (decided 2026-11-23): 28-41% of joins in
+  `elevator-stairs` (15 movers riding one car nonstop) end without boarding; those trips
+  take ~6 s more than the stairs, 8% of all trip time. It is what people do (see the
+  crowd, take the stairs), and knowing who else is on the way (counting movers whose route
+  passes the shaft) would be less realistic. If it ever looks odd in play: re-check when
+  the line comes into view, a few cells before the door.
 - **Sweep pickup** (`elevatorDirectionalPickup`, on): an empty car on its way to calls
   further on picks up only people going its way; the others ride on its way back. Before,
   an empty car stopped for anyone and turned round, and the calls further on waited.
