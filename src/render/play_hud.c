@@ -17,6 +17,7 @@
 #include "../entities/mover.h"
 #include "../entities/namegen.h"
 #include "../entities/animals.h"
+#include "../entities/belts.h"
 
 #define HUD_MARGIN   10
 #define HUD_BUTTON_H 28
@@ -197,6 +198,15 @@ static Rectangle Layout(bool draw) {
             }
             if (r.x + r.width > rightmost) rightmost = r.x + r.width;
             shown++;
+            // Belt tool: a direction button next to it (click cycles N/E/S/W/lift/chute;
+            // arrows and PgUp/PgDn also work)
+            if (active && tool->action == ACTION_WORK_BELT) {
+                const char* dirLabel = TextFormat("Dir: %s", GetSelectedBeltDirectionName());
+                Rectangle d = Place(&L, ButtonWidth(dirLabel));
+                if (HudButton(d, dirLabel, false, NULL, draw))
+                    selectedBeltDirection = (selectedBeltDirection + 1) % (BELT_DOWN + 1);
+                if (d.x + d.width > rightmost) rightmost = d.x + d.width;
+            }
         }
         if (shown == 0) {
             const char* none = "Nothing yet: gather some materials first";

@@ -26,6 +26,7 @@
 #include "../entities/containers.h"
 #include "../entities/tool_quality.h"
 #include "../entities/items.h"
+#include "../entities/belts.h"
 #include "../world/construction.h"
 #include "../core/sim_manager.h"
 #include "../core/input_mode.h"
@@ -481,12 +482,13 @@ static void StartSandbox(void) {
 // ---------------------------------------------------------------------------
 
 GameToolContext GameToolContextNow(void) {
-    GameToolContext c = {itemCount > 0, false, false, false};
-    for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks); i++) {
+    GameToolContext c = {itemCount > 0, false, false, false, false};
+    for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks || !c.hasPlanks); i++) {
         if (!items[i].active) continue;
         if (items[i].type == ITEM_GRASS) c.hasGrass = true;
         if (items[i].type == ITEM_LEAVES) c.hasLeaves = true;
         if (items[i].type == ITEM_ROCK) c.hasRocks = true;
+        if (items[i].type == ITEM_PLANKS) c.hasPlanks = true;
     }
     return c;
 }
@@ -495,6 +497,7 @@ static bool HasItems(const GameToolContext* c)  { return c->hasItems; }
 static bool HasRocks(const GameToolContext* c)  { return c->hasRocks; }
 static bool HasLeaves(const GameToolContext* c) { return c->hasLeaves; }
 static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
+static bool HasPlanks(const GameToolContext* c) { return c->hasPlanks; }
 
 // The early-game designations every game offers in its play HUD
 #define BASIC_TOOLS \
@@ -506,7 +509,8 @@ static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
     {HUD_TAB_BUILD,  "Gather Zone",      ACTION_WORK_GATHER,            -1, HasItems}, \
     {HUD_TAB_BUILD,  "Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
     {HUD_TAB_BUILD,  "Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
-    {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}
+    {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}, \
+    {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}
 
 static const GameTool survivalTools[] = {
     {HUD_TAB_NATURE, "Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war
@@ -574,6 +578,7 @@ bool StartGame(const char* name) {
         GamePrintList();
         return false;
     }
+    ClearBelts();   // games that don't go through ScenarioResetWorld (survival, island, dollhouse)
     g->start();
     devUI = g->devUI;
     if (!devUI) InputMode_ExitToNormal();

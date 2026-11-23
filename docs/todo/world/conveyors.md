@@ -77,7 +77,9 @@ per cell. Blueprints draw as see-through belts pointing their way. The direction
 
 Scenario `belt-build` (32x20): 12 belt blueprints, planks and cordage nearby, 3 movers. 3000
 ticks: all 12 built, 20 of 40 rocks moved; 6000: all 40.
-Not yet: a play HUD tool (only the dev UI menu), deconstruction as a job (removal is instant).
+Play HUD (dev UI off): Huisje → **Build Belt**, shown once the world has planks. While it is
+picked a **Dir** button next to it cycles N/E/S/W/lift/chute (arrows and PgUp/PgDn work too).
+Not yet: deconstruction as a job (removal is instant).
 
 ### Belts and workshops (no new code)
 
@@ -100,7 +102,7 @@ Not yet: a belt end pointing straight into a workshop (no hopper), recipes with 
 - Belts don't care about walls, water or fire; movers walk over them and are not carried.
 - Lifts and chutes are free: no power, no speed difference, no lift capacity.
 - Belt ends find the stockpile slot by scanning it (fine at spike sizes).
-- `ClearBelts` runs on scenario reset only, not on game start or load.
+- `ClearBelts` runs on scenario reset and on every game start (`StartGame`); a load replaces the belts.
 
 ## The design questions (from the brainstorm)
 
@@ -162,8 +164,8 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 
 ## Next steps if the spike earns it
 
-1. ~~Save/load belts~~ done (v98). Clear them on game start (today: scenario reset only).
-2. Build belts in game (recipe + blueprint), remove them (drops the load).
+1. ~~Save/load belts~~ done (v98). ~~Clear them on game start~~ done.
+2. ~~Build belts in game~~ done (dev UI and play HUD). Removal as a job.
 3. ~~A belt feeding a workshop / taking from its output~~ works through a linked hopper
    stockpile and a belt on the output tile (scenario `belt-workshop`).
 4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Next there: power (water wheel,
