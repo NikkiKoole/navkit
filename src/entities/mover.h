@@ -59,6 +59,8 @@ typedef enum {
     FREETIME_USING_BUSH,            // Relieving behind bush (brief timer)
     FREETIME_SEEKING_TAP,           // Walking to a tap (append only: saves store the number)
     FREETIME_DRINKING_TAP,          // Drinking at a tap
+    FREETIME_SEEKING_FORAGE,        // Hungry, no food lying around: walking to a ripe berry bush
+    FREETIME_FORAGING,              // Picking berries from the bush (then eats them)
 } FreetimeState;
 
 

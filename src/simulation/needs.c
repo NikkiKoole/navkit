@@ -27,6 +27,8 @@
 #include "../simulation/rooms.h"
 #include "../simulation/weather.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/plants.h"
+#include "../world/designations.h"
 #include "../core/time.h"
 #include <math.h>
 #include <limits.h>
@@ -155,6 +157,56 @@ static void StartSeekClock(Mover* m) {
     if (pxPerGameSecond > 0.0f) m->needProgress = -3.0f * sqrtf(dx * dx + dy * dy + dz * dz) / pxPerGameSecond;
 }
 
+// ---- Foraging: a hungry mover with no food lying around picks berries itself ----
+// The nearest ripe berry bush by walking (only bushes it has seen: unexplored cells are
+// not walkable under the fog of war), one forager per bush. Harvest designations stay
+// the player's way to build up a stock; foraging is for "hungry now".
+#define FORAGE_SEARCH_COST (48 * 10)   // ~48 cells of walking
+#define FORAGE_DURATION_GH 0.25f       // picking the bush
+
+static bool BushTakenByOther(int plantIdx, int moverIdx) {
+    for (int i = 0; i < moverCount; i++) {
+        if (i == moverIdx || !movers[i].active) continue;
+        int s = movers[i].freetimeState;
+        if ((s == FREETIME_SEEKING_FORAGE || s == FREETIME_FORAGING) && movers[i].needTarget == plantIdx) return true;
+    }
+    return false;
+}
+
+typedef struct { int moverIdx; } ForageCtx;
+static bool RipeBushAt(void* user, int x, int y, int z) {
+    Plant* p = GetPlantAt(x, y, z);
+    if (!p || p->type != PLANT_BERRY_BUSH || p->stage != PLANT_STAGE_RIPE) return false;
+    // a bush someone is already picking for a harvest job is theirs
+    const Designation* d = GetDesignation(x, y, z);
+    if (d && d->type == DESIGNATION_HARVEST_BERRY && d->assignedMover >= 0) return false;
+    return !BushTakenByOther((int)(p - plants), ((ForageCtx*)user)->moverIdx);
+}
+
+// Plant index of the nearest ripe bush the mover can walk to, -1 if none
+static int FindForageBush(const Mover* m, int moverIdx) {
+    Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+    ForageCtx ctx = {moverIdx};
+    Point found = from;
+    if (!RipeBushAt(&ctx, from.x, from.y, from.z) &&
+        NavFindNearest(NavGame(), from, RipeBushAt, &ctx, FORAGE_SEARCH_COST, &found, NULL, 0, NULL) < 0)
+        return -1;
+    Plant* p = GetPlantAt(found.x, found.y, found.z);
+    return p ? (int)(p - plants) : -1;
+}
+
+static bool StartForaging(Mover* m, int moverIdx) {
+    int pi = FindForageBush(m, moverIdx);
+    if (pi < 0) return false;
+    EventLog("Mover %d SEEKING_FORAGE bush=%d at (%d,%d,%d)", moverIdx, pi, plants[pi].x, plants[pi].y, plants[pi].z);
+    m->freetimeState = FREETIME_SEEKING_FORAGE;
+    m->needTarget = pi;
+    m->goal = (Point){plants[pi].x, plants[pi].y, plants[pi].z};
+    StartSeekClock(m);
+    m->needsRepath = true;
+    return true;
+}
+
 static void StartFoodSearch(Mover* m, int moverIdx) {
     // Try stockpile first, then ground items
     int itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
@@ -163,7 +215,8 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     }
 
     if (itemIdx < 0) {
-        // No food found — set cooldown
+        // No food lying around: pick berries from a bush. Nothing at all: cooldown
+        if (StartForaging(m, moverIdx)) return;
         m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
         return;
     }
@@ -606,6 +659,10 @@ static bool CriticalNeed(Mover* m, int moverIdx, bool canSearch, void (*startSea
 
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
+    if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FORAGE || m->freetimeState == FREETIME_FORAGING)) {
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FOOD || m->freetimeState == FREETIME_EATING)) {
         if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS && items[m->needTarget].reservedBy == moverIdx) {
             ReleaseItemReservation(m->needTarget);
@@ -782,6 +839,55 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             break;
         }
 
+        case FREETIME_SEEKING_FORAGE: {
+            int pi = m->needTarget;
+            Plant* p = (pi >= 0 && pi < MAX_PLANTS && plants[pi].active) ? &plants[pi] : NULL;
+            if (!p || p->stage != PLANT_STAGE_RIPE) {
+                // picked or gone meanwhile: look again now (food first, then another bush)
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                break;
+            }
+            if ((int)m->z == p->z && (int)(m->x / CELL_SIZE) == p->x && (int)(m->y / CELL_SIZE) == p->y) {
+                m->freetimeState = FREETIME_FORAGING;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_FORAGING: {
+            m->timeWithoutProgress = 0.0f;
+            int pi = m->needTarget;
+            Plant* p = (pi >= 0 && pi < MAX_PLANTS && plants[pi].active) ? &plants[pi] : NULL;
+            if (!p || p->stage != PLANT_STAGE_RIPE) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(FORAGE_DURATION_GH)) {
+                // The berries land at the mover's feet; the food search that runs next
+                // (still hungry, in this same tick) finds them and the mover eats
+                const Designation* d = GetDesignation(p->x, p->y, p->z);
+                if (d && d->type == DESIGNATION_HARVEST_BERRY) CompleteHarvestBerryDesignation(p->x, p->y, p->z);
+                else HarvestPlant(p->x, p->y, p->z);
+                EventLog("Mover %d foraged berries at (%d,%d,%d)", moverIdx, p->x, p->y, p->z);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                m->needProgress = 0.0f;
+            }
+            break;
+        }
+
         case FREETIME_EATING: {
             int ti = m->needTarget;
             if (ti < 0 || ti >= MAX_ITEMS || !items[ti].active) {
@@ -933,7 +1039,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             bool foodToEat = false;
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold && canLook) {
                 foodToEat = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z) >= 0 ||
-                            FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0;
+                            FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0 ||
+                            FindForageBush(m, moverIdx) >= 0;
             }
             // Dehydrating wakes a sleeper the same way: only with something to drink
             bool drinkToHave = false;

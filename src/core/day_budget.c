@@ -49,7 +49,8 @@ static int lastState[MAX_MOVERS], lastJob[MAX_MOVERS];
 static DayBucket BucketOf(const Mover* m, bool moving) {
     switch (m->freetimeState) {
         case FREETIME_RESTING:               return DB_SLEEP;
-        case FREETIME_EATING:                return DB_EAT;
+        case FREETIME_EATING:
+        case FREETIME_FORAGING:              return DB_EAT;
         case FREETIME_DRINKING:
         case FREETIME_DRINKING_NATURAL:
         case FREETIME_DRINKING_TAP:          return DB_DRINK;
@@ -63,7 +64,8 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
         case FREETIME_SEEKING_NATURAL_WATER:
         case FREETIME_SEEKING_TAP:
         case FREETIME_SEEKING_TOILET:
-        case FREETIME_SEEKING_BUSH:          return DB_TO_NEED;
+        case FREETIME_SEEKING_BUSH:
+        case FREETIME_SEEKING_FORAGE:        return DB_TO_NEED;
         default: break;
     }
     if (m->currentJobId >= 0) return moving ? DB_TO_WORK : DB_WORK;
@@ -72,7 +74,8 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
 
 static int WalkOf(int s) {
     switch (s) {
-        case FREETIME_SEEKING_FOOD:          return DW_FOOD;
+        case FREETIME_SEEKING_FOOD:
+        case FREETIME_SEEKING_FORAGE:        return DW_FOOD;
         case FREETIME_SEEKING_DRINK:
         case FREETIME_SEEKING_NATURAL_WATER:
         case FREETIME_SEEKING_TAP:           return DW_DRINK;

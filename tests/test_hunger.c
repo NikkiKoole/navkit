@@ -988,6 +988,56 @@ describe(seek_keeps_its_goal) {
     }
 }
 
+static int SetupForage(void) {
+    InitTestGridFromAscii(
+        "..........\n"
+        "..........\n"
+        "..........\n");
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers(); ClearItems(); ClearJobs(); ClearPlants();
+    InitBalance();
+    hungerEnabled = true; thirstEnabled = false;
+    energyEnabled = false; bodyTempEnabled = false; bladderEnabled = false;
+    currentTick = 1;
+    InitMover(&movers[0], 1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){1, 1, 0}, MOVER_SPEED);
+    moverCount = 1;
+    movers[0].hunger = 0.2f;   // hungry
+    return SpawnPlant(7, 1, 0, PLANT_BERRY_BUSH);
+}
+
+describe(foraging) {
+    it("a hungry mover with no food lying around picks berries from a ripe bush and eats them") {
+        int bush = SetupForage();
+        plants[bush].stage = PLANT_STAGE_RIPE;
+        bool ate = false, foraged = false;
+        for (int t = 0; t < 20000 && !ate; t++) {
+            Tick();
+            NeedsTick();
+            ProcessFreetimeNeeds();
+            if (movers[0].freetimeState == FREETIME_FORAGING) foraged = true;
+            if (movers[0].freetimeState == FREETIME_EATING) ate = true;
+        }
+        expect(foraged);
+        expect(ate);
+        expect(plants[bush].stage == PLANT_STAGE_BARE);
+    }
+
+    it("a bush that isn't ripe is left alone") {
+        int bush = SetupForage();
+        plants[bush].stage = PLANT_STAGE_BUDDING;
+        ProcessFreetimeNeeds();
+        expect(movers[0].freetimeState == FREETIME_NONE);
+    }
+
+    it("food lying around comes before picking a bush") {
+        int bush = SetupForage();
+        plants[bush].stage = PLANT_STAGE_RIPE;
+        SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+        ProcessFreetimeNeeds();
+        expect(movers[0].freetimeState == FREETIME_SEEKING_FOOD);
+    }
+}
+
 describe(food_far_away) {
     it("a hungry mover walks 29 cells to food without giving up on the way") {
         int starts = 0;
@@ -1408,6 +1458,7 @@ int main(int argc, char* argv[]) {
     test(eating_consumption);
     test(critical_need_search_cooldown);
     test(food_far_away);
+    test(foraging);
     test(seek_keeps_its_goal);
     test(eating_starving_unassigns_job);
     test(unassign_job_pickup);

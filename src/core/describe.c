@@ -125,6 +125,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         float hoursToStarve = (hungerPerGH > 0) ? m->hunger / hungerPerGH : 999.0f;
         DescAdd(d, tone, "Hunger: %.0f%% (%s) — starving in %.1fh", m->hunger * 100.0f, label, hoursToStarve);
         if (m->freetimeState == FREETIME_SEEKING_FOOD) DescAdd(d, DESC_WARN, "  Seeking food...");
+        else if (m->freetimeState == FREETIME_SEEKING_FORAGE) DescAdd(d, DESC_WARN, "  Going to pick berries...");
+        else if (m->freetimeState == FREETIME_FORAGING) DescAdd(d, DESC_GOOD, "  Picking berries");
         else if (m->freetimeState == FREETIME_EATING)
             DescAdd(d, DESC_GOOD, "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
     }
