@@ -683,6 +683,8 @@ static bool ColonyFlatArea(int cx, int cy, int w, int h, Point anchor, const int
 }
 
 static int colonyStats[6];   // chop, mine, grass, stockpile cells, hut walls, hut floors
+static Point colonyLand;     // where the settlers landed
+static int colonyRects[3][4];   // stockpile, hut 1, hut 2 (x, y, w, h; w = 0 if not placed)
 
 static void SetupIslandColony(void) {
     // sandbox rules (nobody dies) with the games' needs and pace
@@ -693,6 +695,8 @@ static void SetupIslandColony(void) {
     dayLength = 360.0f;
     balance.baseMoverSpeed = 1200.0f;   // before the settlers spawn: they take it from here
     memset(colonyStats, 0, sizeof colonyStats);
+    memset(colonyRects, 0, sizeof colonyRects);
+    colonyLand = (Point){-1, -1, -1};
 
     Point anchor = GetMainRegionAnchor();
     int lx, ly, lz;
@@ -700,6 +704,7 @@ static void SetupIslandColony(void) {
     Point land = ColonyCellNear(lx, ly, lz, anchor);
     if (land.x < 0) land = GetRandomWalkableCellReachableFrom(anchor);
     if (land.x < 0) return;
+    colonyLand = land;
     int n = scenarioMovers > 0 ? scenarioMovers : COLONY_SETTLERS;
     for (int i = 0; i < n; i++) {
         Point p = ColonyCellNear(land.x + (i % 5) * 2 - 4, land.y + (i / 5) * 2 - 4, land.z, anchor);
@@ -712,6 +717,7 @@ static void SetupIslandColony(void) {
     if (ColonyFlatArea(land.x, land.y, 8, 6, anchor, none, &sx, &sy, &sz)) {
         CreateStockpile(sx, sy, sz, 8, 6);
         stockRect[0] = sx; stockRect[1] = sy; stockRect[2] = 8; stockRect[3] = 6;
+        memcpy(colonyRects[0], stockRect, sizeof stockRect);
         colonyStats[3] = 48;
     }
     int hutAvoid[4] = {stockRect[0], stockRect[1], stockRect[2], stockRect[3]};
@@ -726,6 +732,7 @@ static void SetupIslandColony(void) {
                 else if (!edge && CreateRecipeBlueprint(x, y, hz, CONSTRUCTION_THATCH_FLOOR) >= 0) colonyStats[5]++;
             }
         hutAvoid[0] = hx; hutAvoid[1] = hy; hutAvoid[2] = 6; hutAvoid[3] = 5;   // next hut not on this one
+        memcpy(colonyRects[1 + hut], hutAvoid, sizeof hutAvoid);
     }
 
     // Trees to chop, grass to gather (every other cell), within the radius
@@ -788,6 +795,87 @@ static void IslandColonyPrintStats(void) {
     printf("island-colony: still open: chop %d, mine %d, grass %d, blueprints %d; items %d; movers %d active\n",
            chop, mine, grass, bpLeft, itemCount, alive);
     DryGroundPrintStats();
+}
+
+// ---------------------------------------------------------------------------
+// island-winter: island-colony in winter with a fire pit and torches. It measures the
+// simulation layers the summer colony never touched (temperature, light, snow, fire, smoke);
+// docs/todo/architecture/chunked-world-plan.md "A lived-in island".
+// ---------------------------------------------------------------------------
+
+static int winterTorches;
+static Point winterFire;
+
+// No fuel on the cell or its 8 neighbours at level z: a fire here can't spread
+static bool WinterFireSafe(int x, int y, int z) {
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            int nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) return false;
+            if (GetFuelAt(nx, ny, z) > 0 || GetFuelAt(nx, ny, z - 1) > 0) return false;
+        }
+    return IsCellWalkableAt(z, y, x) && GRID(x, y, z) == CELL_AIR && GetWaterLevel(x, y, z) == 0;
+}
+
+static void SetupIslandWinter(void) {
+    SetupIslandColony();
+    if (colonyLand.x < 0) return;
+    Point land = colonyLand;
+
+    // Winter from day one: the first day of the fourth season, snowing
+    InitWeather();
+    dayNumber = 3 * daysPerSeason + 1;
+    weatherState.current = weatherState.previous = WEATHER_SNOW;
+    weatherState.transitionTimer = weatherState.transitionDuration = GameHoursToGameSeconds(48.0f);
+    weatherState.intensity = 1.0f;
+
+    // A fire pit that burns for good, on fuel-free ground near the landing spot (sand, stone)
+    winterFire = (Point){-1, -1, -1};
+    for (int r = 3; r <= 30 && winterFire.x < 0; r++)
+        for (int dy = -r; dy <= r && winterFire.x < 0; dy++)
+            for (int dx = -r; dx <= r && winterFire.x < 0; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int x = land.x + dx, y = land.y + dy;
+                bool inRect = false;
+                for (int k = 0; k < 3; k++) {
+                    const int* rc = colonyRects[k];
+                    if (rc[2] > 0 && x >= rc[0] - 1 && x <= rc[0] + rc[2] && y >= rc[1] - 1 && y <= rc[1] + rc[3]) inRect = true;
+                }
+                if (!inRect && WinterFireSafe(x, y, land.z)) winterFire = (Point){x, y, land.z};
+            }
+    if (winterFire.x >= 0) SetFireSource(winterFire.x, winterFire.y, winterFire.z, true);
+
+    // Torches at the corners of the stockpile and the huts
+    winterTorches = 0;
+    for (int k = 0; k < 3; k++) {
+        const int* rc = colonyRects[k];
+        if (rc[2] <= 0) continue;
+        int cx[4] = {rc[0] - 1, rc[0] + rc[2], rc[0] - 1, rc[0] + rc[2]};
+        int cy[4] = {rc[1] - 1, rc[1] - 1, rc[1] + rc[3], rc[1] + rc[3]};
+        for (int c = 0; c < 4; c++) {
+            Point p = ColonyCellNear(cx[c], cy[c], land.z, (Point){-1, -1, -1});
+            if (p.x >= 0 && AddLightSource(p.x, p.y, p.z, 255, 180, 90, 8) >= 0) winterTorches++;
+        }
+    }
+    InvalidateLighting();
+    AddMessage(TextFormat("Island winter: %s, day %d, fire pit at (%d,%d,z%d), %d torches",
+               GetSeasonName(GetCurrentSeason()), dayNumber, winterFire.x, winterFire.y, winterFire.z,
+               winterTorches), GREEN);
+}
+
+static void IslandWinterPrintStats(void) {
+    IslandColonyPrintStats();
+    int snow = 0, fire = 0, warm = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                if (GetSnowLevel(x, y, z) > 0) snow++;
+                if (HasFire(x, y, z)) fire++;
+                if (GetTemperature(x, y, z) > GetAmbientTemperature(z) + 2) warm++;
+            }
+    printf("island-winter: %s day %d, %d torches, fire pit at (%d,%d,z%d); cells with snow %d, on fire %d, warmed >2C %d\n",
+           GetSeasonName(GetCurrentSeason()), dayNumber, winterTorches, winterFire.x, winterFire.y, winterFire.z,
+           snow, fire, warm);
 }
 
 static void SetupHubs(void) {
@@ -2025,6 +2113,8 @@ static const Scenario scenarios[] = {
                    "Island",    SetupWorld, NULL, DryGroundPrintStats, NULL, 256, 256},
     {"island-colony", "Lived-in island: 20 settlers chop, dig, gather and build two huts by the landing beach; needs on, nobody dies (big-map measuring target)",
                    "Island",    SetupIslandColony, NULL, IslandColonyPrintStats, NULL, 256, 256},
+    {"island-winter", "island-colony in winter: snowing, a fire pit and torches at the stockpile and hut corners (measures temperature, light, snow, fire, smoke)",
+                   "Island",    SetupIslandWinter, NULL, IslandWinterPrintStats, NULL, 256, 256},
     {"maze",       "3D labyrinth, 100 wandering movers: long paths (coarse paths, step cap); scenarioSize sets the map",
                    "Labyrinth3D", SetupWorld, NULL, NULL, NULL, 256, 256},
     {"dayrhythm",  "8 movers, beds, dried berries, endless mining: who is in bed at 03:00 and 13:00 (setting sleepRhythm)",

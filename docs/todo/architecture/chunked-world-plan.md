@@ -634,9 +634,32 @@ harvest state 8%, ground wear 6%, designations 0.8%, floor dirt 0.1%; temperatur
 torch light, snow, rooms, fire and smoke 0%. So in this colony every simulation layer lives in
 under a third of the blocks, most in under a tenth: active-block storage fits them well.
 
-**Not covered** (so not proof for the simulation layers): fire, campfires and torches (temperature
-and light), winter (snow), rooms, digging deep, a colony months old. A next colony should add a
-campfire, torches and a winter.
+**Not covered by this colony** (see the winter colony below): fire, campfires and torches
+(temperature and light), winter (snow). Still not covered by either: rooms, digging deep, a
+colony months old.
+
+**The winter colony** (scenario `island-winter`, measured 2026-11-23 on a clean build of
+b7204887 + the scenario): the same colony started on the first day of winter (day 22) while it
+snows, with a fire pit that burns for good (`SetFireSource` on fuel-free ground) and 12 torches
+at the stockpile and hut corners. Three game days, same command. Share of 16x16x4 blocks with
+any non-default value: **snow 54%** (6.25% of cells: exactly one cell per column), water 27%,
+growth timers 24%, sky partly lit 9%, smoke 2.8%, wear 1.5%, torch light 1.4%, temperature
+0.2%, fire 0.1%; rooms 0% (the huts never got their stone). Palette: 44% of 16x16x4 blocks hold
+one value, mean 4.7 values per block, 1.7 bits per cell, the same as summer.
+Tick cost: world simulation 1.7 ms per tick (smoke 0.58, temperature 0.47, water 0.41, worst
+tick 84 ms); jobs 0.38 ms (worst 165 ms). One fire and 12 torches cost little; smoke and
+temperature appear only around the fire.
+
+What it means for the storage design: **every layer except snow stays under a third of the
+blocks**, and heat, light, fire and smoke stay in a few percent around their sources, so
+active-block storage fits them. **Snow is a surface layer**: it covers half the blocks but only
+one cell per column, so it belongs in a 2D per-column map (or the surface block), not a 3D
+layer. A taller world does not make it bigger.
+
+Side finding: snow lies on the top non-air cell of every column, including the sea bed under
+open sea (water is not a cell type), so all 65,536 columns had snow; snow should skip columns
+with water on top (`SnowRow` in `src/simulation/weather.c`, not fixed here). The light grid
+is derived, not saved: measuring light from a save needs `RecomputeLighting()` after loading.
 
 **Side findings:** with work times in game hours a tree takes 10-15 real seconds to chop, so the
 `--check` stuck rule (no movement for 2 s) counts working settlers as stuck: 7-12 of 20 early on,
