@@ -28,6 +28,7 @@ typedef enum {
     DESIGNATION_DIG_ROOTS,      // Dig roots from natural soil
     DESIGNATION_EXPLORE,        // Walk straight line toward target (scouting)
     DESIGNATION_FARM,           // Till soil for farming
+    DESIGNATION_REMOVE_BELT,    // Take down a conveyor belt (refunds a plank, drops the load)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -52,6 +53,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_DIG_ROOTS]      = "DIG_ROOTS",
         [DESIGNATION_EXPLORE]        = "EXPLORE",
         [DESIGNATION_FARM]           = "FARM",
+        [DESIGNATION_REMOVE_BELT]    = "REMOVE_BELT",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -70,6 +72,7 @@ typedef struct {
 #define DIG_RAMP_WORK_TIME 0.8f      // Similar to mining - carving a ramp
 #define REMOVE_FLOOR_WORK_TIME 0.4f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 0.4f   // Similar to floor removal
+#define REMOVE_BELT_WORK_TIME 0.25f  // Half of building one (0.5)
 #define CHOP_WORK_TIME 1.2f          // Chopping mature trees takes longer
 #define CHOP_YOUNG_WORK_TIME 0.4f    // Young trees are quick to chop
 #define CHOP_FELLED_WORK_TIME 0.8f   // Chopping fallen trunks
@@ -366,6 +369,12 @@ void CompleteCleanDesignation(int x, int y, int z);
 
 // Count active clean designations
 int CountCleanDesignations(void);
+
+// Remove belt: a mover walks onto the belt and takes it down (the load drops, one plank back)
+bool DesignateRemoveBelt(int x, int y, int z);
+bool HasRemoveBeltDesignation(int x, int y, int z);
+void CancelRemoveBeltDesignation(int x, int y, int z);
+void CompleteRemoveBeltDesignation(int x, int y, int z);
 
 // =============================================================================
 // Harvest berry designation functions

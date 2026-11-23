@@ -1166,14 +1166,11 @@ static void ExecuteRemoveBelt(int x1, int y1, int x2, int y2, int z) {
         for (int dx = x1; dx <= x2; dx++) {
             int bpIdx = GetBlueprintAt(dx, dy, z);
             if (bpIdx >= 0 && blueprints[bpIdx].recipeIndex == CONSTRUCTION_BELT) { CancelBlueprint(bpIdx); cancelled++; }
-            if (BeltAt(dx, dy, z) >= 0) {
-                RemoveBelt(dx, dy, z);
-                SpawnItem(dx * CELL_SIZE + CELL_SIZE * 0.5f, dy * CELL_SIZE + CELL_SIZE * 0.5f, z, ITEM_PLANKS);
-                removed++;
-            }
+            // A built belt: a mover comes to take it down (the load drops, one plank back)
+            if (DesignateRemoveBelt(dx, dy, z)) removed++;
         }
     if (cancelled + removed > 0)
-        AddMessage(TextFormat("Removed %d belt%s, cancelled %d blueprint%s", removed, removed == 1 ? "" : "s",
+        AddMessage(TextFormat("Marked %d belt%s for removal, cancelled %d blueprint%s", removed, removed == 1 ? "" : "s",
                               cancelled, cancelled == 1 ? "" : "s"), ORANGE);
 }
 

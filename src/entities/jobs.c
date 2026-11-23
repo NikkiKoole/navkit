@@ -140,6 +140,9 @@ static int gatherTreeCacheCount = 0;
 static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
 static int cleanCacheCount = 0;
 
+static OnTileDesignationEntry removeBeltCache[MAX_DESIGNATION_CACHE];
+static int removeBeltCacheCount = 0;
+
 static OnTileDesignationEntry harvestBerryCache[MAX_DESIGNATION_CACHE];
 static int harvestBerryCacheCount = 0;
 
@@ -167,6 +170,7 @@ static bool gatherGrassCacheDirty = true;
 static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
+static bool removeBeltCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
 static bool digRootsCacheDirty = true;
@@ -186,6 +190,7 @@ static void RebuildGatherGrassDesignationCache(void);
 static void RebuildGatherReedsDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
+static void RebuildRemoveBeltDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
@@ -277,6 +282,7 @@ static inline void PhaseMoverEnd(int moverIdx, bool was) {
 // Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
+static int WorkGiver_RemoveBelt(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -332,6 +338,8 @@ static DesignationJobSpec designationSpecs[] = {
      exploreCache, &exploreCacheCount, &exploreCacheDirty},
     {DESIGNATION_FARM, JOBTYPE_TILL, RebuildTillDesignationCache, WorkGiver_TillDesignation,
      tillCache, &tillCacheCount, &tillCacheDirty},
+    {DESIGNATION_REMOVE_BELT, JOBTYPE_REMOVE_BELT, RebuildRemoveBeltDesignationCache, WorkGiver_RemoveBelt,
+     removeBeltCache, &removeBeltCacheCount, &removeBeltCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -481,6 +489,12 @@ static void RebuildCleanDesignationCache(void) {
     if (!cleanCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount, true);
     cleanCacheDirty = false;
+}
+
+static void RebuildRemoveBeltDesignationCache(void) {
+    if (!removeBeltCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_REMOVE_BELT, removeBeltCache, &removeBeltCacheCount, true);
+    removeBeltCacheDirty = false;
 }
 
 static void RebuildHarvestBerryDesignationCache(void) {
@@ -2567,6 +2581,25 @@ JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Remove belt job driver: walk onto the belt -> take it down
+JobRunResult RunJob_RemoveBelt(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_REMOVE_BELT) return JOBRUN_FAIL;
+    if (BeltAt(tx, ty, tz) < 0) {   // already gone (removed some other way)
+        CompleteRemoveBeltDesignation(tx, ty, tz);
+        return JOBRUN_DONE;
+    }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToTileStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_BELT_WORK_TIME, true, 1.0f);
+        if (r == JOBRUN_DONE) CompleteRemoveBeltDesignation(tx, ty, tz);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
 // Deconstruct workshop driver: walk to work tile, tear down, refund materials
 JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -3383,6 +3416,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
     [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
     [JOBTYPE_CLEAN] = RunJob_Clean,
+    [JOBTYPE_REMOVE_BELT] = RunJob_RemoveBelt,
     [JOBTYPE_HARVEST_BERRY] = RunJob_HarvestBerry,
     [JOBTYPE_KNAP] = RunJob_Knap,
     [JOBTYPE_DECONSTRUCT_WORKSHOP] = RunJob_DeconstructWorkshop,
@@ -6668,6 +6702,49 @@ static int WorkGiver_CleanDesignation(int moverIdx) {
 // Public wrapper for the header declaration
 int WorkGiver_Clean(int moverIdx) {
     return WorkGiver_CleanDesignation(moverIdx);
+}
+
+// WorkGiver_RemoveBelt: nearest unassigned remove-belt designation (on-tile, anyone can)
+static int WorkGiver_RemoveBelt(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    int bx = -1, by = -1, bz = -1;
+    float bestDistSq = 1e30f;
+    for (int i = 0; i < removeBeltCacheCount; i++) {
+        OnTileDesignationEntry* e = &removeBeltCache[i];
+        Designation* d = GetDesignation(e->x, e->y, e->z);
+        if (!d || d->type != DESIGNATION_REMOVE_BELT || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+        float ddx = e->x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+        float ddy = e->y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+        float distSq = ddx * ddx + ddy * ddy;
+        if (distSq < bestDistSq) { bestDistSq = distSq; bx = e->x; by = e->y; bz = e->z; }
+    }
+    if (bx < 0) return -1;
+    if (!JobInRange(moverIdx, bx, by, bz)) return -1;
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point cell = { bx, by, bz };
+    Point tempPath[MAX_PATH];
+    if (FindPath(moverPathAlgorithm, moverCell, cell, tempPath, MAX_PATH) <= 0) {
+        Designation* d = GetDesignation(bx, by, bz);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+    int jobId = CreateJob(JOBTYPE_REMOVE_BELT);
+    if (jobId < 0) return -1;
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bx;
+    job->targetMineY = by;
+    job->targetMineZ = bz;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+    GetDesignation(bx, by, bz)->assignedMover = moverIdx;
+    m->currentJobId = jobId;
+    m->goal = cell;
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
 }
 
 // WorkGiver_Craft: Find workshop with runnable bill and available materials

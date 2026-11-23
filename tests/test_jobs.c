@@ -4,6 +4,7 @@
 #include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/core/state_audit.h"
+#include "../src/entities/belts.h"
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
@@ -14708,6 +14709,49 @@ describe(construction_cancellation) {
     }
 }
 
+describe(belt_removal_job) {
+    it("a mover walks onto a marked belt and takes it down: the load drops, one plank back") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n" "..........\n" "..........\n" "..........\n" "..........\n", 10, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearStockpiles(); ClearWorkshops(); ClearJobs();
+        InitDesignations();
+        ClearBelts();
+        expect(PlaceBelt(6, 2, 0, BELT_E) >= 0);
+        int log = SpawnItem(CELL_SIZE * 6.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_LOG);
+        BeltsTick(1.0f / 60.0f);                 // the belt picks the log up
+        expect(items[log].state == ITEM_ON_BELT);
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 2.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        expect(DesignateRemoveBelt(6, 2, 0));
+        expect(!DesignateRemoveBelt(6, 2, 0));   // once
+        expect(!DesignateRemoveBelt(3, 2, 0));   // no belt there
+        expect(BeltAt(6, 2, 0) >= 0);            // not instant any more
+
+        bool sawJob = false;
+        for (int i = 0; i < 3000 && BeltAt(6, 2, 0) >= 0; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+            if (m->currentJobId >= 0 && GetJob(m->currentJobId)->type == JOBTYPE_REMOVE_BELT) sawJob = true;
+        }
+        expect(sawJob);
+        expect(BeltAt(6, 2, 0) < 0);
+        expect(!HasRemoveBeltDesignation(6, 2, 0));
+        expect(items[log].active && items[log].state != ITEM_ON_BELT);
+        int planks = 0;
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].type == ITEM_PLANKS) planks += items[i].stackCount;
+        expect(planks == 1);
+    }
+}
+
 describe(workshop_linked_inputs) {
     // Shared setup: sawmill at (8,1) with Saw Planks, a planks pile at (0,0), a loose log
     // close to the sawmill at (8,6), a log pile L far east at (16,6) holding one log,
@@ -15060,6 +15104,7 @@ int main(int argc, char* argv[]) {
     test(job_distance_weighting);
     test(table_construction);
     test(workshop_linked_inputs);
+    test(belt_removal_job);
     
     return summary();
 }

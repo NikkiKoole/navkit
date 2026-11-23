@@ -46,6 +46,7 @@ typedef enum {
     JOBTYPE_FILL_WATER_POT,          // Pick up empty pot, carry to water, fill, return to stockpile
     JOBTYPE_WATER_CROP,              // Pick up water, carry to dry farm cell, pour
     JOBTYPE_GATHER_REEDS,            // Gather reeds (creates reeds item)
+    JOBTYPE_REMOVE_BELT,             // Walk onto a belt, take it down
     JOBTYPE_COUNT
 } JobType;
 
@@ -86,6 +87,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_FILL_WATER_POT]       = "FILL_WATER_POT",
         [JOBTYPE_WATER_CROP]           = "WATER_CROP",
         [JOBTYPE_GATHER_REEDS]         = "GATHER_REEDS",
+        [JOBTYPE_REMOVE_BELT]         = "REMOVE_BELT",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -220,6 +222,7 @@ JobRunResult RunJob_Channel(Job* job, void* mover, float dt);
 JobRunResult RunJob_DigRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveFloor(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
+JobRunResult RunJob_RemoveBelt(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);

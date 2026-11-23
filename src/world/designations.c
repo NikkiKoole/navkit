@@ -2922,3 +2922,44 @@ int CountBlueprintsReadyToBuild(void) {
     }
     return count;
 }
+
+// ---------------------------------------------------------------------------
+// Remove belt (on-tile designation, JOBTYPE_REMOVE_BELT)
+// ---------------------------------------------------------------------------
+
+bool DesignateRemoveBelt(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (BeltAt(x, y, z) < 0) return false;
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_REMOVE_BELT;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    DESIGNATION_MUT(x, y, z).unreachableCooldown = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_REMOVE_BELT);
+    return true;
+}
+
+bool HasRemoveBeltDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    return DESIGNATION(x, y, z).type == DESIGNATION_REMOVE_BELT;
+}
+
+void CancelRemoveBeltDesignation(int x, int y, int z) {
+    if (!HasRemoveBeltDesignation(x, y, z)) return;
+    activeDesignationCount--;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    InvalidateDesignationCache(DESIGNATION_REMOVE_BELT);
+}
+
+// The belt goes (its load drops on the cell), one plank comes back; the designation clears.
+// Also called when the belt is already gone: just clears.
+void CompleteRemoveBeltDesignation(int x, int y, int z) {
+    if (BeltAt(x, y, z) >= 0) {
+        RemoveBelt(x, y, z);
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_PLANKS);
+    }
+    CancelRemoveBeltDesignation(x, y, z);
+}

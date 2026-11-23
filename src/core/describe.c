@@ -603,6 +603,7 @@ static const struct { const char* name; const char* worker; } designationText[DE
     [DESIGNATION_DIG_ROOTS]      = {"Dig Roots",      "Digger"},
     [DESIGNATION_EXPLORE]        = {"Explore",        "Explorer"},
     [DESIGNATION_FARM]           = {"Farm",           "Farmer"},
+    [DESIGNATION_REMOVE_BELT]    = {"Remove Belt",    "Worker"},
 };
 
 const char* DesignationDisplayName(int type) {

@@ -82,7 +82,9 @@ Scenario `belt-build` (32x20): 12 belt blueprints, planks and cordage nearby, 3 
 ticks: all 12 built, 20 of 40 rocks moved; 6000: all 40.
 Play HUD (dev UI off): Huisje → **Build Belt**, shown once the world has planks. While it is
 picked a **Dir** button next to it cycles N/E/S/W/lift/chute (arrows and PgUp/PgDn work too).
-Not yet: deconstruction as a job (removal is instant).
+Removal is a job (`DESIGNATION_REMOVE_BELT` / `JOBTYPE_REMOVE_BELT`): R-drag marks built belts
+(and still cancels belt blueprints at once); a mover walks onto the belt and takes it down in
+0.25 game hours: the load drops on the cell, one plank comes back. Not yet: un-marking.
 
 ### Belts and workshops (no new code)
 
@@ -101,7 +103,8 @@ is not restricted. The hopper is now just a linked stockpile.
 Scenario `belt-play` is the hand-built version: same pieces (logs in A, sawmill with an empty
 hopper, empty plank pile P, a store with 60 planks + 30 cordage), no belts, starts in the play
 HUD: Huisje -> Build Belt. The sawmill stays idle until a belt fills the hopper.
-Not yet: a belt end pointing straight into a workshop (no hopper), recipes with two inputs
+No direct belt-into-workshop: the user likes the hopper as the small piece that connects a
+belt to a workshop (2026-11-23). Not planned.
 (one hopper per input works; a mixed hopper too).
 
 ### Not in the spike (known gaps)
@@ -180,7 +183,7 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 ## Next steps if the spike earns it
 
 1. ~~Save/load belts~~ done (v98). ~~Clear them on game start~~ done.
-2. ~~Build belts in game~~ done (dev UI and play HUD). Removal as a job.
+2. ~~Build belts in game~~ done (dev UI and play HUD). ~~Removal as a job~~ done.
 3. ~~A belt feeding a workshop / taking from its output~~ works through a linked hopper
    stockpile and a belt on the output tile (scenario `belt-workshop`).
 4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Lifts slow / chutes fast done (settings).
