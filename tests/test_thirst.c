@@ -495,6 +495,27 @@ describe(natural_water_fallback) {
         expect(balance.naturalDrinkHydration < GetItemHydration(ITEM_WATER));
     }
 
+    it("a walk to water two levels down is not given up at the start (survival seeds 2 and 3)") {
+        // The search reaches 4 levels down; the seek checked for water at the mover's own
+        // level and the one below, so it ended in the tick it began, every time, and the
+        // mover died of thirst on a hill above a river
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].z = 3.0f;
+        WATER_MUT(5, 5, 1).level = 5;
+        movers[mi].freetimeState = FREETIME_SEEKING_NATURAL_WATER;
+        movers[mi].needTarget = 5 + 5 * gridWidth;
+        movers[mi].goal = (Point){4, 5, 1};
+        movers[mi].needProgress = 0.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_NATURAL_WATER);
+
+        // the water drying up still ends the walk
+        WATER_MUT(5, 5, 1).level = 0;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+    }
+
     it("mover drinks natural water and restores thirst") {
         SetupClean();
         int mi = SetupMover(5, 5);
