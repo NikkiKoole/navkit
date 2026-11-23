@@ -41,6 +41,7 @@ What's already in the codebase (`src/entities/trains.h`, `src/entities/trains.c`
 - **CELL_PLATFORM**: walkable cell type adjacent to track, auto-detected as station
 - **RebuildStations()**: scans grid for track+platform adjacency, builds station list, preserves waiters across rebuilds
 - **Multi-cell platforms**: contiguous CELL_PLATFORM cells parallel to track (up to MAX_PLATFORM_CELLS=8), with directional queue layout
+  - A long platform is split into stops of up to 8 cells; each walk along it stops at a cell another stop already has, so a platform makes the same stops on either side of its track (fixed 2026-11-23, ac6a0c5b: below / left of the track it used to make a stop per cell and could hit MAX_STATIONS). The line forms along the stop's own cells.
 - **Cart state machine**: CART_MOVING → CART_DOORS_OPEN (TRAIN_DOOR_TIME=3s timer)
 - **Station detection during movement**: cart checks `GetStationAt()` each cell, stops only if waiters or riders want this station
 - **Pull-forward logic**: cart continues through multi-cell stations, only stops at the last track cell adjacent to the platform
