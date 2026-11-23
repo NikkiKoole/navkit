@@ -34,6 +34,24 @@
 
 // Find nearest edible item in a stockpile (reserved by nobody)
 // Returns item index or -1
+// An item a mover could walk to for a need: not marked unreachable (a seek that gave up),
+// and lying where someone can stand (its outermost container's cell for contained items).
+// Supplies spawned into a hillside sent the survival mover after them all day.
+static bool NeedItemReachable(int i) {
+    if (items[i].unreachableCooldown > 0.0f) return false;
+    int c = (items[i].containedIn >= 0) ? GetOutermostContainer(i) : i;
+    if (c < 0) c = i;
+    int cx = (int)(items[c].x / CELL_SIZE), cy = (int)(items[c].y / CELL_SIZE), cz = (int)items[c].z;
+    if (cx < 0 || cy < 0 || cz < 0 || cx >= gridWidth || cy >= gridHeight || cz >= gridDepth) return false;
+    return IsCellWalkableAt(cz, cy, cx);
+}
+
+// A seek for this item gave up: leave it alone for a game hour
+static void MarkNeedItemUnreachable(int i) {
+    if (i >= 0 && i < MAX_ITEMS && items[i].active)
+        items[i].unreachableCooldown = GameHoursToGameSeconds(1.0f);
+}
+
 static int FindNearestEdibleInStockpile(float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
@@ -44,6 +62,7 @@ static int FindNearestEdibleInStockpile(float x, float y, int z) {
         if (items[i].reservedBy != -1) continue;
         if (!ItemIsEdible(items[i].type)) continue;
         if (items[i].condition == CONDITION_ROTTEN) continue;
+        if (!NeedItemReachable(i)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -70,6 +89,7 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
         if (items[i].reservedBy != -1) continue;
         if (!ItemIsEdible(items[i].type)) continue;
         if (items[i].condition == CONDITION_ROTTEN) continue;
+        if (!NeedItemReachable(i)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -256,7 +276,7 @@ static bool FindNearbyBush(int cx, int cy, int z, int* outX, int* outY) {
         for (int dx = -radius; dx <= radius; dx++) {
             int nx = cx + dx, ny = cy + dy;
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (!IsCellWalkableAt(nx, ny, z)) continue;
+            if (!IsCellWalkableAt(z, ny, nx)) continue;
             if (!IsExposedToSky(nx, ny, z)) continue;  // must be outdoors
             // Check for nearby tree/plant for privacy
             bool hasPrivacy = false;
@@ -336,6 +356,7 @@ static int FindBestDrinkableItem(float x, float y, int z) {
         if (items[i].state != ITEM_IN_STOCKPILE && items[i].state != ITEM_ON_GROUND &&
             items[i].state != ITEM_IN_CONTAINER) continue;
         if (items[i].state == ITEM_IN_CONTAINER && !IsItemAccessible(i)) continue;
+        if (!NeedItemReachable(i)) continue;
 
         float hydration = GetItemHydration(items[i].type);
         float dx = items[i].x - x;
@@ -361,7 +382,7 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
     bool found = false;
 
     // Spiral search up to 20 tiles, check z and z-1 for water (dug-out ponds)
-    for (int r = 1; r <= 20; r++) {
+    for (int r = 1; r <= 48; r++) {
         for (int dy = -r; dy <= r; dy++) {
             for (int dx = -r; dx <= r; dx++) {
                 if (abs(dx) != r && abs(dy) != r) continue; // Only search ring
@@ -373,7 +394,7 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
                 if (distSq >= bestDistSq) continue;
 
                 // Check z and z-1 for water (z-1 = dug pond one level below)
-                for (int wz = z; wz >= z - 1 && wz >= 0; wz--) {
+                for (int wz = z; wz >= z - 4 && wz >= 0; wz--) {
                     if (!HasWater(wx, wy, wz)) continue;
 
                     // Find walkable neighbor at wz..wz+1 (ramp/wall-top access)
@@ -741,6 +762,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             m->needProgress += gameDeltaTime;
             if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH)) {
                 ReleaseItemReservation(ti);
+                MarkNeedItemUnreachable(ti);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
@@ -1022,6 +1044,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             m->needProgress += gameDeltaTime;
             if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
                 ReleaseItemReservation(ti);
+                MarkNeedItemUnreachable(ti);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);

@@ -925,6 +925,33 @@ static bool WalkToFarFood(float testDayLength, int* seekStarts) {
     return ate;
 }
 
+describe(seek_keeps_its_goal) {
+    it("a mover walking to a need keeps its goal when no path is found (not sent wandering)") {
+        InitTestGridFromAscii(
+            "..........\n"
+            "....#.....\n"
+            "..........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearJobs();
+        InitBalance();
+        bool savedEndless = endlessMoverMode;
+        endlessMoverMode = true;
+        currentTick = 1;
+        int food = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+        InitMover(&movers[0], 1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){1, 1, 0}, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].freetimeState = FREETIME_SEEKING_FOOD;
+        movers[0].needTarget = food;
+        movers[0].goal = (Point){4, 1, 0};   // inside the wall: no path
+        movers[0].needsRepath = true;
+        for (int t = 0; t < 10; t++) Tick();
+        endlessMoverMode = savedEndless;
+        // Bug: a mover with no job counted as a wanderer and got a random goal, while still
+        // "seeking food"; it walked around all day after food it could never reach.
+        expect(movers[0].goal.x == 4 && movers[0].goal.y == 1);
+    }
+}
+
 describe(food_far_away) {
     it("a hungry mover walks 29 cells to food without giving up on the way") {
         int starts = 0;
@@ -1345,6 +1372,7 @@ int main(int argc, char* argv[]) {
     test(eating_consumption);
     test(critical_need_search_cooldown);
     test(food_far_away);
+    test(seek_keeps_its_goal);
     test(eating_starving_unassigns_job);
     test(unassign_job_pickup);
     test(drying_rack_berries);

@@ -2236,14 +2236,19 @@ void ProcessMoverRepaths(void) {
         }
 
         if (m->pathLength == 0) {
-            // Repath failed - check if goal cell itself is now a wall. A wanderer (no job)
-            // picks a new goal too: retrying one that shares a region but has no path
-            // (regions ignore deep water) searched the whole graph every cooldown.
-            bool wanderer = endlessMoverMode && m->currentJobId < 0 && len == 0;
+            // Repath failed - check if goal cell itself is now a wall. A wanderer (no job,
+            // no need) picks a new goal too: retrying one that shares a region but has no
+            // path (regions ignore deep water) searched the whole graph every cooldown. A
+            // mover walking to food, drink or a bed is not a wanderer: it keeps its goal
+            // and the need gives up on its own (a random goal here sent the survival mover
+            // wandering in "seeking drink" all day).
+            bool wanderer = endlessMoverMode && m->currentJobId < 0 && len == 0 &&
+                            m->freetimeState == FREETIME_NONE;
             if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x) || wanderer) {
                 // Goal is unwalkable (wall placed on it)
-                // Only assign new random goal if mover has no job - otherwise let job system handle it
-                if (m->currentJobId < 0) {
+                // Only assign new random goal if mover has no job and no need - otherwise
+                // the job system or the need handles it
+                if (m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
                     Point oldGoal = m->goal;
                     AssignNewMoverGoal(m);
                     if (m->pathLength > 0) {

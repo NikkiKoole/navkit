@@ -59,24 +59,59 @@ static void InitWorldAfterGeneration(void) {
     BuildGraph();
 }
 
-// 5 berries, 5 sticks and a clay pot of water around (sx, sy, sz)
+// Where to put a starting supply: the walkable cell nearest to (cell + dx, dy), on the
+// mover's level or one up/down, within 4 cells; else the mover's own cell. Fixed offsets
+// used to drop supplies into a hillside, where nobody could reach them.
+static void SupplySpot(float sx, float sy, float sz, int dx, int dy, float* ox, float* oy, float* oz) {
+    int cx = (int)(sx / CELL_SIZE), cy = (int)(sy / CELL_SIZE), cz = (int)sz;
+    int tx = cx + dx, ty = cy + dy;
+    int bestD = 1 << 30;
+    *ox = sx; *oy = sy; *oz = sz;
+    for (int r = 0; r <= 4; r++) {
+        for (int y = ty - r; y <= ty + r; y++)
+            for (int x = tx - r; x <= tx + r; x++) {
+                if (abs(x - tx) != r && abs(y - ty) != r) continue;   // ring only
+                if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+                const int dzs[3] = {0, -1, 1};
+                for (int k = 0; k < 3; k++) {
+                    int z = cz + dzs[k];
+                    if (z < 0 || z >= gridDepth || !IsCellWalkableAt(z, y, x)) continue;
+                    int d = (x - tx) * (x - tx) + (y - ty) * (y - ty) + k;
+                    if (d < bestD) {
+                        bestD = d;
+                        *ox = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                        *oy = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                        *oz = (float)z;
+                    }
+                    break;
+                }
+            }
+        if (bestD < (1 << 30)) return;
+    }
+}
+
+// 5 berries, 5 sticks and a clay pot of water around (sx, sy, sz), on walkable cells
 static void SpawnStartingSupplies(float sx, float sy, float sz) {
+    float x, y, z;
     // 5 berries (immediate food)
     for (int i = 0; i < 5; i++) {
-        SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE, sz, ITEM_BERRIES);
+        SupplySpot(sx, sy, sz, i % 3, 1, &x, &y, &z);
+        SpawnItem(x, y, z, ITEM_BERRIES);
     }
 
     // 5 sticks (basic crafting material)
     for (int i = 0; i < 5; i++) {
-        SpawnItem(sx + CELL_SIZE * (i % 3), sy + CELL_SIZE * 2, sz, ITEM_STICKS);
+        SupplySpot(sx, sy, sz, i % 3, 2, &x, &y, &z);
+        SpawnItem(x, y, z, ITEM_STICKS);
     }
 
     // 1 clay pot filled with water
-    int potIdx = SpawnItem(sx + CELL_SIZE * 3, sy + CELL_SIZE, sz, ITEM_CLAY_POT);
+    SupplySpot(sx, sy, sz, 3, 1, &x, &y, &z);
+    int potIdx = SpawnItem(x, y, z, ITEM_CLAY_POT);
     if (potIdx >= 0) {
         int fillCount = 5; // clay pot maxContents
         for (int i = 0; i < fillCount; i++) {
-            int waterIdx = SpawnItem(sx, sy, sz, ITEM_WATER);
+            int waterIdx = SpawnItem(x, y, z, ITEM_WATER);
             if (waterIdx >= 0) {
                 PutItemInContainer(waterIdx, potIdx);
             }

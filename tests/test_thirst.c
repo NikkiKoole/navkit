@@ -454,6 +454,39 @@ describe(natural_water_fallback) {
         expect(movers[mi].freetimeState == FREETIME_SEEKING_NATURAL_WATER);
     }
 
+    it("a drink lying where nobody can stand is skipped (supplies spawned into a hillside)") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].thirst = balance.thirstSeekThreshold - 0.01f;
+        GRID(6, 6, 1) = CELL_WALL;
+        SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        WATER_MUT(8, 2, 1).level = 5;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_NATURAL_WATER);
+    }
+
+    it("a drink whose seek gave up is left alone for a while, then tried again") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].thirst = balance.thirstSeekThreshold - 0.01f;
+        int w = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+        movers[mi].needProgress = GameHoursToGameSeconds(balance.waterSeekTimeoutGH) + 1.0f;   // never got there
+        ProcessFreetimeNeeds();
+        expect(items[w].reservedBy == -1);
+        expect(items[w].unreachableCooldown > 0.0f);
+        movers[mi].needSearchCooldown = 0.0f;
+        movers[mi].freetimeState = FREETIME_NONE;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState != FREETIME_SEEKING_DRINK);   // skipped while marked
+        items[w].unreachableCooldown = 0.0f;
+        movers[mi].needSearchCooldown = 0.0f;
+        movers[mi].freetimeState = FREETIME_NONE;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_DRINK);
+    }
+
     it("natural water drinking is slower than pot drinking") {
         expect(balance.naturalDrinkDurationGH > balance.drinkingDurationGH);
     }
