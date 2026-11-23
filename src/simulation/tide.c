@@ -184,6 +184,12 @@ int TideLevelAt(float gameHours) {
     return low + (int)lroundf(high * (float)(WATER_MAX_LEVEL - low));
 }
 
+// A flat: sea cell on the top level over solid floor (walkable once the tide is out)
+static bool TideFlatAt(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    return WATER(x, y, z).isSea && GRID(x, y, z) == CELL_AIR && CellIsSolid(GRID(x, y, z - 1));
+}
+
 int TidePrepareShore(void) {
     int z = tideSeaZ;
     if (z < 1 || z + 1 >= gridDepth) return 0;
@@ -199,6 +205,15 @@ int TidePrepareShore(void) {
                 if (!WATER(sx, sy, z).isSea || GRID(sx, sy, z) != CELL_AIR) continue;
                 if (!CellIsSolid(GRID(sx, sy, z - 1))) continue;
                 if (!CellIsSolid(GRID(ex, ey, z)) || GRID(ex, ey, z + 1) != CELL_AIR) continue;
+                // Leaving a ramp sideways is one-way (nobody enters a ramp from the side): a flat
+                // beside it must lead back to the ramp's foot, or it is a pocket (the rule of
+                // island_gen.c IslandRampSidesOk)
+                bool sidesOk = true;
+                for (int side = -1; side <= 1 && sidesOk; side += 2) {
+                    int px = DY[d] * side, py = -DX[d] * side;
+                    if (TideFlatAt(x + px, y + py, z) && !TideFlatAt(x + px - DX[d], y + py - DY[d], z)) sidesOk = false;
+                }
+                if (!sidesOk) continue;
                 GRID(x, y, z) = RAMP[d];
                 placed++;
                 break;
