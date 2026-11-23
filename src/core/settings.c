@@ -253,6 +253,8 @@ static const Setting settings[] = {
       "Height of the sea beyond the map edge (-1 = none: all edge water flows off). The island sets its sea level.", NULL),
     SET_FLOAT("waterFlowHalfLife", "Current half-life (ticks)", "Simulation/Water", waterFlowHalfLife, 10.0f, 10.0f, 3600.0f,
       "Water ticks for the remembered current (water flow overlay) to fade to half. Longer = steadier arrows, slower to show a change.", NULL),
+    SET_BOOL("itemsDrift", "Items drift", "Simulation/Water", itemsDrift,
+      "Loose things that float (wood, plant matter) lying in water at least 2 deep go with the current, until they wash up. Not when carried, stored or reserved for a job."),
     SET_BOOL("tide", "Tide", "Simulation/Water", tideEnabled,
       "The sea's top level rises and falls (experiment, docs/todo/world/tide.md). Needs a marked sea: the tide scenario."),
     SET_FLOAT("tidePeriod", "Tide period (h)", "Simulation/Water", tidePeriodHours, 0.5f, 1.0f, 48.0f,

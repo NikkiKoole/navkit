@@ -95,6 +95,19 @@ cells are processed per tick, scanning bottom to top.
   36k ticks, slowing) and freezing costs ~0.6 ms with that much water (`GetTemperature` calls
   `sinf` per cell).
 
+- **The current is used** (2026-11-24): flowing water draws light flecks sliding downstream
+  (`DrawWaterFlecks` in `rendering.c`, setting `waterFlecks`; still water unchanged, byte-identical;
+  ~0.2 ms/frame on a view full of flow). **Drift** (`ItemsDriftTick` in `items.c`, setting
+  `itemsDrift`): loose floating items (wood material, plant matter) go with the current, 0.15-1
+  cell per game-second; they float up to the moving surface layer (a log on a full river bed sees
+  no current), need water 2 deep counting a full cell below, slide along banks when blocked
+  diagonally, and stay put with no water ahead. Not when carried, stored, contained or reserved.
+  Scenario `drift` (island, 60 oak logs in the rivers, no settlers; in scenarios-check): seed 1,
+  36k ticks: 20 drift (up to 53 cells), most wash up in the shallow lowland film, 3 reach the sea;
+  40 lie in still water (lakes, pools at river heads) and stay. Tests `test_water` water_drift.
+  Open: logs stop in strong but shallow (level 1) flow, which looks odd next to the arrows; what
+  happens at the map edge (now: a log stays at the edge cell).
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.

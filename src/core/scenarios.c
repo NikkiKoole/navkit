@@ -2479,6 +2479,87 @@ static bool TideIsIslet(int x, int y) {
 }
 static bool TideIsChannel(int x, int y) { return x >= 34 && x <= 37 && !(y >= 30 && y <= 34); }
 
+// ---- drift: logs dropped in the island's rivers go with the current (items.c ItemsDriftTick) ----
+#define DRIFT_LOGS 60
+static int driftLog[DRIFT_LOGS], driftLogCount = 0;
+static float driftStartX[DRIFT_LOGS], driftStartY[DRIFT_LOGS];
+
+static void SetupDrift(void) {
+    driftLogCount = 0;
+    itemsDrift = true;
+    // River cells: water at least 2 deep, above the sea, not a spring. Every k-th one, so the logs
+    // spread over all the rivers (scan order: bottom to top, row by row; deterministic)
+    int candidates = 0;
+    for (int z = waterEdgeSeaZ + 1; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                const WaterCell* w = &WATER(x, y, z);
+                if (w->level >= 2 && !w->isSource) candidates++;
+            }
+    int stride = candidates / DRIFT_LOGS;
+    if (stride < 1) stride = 1;
+    int k = 0;
+    for (int z = waterEdgeSeaZ + 1; z < gridDepth && driftLogCount < DRIFT_LOGS; z++)
+        for (int y = 0; y < gridHeight && driftLogCount < DRIFT_LOGS; y++)
+            for (int x = 0; x < gridWidth && driftLogCount < DRIFT_LOGS; x++) {
+                const WaterCell* w = &WATER(x, y, z);
+                if (w->level < 2 || w->isSource) continue;
+                if (k++ % stride != 0) continue;
+                float px = (x + 0.5f) * CELL_SIZE, py = (y + 0.5f) * CELL_SIZE;
+                int idx = SpawnItemWithMaterial(px, py, (float)z, ITEM_LOG, MAT_OAK);
+                if (idx < 0) continue;
+                driftLog[driftLogCount] = idx;
+                driftStartX[driftLogCount] = px;
+                driftStartY[driftLogCount] = py;
+                driftLogCount++;
+            }
+}
+
+static void DriftPrintStats(void) {
+    int moved = 0, still = 0, drifting = 0, ashore = 0, atSea = 0, onEdge = 0;
+    float sum = 0.0f, best = 0.0f;
+    for (int i = 0; i < driftLogCount; i++) {
+        const Item* it = &items[driftLog[i]];
+        if (!it->active) continue;
+        float d = sqrtf((it->x - driftStartX[i]) * (it->x - driftStartX[i]) +
+                        (it->y - driftStartY[i]) * (it->y - driftStartY[i])) / CELL_SIZE;
+        sum += d;
+        if (d > best) best = d;
+        if (d >= 1.0f) moved++; else still++;
+        int cx = (int)(it->x / CELL_SIZE), cy = (int)(it->y / CELL_SIZE), cz = (int)it->z;
+        float fx, fy;
+        if (cx == 0 || cy == 0 || cx == gridWidth - 1 || cy == gridHeight - 1) onEdge++;
+        float gx = 0.0f, gy = 0.0f;
+        if (GetWaterFlow(cx, cy, cz, &fx, &fy)) { gx += fx; gy += fy; }
+        if (cz > 0 && GetWaterFlow(cx, cy, cz - 1, &fx, &fy)) { gx += fx; gy += fy; }
+        int depth = WATER(cx, cy, cz).level + (cz > 0 && WATER(cx, cy, cz - 1).level == WATER_MAX_LEVEL ? WATER_MAX_LEVEL : 0);
+        if (cz <= waterEdgeSeaZ && WATER(cx, cy, cz).level > 0) atSea++;           // out on the sea
+        else if (depth >= 2 && gx * gx + gy * gy >= 0.25f) drifting++;              // as ItemsDriftTick
+        else if (depth >= 2) ashore++;   // still water (a lake, a pool): resting afloat
+        else ashore++;
+    }
+    printf("Drift: %d logs; moved >= 1 cell %d, not moved %d; distance avg %.1f, max %.1f cells\n",
+           driftLogCount, moved, still, driftLogCount ? sum / driftLogCount : 0.0f, best);
+    printf("Drift: now %d drifting, %d washed up or in still water, %d out on the sea, %d on the map edge\n",
+           drifting, ashore, atSea, onEdge);
+}
+
+static bool DriftCheck(char* why, int whyLen) {
+    int moved = 0;
+    for (int i = 0; i < driftLogCount; i++) {
+        const Item* it = &items[driftLog[i]];
+        float dx = it->x - driftStartX[i], dy = it->y - driftStartY[i];
+        if (dx * dx + dy * dy >= (float)(CELL_SIZE * CELL_SIZE)) moved++;
+    }
+    // Most logs land in still water (lakes, pools at river heads) and rightly stay; ~10 drift in
+    // the first 3000 ticks on seed 1. Broken drift gives 0
+    if (moved < 6) {
+        snprintf(why, (size_t)whyLen, "only %d of %d logs drifted a cell (want >= 6)", moved, driftLogCount);
+        return false;
+    }
+    return true;
+}
+
 static void SetupTide(void) {
     hungerEnabled = thirstEnabled = energyEnabled = false;
     for (int y = 0; y < gridHeight; y++)
@@ -2661,6 +2742,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"drift",      "The island with 60 oak logs dropped in its rivers, no settlers: where does the current take them?",
+                   "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",
                    NULL,        SetupTide, TideTickStats, TidePrintStats, TideCheck, 64, 40},
     {"tide-island", "The island with the tide on its sea: flats fall dry, ramps from the beach down, 100 wandering movers; scenarioSize sets the map",

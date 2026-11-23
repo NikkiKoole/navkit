@@ -181,6 +181,7 @@ extern ItemSpatialGrid itemGrid;
 // Spatial grid functions
 void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth);
 void FreeItemSpatialGrid(void);
+extern bool itemsDrift;   // loose floating items go with the water's current
 void BuildItemSpatialGrid(void);           // iterates to itemHighWaterMark
 
 // Entries [*start, *end) of itemIndices for one cell (empty: start == end)

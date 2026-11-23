@@ -6,6 +6,8 @@
 #include "../src/simulation/water.h"
 #include "../src/world/pathfinding.h"
 #include "../src/simulation/temperature.h"
+#include "../src/entities/items.h"
+#include "../src/entities/mover.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -1501,6 +1503,76 @@ describe(water_freezing) {
 // Main
 // =============================================================================
 
+// =============================================================================
+// Drifting: loose floating items go with the current
+// =============================================================================
+
+// A one-row channel: source at x=1, drain at x=12, the water runs east
+static void SetupDriftChannel(void) {
+    InitTestGridFromAscii(
+        "##############\n"
+        "#............#\n"
+        "##############\n");
+    InitWater();
+    ClearItems();
+    waterEvaporationEnabled = false;
+    itemsDrift = true;
+    SetWaterSource(1, 1, 0, true);
+    SetWaterDrain(12, 1, 0, true);
+}
+
+static void RunWaterAndItems(int n) {
+    for (int i = 0; i < n; i++) {
+        UpdateWater();
+        ItemsTick(TICK_DT);
+    }
+}
+
+describe(water_drift) {
+    it("a log in flowing water drifts downstream; a rock stays") {
+        SetupDriftChannel();
+        RunWaterAndItems(300);   // the current builds up
+        int log = SpawnItemWithMaterial(4.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_LOG, MAT_OAK);
+        int rock = SpawnItem(5.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_ROCK);
+        float logX0 = items[log].x, rockX0 = items[rock].x;
+        float fx, fy;
+        expect(GetWaterFlow(4, 1, 0, &fx, &fy) && fx > 0.0f);   // the current runs east
+        RunWaterAndItems(600);
+        if (test_verbose) printf("log %.1f -> %.1f (cell %d), rock %.1f -> %.1f\n", logX0, items[log].x,
+                                 (int)(items[log].x / CELL_SIZE), rockX0, items[rock].x);
+        expect(items[log].x > logX0 + CELL_SIZE);   // at least a cell further east
+        expect(items[log].y == 1.5f * CELL_SIZE);   // straight down the channel
+        expect(items[rock].x == rockX0);
+        waterEvaporationEnabled = true;
+    }
+
+    it("a log reserved for a job stays put") {
+        SetupDriftChannel();
+        RunWaterAndItems(300);
+        int log = SpawnItemWithMaterial(4.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_LOG, MAT_OAK);
+        items[log].reservedBy = 0;
+        float x0 = items[log].x;
+        RunWaterAndItems(600);
+        expect(items[log].x == x0);
+        waterEvaporationEnabled = true;
+    }
+
+    it("a drifting log stops at the water's edge and rests there") {
+        SetupDriftChannel();
+        RunWaterAndItems(300);
+        int log = SpawnItemWithMaterial(4.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_LOG, MAT_OAK);
+        RunWaterAndItems(6000);   // long enough to reach the end
+        int cx = (int)(items[log].x / CELL_SIZE);
+        if (test_verbose) printf("log ends in cell %d, water there %d\n", cx, GetWaterLevel(cx, 1, 0));
+        expect(cx < 12);                                     // never into the wall or past the drain
+        expect(GetWaterLevel(cx, 1, 0) >= 1);                // still in the water's edge
+        float x = items[log].x;
+        RunWaterAndItems(600);
+        expect(items[log].x == x);                           // and it rests there
+        waterEvaporationEnabled = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1528,6 +1600,7 @@ int main(int argc, char* argv[]) {
     test(water_rest);
     test(water_map_edge);
     test(water_freezing);
+    test(water_drift);
     
     return summary();
 }

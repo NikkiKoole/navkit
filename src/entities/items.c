@@ -9,6 +9,7 @@
 #include "containers.h"  // for ContainerDef, GetContainerDef, GetOutermostContainer
 #include "../simulation/temperature.h"  // for temperatureGrid
 #include "../simulation/balance.h"  // GameHoursToGameSeconds
+#include "../simulation/water.h"    // GetWaterFlow (drifting)
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -306,6 +307,102 @@ static void TemperatureTick(float dt) {
     }
 }
 
+// ---- Drifting: loose things that float go with the current ----
+bool itemsDrift = true;   // setting itemsDrift
+#define DRIFT_MIN_WATER 2        // shallower water: the item rests on the bed
+#define DRIFT_INTERVAL 0.1f      // game-seconds between drift steps
+static float driftAccum = 0.0f;
+
+// Wood and plant matter float; stone, metal, food and the rest stay where they lie
+static bool ItemFloats(const Item* it) {
+    if (IsWoodMaterial((MaterialType)it->material)) return true;
+    switch (it->type) {
+        case ITEM_LOG: case ITEM_PLANKS: case ITEM_STICKS: case ITEM_POLES: case ITEM_STRIPPED_LOG:
+        case ITEM_LEAVES: case ITEM_GRASS: case ITEM_DRIED_GRASS: case ITEM_BARK: case ITEM_REEDS:
+        case ITEM_SAPLING: case ITEM_BASKET: case ITEM_REED_MAT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Can a drifting item be in this cell (inside the map, not inside a wall)?
+static bool DriftCellOpen(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    CellType c = GRID(x, y, z);
+    return !CellIsSolid(c) && !CellBlocksFluids(c);
+}
+
+// The water a floating item at (x, y, z) rests on: this cell's water, or (in an empty cell with
+// no floor) the water right below it
+static bool DriftOverWater(int x, int y, int z) {
+    if (WATER(x, y, z).level > 0) return true;
+    return z > 0 && !HAS_FLOOR(x, y, z) && DriftCellOpen(x, y, z - 1) && WATER(x, y, z - 1).level > 0;
+}
+
+// Float to the surface: up while the cell above holds water, down while this one is empty air
+// over water. Returns the z the item floats at.
+static int DriftSurfaceZ(int x, int y, int z) {
+    while (z + 1 < gridDepth && WATER(x, y, z).level > 0 && !HAS_FLOOR(x, y, z + 1) &&
+           DriftCellOpen(x, y, z + 1) && WATER(x, y, z + 1).level > 0) z++;
+    while (z > 0 && WATER(x, y, z).level == 0 && !HAS_FLOOR(x, y, z) &&
+           DriftCellOpen(x, y, z - 1) && WATER(x, y, z - 1).level > 0) z--;
+    return z;
+}
+
+// Loose floating items go with the current (GetWaterFlow), 0.15-1 cell per game-second by its
+// strength. They float at the surface (a log on a full river bed comes up to the moving layer)
+// and need water at least DRIFT_MIN_WATER deep, counting a full cell below. Not carried, stored,
+// contained or reserved: a job never walks to a spot its item has left. Blocked diagonally they
+// slide along the bank; with no water ahead at all (a bank, a beach) they stay where they are.
+static void ItemsDriftTick(float dt) {
+    if (!itemsDrift || waterActiveCells == 0) return;
+    driftAccum += dt;
+    if (driftAccum < DRIFT_INTERVAL) return;
+    float step = driftAccum;
+    driftAccum = 0.0f;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* it = &items[i];
+        if (!it->active || it->state != ITEM_ON_GROUND || it->containedIn >= 0 || it->reservedBy >= 0) continue;
+        int cx = (int)(it->x / CELL_SIZE), cy = (int)(it->y / CELL_SIZE), cz = (int)it->z;
+        if (cx < 0 || cy < 0 || cz < 0 || cx >= gridWidth || cy >= gridHeight || cz >= gridDepth) continue;
+        if (!DriftOverWater(cx, cy, cz)) continue;   // dry: the common case, before the type check
+        if (!ItemFloats(it)) continue;
+        cz = DriftSurfaceZ(cx, cy, cz);
+        it->z = (float)cz;
+        const WaterCell* w = &WATER(cx, cy, cz);
+        if (w->isFrozen) continue;
+        int depth = w->level + (cz > 0 && WATER(cx, cy, cz - 1).level == WATER_MAX_LEVEL ? WATER_MAX_LEVEL : 0);
+        if (depth < DRIFT_MIN_WATER) continue;
+        // The current of the surface layer and the one under it (a full river moves on top)
+        float fx = 0.0f, fy = 0.0f, gx, gy;
+        if (GetWaterFlow(cx, cy, cz, &gx, &gy)) { fx += gx; fy += gy; }
+        if (cz > 0 && GetWaterFlow(cx, cy, cz - 1, &gx, &gy)) { fx += gx; fy += gy; }
+        float m = sqrtf(fx * fx + fy * fy);
+        if (m < 0.5f) continue;
+        float strength = log2f(1.0f + m) / 5.0f;
+        if (strength > 1.0f) strength = 1.0f;
+        float dist = (0.15f + 0.85f * strength) * step * CELL_SIZE;
+        float mx = fx / m * dist, my = fy / m * dist;
+        // Try the step, then (blocked) its x part, then its y part: slide along a bank
+        float tryX[3] = {mx, mx, 0.0f}, tryY[3] = {my, 0.0f, my};
+        for (int t = 0; t < 3; t++) {
+            if (tryX[t] == 0.0f && tryY[t] == 0.0f) continue;
+            float nx = it->x + tryX[t], ny = it->y + tryY[t];
+            int ncx = (int)(nx / CELL_SIZE), ncy = (int)(ny / CELL_SIZE);
+            int nz = cz;
+            if (ncx != cx || ncy != cy) {
+                if (!DriftCellOpen(ncx, ncy, cz) || !DriftOverWater(ncx, ncy, cz)) continue;
+                nz = DriftSurfaceZ(ncx, ncy, cz);   // over a drop it goes down with the water
+            }
+            it->x = nx;
+            it->y = ny;
+            it->z = (float)nz;
+            break;
+        }
+    }
+}
+
 void ItemsTick(float dt) {
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
@@ -318,6 +415,7 @@ void ItemsTick(float dt) {
     }
     SpoilageTick(dt);
     TemperatureTick(dt);
+    ItemsDriftTick(dt);
 }
 
 void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
