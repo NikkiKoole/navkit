@@ -53,6 +53,7 @@ done <<'EOF'
 10  | 0 | --scenario belt
 10  | 0 | --scenario belt-lift
 31  | 0 | --scenario belt-build
+17  | 0 | --scenario belt-workshop
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo

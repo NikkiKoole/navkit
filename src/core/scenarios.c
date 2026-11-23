@@ -1854,6 +1854,73 @@ static bool BeltBuildCheck(char* why, int whyLen) {
     return true;
 }
 
+// belt-workshop: a belt feeds a sawmill and another carries its planks away. Logs the
+// movers stock in A ride east into H, a small hopper stockpile linked to the sawmill;
+// the crafter saws them; a belt starting on the sawmill's output tile carries the planks
+// north and east into P. Transfer points are stockpiles and the output tile, no new rules.
+static int beltWsLogsAtStart = 0;
+
+static void SetupBeltWorkshop(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    int spA = CreateStockpile(3, 7, 1, 4, 4);       // x 3..6, y 7..10
+    int spH = CreateStockpile(18, 8, 1, 2, 3);      // hopper x 18..19, y 8..10
+    int spP = CreateStockpile(40, 3, 1, 4, 4);      // planks x 40..43, y 3..6
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        SetStockpileFilter(spA, (ItemType)t, t == ITEM_LOG);
+        SetStockpileFilter(spH, (ItemType)t, t == ITEM_LOG);
+        SetStockpileFilter(spP, (ItemType)t, t == ITEM_PLANKS);
+    }
+    // Sawmill 3x3 at (20,8): "#O#" / ".X." / "#.." -> output (21,8), work (21,9)
+    int ws = CreateWorkshop(20, 8, 1, WORKSHOP_SAWMILL);
+    if (ws >= 0) {
+        AddBill(ws, 0, BILL_DO_FOREVER, 0);         // Saw Planks: 1 log -> 4 planks
+        LinkStockpileToWorkshop(ws, spH);           // the crafter takes logs from the hopper only
+    }
+    BeltRun(7, 9, 17, 9, BELT_E);                   // A -> hopper (drops on (18,9))
+    BeltRun(21, 8, 21, 6, BELT_N);                  // output tile north
+    BeltRun(21, 5, 39, 5, BELT_E);                  // east, drops on (40,5) = P
+    int logs = 0;
+    for (int tries = 0; logs < 30 && tries < 2000; tries++) {
+        int x = GetRandomValue(1, 14), y = GetRandomValue(13, 22);
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_LOG);
+        logs++;
+    }
+    beltWsLogsAtStart = logs;
+    SpawnMoverAt(8, 14, 1);
+    SpawnMoverAt(9, 14, 1);
+    SpawnMoverAt(24, 11, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Belt workshop: %d logs; a belt feeds the sawmill, another carries the planks away", logs), GREEN);
+}
+
+static int BeltWsCount(ItemType type, int x0, int y0, int x1, int y1) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || items[i].type != type) continue;
+        int x = (int)(items[i].x / CELL_SIZE), y = (int)(items[i].y / CELL_SIZE);
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1) n += items[i].stackCount;
+    }
+    return n;
+}
+
+static void BeltWorkshopPrintStats(void) {
+    int riding = 0;
+    for (int b = 0; b < beltCount; b++) if (belts[b].active && belts[b].item >= 0) riding++;
+    printf("Belt workshop: %d loads put on, %d dropped off, %d riding now\n", beltItemsIn, beltItemsOut, riding);
+    printf("Logs: %d at start, %d in A, %d in hopper; planks: %d in P, %d anywhere\n",
+           beltWsLogsAtStart, BeltWsCount(ITEM_LOG, 3, 7, 6, 10), BeltWsCount(ITEM_LOG, 18, 8, 19, 10),
+           BeltWsCount(ITEM_PLANKS, 40, 3, 43, 6), BeltWsCount(ITEM_PLANKS, 0, 0, gridWidth - 1, gridHeight - 1));
+}
+
+static bool BeltWorkshopCheck(char* why, int whyLen) {
+    int inP = BeltWsCount(ITEM_PLANKS, 40, 3, 43, 6);
+    if (inP < 4) {
+        snprintf(why, (size_t)whyLen, "%d planks reached P by belt (want >= 4)", inP);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -1901,6 +1968,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltLift, NULL, BeltLiftPrintStats, BeltLiftCheck, 48, 24},
     {"belt-build", "Movers build a 12-cell belt from blueprints (planks + cordage), then rocks ride it, 3 movers",
                    NULL,        SetupBeltBuild, NULL, BeltBuildPrintStats, BeltBuildCheck, 32, 20},
+    {"belt-workshop", "A belt feeds a sawmill's hopper stockpile, a second belt carries the planks from its output tile, 3 movers",
+                   NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

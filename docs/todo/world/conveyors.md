@@ -79,6 +79,18 @@ Scenario `belt-build` (32x20): 12 belt blueprints, planks and cordage nearby, 3 
 ticks: all 12 built, 20 of 40 rocks moved; 6000: all 40.
 Not yet: a play HUD tool (only the dev UI menu), deconstruction as a job (removal is instant).
 
+### Belts and workshops (no new code)
+
+Scenario `belt-workshop` (48x24): a belt carries logs from pile A into H, a 2x3 hopper
+stockpile linked to a sawmill (Saw Planks forever); a second belt *starts on the sawmill's
+output tile* and carries the planks to P. It needed no new belt rules: the hopper is an
+ordinary stockpile (transfer point), and a belt already takes an unreserved ground item from
+its own cell, which is what a finished craft is. 12000 ticks: all 30 logs sawn, 120 planks in
+P. With `beltSpeed 0.01` P gets 0 planks: the belt carries them, not the haulers (the output
+belt picks a new stack up before a hauler claims it).
+Not yet: a belt end pointing straight into a workshop (no hopper), recipes with two inputs
+(one hopper per input works; a mixed hopper too).
+
 ### Not in the spike (known gaps)
 
 - ~~Not saved~~ Saved since v98 (belts after furniture; `BeltsAfterLoad` rebuilds the lookup and
@@ -152,7 +164,8 @@ end) is messier and more emergent. Could be per belt end, or a "chute" end that 
 
 1. ~~Save/load belts~~ done (v98). Clear them on game start (today: scenario reset only).
 2. Build belts in game (recipe + blueprint), remove them (drops the load).
-3. A belt end feeding a workshop input / taking from a workshop output.
+3. ~~A belt feeding a workshop / taking from its output~~ works through a linked hopper
+   stockpile and a belt on the output tile (scenario `belt-workshop`).
 4. ~~Vertical belts + chutes~~ done (scenario `belt-lift`). Next there: power (water wheel,
    steam) and gravity (chutes fast and free, lifts slow or powered).
 5. Train cargo through the same transfer-point idea.
