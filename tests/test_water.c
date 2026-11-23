@@ -1189,6 +1189,43 @@ describe(water_edge_cases) {
 // Water Freezing
 // =============================================================================
 
+describe(water_rest) {
+    it("a full column comes to rest, and a visit to its top doesn't wake the water below") {
+        // One cell wide, three deep, walls all round: z0..z2 full
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "##.##\n"
+            "#####\n"
+            "floor:1\n"
+            "#####\n"
+            "##.##\n"
+            "#####\n"
+            "floor:2\n"
+            "#####\n"
+            "##.##\n"
+            "#####\n";
+        InitMultiFloorGridFromAscii(map, 5, 3);
+        InitWater();
+        waterEvaporationEnabled = false;
+        CLEAR_FLOOR(2, 1, 1);
+        CLEAR_FLOOR(2, 1, 2);
+        for (int z = 0; z < 3; z++) SetWaterLevel(2, 1, z, WATER_MAX_LEVEL);
+
+        RunWaterTicks(50);
+        expect(WATER(2, 1, 0).stable && WATER(2, 1, 1).stable && WATER(2, 1, 2).stable);
+
+        // Something wakes the top cell: it finds the full cell below already under its
+        // pressure, which is no news. (It used to re-mark it and wake it every visit, so
+        // full lakes and seas never came to rest.)
+        WATER_MUT(2, 1, 2).stable = false;
+        UpdateWater();
+        expect(WATER(2, 1, 1).stable);
+        expect(WATER(2, 1, 2).stable);
+        waterEvaporationEnabled = true;
+    }
+}
+
 describe(water_freezing) {
     it("should freeze water in every band of a big map within one sweep") {
         // 256x256x16 = 1M cells: UpdateWaterFreezing checks one band of rows per tick
@@ -1412,6 +1449,7 @@ int main(int argc, char* argv[]) {
     test(water_edge_cases);
     
     // Freezing tests
+    test(water_rest);
     test(water_freezing);
     
     return summary();

@@ -281,11 +281,18 @@ static int TryFall(int x, int y, int z) {
     
     int space = WATER_MAX_LEVEL - dst->level;
     if (space <= 0) {
-        // Cell below is full - create pressure (water wants to fall but can't)
-        dst->hasPressure = true;
-        dst->pressureDirty = 1;
-        dst->pressureSourceZ = z;
-        DestabilizeWater(x, y, z - 1);
+        // Cell below is full - create pressure (water wants to fall but can't). Only when
+        // that is news: re-marking a cell that already has exactly this pressure woke it
+        // and its neighbours on every visit, so a full lake or sea never came to rest (on
+        // the island 2.4 M of 4.1 M cell updates per 1000 ticks were full cells doing
+        // nothing). A different height is still written (also a lower one: keeping a
+        // higher one pushed water up hills)
+        if (!dst->hasPressure || dst->pressureSourceZ != z) {
+            dst->hasPressure = true;
+            dst->pressureDirty = 1;
+            dst->pressureSourceZ = z;
+            DestabilizeWater(x, y, z - 1);
+        }
         return 0;
     }
     
