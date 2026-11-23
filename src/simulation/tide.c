@@ -72,7 +72,11 @@ static void StripSetup(void) {
 }
 
 static int StripOf(int x, int y) {
-    float p = ((x + 0.5f) * stripDirX + (y + 0.5f) * stripDirY - stripMin) / stripSpan;
+    // Wavy strip borders: a straight border on the chunk grid looked like a drawn line; the
+    // offset varies along the border (q runs along it), so the front comes in as a wavy line
+    float q = -(x + 0.5f) * stripDirY + (y + 0.5f) * stripDirX;
+    float wobble = 5.0f * sinf(q * 0.13f) + 2.5f * sinf(q * 0.37f + 1.3f);
+    float p = ((x + 0.5f) * stripDirX + (y + 0.5f) * stripDirY + wobble - stripMin) / stripSpan;
     int s = (int)(p * stripCount);
     return s < 0 ? 0 : s >= stripCount ? stripCount - 1 : s;
 }

@@ -1050,6 +1050,9 @@ static void DrawSeaFoam(int x, int y, int zz, Rectangle dest, float size, Color 
         int nx = x + fdx[d], ny = y + fdy[d];
         if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
         if (GetWaterLevel(nx, ny, zz) > 0) continue;
+        // An emptied sea cell over water is still sea (the tide wave's strips are a level apart
+        // while it turns): no foam across open water
+        if (WATER(nx, ny, zz).isSea && zz > 0 && GetWaterLevel(nx, ny, zz - 1) > 0) continue;
         Rectangle r = dest;
         if (d == 0) r.height = w;
         else if (d == 2) { r.y += size - w; r.height = w; }
