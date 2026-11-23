@@ -84,7 +84,6 @@ bool bladderEnabled = false;
 // Simulation systems
 #include "../src/core/sim_manager.c"
 #include "../src/simulation/water.c"
-#include "../src/simulation/tide.c"
 #include "../src/simulation/fire.c"
 #include "../src/simulation/smoke.c"
 #include "../src/simulation/steam.c"
