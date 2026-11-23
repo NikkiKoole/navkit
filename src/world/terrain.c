@@ -2176,6 +2176,7 @@ void GenerateHillsSoilsWater(void) {
     {
         int riverCount = ClampInt(hillsWaterRiverCount, 0, 6);
         if (gridWidth * gridHeight <= 80 * 80 && riverCount > 1) riverCount = 1;
+        if (gridWidth < 24 || gridHeight < 24) riverCount = 0;   // no room for a river and its banks
 
         for (int r = 0; r < riverCount; r++) {
             // --- Pick start point: high terrain near a random edge ---
@@ -2222,8 +2223,14 @@ void GenerateHillsSoilsWater(void) {
                 }
             }
 
-            // The mouth is on the map edge itself: the river runs off the map there (edge water
-            // flows off, waterEdgeOutflow) instead of ending in a low spot it floods
+            // Both ends on the map edge itself: the river comes in from beyond the map at its
+            // start and runs off it at its mouth (edge water flows off, waterEdgeOutflow)
+            switch (startEdge) {
+                case 0: startY = 0; break;
+                case 1: startY = gridHeight - 1; break;
+                case 2: startX = 0; break;
+                default: startX = gridWidth - 1; break;
+            }
             switch (endEdge) {
                 case 0: endY = 0; break;
                 case 1: endY = gridHeight - 1; break;
@@ -2345,8 +2352,17 @@ void GenerateHillsSoilsWater(void) {
             }
 
             // --- Carve river along path ---
+            // Fed from the map edge it enters at (sources only there, as the river goes on beyond
+            // the map) and leaving at the edge it ends on (edge water flows off). The water surface
+            // only goes down along the river and never above the lowest ground around it, so the
+            // banks are one level above the water (walkable shore to drink from); where the terrain
+            // rises the sides are lowered into a valley, one level per cell (the ramp pass joins
+            // the steps), instead of a canyon nobody can reach.
             int baseWidth = ClampInt(hillsWaterRiverWidth, 1, 4);
-            float runningBed = -1.0f;
+            // Valley sides: how far out the steps go (none on tiny maps: they'd flatten it all)
+            int mapSide = gridWidth < gridHeight ? gridWidth : gridHeight;
+            const int valleyCells = ClampInt(mapSide / 16, 0, 5);
+            int runningBed = 1 << 20;
             int waterCellsPlaced = 0;
             int cellsCarved = 0;
 
@@ -2360,85 +2376,72 @@ void GenerateHillsSoilsWater(void) {
                 int radius = 1 + (int)(progress * (baseWidth - 1) + 0.5f);
                 if (radius < 1) radius = 1;
                 if (radius > baseWidth) radius = baseWidth;
-                // The map's border cells stay, except one at the mouth: the outlet where the river
-                // leaves the map (carving the frame along the way ate small maps whole)
-                bool mouth = (i == pathLen - 1);
+                // The map's border cells stay, except where the river enters and leaves
+                // (carving the frame along the way ate small maps whole)
+                bool ends = (i == 0 || i == pathLen - 1);
                 bool centerOnFrame = cx == 0 || cy == 0 || cx == gridWidth - 1 || cy == gridHeight - 1;
-                if (centerOnFrame && !mouth) continue;
+                if (centerOnFrame && !ends) continue;
 
-                // Find local terrain height at center
-                int terrainH = heightmap[cy * gridWidth + cx];
-
-                // Smooth bed: follows terrain down freely, smooths over small rises
-                float targetBed = (float)(terrainH - 1 - (radius >= 3 ? 1 : 0));
-                if (targetBed < 0) targetBed = 0;
-                if (runningBed < 0) {
-                    runningBed = targetBed;
-                } else if (targetBed <= runningBed) {
-                    // Terrain goes down — follow it down freely
-                    runningBed = targetBed;
-                }
-                // Terrain rises: the bed doesn't (the river cuts through), so the water runs
-                // all the way to the mouth instead of pooling behind a rise
-                int bedZ = (int)(runningBed + 0.5f);
+                // Water surface: never up, never above the lowest ground within the banks
+                int reach = radius + 1, ringMin = heightmap[cy * gridWidth + cx];
+                for (int dy = -reach; dy <= reach; dy++)
+                    for (int dx = -reach; dx <= reach; dx++) {
+                        if (dx * dx + dy * dy > reach * reach) continue;
+                        int nx = cx + dx, ny = cy + dy;
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        int ni = ny * gridWidth + nx;
+                        if (riverMask[ni]) continue;            // already carved: the channel
+                        if (heightmap[ni] < ringMin) ringMin = heightmap[ni];
+                    }
+                int bedZ = ringMin - 1;
+                if (bedZ > runningBed) bedZ = runningBed;
                 if (bedZ < 0) bedZ = 0;
-                // Never carve above local terrain
-                if (bedZ > terrainH - 1) bedZ = terrainH - 1;
-                if (bedZ < 0) bedZ = 0;
+                if (bedZ + 1 >= gridDepth) bedZ = gridDepth - 2;
+                runningBed = bedZ;
 
-                // Carve cells in circular area
-                for (int dy = -radius; dy <= radius; dy++) {
-                    for (int dx = -radius; dx <= radius; dx++) {
-                        if (dx * dx + dy * dy > radius * radius) continue;
+                int outer = radius + valleyCells;
+                for (int dy = -outer; dy <= outer; dy++) {
+                    for (int dx = -outer; dx <= outer; dx++) {
+                        int d2 = dx * dx + dy * dy;
+                        if (d2 > outer * outer) continue;
                         int nx = cx + dx;
                         int ny = cy + dy;
                         if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
                         bool onFrame = nx == 0 || ny == 0 || nx == gridWidth - 1 || ny == gridHeight - 1;
-                        if (onFrame && !(mouth && dx == 0 && dy == 0)) continue;
-
+                        if (onFrame && !ends) continue;
                         int nidx = ny * gridWidth + nx;
                         int currentHeight = heightmap[nidx];
 
-                        // Clamp bed to local terrain
-                        int localBed = bedZ;
-                        if (localBed > currentHeight - 1) localBed = currentHeight - 1;
-                        if (localBed < 0) localBed = 0;
+                        if (d2 > radius * radius) {
+                            // Valley side: at most one level up per cell from the bank
+                            if (riverMask[nidx]) continue;
+                            int step = (int)ceilf(sqrtf((float)d2)) - radius - 1;
+                            int maxH = bedZ + 1 + step;
+                            if (currentHeight <= maxH) continue;
+                            for (int z = maxH + 1; z <= currentHeight; z++) {
+                                GRID(nx, ny, z) = CELL_AIR;
+                                SET_CELL_SURFACE(nx, ny, z, SURFACE_BARE);
+                            }
+                            heightmap[nidx] = maxH;
+                            continue;
+                        }
 
-                        // Clear terrain above bed
-                        for (int z = localBed + 1; z <= currentHeight; z++) {
+                        // Channel
+                        if (riverMask[nidx] && currentHeight > bedZ && currentHeight + 1 < gridDepth)
+                            SetWaterLevel(nx, ny, currentHeight + 1, 0);   // carved higher before
+                        if (currentHeight <= bedZ && riverMask[nidx]) continue;
+                        for (int z = bedZ + 1; z <= currentHeight; z++) {
                             GRID(nx, ny, z) = CELL_AIR;
                             SET_CELL_SURFACE(nx, ny, z, SURFACE_BARE);
                         }
-
-                        heightmap[nidx] = localBed;
+                        heightmap[nidx] = bedZ;
                         waterMask[nidx] = true;
                         riverMask[nidx] = true;
-
-                        // Place water one level above bed
-                        int waterZ = localBed + 1;
-                        if (waterZ < gridDepth) {
-                            SetWaterLevel(nx, ny, waterZ, WATER_MAX_LEVEL);
-                            waterCellsPlaced++;
-                        }
+                        SetWaterLevel(nx, ny, bedZ + 1, WATER_MAX_LEVEL);
+                        waterCellsPlaced++;
                         cellsCarved++;
-                    }
-                }
-
-                // Place water sources along the river to keep it filled, only where the banks
-                // hold the water: next to lower ground a source spilled over the land forever
-                if (i % 8 == 0) {
-                    int sourceWaterZ = bedZ + 1;
-                    bool banksHold = true;
-                    for (int dy = -radius - 1; dy <= radius + 1 && banksHold; dy++)
-                        for (int dx = -radius - 1; dx <= radius + 1; dx++) {
-                            int bx = cx + dx, by = cy + dy;
-                            if (bx < 0 || by < 0 || bx >= gridWidth || by >= gridHeight) continue;
-                            if (riverMask[by * gridWidth + bx]) continue;      // the channel itself
-                            if (heightmap[by * gridWidth + bx] < sourceWaterZ) { banksHold = false; break; }
-                        }
-                    if (banksHold && sourceWaterZ < gridDepth) {
-                        SetWaterSource(cx, cy, sourceWaterZ, true);
-                        SetWaterLevel(cx, cy, sourceWaterZ, WATER_MAX_LEVEL);
+                        // Where it enters, the river goes on beyond the map: keep those full
+                        if (i == 0 && onFrame) SetWaterSource(nx, ny, bedZ + 1, true);
                     }
                 }
             }
