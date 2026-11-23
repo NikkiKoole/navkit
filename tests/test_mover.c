@@ -1301,6 +1301,8 @@ static bool PathUsesCell(const Point* p, int len, int x, int y) {
 
 describe(ladder_queue_cost) {
     it("routes around a ladder with a queue when another way is quicker") {
+        float climbWas = ladderClimbSpeed;
+        ladderClimbSpeed = 0.5f;   // the numbers below assume a level costs one step more
         SetupTwoLadderFloors();
         // Eight movers around ladder A, all climbing it
         static const int sp[8][2] = {{2, 1}, {2, 2}, {2, 3}, {3, 1}, {3, 3}, {4, 1}, {4, 3}, {1, 2}};
@@ -1358,6 +1360,7 @@ describe(ladder_queue_cost) {
         useLadderQueueCost = true;
         expect(len > 0);
         expect(PathUsesCell(buf, len, 3, 2));
+        ladderClimbSpeed = climbWas;
     }
 }
 

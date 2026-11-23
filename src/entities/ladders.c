@@ -21,7 +21,7 @@
 
 bool useSingleFileLadders = true;    // one climber per ladder segment; others wait at the foot/top
 bool useLadderQueueCost = true;      // routes see a ladder's queue as extra cost (pathfinding.h hook)
-float ladderClimbSpeed = 0.5f;       // climbing speed vs walking (0.5 = a level takes as long as 2 cells)
+float ladderClimbSpeed = 0.15f;      // climbing speed vs walking (0.15: a level ~7 cells; slower than built stairs, stairsClimbSpeed)
 
 // Seconds each mover has been in a ladder line
 static float moverLadderWait[MAX_MOVERS];

@@ -35,9 +35,9 @@ while IFS='|' read -r minArr allowNW args; do
         printf '%s\n' "$out" | grep -E '^FAIL|error|Unknown scenario' | sed 's/^/      /'
     fi
 done <<'EOF'
-130 | 0 | --scenario ladders
-180 | 0 | --scenario ladder-choice
-260 | 0 | --set scenarioMovers 48 --scenario ladder-choice
+49  | 0 | --scenario ladders
+82  | 0 | --scenario ladder-choice
+107 | 0 | --set scenarioMovers 48 --scenario ladder-choice
 85  | 1 | --scenario mood
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train

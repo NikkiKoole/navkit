@@ -51,7 +51,10 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   - Stairs were walked at full speed: movers cross a ramp in the walking code, so the
     climb-branch slowdown never applied. Now walking speed is multiplied by the stairs
     factor on a built ramp, and `stairsClimbSpeed` is 0.2 (a storey in one ramp cell is
-    ladder-steep: ~5 cells of walking per level). Ladders stay at 0.5.
+    ladder-steep: ~5 cells of walking per level). Ladders are slower still:
+    `ladderClimbSpeed` 0.15 (was 0.5), ~7 cells per level. Single-file ladder scenarios
+    move far fewer people (ladders 161 -> 61, ladder-choice 225 -> 102, 48 movers
+    328 -> 134 arrivals at 3000 ticks); the games have no ladders.
   - Ride cost: doors at both ends, the chance of stops for others on the way, and once
     measured (3+ rides) the car's real seconds per level and each level's real average
     wait (running averages on the Elevator).
