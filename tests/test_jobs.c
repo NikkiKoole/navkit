@@ -6306,6 +6306,39 @@ describe(workgivers) {
         expect(job->targetBlueprint == bpIdx);
     }
     
+    it("a mover with no way to the blueprint doesn't search again until the map changes") {
+        InitGridFromAsciiWithChunkSize(
+            "...#....\n"
+            "...#....\n"
+            "...#....\n", 8, 8);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+        Mover* m = &movers[0];
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, (Point){1, 1, 0}, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        int bpIdx = CreateRecipeBlueprint(5, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_BLOCKS);   // on the mover's side
+
+        RebuildBlueprintWorkCache();
+        expect(WorkGiver_BlueprintHaul(0) < 0);          // wall in the way
+        int calls = findPathCalls;
+        RebuildBlueprintWorkCache();                     // next frame
+        expect(WorkGiver_BlueprintHaul(0) < 0);
+        expect(findPathCalls == calls);                  // remembered: no new searches
+
+        GRID(3, 1, 0) = CELL_AIR;                        // a way opens
+        MarkChunkDirty(3, 1, 0);
+        RebuildBlueprintWorkCache();
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId >= 0);
+        expect(jobId >= 0 && GetJob(jobId)->targetBlueprint == bpIdx);
+    }
+
     it("should respect priority order: haul before mining") {
         // Setup world with both mine designation and haul opportunity
         InitGridFromAsciiWithChunkSize(

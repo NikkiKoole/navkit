@@ -609,7 +609,12 @@ void FreeJobPool(void) {
     jobPoolInitialized = false;
 }
 
+// WorkGiver_BlueprintHaul: movers that found no way to materials (see there)
+#define BP_HAUL_RETRY_TICKS (10 * TICK_RATE)
+static struct { Point cell; unsigned walkChange; unsigned long tick; bool valid; } bpHaulNoWay[MAX_MOVERS];
+
 void ClearJobs(void) {
+    memset(bpHaulNoWay, 0, sizeof(bpHaulNoWay));
     // Initialize pool if needed
     if (!jobPoolInitialized) {
         InitJobPool();
@@ -8234,6 +8239,14 @@ static bool IsBlueprintReachable(Blueprint* bp, Point moverCell, Point tempPath[
     return tempLen > 0;
 }
 
+// A mover whose blueprint-haul search found materials but no way to them (blueprint or
+// item unreachable) doesn't search again while it stands in the same cell and no cell's
+// walkability changed, for up to BP_HAUL_RETRY_TICKS (items may move meanwhile). A mover
+// stranded in a pocket (ramps are one way when left from the side; reachability regions
+// can't see that) otherwise ran ~5 failing path searches per blueprint every few ticks:
+// up to 100 ms ticks on the island colony.
+// (BP_HAUL_RETRY_TICKS and bpHaulNoWay are declared above ClearJobs)
+
 int WorkGiver_BlueprintHaul(int moverIdx) {
     Mover* m = &movers[moverIdx];
 
@@ -8246,6 +8259,11 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     int moverTileX = (int)(m->x / CELL_SIZE);
     int moverTileY = (int)(m->y / CELL_SIZE);
     Point moverCell = { moverTileX, moverTileY, moverZ };
+    if (bpHaulNoWay[moverIdx].valid && bpHaulNoWay[moverIdx].walkChange == walkabilityChangeCount &&
+        bpHaulNoWay[moverIdx].cell.x == moverTileX && bpHaulNoWay[moverIdx].cell.y == moverTileY &&
+        bpHaulNoWay[moverIdx].cell.z == moverZ && currentTick - bpHaulNoWay[moverIdx].tick < BP_HAUL_RETRY_TICKS)
+        return -1;
+    bool anyNoWay = false;
     Point tempPath[MAX_PATH];
 
     // Blueprint-driven: for each blueprint needing materials, find a matching item
@@ -8272,11 +8290,11 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
             if (itemIdx < 0) continue;
 
             // Check reachability
-            if (!IsBlueprintReachable(bp, moverCell, tempPath)) break;  // bp unreachable, skip all slots
+            if (!IsBlueprintReachable(bp, moverCell, tempPath)) { anyNoWay = true; break; }  // bp unreachable, skip all slots
 
             Point itemCell = { (int)(items[itemIdx].x / CELL_SIZE), (int)(items[itemIdx].y / CELL_SIZE), (int)items[itemIdx].z };
             int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-            if (itemPathLen == 0) continue;
+            if (itemPathLen == 0) { anyNoWay = true; continue; }
 
             bestBpIdx = bpIdx;
             bestItemIdx = itemIdx;
@@ -8289,8 +8307,15 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
         // No items found for any blueprint — subsequent movers won't find any either
         // (items only get reserved, never spawned, during the assignment loop)
         if (!anyOutOfRange) bpHaulItemsExhausted = true;
+        if (anyNoWay) {
+            bpHaulNoWay[moverIdx].cell = moverCell;
+            bpHaulNoWay[moverIdx].walkChange = walkabilityChangeCount;
+            bpHaulNoWay[moverIdx].tick = currentTick;
+            bpHaulNoWay[moverIdx].valid = true;
+        }
         return -1;
     }
+    bpHaulNoWay[moverIdx].valid = false;
 
     Blueprint* bp = &blueprints[bestBpIdx];
 

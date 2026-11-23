@@ -612,6 +612,15 @@ cost. Jobs only 0.18 ms per tick at 82eca465 (worst 77 ms, 466 ticks over 5 ms) 
 master (worst 105 ms, 728 ticks over 5 ms); both runs end with 58 blueprints still open. The
 remaining job spikes are in `AssignJobs_P4_Designations` (blueprint hauls running path searches).
 
+**Job spikes fixed (2026-11-23):** all of them came from one idle settler stranded in a pocket on
+the mountain (117,101,z13). It walked up a ramp and left it from the side; ramps can be entered only
+from their low or high side, so the way back down does not exist (A* agrees), but reachability
+regions treat every connection as two-way and said "reachable". Each assignment round it ran ~5
+failing path searches per blueprint (49 blueprints). `WorkGiver_BlueprintHaul` now remembers "no
+way" per mover until it moves, a cell's walkability changes, or 10 s pass. From the day-3 save,
+3000 ticks, clean builds: Jobs 1.0 -> 0.14 ms per tick, ticks over 5 ms 215 -> 5, worst 94 -> 16 ms.
+Still open: one-way pockets themselves (settlers can strand themselves; regions can't see them).
+
 *Retracted:* the first measurement here said Jobs 7.3 ms per tick (worst 458 ms). That binary
 was built from the shared main tree while other sessions had uncommitted changes in it, so it
 did not match any commit and does not reproduce. Measure only from a clean build (a worktree at
