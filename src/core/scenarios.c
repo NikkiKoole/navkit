@@ -2102,8 +2102,9 @@ static Point esTripGoal[MAX_MOVERS];
 static double esTripStart[MAX_MOVERS];
 static int esTripFromZ[MAX_MOVERS];
 static bool esTripRode[MAX_MOVERS];
-static double esTripSec[2][12];
-static int esTripN[2][12];
+static int esTripLeaves[MAX_MOVERS];       // ElevatorMoverLinesLeft at the trip's start
+static double esTripSec[3][12];            // [0 stairs/walk only, 1 rode, 2 left a line and didn't ride]
+static int esTripN[3][12];
 
 static bool esAboard[MAX_MOVERS];
 static int esBoardZ[MAX_MOVERS];
@@ -2159,9 +2160,11 @@ static void ElevatorStairsTick(void) {
         if (!PointsEqual(m->goal, esTripGoal[i])) {   // a new goal: the last trip ended
             int floors = abs(esTripGoal[i].z - esTripFromZ[i]);
             if (esTripStart[i] > 0.0 && floors < 12) {
-                esTripSec[esTripRode[i]][floors] += gameTime - esTripStart[i];
-                esTripN[esTripRode[i]][floors]++;
+                int kind = esTripRode[i] ? 1 : (ElevatorMoverLinesLeft(i) > esTripLeaves[i] ? 2 : 0);
+                esTripSec[kind][floors] += gameTime - esTripStart[i];
+                esTripN[kind][floors]++;
             }
+            esTripLeaves[i] = ElevatorMoverLinesLeft(i);
             esTripGoal[i] = m->goal;
             esTripStart[i] = gameTime;
             esTripFromZ[i] = (int)floorf(m->z + 0.5f);
@@ -2201,7 +2204,21 @@ static void ElevatorStairsPrintStats(void) {
     for (int f = 0; f <= 10; f++) printf(" %4.1f", esTripN[1][f] ? esTripSec[1][f] / esTripN[1][f] : 0.0);
     printf("\n  rides counted:        ");
     for (int f = 0; f <= 10; f++) printf(" %4d", esTripN[1][f]);
+    printf("\n  left a line, no ride: ");
+    for (int f = 0; f <= 10; f++) printf(" %4.1f", esTripN[2][f] ? esTripSec[2][f] / esTripN[2][f] : 0.0);
+    printf("\n  ... counted:          ");
+    for (int f = 0; f <= 10; f++) printf(" %4d", esTripN[2][f]);
     printf("\n");
+    // What leaving costs: those trips vs a stairs/walk trip over as many floors
+    double extra = 0.0, total = 0.0; int nLeft = 0;
+    for (int f = 0; f <= 10; f++) {
+        for (int k = 0; k < 3; k++) total += esTripSec[k][f];
+        if (!esTripN[2][f] || !esTripN[0][f]) continue;
+        extra += esTripSec[2][f] - esTripN[2][f] * (esTripSec[0][f] / esTripN[0][f]);
+        nLeft += esTripN[2][f];
+    }
+    printf("Leaving a line: %d trips, %.1f s more each than by stairs (%.0f s in all = %.1f%% of all trip time)\n",
+           nLeft, nLeft ? extra / nLeft : 0.0, extra, total > 0.0 ? 100.0 * extra / total : 0.0);
 }
 
 static bool ElevatorStairsCheck(char* why, int whyLen) {

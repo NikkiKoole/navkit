@@ -34,6 +34,7 @@ static int waitSampleCount = 0, rideSampleCount = 0;
 static int lineJoins = 0, lineLeaves = 0;   // joined a line; left one without boarding
 static int leaveWhy[4];                     // debug: 0 after my re-plan, 1 other new path, 2 mid-climb/no path, 3 no car
 static unsigned long moverReplanTick[MAX_MOVERS];
+static int moverLineLeaves[MAX_MOVERS];   // lines this mover left without boarding (stats)
 static double moverRideStart[MAX_MOVERS];
 static int moverRideFromZ[MAX_MOVERS];
 double elevatorWaitSum = 0.0;
@@ -503,7 +504,7 @@ bool ElevatorQueueTick(int i, float dt) {
             }
         }
     }
-    if (wp < 0) { if (waiting) { leaveWhy[elevTick - moverReplanTick[i] < 30 ? 0 : 1]++; lineLeaves++; ForgetMover(i); } return false; }
+    if (wp < 0) { if (waiting) { leaveWhy[elevTick - moverReplanTick[i] < 30 ? 0 : 1]++; lineLeaves++; moverLineLeaves[i]++; ForgetMover(i); } return false; }
     Point sp = moverPaths[i][wp];
     float sx = sp.x * CELL_SIZE + CELL_SIZE * 0.5f, sy = sp.y * CELL_SIZE + CELL_SIZE * 0.5f;
     if (!waiting && (fabsf(sx - m->x) > ELEV_JOIN_RADIUS || fabsf(sy - m->y) > ELEV_JOIN_RADIUS)) return false;
@@ -850,3 +851,5 @@ void ElevatorPrintWaitStats(void) {
         printf("\n");
     }
 }
+
+int ElevatorMoverLinesLeft(int i) { return (i >= 0 && i < MAX_MOVERS) ? moverLineLeaves[i] : 0; }

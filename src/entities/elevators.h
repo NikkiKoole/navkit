@@ -53,7 +53,8 @@ extern int elevatorPlanningMover;   // MoverPlanPath: the mover whose route is b
 extern double elevatorWaitSum;
 extern float elevatorWaitMax;
 extern int elevatorWaitCount, elevatorDetours;
-void ElevatorPrintWaitStats(void);   // headless: wait/ride distribution, per floor
+void ElevatorPrintWaitStats(void);
+int ElevatorMoverLinesLeft(int moverIdx);   // stats: lines this mover left without boarding   // headless: wait/ride distribution, per floor
 
 int ElevatorExtraCost(int x, int y, int z, int dz);   // route cost of a shaft level change (travel)
 int ElevatorBoardCost(int x, int y, int z);           // route cost of boarding at (x,y,z): the wait
