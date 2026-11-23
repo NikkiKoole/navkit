@@ -19,9 +19,9 @@
 Elevator elevators[MAX_ELEVATORS];
 int elevatorCount = 0;
 
-float elevatorSpeed = 1.5f;      // levels per second at dayLength 60
+float elevatorSpeed = 3.0f;      // levels per second at dayLength 60 (1.5 lost every trip to the stairs)
 int elevatorCapacity = 4;
-float elevatorDoorTime = 1.5f;
+float elevatorDoorTime = 0.75f;
 int elevatorRides = 0;
 bool useElevatorWaitCost = true;
 bool elevatorDirectionalPickup = true;
@@ -388,6 +388,7 @@ static unsigned long moverLineOrder[MAX_MOVERS];   // when it joined the line (f
 static float moverLineWait[MAX_MOVERS];            // seconds in this line
 #define ELEV_REPLAN_AT_1 4.0f    // a waiting mover re-plans at these wait times (x patience):
 #define ELEV_REPLAN_AT_2 10.0f   // with the wait in the route cost, the stairs may now be quicker
+#define ELEV_REPLAN_EVERY 15.0f  // and again every this long after that (x patience)
 
 static void JoinLine(int i, int k, int fromZ) {
     if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == fromZ) return;
@@ -494,8 +495,10 @@ bool ElevatorQueueTick(int i, float dt) {
         float before = moverLineWait[i], pat = MoverPatience(m);
         moverLineWait[i] += dt;
         float r1 = ELEV_REPLAN_AT_1 * pat, r2 = ELEV_REPLAN_AT_2 * pat;
-        if (useElevatorWaitCost && ((before < r1 && moverLineWait[i] >= r1) || (before < r2 && moverLineWait[i] >= r2)))
-            m->needsRepath = true;   // maybe the stairs are quicker now
+        float re = ELEV_REPLAN_EVERY * pat;
+        bool again = moverLineWait[i] > r2 && floorf((moverLineWait[i] - r2) / re) > floorf((before - r2) / re);
+        if (useElevatorWaitCost && ((before < r1 && moverLineWait[i] >= r1) || (before < r2 && moverLineWait[i] >= r2) || again))
+m->needsRepath = true;   // maybe the stairs are quicker now
         float tx, ty;
         LineSpot(k, mz, PlaceInLine(i), &tx, &ty);
         LineDetour(k, mz, m, &tx, &ty);
@@ -599,11 +602,18 @@ int ElevatorBoardCost(int x, int y, int z) {
     float wait = elevatorDoorTime;
     if (useElevatorWaitCost) {
         int line = 0;
+        float longest = 0.0f;   // the longest anyone in this line has waited so far
         for (int i = 0; i < moverCount; i++)
-            if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z) line++;
+            if (moverElevState[i] == ELEV_WAITING && moverElev[i] == k && moverElevFrom[i] == z) {
+                line++;
+                if (moverLineWait[i] > longest) longest = moverLineWait[i];
+            }
         int cap = elevatorCapacity < 1 ? 1 : elevatorCapacity;
         float roundTrip = 2.0f * (float)(e->zMax - e->zMin) / speed + 2.0f * elevatorDoorTime;
         wait += fabsf(e->z - (float)z) / speed + (float)(line / cap) * roundTrip;
+        // What we can see beats the estimate: a floor the car keeps passing full has
+        // people who waited long; then the stairs look better to them and to newcomers
+        if (longest > wait) wait = longest;
     }
     return SecondsToCost(wait);
 }

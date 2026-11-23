@@ -187,6 +187,7 @@ typedef struct NavWorld {
     // local 3D searches in a box of chunks over all levels (box-local cell ids,
     // generation stamps, grown on demand)
     int* lsG; int* lsF; int* lsParent; int* lsHeapIdx; int* lsHeap; uint32_t* lsGen; uint8_t* lsState;
+    int lastLocalCost;             // cost of the last local path (nav_LocalPath)
     int* lsTgt; uint32_t* lsTgtGen; int* lsTgtNext; int lsTgtCap;
     int lsCap, lsHeapCount; uint32_t lsCurGen;
     int lsMinX, lsMinY, lsW, lsH;

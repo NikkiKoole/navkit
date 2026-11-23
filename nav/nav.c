@@ -839,8 +839,19 @@ static int nav_LsTrace(NavWorld* w, NavPoint p, NavPoint* out, int maxLen) {
 // then one chunk further in every direction (paths near chunk borders may need a
 // detour through a neighbouring chunk). Goal-first into out; returns the length.
 static int nav_LocalPathBox(NavWorld* w, NavPoint s, NavPoint g, int minX, int minY, int maxX, int maxY, NavPoint* out, int maxLen) {
-    if (nav_LocalSearch(w, minX, minY, maxX, maxY, s, &g, NULL, NULL, 0, NAV_STEP_CLIMB, NULL) < 0) return 0;
+    int cost = nav_LocalSearch(w, minX, minY, maxX, maxY, s, &g, NULL, NULL, 0, NAV_STEP_CLIMB, NULL);
+    if (cost < 0) return 0;
+    w->lastLocalCost = cost;
     return nav_LsTrace(w, g, out, maxLen);
+}
+
+// A path that changes level by a ladder link (same cell, another level): its cost has
+// query-time parts (a ladder queue, an elevator's wait) that may make a way out of the
+// chunk cheaper, which the local search box can't see
+static bool nav_PathHasLadderLink(const NavPoint* p, int len) {
+    for (int i = 0; i + 1 < len; i++)
+        if (p[i].x == p[i + 1].x && p[i].y == p[i + 1].y && p[i].z != p[i + 1].z) return true;
+    return false;
 }
 static int nav_LocalPath(NavWorld* w, int sx, int sy, int sz, int gx, int gy, int gz, NavPoint* out, int maxLen) {
     NavPoint s = {sx, sy, sz}, g = {gx, gy, gz};
@@ -860,7 +871,15 @@ static int nav_LocalPath(NavWorld* w, int sx, int sy, int sz, int gx, int gy, in
         }
     }
     int len = nav_LocalPathBox(w, s, g, minX, minY, maxX, maxY, out, maxLen);
-    if (len > 0) return len;
+    if (len > 0) {
+        // A ladder link's query-time cost (a queue, an elevator's wait) may make a way
+        // just outside the box (stairs next door) cheaper: look one chunk further too
+        if (!nav_PathHasLadderLink(out, len < maxLen ? len : maxLen)) return len;
+        int boxCost = w->lastLocalCost;
+        int wide = nav_LocalPathBox(w, s, g, minX - w->chunkW, minY - w->chunkH, maxX + w->chunkW, maxY + w->chunkH, out, maxLen);
+        if (wide > 0 && w->lastLocalCost < boxCost) return wide;
+        return nav_LocalPathBox(w, s, g, minX, minY, maxX, maxY, out, maxLen);   // the box path after all
+    }
     return nav_LocalPathBox(w, s, g, minX - w->chunkW, minY - w->chunkH, maxX + w->chunkW, maxY + w->chunkH, out, maxLen);
 }
 
@@ -2339,16 +2358,30 @@ int NavFindPathHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* out, in
     double startTime = NavHostTime();
 
     // Same chunk (any levels): try a local search first (also when there are no
-    // entrances at all, e.g. one chunk or chunks walled off from each other)
+    // entrances at all, e.g. one chunk or chunks walled off from each other). If it
+    // takes a ladder link, a route through other chunks may be cheaper: compare.
+    bool abstractDone = false;
     if (nav_GetChunk(w, start.x, start.y, start.z) == nav_GetChunk(w, goal.x, goal.y, goal.z)) {
         int len = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, out, maxLen);
         if (len > 0) {
-            w->lastMs = (NavHostTime() - startTime) * 1000.0;
-            return len;
+            int localCost = w->lastLocalCost;
+            bool keep = !nav_PathHasLadderLink(out, len < maxLen ? len : maxLen);
+            if (!keep) {
+                abstractDone = true;
+                keep = !nav_HPAAbstract(w, start, goal) || w->absNodes[w->entranceNum + 1].g >= localCost;
+                if (keep) {   // the abstract search used the local scratch: search again
+                    len = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, out, maxLen);
+                    w->absPathLen = 0;
+                }
+            }
+            if (keep) {
+                w->lastMs = (NavHostTime() - startTime) * 1000.0;
+                return len;
+            }
         }
         // fall through: may need to route through neighbouring chunks
     }
-    nav_HPAAbstract(w, start, goal);
+    if (!abstractDone) nav_HPAAbstract(w, start, goal);
 
     // Refine abstract path (stored goal-first) into cells, start-first, then reverse
     double refineStart = NavHostTime();
@@ -2386,12 +2419,21 @@ int NavFindRouteHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* route,
     if (maxRoute < 2 || !nav_InBounds(w, start) || !nav_InBounds(w, goal)) return 0;
     double startTime = NavHostTime();
     int n = 0;
-    // Same chunk with a local route: one leg (as NavFindPathHPA)
-    if (nav_GetChunk(w, start.x, start.y, start.z) == nav_GetChunk(w, goal.x, goal.y, goal.z)
-        && nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, w->tempPath, w->tempPathCap) > 0) {
+    // Same chunk with a local route: one leg (as NavFindPathHPA: unless it takes a ladder
+    // link and a route through other chunks is cheaper)
+    int localLen = 0;
+    bool sameChunk = nav_GetChunk(w, start.x, start.y, start.z) == nav_GetChunk(w, goal.x, goal.y, goal.z);
+    if (sameChunk) localLen = nav_LocalPath(w, start.x, start.y, start.z, goal.x, goal.y, goal.z, w->tempPath, w->tempPathCap);
+    bool useLocal = localLen > 0;
+    if (useLocal && nav_PathHasLadderLink(w->tempPath, localLen)) {
+        int localCost = w->lastLocalCost;
+        if (nav_HPAAbstract(w, start, goal) && w->absNodes[w->entranceNum + 1].g < localCost) useLocal = false;
+        else w->absPathLen = 0;
+    }
+    if (useLocal) {
         route[n++] = start;
         route[n++] = goal;
-    } else if (nav_HPAAbstract(w, start, goal)) {
+    } else if (w->absPathLen > 0 || nav_HPAAbstract(w, start, goal)) {
         for (int i = w->absPathLen - 1; i >= 0 && n < maxRoute; i--)
             route[n++] = nav_AbsNodePoint(w, w->absPath[i], start, goal);
     }

@@ -1473,8 +1473,8 @@ bool LoadWorld(const char* filename) {
         fread(&elevatorCapacity, sizeof(int), 1, f);
         fread(&useElevatorWaitCost, sizeof(bool), 1, f);
     } else {
-        elevatorSpeed = 1.5f;
-        elevatorDoorTime = 1.5f;
+        elevatorSpeed = 3.0f;
+        elevatorDoorTime = 0.75f;
         elevatorCapacity = 4;
         useElevatorWaitCost = true;
     }

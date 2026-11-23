@@ -24,6 +24,29 @@ Code: `src/entities/elevators.c/.h`; hooks in `mover.c` (movement loop), `cell_d
   the car. It gets off at the last shaft waypoint of its path (a new path while aboard sets
   a new stop). A coarse path's window that ends at the shaft door is refined right away
   (`MoverRefillRouteNow`), so the ride is on the path before the mover lines up.
+- **Starved floors and the box bug** (2026-11-23): measured with `ElevatorPrintWaitStats`
+  (elevator-stairs, 15 movers): waits of 66 game hours on the middle floors, and waiters
+  never switched to the stairs. Two causes:
+  - The boarding cost only counted the line; a floor the car passes full looked cheap.
+    Now it is at least the longest current wait in that line, and waiters re-plan every
+    15 s after 10 s.
+  - **Pathfinder bug**: a path inside one chunk (and each refined leg) came from a local
+    search in a box around the chunk(s) and was taken whatever it cost, so stairs just
+    outside the box were never seen. Now, when such a path uses a ladder link (whose cost
+    has query-time parts: queues, an elevator's wait), the library also tries the abstract
+    route / one chunk further and keeps the cheaper (`nav_LocalPath`, `NavFindPathHPA`,
+    `NavFindRouteHPA`). Ladder queues had the same blind spot.
+  - With that fixed, the 1.5 floors/s car with 1.5 s doors lost almost every trip to the
+    stairs (14 rides vs 1218 climbs). New defaults: **3 floors/s, doors 0.75 s**:
+
+    | car | rides | climbs | median wait | arrivals |
+    |---|---|---|---|---|
+    | 1.5 /s, 1.5 s | 14 | 1218 | 0 s | 1923 |
+    | 3 /s, 0.75 s | 186 | 702 | 1.0 s | 1172 |
+    | 5 /s, 0.5 s | 285 | 556 | 1.3 s | 930 |
+
+    Faster cars mean *fewer* arrivals: the ride cost is optimistic (it leaves out the
+    car's stops for others on the way and stepping in). Next: an honest ride cost.
 - **Sweep pickup** (`elevatorDirectionalPickup`, on): an empty car on its way to calls
   further on picks up only people going its way; the others ride on its way back. Before,
   an empty car stopped for anyone and turned round, and the calls further on waited.
