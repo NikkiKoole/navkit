@@ -21,6 +21,7 @@
 #include "../simulation/balance.h"
 #include "../simulation/rooms.h"
 #include "../simulation/mood.h"
+#include "../simulation/needs.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/containers.h"
@@ -94,6 +95,62 @@ static void SupplySpot(float sx, float sy, float sz, int dx, int dy, float* ox, 
 }
 
 // 5 berries, 5 sticks and a clay pot of water around (sx, sy, sz), on walkable cells
+// The survival settler starts within ~24 cells' walk of water it can reach, preferably
+// below it. A settler only finds water it has seen (fog of war): seed 3 started 40-75
+// cells from the river, never came across it, and died of thirst on day 3 once its pot
+// was empty. The search here looks past the fog (the map is known to the game).
+#define SPAWN_WATER_NEAR (24 * 10)   // walking cost: ~24 cells is near enough
+#define SPAWN_WATER_TRIES 64
+// Lower is better: no water = worst, water on the spawn's level costs extra
+static int SpawnWaterScore(Point p) {
+    int wz = 0;
+    int c = WalkCostToWater(p.x, p.y, p.z, NEEDS_WATER_SEARCH_COST, &wz);
+    if (c < 0) return INT_MAX;
+    return (wz < p.z) ? c : c + 10000;
+}
+static int PickSpawnNearWater(Point cur, int best, Mover* m);
+static void MoveSettlerNearWater(Mover* m) {
+    GameMode savedMode = gameMode;
+    gameMode = GAME_MODE_SANDBOX;            // see through the fog of war (IsExplored)
+    NavRegionsInvalidate(NavGame());
+    Point cur = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+    int best = SpawnWaterScore(cur);
+    if (best > SPAWN_WATER_NEAR) best = PickSpawnNearWater(cur, best, m);
+    gameMode = savedMode;
+    NavRegionsInvalidate(NavGame());
+}
+
+// Try spots in the main area, move the settler to the best one. Returns its score.
+static int PickSpawnNearWater(Point cur, int best, Mover* m) {
+    Point anchor = GetMainRegionAnchor();
+    Point bestP = cur;
+    for (int t = 0; t < SPAWN_WATER_TRIES; t++) {
+        Point p = GetRandomWalkableCellReachableFrom(anchor);
+        if (p.x < 0) continue;
+        int c = SpawnWaterScore(p);
+        if (c < best) {
+            best = c; bestP = p;
+            if (c <= SPAWN_WATER_NEAR) break;
+        }
+    }
+    if (best == INT_MAX) {
+        TraceLog(LOG_WARNING, "Survival: no water the settler can walk to found near any spawn spot");
+        return best;
+    }
+    if (bestP.x == cur.x && bestP.y == cur.y && bestP.z == cur.z) return best;
+    TraceLog(LOG_INFO, "Survival: settler moved from (%d,%d,z%d) to (%d,%d,z%d), %d cells walk from water%s",
+             cur.x, cur.y, cur.z, bestP.x, bestP.y, bestP.z, (best % 10000) / 10,
+             best >= 10000 ? " on its own level" : " below it");
+    m->x = bestP.x * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->y = bestP.y * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->z = (float)bestP.z;
+    m->goal = bestP;
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    m->needsRepath = false;
+    return best;
+}
+
 static void SpawnStartingSupplies(float sx, float sy, float sz) {
     float x, y, z;
     // 5 berries (immediate food)
@@ -178,6 +235,7 @@ static void StartSurvival(void) {
 
     // Spawn 1 mover at a walkable cell
     SpawnMoversDemo(1);
+    if (moverCount > 0) MoveSettlerNearWater(&movers[0]);
 
     // Fog of war: start with everything unexplored, then reveal around spawn
     CLEAR_GRID_LAYER(unexploredGrid, 1);   // all unexplored

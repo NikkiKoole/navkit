@@ -25,4 +25,11 @@ extern bool sleepRhythmEnabled;
 bool IsSkyDark(void);
 bool MoverLyingIn(int moverIdx);   // resting, rested, staying in bed until it gets light
 
+// Walking cost (10 per cell, same rules as the pathfinder) from a cell to the nearest
+// water a mover can drink from (in or next to a cell it can stand on, that level or one
+// below); -1 if none within maxCost. A thirsty mover searches up to NEEDS_WATER_SEARCH_COST.
+// *outWaterZ (may be NULL) = the level the water found is at.
+#define NEEDS_WATER_SEARCH_COST (64 * 10)
+int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
+
 #endif

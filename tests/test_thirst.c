@@ -516,6 +516,19 @@ describe(natural_water_fallback) {
         expect(movers[mi].freetimeState == FREETIME_NONE);
     }
 
+    it("water behind a wall is not water a mover can walk to (survival spawn check)") {
+        SetupClean();
+        WATER_MUT(8, 8, 1).level = 3;
+        expect(WalkCostToWater(1, 1, 1, NEEDS_WATER_SEARCH_COST, NULL) > 0);
+        // wall the pool in (both levels: a wall at z1 standing on the ground)
+        for (int y = 6; y <= 9; y++)
+            for (int x = 6; x <= 9; x++)
+                if (x == 6 || y == 6) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_DIRT); }
+        BuildEntrances(); BuildGraph();
+        expect(WalkCostToWater(1, 1, 1, NEEDS_WATER_SEARCH_COST, NULL) == -1);
+        expect(WalkCostToWater(8, 7, 1, NEEDS_WATER_SEARCH_COST, NULL) == 0);   // inside, next to it
+    }
+
     it("mover drinks natural water and restores thirst") {
         SetupClean();
         int mi = SetupMover(5, 5);

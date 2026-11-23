@@ -391,7 +391,7 @@ static int FindBestDrinkableItem(float x, float y, int z) {
 // search took the nearest by straight line, up to 4 levels down, and in survival the
 // mover kept walking to river water in a gorge it had no way into until it died of thirst.
 // outWater = the water cell, outStand = where to stand (the found cell).
-#define WATER_SEARCH_COST (64 * 10)   // ~64 cells of walking
+#define WATER_SEARCH_COST NEEDS_WATER_SEARCH_COST   // ~64 cells of walking
 typedef struct { int wx, wy, wz; } WaterHit;
 static bool WaterNextTo(void* user, int x, int y, int z) {
     static const int dirs[5][2] = {{0,0},{0,-1},{0,1},{-1,0},{1,0}};
@@ -405,13 +405,27 @@ static bool WaterNextTo(void* user, int x, int y, int z) {
     }
     return false;
 }
+// Walking cost (10 per cell) from `from` to the nearest drinkable water, -1 if none
+// within maxCost. *found = where to stand, *hit = the water cell.
+static int WaterSearch(Point from, int maxCost, Point* found, WaterHit* hit) {
+    *found = from;
+    if (WaterNextTo(hit, from.x, from.y, from.z)) return 0;
+    return NavFindNearest(NavGame(), from, WaterNextTo, hit, maxCost, found, NULL, 0, NULL);
+}
+
+int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ) {
+    Point found;
+    WaterHit hit;
+    int cost = WaterSearch((Point){x, y, z}, maxCost, &found, &hit);
+    if (cost >= 0 && outWaterZ) *outWaterZ = hit.wz;
+    return cost;
+}
+
 static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* outWaterY, int* outWaterZ, int* outStandX, int* outStandY, int* outStandZ) {
     Point from = {(int)(x / CELL_SIZE), (int)(y / CELL_SIZE), z};
     WaterHit hit;
-    Point found = from;
-    if (!WaterNextTo(&hit, from.x, from.y, from.z) &&
-        NavFindNearest(NavGame(), from, WaterNextTo, &hit, WATER_SEARCH_COST, &found, NULL, 0, NULL) < 0)
-        return false;
+    Point found;
+    if (WaterSearch(from, WATER_SEARCH_COST, &found, &hit) < 0) return false;
     *outWaterX = hit.wx; *outWaterY = hit.wy; *outWaterZ = hit.wz;
     *outStandX = found.x; *outStandY = found.y; *outStandZ = found.z;
     return true;
