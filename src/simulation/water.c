@@ -413,6 +413,26 @@ static int TryFall(int x, int y, int z) {
     return flow;
 }
 
+// A one-level step (giver at level+1, receiver at level) is only worth a move when the unit can
+// keep going: the receiver has a lower neighbour (not counting the giver), or water at the giver
+// has been flowing that way (momentum, from the flow layer). So a slope of terraces
+// (6 5 5 4 4 ...) still flattens, while a lone bump on a flat sheet runs on in a straight line
+// until it meets lower water (and spreads) or a wall (and rests) instead of bouncing forever.
+#define WATER_FLOW_MOMENTUM 0.5f   // current along the step (units per half-life) that carries it
+static bool WaterStepCarries(int gx, int gy, int rx, int ry, int z, int level) {
+    static const int ndx[4] = {-1, 1, 0, 0}, ndy[4] = {0, 0, -1, 1};
+    for (int i = 0; i < 4; i++) {
+        int nx = rx + ndx[i], ny = ry + ndy[i];
+        if (nx == gx && ny == gy) continue;
+        if (!CanHoldWater(nx, ny, z)) continue;
+        const WaterCell* n = &WATER(nx, ny, z);
+        if (!n->isDrain && n->level < level) return true;
+    }
+    float fx, fy;
+    if (!GetWaterFlow(gx, gy, z, &fx, &fy)) return false;
+    return fx * (rx - gx) + fy * (ry - gy) >= WATER_FLOW_MOMENTUM;
+}
+
 // Phase 2: SPREADING - Equalize water levels with orthogonal neighbors
 // Falling sand style: randomize direction order to prevent directional bias
 // Returns true if water moved
@@ -470,9 +490,12 @@ static bool WaterTrySpread(int x, int y, int z) {
             
             // Stop if we're now at level 1
             if (cell->level <= 1) break;
-        } else if (diff == 1 && cell->level > 1) {
-            // Small difference: give 1 unit to ONE neighbor only (randomized)
-            // This breaks the staircase pattern over time
+        } else if (diff == 1 && cell->level > 1 &&
+                   WaterStepCarries(x, y, nx, ny, z, neighbor->level)) {
+            // Small difference: give 1 unit to ONE neighbor only (randomized), and only when the
+            // unit can keep going downhill from there. This breaks the staircase pattern over
+            // time; on flat water (a 2 among 1s) it would only swap the two cells forever
+            // (WaterStepCarries)
             bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
@@ -644,8 +667,7 @@ static bool WaterEdgeExchange(int x, int y, int z) {
 }
 
 // Process a single water cell with DF-style rules
-// doEvap: interval has elapsed for evaporation
-static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
+static bool ProcessWaterCell(int x, int y, int z) {
     WaterCell* cell = &WATER_MUT(x, y, z);
     bool moved = false;
 
@@ -719,16 +741,6 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         return true;
     }
     
-    // Evaporation: level 1 water has a chance to evaporate each interval
-    // Random chance prevents all puddles vanishing simultaneously
-    if (doEvap && waterEvaporationEnabled && cell->level == 1 && !cell->isSource) {
-        if (rand() % 100 < 50) {
-            SetWaterLevel(x, y, z, 0);
-            cell->hasPressure = false;
-            moved = true;
-        }
-    }
-    
     // Clear pressure if we're no longer full
     if (cell->level < WATER_MAX_LEVEL) {
         cell->hasPressure = false;
@@ -746,8 +758,9 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
             if (WaterInBounds(nx, ny, z) && CanHoldWater(nx, ny, z)) {
                 int neighborLevel = WATER(nx, ny, z).level;
                 int diff = neighborLevel - cell->level;
-                // Unbalanced if neighbor could give us water (diff >= 1 and they have > 1)
-                if (diff >= 1 && neighborLevel > 1) {
+                // Unbalanced if the neighbour would give us water (the same rule as spreading)
+                if (diff >= 2 || (diff == 1 && neighborLevel > 1 &&
+                                  WaterStepCarries(nx, ny, x, y, z, cell->level))) {
                     balanced = false;
                     break;
                 }
@@ -757,13 +770,29 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         if (waterEdgeOutflow && !cell->isSource && WaterOnEdge(x, y) &&
             cell->level != WaterEdgeLevel(z) && !(cell->isSea && tideEnabled)) balanced = false;
 
-        // Level-1 water can evaporate, so keep it unstable
-        if (balanced && cell->level != 1) {
-            cell->stable = true;
-        }
+        // Level-1 water may rest too: evaporation is a sweep of its own (WaterEvaporateSweep)
+        if (balanced) cell->stable = true;
     }
     
     return moved;
+}
+
+// Evaporation, once per waterEvapInterval: every level-1 cell (a puddle, the edge of a film) has
+// an even chance to dry up. A sweep of its own, so level-1 water can rest between sweeps
+// instead of being processed every tick, and every puddle gets its chance (the update cap
+// used to skip the ones late in the scan).
+static void WaterEvaporateSweep(void) {
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
+                if (wp->level != 1 || wp->isSource || wp->isFrozen) continue;
+                if ((wp->isSea || wp->isSurf) && tideEnabled) continue;   // the tide's water
+                if (rand() % 100 >= 50) continue;
+                SetWaterLevel(x, y, z, 0);
+                WATER_MUT(x, y, z).hasPressure = false;
+            }
+        }
+    }
 }
 
 // Main water update - process all unstable cells
@@ -788,6 +817,7 @@ void UpdateWater(void) {
     float evapIntervalGS = GameHoursToGameSeconds(waterEvapInterval);
     bool doEvap = waterEvapAccum >= evapIntervalGS;
     if (doEvap) waterEvapAccum -= evapIntervalGS;
+    if (doEvap && waterEvaporationEnabled) WaterEvaporateSweep();
     
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
@@ -822,7 +852,7 @@ void UpdateWater(void) {
                     continue;
                 }
                 
-                ProcessWaterCell(x, y, z, doEvap);
+                ProcessWaterCell(x, y, z);
                 waterUpdateCount++;
                 
                 // Cap updates per tick
