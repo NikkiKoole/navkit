@@ -46,10 +46,20 @@ static bool NeedItemReachable(int i) {
     return IsCellWalkableAt(cz, cy, cx);
 }
 
-// A seek for this item gave up: leave it alone for a game hour
-static void MarkNeedItemUnreachable(int i) {
+// A seek for this item gave up: leave it alone for a while (game hours)
+static void MarkNeedItemUnreachable(int i, float hours) {
     if (i >= 0 && i < MAX_ITEMS && items[i].active)
-        items[i].unreachableCooldown = GameHoursToGameSeconds(1.0f);
+        items[i].unreachableCooldown = GameHoursToGameSeconds(hours);
+}
+
+// The pathfinder found no way to this seek's goal, twice in a row (once could be the
+// graph mid-rebuild). The seek gives up at once instead of retrying until its timeout:
+// a settler cut off by a rising river kept walking "to" food it couldn't reach, for
+// 0.7 game hours a try, and food comes before drink, so it died of thirst beside the river.
+#define NO_WAY_REPATHS 2
+#define NO_WAY_ITEM_HOURS 3.0f   // an item with no way to it is left alone this long
+static bool NoWayThere(int moverIdx) {
+    return moverRepathFails[moverIdx] >= NO_WAY_REPATHS;
 }
 
 static int FindNearestEdibleInStockpile(float x, float y, int z) {
@@ -136,6 +146,7 @@ bool MoverLyingIn(int moverIdx) {
 // (detours around walls, hunger slowdown, stairs). Movement is scaled to game hours, so
 // this is the same number of game hours at any dayLength.
 static void StartSeekClock(Mover* m) {
+    moverRepathFails[m - movers] = 0;   // a new goal: no failed repaths toward it yet
     float dx = (m->goal.x + 0.5f) * CELL_SIZE - m->x;
     float dy = (m->goal.y + 0.5f) * CELL_SIZE - m->y;
     float dz = (m->goal.z - m->z) * CELL_SIZE;
@@ -241,6 +252,7 @@ static void StartWarmthSearch(Mover* m, int moverIdx) {
 
     EventLog("Mover %d SEEKING_WARMTH workshop=%d (%s)", moverIdx, wsIdx, workshopDefs[ws->type].name);
     m->freetimeState = FREETIME_SEEKING_WARMTH;
+    moverRepathFails[moverIdx] = 0;
     m->needTarget = wsIdx;
     m->needProgress = 0.0f;
     m->goal = (Point){goalX, goalY, ws->z};
@@ -533,6 +545,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
         EventLog("Mover %d SEEKING_REST furniture=%d (%s)", moverIdx, bestIdx, GetFurnitureDef(furniture[bestIdx].type)->name);
         furniture[bestIdx].occupant = moverIdx;
         m->freetimeState = FREETIME_SEEKING_REST;
+        moverRepathFails[moverIdx] = 0;
         m->needTarget = bestIdx;
         m->needProgress = 0.0f;
 
@@ -742,12 +755,15 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout check
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                bool noWay = NoWayThere(moverIdx);
                 ReleaseItemReservation(ti);
-                MarkNeedItemUnreachable(ti);
+                MarkNeedItemUnreachable(ti, noWay ? NO_WAY_ITEM_HOURS : 1.0f);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+                // No way there: no search cooldown, so the next need (or other food) is
+                // looked for in this same tick; the item itself is left alone a while
+                if (!noWay) m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
             }
             break;
         }
@@ -853,7 +869,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.restSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.restSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
@@ -955,7 +971,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.warmthSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.warmthSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
@@ -1024,12 +1040,15 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                bool noWay = NoWayThere(moverIdx);
                 ReleaseItemReservation(ti);
-                MarkNeedItemUnreachable(ti);
+                MarkNeedItemUnreachable(ti, noWay ? NO_WAY_ITEM_HOURS : 1.0f);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                // No way there: no search cooldown, so the next need (or other drinks) is
+                // looked for in this same tick; the item itself is left alone a while
+                if (!noWay) m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
             }
             break;
         }
@@ -1098,7 +1117,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
@@ -1146,7 +1165,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 break;
             }
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH)) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.waterSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 ReleaseFurniture(fi, moverIdx);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -1184,7 +1203,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 break;
             }
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(1.0f)) {
+            if (m->needProgress > GameHoursToGameSeconds(1.0f) || NoWayThere(moverIdx)) {
                 furniture[fi].occupant = -1;
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -1219,7 +1238,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             int targetX = m->needTarget % gridWidth;
             int targetY = m->needTarget / gridWidth;
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > GameHoursToGameSeconds(1.0f)) {
+            if (m->needProgress > GameHoursToGameSeconds(1.0f) || NoWayThere(moverIdx)) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needProgress = 0.0f;

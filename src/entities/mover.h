@@ -163,6 +163,9 @@ extern Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
 #define MOVER_WINDOW_CELLS 256       // cells refined ahead at a time (<= MAX_MOVER_PATH)
 extern Point moverRoutes[MAX_MOVERS][MAX_MOVER_ROUTE];   // start-first
 extern int moverRouteLen[MAX_MOVERS], moverRouteNext[MAX_MOVERS];   // next = next waypoint to refine
+// Repaths in a row that found no path to the mover's goal (0 after one that did; not
+// saved). A need's seek reads it to give up at once on a target with no way to it.
+extern unsigned char moverRepathFails[MAX_MOVERS];
 bool MoverRefillRouteNow(int i);   // elevators.c: refine the next route legs now
 int MoverPlanPath(int moverIdx, Point start, Point goal);   // sets the mover's path; its length, 0 = none
 float MoverRouteCellsLeft(int moverIdx);   // octile cells of the route beyond the window (trip estimates)

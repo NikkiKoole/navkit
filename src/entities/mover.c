@@ -53,6 +53,7 @@ Mover movers[MAX_MOVERS];
 Point moverPaths[MAX_MOVERS][MAX_MOVER_PATH];
 Point moverRoutes[MAX_MOVERS][MAX_MOVER_ROUTE];
 int moverRouteLen[MAX_MOVERS], moverRouteNext[MAX_MOVERS];
+unsigned char moverRepathFails[MAX_MOVERS];
 static Point moverRouteGoal[MAX_MOVERS];    // goal the route was planned for
 static Point moverWindowEnd[MAX_MOVERS];    // last cell of the window refined from the route
 int coarseRoutesPlanned = 0, coarseWindowRefills = 0, coarseLegFails = 0;   // stats
@@ -2323,6 +2324,7 @@ void ProcessMoverRepaths(void) {
         }
 
         if (m->pathLength == 0) {
+            if (moverRepathFails[i] < 255) moverRepathFails[i]++;
             // Repath failed - check if goal cell itself is now a wall. A wanderer (no job,
             // no need) picks a new goal too: retrying one that shares a region but has no
             // path (regions ignore deep water) searched the whole graph every cooldown. A
@@ -2364,6 +2366,7 @@ void ProcessMoverRepaths(void) {
 
         m->needsRepath = false;
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
+        moverRepathFails[i] = 0;
 
         // Transport check: after successful pathfind, consider using train
         MaybeTakeTrain(i);

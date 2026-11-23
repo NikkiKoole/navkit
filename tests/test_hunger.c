@@ -11,6 +11,7 @@
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
 #include "../src/simulation/balance.h"
+#include "../src/simulation/water.h"
 #include "../src/simulation/weather.h"
 #include "../src/core/time.h"
 #include "../src/world/designations.h"
@@ -949,6 +950,41 @@ describe(seek_keeps_its_goal) {
         // Bug: a mover with no job counted as a wanderer and got a random goal, while still
         // "seeking food"; it walked around all day after food it could never reach.
         expect(movers[0].goal.x == 4 && movers[0].goal.y == 1);
+    }
+
+    it("food with no way to it is given up at once and the mover drinks from the river beside it") {
+        // Survival seed 1: cut off by a rising river, the mover walked "to" food it could
+        // not reach (0.7 game hours a try, food before drink) and died of thirst next to
+        // the water. Now the seek gives up when the pathfinder finds no way, the food is
+        // left alone a while, and the drink search runs in the same tick.
+        InitTestGridFromAscii(
+            "..........\n"
+            ".....###..\n"
+            ".....#.#..\n"
+            ".....###..\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearJobs(); ClearWater();
+        InitBalance();
+        hungerEnabled = true; thirstEnabled = true;
+        energyEnabled = false; bodyTempEnabled = false; bladderEnabled = false;
+        float savedDay = dayLength;
+        dayLength = 1440.0f;   // 1 game hour = 60 s: the old 0.7 h timeout is ~2500 ticks
+        currentTick = 1;
+        int food = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+        WATER_MUT(0, 3, 0).level = 2;
+        InitMover(&movers[0], 1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){1, 1, 0}, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].hunger = 0.05f;
+        movers[0].thirst = 0.05f;
+        bool drinking = false;
+        for (int t = 0; t < 600 && !drinking; t++) {
+            Tick();
+            ProcessFreetimeNeeds();
+            drinking = movers[0].freetimeState == FREETIME_DRINKING_NATURAL;
+        }
+        dayLength = savedDay;
+        expect(drinking);
+        expect(items[food].unreachableCooldown > 0.0f);
     }
 }
 
