@@ -1023,45 +1023,6 @@ static void DrawCloudShadows(void) {
     }
 }
 
-// The sea's surface at (x, y, zz): sea water (WaterCell.isSea), water right under a sea cell the
-// tide has emptied (at low tide the top level is dry and the sea shows one level down), or water
-// next to the sea
-static bool SeaSurfaceAt(int x, int y, int zz) {
-    if (WATER(x, y, zz).isSea) return true;
-    if (zz + 1 < gridDepth && WATER(x, y, zz + 1).isSea && GetWaterLevel(x, y, zz + 1) == 0) return true;
-    // Water right next to the sea is the sea's edge too (a flooded shore ramp at high tide)
-    if (GetWaterLevel(x, y, zz) <= 0) return false;
-    return (x > 0 && WATER(x - 1, y, zz).isSea) || (x + 1 < gridWidth && WATER(x + 1, y, zz).isSea) ||
-           (y > 0 && WATER(x, y - 1, zz).isSea) || (y + 1 < gridHeight && WATER(x, y + 1, zz).isSea);
-}
-
-// Surf on the sea's edge: a light band on each side of a sea cell that borders a cell without
-// water (the beach, or a flat the tide has left), pulsing gently. Only the sea (WaterCell.isSea),
-// so the tide line shows where it stands and moves; rivers and lakes stay plain.
-static void DrawSeaFoam(int x, int y, int zz, Rectangle dest, float size, Color tint, bool darken) {
-    static const int fdx[4] = {0, 1, 0, -1}, fdy[4] = {-1, 0, 1, 0};
-    float w = size * 0.25f;
-    if (w < 1.0f) w = 1.0f;
-    float pulse = 0.5f + 0.5f * sinf((float)GetTime() * 1.6f + (float)(x + y) * 0.7f);
-    unsigned char a = (unsigned char)(150 + 90 * pulse);
-    Color foam = MultiplyColor((Color){235, 242, 248, a}, tint);
-    (void)darken;   // foam is a bright surface: not darkened with the level it lies on
-    for (int d = 0; d < 4; d++) {
-        int nx = x + fdx[d], ny = y + fdy[d];
-        if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
-        if (GetWaterLevel(nx, ny, zz) > 0) continue;
-        // An emptied sea cell over water is still sea (the tide wave's strips are a level apart
-        // while it turns): no foam across open water
-        if (WATER(nx, ny, zz).isSea && zz > 0 && GetWaterLevel(nx, ny, zz - 1) > 0) continue;
-        Rectangle r = dest;
-        if (d == 0) r.height = w;
-        else if (d == 2) { r.y += size - w; r.height = w; }
-        else if (d == 1) { r.x += size - w; r.width = w; }
-        else r.width = w;
-        FastRect(r, foam);
-    }
-}
-
 static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     WorldBatchSetKind(WB_KIND_WATER);   // shader effects (setting shaderEffects); reset below
@@ -1090,7 +1051,6 @@ static void DrawWater(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 FastRect(dest, waterColor);
-                if (SeaSurfaceAt(x, y, zDepth)) DrawSeaFoam(x, y, zDepth, dest, size, skyColor, true);
                 
                 if (WATER(x, y, zDepth).isSource) {
                     DrawSourceMarker(dest, size, (Color){75, 135, 191, 200});
@@ -1120,7 +1080,6 @@ static void DrawWater(void) {
             // Draw water overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             FastRect(dest, waterColor);
-            if (SeaSurfaceAt(x, y, z)) DrawSeaFoam(x, y, z, dest, size, skyColor, false);
             
             // Mark sources with a brighter center
             if (WATER(x, y, z).isSource) {

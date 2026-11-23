@@ -2560,7 +2560,7 @@ static int TideLogsOnLand(void) {
 static void TidePrintStats(void) {
     printf("Tide: %d sea cells at z%d, level now %d (lowest %d), %d steps, step %.3f ms (max %.3f)\n",
            tideSeaCells, tideSeaZ, tideLevel, tideMinLevel, tideSteps, tideLastStepMs, tideMaxStepMs);
-    printf("Surf: %d cells in the surf zone, %d changed last tick (tideSurf %d)\n", tideSurfCells, tideSurfChanges, tideSurf);
+    printf("Surf: %d flats cells, %d beach cells, %d changed last tick (tideSurf %d)\n", tideSurfCells, tideBeachCells, tideSurfChanges, tideSurf);
     printf("Flats walkable at low tide: %d cells; movers on the flats: max %d at once, %ld mover-ticks\n",
            tideMaxDryFlats, tideMaxOnFlats, tideFlatsMoverTicks);
     printf("Movers in deep water: max %d at once, %d mover-ticks", tideMaxDeep, tideMoverTicksDeep);

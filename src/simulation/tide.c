@@ -26,12 +26,18 @@ int tideSurfReach = 6;
 float tideSurfPeriod = 1.5f;
 int tideSurfHeight = 2;
 int tideSurfCells = 0, tideSurfChanges = 0;
+int tideBeachReach = 3;
+int tideBeachCells = 0;
 
 // Surf: the flats near deep water, with their distance up the flats (1 = next to deep water)
 // and a phase that varies smoothly along the coast (waves arrive one after another)
 typedef struct { int cell; unsigned char dist, strip; float phase; } SurfCell;
 static SurfCell* surf = NULL;
 static int surfCap = 0;
+// Beach surf: the beach one level above the sea (z = tideSeaZ + 1) near the water; at high tide
+// the waves run up it. Cell = y * width + x.
+static SurfCell* beach = NULL;
+static int beachCap = 0;
 
 // The tide wave: the sea is cut into strips across the map (along tideWaveAngle); each strip
 // follows the tide tideWaveHours * (its position) later than the first, so the water crosses
@@ -176,15 +182,63 @@ static void BuildSurf(void) {
     free(dist); free(idx); free(q);
 }
 
+// The beach near the sea: columns with ground (or a ramp) at the sea's level and air above,
+// breadth-first from the sea cells, up to tideBeachReach. Their cell above gets isSurf.
+static void BuildBeachSurf(void) {
+    tideBeachCells = 0;
+    int W = gridWidth, H = gridHeight, z = tideSeaZ;
+    if (z < 0 || z + 1 >= gridDepth || tideSeaCells == 0) return;
+    int reach = tideBeachReach < 1 ? 1 : tideBeachReach > 16 ? 16 : tideBeachReach;
+    unsigned char* dist = malloc((size_t)W * H);
+    int* q = malloc(sizeof(int) * (size_t)W * H);
+    if (!dist || !q) { free(dist); free(q); return; }
+    memset(dist, 255, (size_t)W * H);
+    int head = 0, tail = 0;
+    for (int i = 0; i < tideSeaCells; i++) {
+        int c = seaCells[i].y * W + seaCells[i].x;
+        dist[c] = 0;
+        q[tail++] = c;
+    }
+    static const int DX[4] = {1, -1, 0, 0}, DY[4] = {0, 0, 1, -1};
+    while (head < tail) {
+        int c = q[head++], x = c % W, y = c / W;
+        if (dist[c] >= reach) continue;
+        for (int d = 0; d < 4; d++) {
+            int nx = x + DX[d], ny = y + DY[d];
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            int n = ny * W + nx;
+            if (dist[n] != 255) continue;
+            CellType base = GRID(nx, ny, z);
+            if (!(CellIsSolid(base) || CellIsRamp(base)) || GRID(nx, ny, z + 1) != CELL_AIR) continue;
+            dist[n] = (unsigned char)(dist[c] + 1);
+            q[tail++] = n;
+            if (tideBeachCells >= beachCap) {
+                int cap = beachCap ? beachCap * 2 : 4096;
+                SurfCell* m = realloc(beach, sizeof(SurfCell) * (size_t)cap);
+                if (!m) continue;
+                beach = m; beachCap = cap;
+            }
+            WATER_MUT(nx, ny, z + 1).isSurf = 1;
+            float ph = 0.5f + 0.25f * (sinf(nx * 0.09f + 1.0f) + sinf(ny * 0.11f));
+            beach[tideBeachCells++] = (SurfCell){n, dist[n], (unsigned char)StripOf(nx, ny), ph};
+        }
+    }
+    free(dist); free(q);
+}
+
 // How deep the swash runs at a flat cell dist cells up from deep water: a wave every
 // tideSurfPeriod game hours runs up to tideSurfReach cells and back (deepest near the sea)
-static int SurfDepth(const SurfCell* c, float hours) {
+static int SurfDepthReach(const SurfCell* c, float hours, float reach) {
     float period = tideSurfPeriod > 0.05f ? tideSurfPeriod : 0.05f;
     float t = hours / period + c->phase;
     t -= floorf(t);
-    float run = (float)tideSurfReach * sinf(3.14159265f * t);   // up and back down
+    float run = reach * sinf(3.14159265f * t);   // up and back down
     if ((float)c->dist > run) return 0;
     return (float)c->dist <= run * 0.5f ? tideSurfHeight : 1;
+}
+
+static int SurfDepth(const SurfCell* c, float hours) {
+    return SurfDepthReach(c, hours, (float)tideSurfReach);
 }
 
 void TideCellRange(int x, int y, int* lo, int* hi) {
@@ -238,6 +292,7 @@ int TideMarkSea(int z) {
     tideSteps = 0;
     StripSort();
     BuildSurf();
+    BuildBeachSurf();
     return tideSeaCells;
 }
 
@@ -253,7 +308,7 @@ void TideAfterLoad(void) {
                     if (tideSeaZ < 0) tideSeaZ = z;
                     SeaPush(x, y);
                 }
-    if (tideSeaCells > 0) { StripSort(); BuildSurf(); }
+    if (tideSeaCells > 0) { StripSort(); BuildSurf(); BuildBeachSurf(); }
     else tideLevel = WATER_MAX_LEVEL;
 }
 
@@ -347,6 +402,23 @@ void TideTick(void) {
             int x = seaCells[c->cell].x, y = seaCells[c->cell].y;
             if (WATER(x, y, z).isFrozen || WATER(x, y, z).level == target) continue;
             SetSeaLevel(x, y, z, target);
+            tideSurfChanges++;
+        }
+        // High tide: the waves run up the beach, one level up; further the higher the tide
+        // (none below wading depth: then the flats take the surf)
+        for (int k = 0; k < tideBeachCells; k++) {
+            const SurfCell* c = &beach[k];
+            int l = stripLevel[c->strip];
+            int target = 0;
+            if (l >= WATER_BLOCKS_MOVEMENT) {
+                float reach = (float)tideBeachReach * (float)(l - (WATER_BLOCKS_MOVEMENT - 1)) /
+                              (float)(WATER_MAX_LEVEL - (WATER_BLOCKS_MOVEMENT - 1));
+                target = SurfDepthReach(c, hours, reach);
+                if (target > WATER_BLOCKS_MOVEMENT - 1) target = WATER_BLOCKS_MOVEMENT - 1;
+            }
+            int x = c->cell % gridWidth, y = c->cell / gridWidth;
+            if (WATER(x, y, z + 1).isFrozen || WATER(x, y, z + 1).level == target) continue;
+            SetSeaLevel(x, y, z + 1, target);
             tideSurfChanges++;
         }
     }

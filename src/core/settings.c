@@ -267,6 +267,8 @@ static const Setting settings[] = {
       "Game hours from one wave to the next (game-like: closer to the tide than real waves). Not saved.", NULL),
     SET_INT("tideSurfHeight", "Surf height", "Simulation/Water", tideSurfHeight, 1.0f, 1, 3,
       "Water level a wave brings near the sea (1 at its tip); capped below wading depth. Not saved.", NULL),
+    SET_INT("tideBeachReach", "Beach surf reach", "Simulation/Water", tideBeachReach, 1.0f, 1, 16,
+      "At high tide the waves run this many cells up the beach (one level above the sea). Set before the sea is marked. Not saved.", NULL),
     SET_FLOAT("tideWaveHours", "Tide wave (h)", "Simulation/Water", tideWaveHours, 0.25f, 0.0f, 12.0f,
       "Game hours the tide takes to sweep across the map: the water crosses wading depth strip by strip (0 = all at once). Not saved.", NULL),
     SET_FLOAT("tideWaveAngle", "Tide wave angle", "Simulation/Water", tideWaveAngle, 15.0f, 0.0f, 359.0f,

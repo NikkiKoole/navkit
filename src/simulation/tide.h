@@ -28,6 +28,9 @@ extern bool tideSurf;
 extern int tideSurfReach, tideSurfHeight;
 extern float tideSurfPeriod;
 extern int tideSurfCells, tideSurfChanges;   // cells in the surf zone; cells changed last tick
+// Beach surf: at high tide the waves run up the beach (one level above the sea) up to
+// tideBeachReach cells, further the higher the tide; never past wading depth
+extern int tideBeachReach, tideBeachCells;
 void TideSettle(void);            // every sea cell to the level the tide wants now (setup, before the nav graph)
 
 // Mark the sea: water cells at level z, connected to the map edge. Returns the cell count.

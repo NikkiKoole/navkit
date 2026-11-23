@@ -581,6 +581,13 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     WaterCell* cell = &WATER_MUT(x, y, z);
     bool moved = false;
 
+    // Beach surf (high tide): the tide sets it; it doesn't flow or evaporate (or it would creep
+    // inland over the flat beach)
+    if (cell->isSurf && tideEnabled) {
+        cell->stable = true;
+        return false;
+    }
+
     // The sea follows the tide: back to its level (what flowed in or out is the sea's)
     if (cell->isSea && tideEnabled) {
         int lo, hi;

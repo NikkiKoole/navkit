@@ -40,6 +40,7 @@ typedef struct {
     uint16_t isFrozen       : 1;   // true = water is frozen (blocks flow, can be harvested as ice)
     uint16_t pressureDirty  : 1;   // true = pressure BFS needs to run (water moved nearby)
     uint16_t isSea          : 1;   // part of the sea body: its level follows the tide (tide.c)
+    uint16_t isSurf         : 1;   // beach one level above the sea: high-tide swash set by tide.c, doesn't flow
 } WaterCell;
 
 // Water grid (same dimensions as main grid)

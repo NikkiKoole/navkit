@@ -145,7 +145,7 @@ Not yet: food on the flats, dikes, storm surge; `islandTide` on by default (the 
 - Dikes and polders: in scope, or a later game?
 - Speed: a full tide in 12.4 game hours; is that too slow or fast to notice in play?
 
-## Surf line (drawn, 2026-11-23)
+## Surf line (drawn 2026-11-23, removed the same day: the user didn't want the white borders)
 
 `DrawSeaFoam` (rendering.c): a light band, gently pulsing, on each side of a sea-surface water
 cell that borders a cell without water. Sea surface = `isSea` water, water under an emptied
@@ -176,6 +176,14 @@ The user wanted surf as water, not drawing, and accepted that waves and tide are
 - Seed 3, 256, low tide: 4154 surf cells, ~109 change per tick; water 0.45 vs 0.44 ms with it
   off, nav unchanged; ~1.4k more wet cells on the flats. Settings `tideSurf`, `tideSurfReach`,
   `tideSurfPeriod`, `tideSurfHeight` (not saved).
+
+- **Beach surf at high tide**: from wading depth up the flats are deep and a wave there shows
+  nothing, so the waves run up the beach one level higher instead (`BuildBeachSurf`: columns
+  with ground or a ramp at the sea's level near the sea, up to `tideBeachReach` 3 cells; their
+  water cell gets `WaterCell.isSurf`). Reach grows with the tide (none below 4, full at 7);
+  capped below wading depth. The water sim leaves isSurf cells alone while the tide is on (no
+  flowing inland, no evaporating). Seed 3: 2488 beach cells, ~26 change per tick at high tide.
+- The foam line (below) was removed at the user's request: the swash shows itself.
 
 ## Side idea: surf (branding), cheap
 
