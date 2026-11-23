@@ -241,6 +241,10 @@ int NavFindRouteHPA(NavWorld* w, NavPoint start, NavPoint goal, NavPoint* route,
 // Cells from `from` to the next waypoint `to`, start-first, without `from` (a ladder/
 // ramp hop is just `to`). Returns the count (at most maxLen), -1 if there's no way.
 int NavRefineLeg(NavWorld* w, NavPoint from, NavPoint to, NavPoint* out, int maxLen);
+// The single steps A* takes out of p (reverse: every step INTO p, i.e. the cells it can be
+// entered from), same rules as the searches (ramps, side entry, ladders). Returns the count,
+// at most max (16 is always enough). For checks like "cells you can reach but not leave".
+int NavSteps(NavWorld* w, NavPoint p, bool reverse, NavPoint* out, int max);
 
 // ---- flow fields ----
 // One reverse Dijkstra from the goal(s) over the whole world, using exactly the

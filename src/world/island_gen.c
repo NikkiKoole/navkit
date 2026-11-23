@@ -25,6 +25,7 @@
 #include "biome.h"
 #include "cell_defs.h"
 #include "material.h"
+#include "pathfinding.h"
 #include "../../vendor/raylib.h"
 #include "../simulation/weather.h"
 #include "../simulation/water.h"
@@ -205,6 +206,176 @@ bool IslandLandingSpot(int* x, int* y, int* z) {
     if (islandLandX < 0) return false;
     *x = islandLandX; *y = islandLandY; *z = islandLandZ;
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// One-way pockets. Leaving a ramp sideways is a one-way step (nobody enters a ramp from the
+// side), so a low patch whose only way in is past a ramp's side traps whoever walks in: a
+// stranded settler re-ran hundreds of failing path searches (navkit-8e, island-colony).
+// Pockets = cells reachable from the main land that can't get back to it: a forward search
+// minus a backward one, both over the pathfinder's own steps (NavSteps). Each pocket gets an
+// exit ramp to ground that does lead back; repeated until none are left.
+// ---------------------------------------------------------------------------
+
+// A ramp in column (x, y) facing d (high side at +d), its cell at level rz: you can step off
+// it sideways onto a side cell standing at rz (ground at rz - 1), but never back on (side
+// entry). Allowed only if such a side cell has ground at rz - 1 one step toward the low end too,
+// so the side always leads straight back to the ramp's foot (no one-way pocket).
+static bool IslandRampSidesOk(const int* top, const int* waterTop, int x, int y, int d, int rz) {
+    static const int rdx[4] = {0, 1, 0, -1}, rdy[4] = {-1, 0, 1, 0};
+    int W = gridWidth, H = gridHeight;
+    for (int side = -1; side <= 1; side += 2) {
+        int px = rdy[d] * side, py = -rdx[d] * side;          // perpendicular to d
+        int sx = x + px, sy = y + py;
+        if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+        int si = sy * W + sx;
+        if (waterTop[si] < 0 && (top[si] != rz - 1 || !IsCellWalkableAt(rz, sy, sx))) continue;   // no side step
+        int bx = sx - rdx[d], by = sy - rdy[d];               // beside the foot
+        if (bx < 0 || by < 0 || bx >= W || by >= H) return false;
+        int bi = by * W + bx;
+        if (waterTop[si] >= 0 || waterTop[bi] >= 0 || top[bi] != rz - 1 || !IsCellWalkableAt(rz, by, bx)) return false;
+    }
+    return true;
+}
+
+static int IsNavBfs(NavPoint a, bool reverse, unsigned char* mark, int* q) {
+    int W = gridWidth, H = gridHeight, n = W * H * gridDepth, head = 0, tail = 0;
+    memset(mark, 0, (size_t)n);
+    mark[(a.z * H + a.y) * W + a.x] = 1;
+    q[tail++] = (a.z * H + a.y) * W + a.x;
+    NavPoint st[16];
+    NavWorld* w = NavGame();
+    while (head < tail) {
+        int id = q[head++];
+        NavPoint p = {id % W, (id / W) % H, id / (W * H)};
+        int k = NavSteps(w, p, reverse, st, 16);
+        for (int i = 0; i < k; i++) {
+            int j = (st[i].z * H + st[i].y) * W + st[i].x;
+            if (!mark[j]) { mark[j] = 1; q[tail++] = j; }
+        }
+    }
+    return tail;
+}
+
+// Adds exit ramps (returns how many); where no ramp can lead out, the ramps whose side leads
+// in become plain ground (*raised), so nobody gets in. *left = pocket cells left.
+static int IslandFixPockets(const int* top, const int* waterTop, unsigned char* seen, int* raised, int* left) {
+    static const int rdx[4] = {0, 1, 0, -1}, rdy[4] = {-1, 0, 1, 0};
+    const CellType rtype[4] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
+    int W = gridWidth, H = gridHeight, n3 = W * H * gridDepth;
+    unsigned char* F = (unsigned char*)malloc((size_t)n3);
+    unsigned char* B = (unsigned char*)malloc((size_t)n3);
+    int* q = (int*)malloc(sizeof(int) * (size_t)n3);
+    *left = 0; *raised = 0;
+    if (!F || !B || !q) { free(F); free(B); free(q); return 0; }
+
+    // The main land: of a few dry land cells spread over the map, the one with the most cells
+    // it can reach AND get back from (most reached alone could be a patch stepping down into it)
+    NavPoint anchor = {-1, -1, -1};
+    int best = 0;
+    unsigned char* banned = (unsigned char*)calloc((size_t)(W * H), 1);   // ramps removed here stay gone
+    for (int k = 0; k < 8 && banned; k++) {
+        unsigned h = (unsigned)(k * 2654435761u) ^ (unsigned)worldSeed;
+        h = (h ^ (h >> 15)) * 2246822519u;
+        int x = W / 4 + (int)(h % (unsigned)(W / 2)), y = H / 4 + (int)((h >> 12) % (unsigned)(H / 2));
+        int i = y * W + x, z = top[i] + 1;
+        if (waterTop[i] >= 0 || z >= gridDepth || !IsCellWalkableAt(z, y, x)) continue;
+        IsNavBfs((NavPoint){x, y, z}, false, F, q);
+        IsNavBfs((NavPoint){x, y, z}, true, B, q);
+        int r = 0;
+        for (int i = 0; i < n3; i++) r += F[i] && B[i];
+        if (r > best) { best = r; anchor = (NavPoint){x, y, z}; }
+    }
+
+    int added = 0;
+    for (int round = 0; round < 64 && anchor.x >= 0; round++) {
+        IsNavBfs(anchor, false, F, q);
+        IsNavBfs(anchor, true, B, q);
+        int pockets = 0;
+        // F: 0 not reached, 1 main land (there and back), 2 pocket (there, no way back)
+        for (int i = 0; i < n3; i++) if (F[i] && !B[i]) { F[i] = 2; pockets++; }
+        *left = pockets;
+        int before = added;
+        // A ramp in column c facing d joins L = c - d (walk level h) and U = c + d (walk
+        // level h + 1), h = top[c], both ways. Wanted where one end is main land and the other a
+        // pocket (its exit) or ground not reached at all (cut off: its way in)
+        for (int y = 1; y < H - 1; y++)
+            for (int x = 1; x < W - 1; x++) {
+                int c = y * W + x, h = top[c];
+                if (banned[c] || waterTop[c] >= 0 || h + 1 >= gridDepth || GRID(x, y, h) != CELL_WALL ||
+                    GRID(x, y, h + 1) != CELL_AIR) continue;
+                for (int d = 0; d < 4; d++) {
+                    int lx = x - rdx[d], ly = y - rdy[d], ux = x + rdx[d], uy = y + rdy[d];
+                    int li = ly * W + lx, ui = uy * W + ux;
+                    if (top[li] != h - 1 || top[ui] != h || waterTop[li] >= 0 || waterTop[ui] >= 0) continue;
+                    if (CellIsRamp(GRID(lx, ly, h - 1)) || CellIsRamp(GRID(ux, uy, h))) continue;
+                    if (!IslandRampSidesOk(top, waterTop, x, y, d, h)) continue;
+                    if (GRID(lx, ly, h) != CELL_AIR || GRID(ux, uy, h + 1) != CELL_AIR) continue;   // no tree or bush on an end
+                    int lw = (h * H + ly) * W + lx, uw = ((h + 1) * H + uy) * W + ux;
+                    bool mainL = F[lw] == 1, mainU = F[uw] == 1;
+                    bool exitUp = !mainL && mainU && (F[lw] == 2 || (F[lw] == 0 && IsCellWalkableAt(h, ly, lx)));
+                    bool exitDown = !mainU && mainL && (F[uw] == 2 || (F[uw] == 0 && IsCellWalkableAt(h + 1, uy, ux)));
+                    if (!exitUp && !exitDown) continue;
+                    MaterialType m = GetWallMaterial(x, y, h);
+                    GRID(x, y, h) = rtype[d];
+                    SetWallMaterial(x, y, h, m);
+                    seen[li] = seen[ui] = seen[c] = 1;
+                    added++;
+                    // that pocket or cut-off patch is served: mark it (its cells, by steps either way)
+                    int head = 0, tail = 0, start = exitUp ? lw : uw;
+                    F[start] = 3; q[tail++] = start;
+                    NavPoint st[16];
+                    while (head < tail) {
+                        int id = q[head++];
+                        NavPoint p = {id % W, (id / W) % H, id / (W * H)};
+                        for (int r = 0; r < 2; r++) {
+                            int k = NavSteps(NavGame(), p, r, st, 16);
+                            for (int j = 0; j < k; j++) {
+                                int t = (st[j].z * H + st[j].y) * W + st[j].x;
+                                if (F[t] == 0 || F[t] == 2) { F[t] = 3; q[tail++] = t; }
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        if (added > before) continue;
+        if (pockets == 0) break;
+        // No exit ramp anywhere: close the ways in. Every way in is a step off a ramp's side
+        // (the only one-way step), so that ramp becomes plain ground again (same height: no
+        // new cliff); so does a ramp inside the pocket that leads nowhere.
+        int closed = 0;
+        NavPoint st[16];
+        for (int i = 0; i < n3; i++) {
+            if (F[i] != 2) continue;
+            NavPoint p = {i % W, (i / W) % H, i / (W * H)};
+            NavPoint fix[17];
+            int nf = 0;
+            if (CellIsRamp(GRID(p.x, p.y, p.z))) fix[nf++] = p;
+            int k = NavSteps(NavGame(), p, true, st, 16);
+            for (int j = 0; j < k; j++) {
+                int t = (st[j].z * H + st[j].y) * W + st[j].x;
+                if (F[t] == 1 && CellIsRamp(GRID(st[j].x, st[j].y, st[j].z))) fix[nf++] = st[j];
+            }
+            for (int j = 0; j < nf; j++) {
+                NavPoint r = fix[j];
+                if (!CellIsRamp(GRID(r.x, r.y, r.z))) continue;
+                MaterialType m = GetWallMaterial(r.x, r.y, r.z);
+                GRID(r.x, r.y, r.z) = CELL_WALL;
+                SetWallMaterial(r.x, r.y, r.z, m);
+                banned[r.y * W + r.x] = 1;
+                SetWallNatural(r.x, r.y, r.z);
+                for (int it = 0; it < itemHighWaterMark; it++)   // (no items lie on ramps; to be safe)
+                    if (items[it].active && (int)items[it].z == r.z && (int)(items[it].x / CELL_SIZE) == r.x &&
+                        (int)(items[it].y / CELL_SIZE) == r.y) items[it].z += 1.0f;
+                closed++;
+            }
+        }
+        *raised += closed;
+        if (closed == 0) break;   // nothing more to do
+    }
+    free(F); free(B); free(q); free(banned);
+    return added;
 }
 
 void GenerateIsland(void) {
@@ -552,6 +723,7 @@ void GenerateIsland(void) {
                     rh = (rh ^ (rh >> 16)) * 2246822519u;
                     rh ^= rh >> 13;
                     if ((float)(rh & 0xFFFF) / 65536.0f >= rampDensity) continue;
+                    if (!IslandRampSidesOk(top, waterTop, nx, ny, d, rz)) continue;
                     MaterialType m = GetWallMaterial(nx, ny, rz);
                     GRID(nx, ny, rz) = rtype[d];
                     SetWallMaterial(nx, ny, rz, m);
@@ -678,6 +850,28 @@ void GenerateIsland(void) {
             }
         }
     }
+
+    // One-way pockets, last: trunks and boulders can close the other way round and leave a
+    // ramp's side the only way in
+    // Canopies reach past the 3x3 kept clear around ramp ends: leaves on a ramp's foot or top
+    // would block it, so they go (not branches: leaves cut off from the trunk decay in play)
+    for (int z = 1; z + 1 < gridDepth; z++)
+        for (int y = 1; y < H - 1; y++)
+            for (int x = 1; x < W - 1; x++) {
+                int d = (int)GRID(x, y, z) - CELL_RAMP_N;
+                if (d < 0 || d > 3) continue;
+                int dx = (d == 1) - (d == 3), dy = (d == 2) - (d == 0);   // toward the high side
+                int ex[2] = {x - dx, x + dx}, ey[2] = {y - dy, y + dy}, ez[2] = {z, z + 1};
+                for (int e = 0; e < 2; e++) {
+                    CellType c = GRID(ex[e], ey[e], ez[e]);
+                    if (c == CELL_TREE_LEAVES) GRID(ex[e], ey[e], ez[e]) = CELL_AIR;
+                }
+            }
+    int pocketLeft = 0, pocketRaised = 0;
+    int exitRamps = IslandFixPockets(top, waterTop, seen, &pocketRaised, &pocketLeft);
+    ramps += exitRamps;
+    TraceLog(LOG_INFO, "GenerateIsland: one-way pockets: %d exit ramps, %d ramps removed, %d pocket cells left",
+             exitRamps, pocketRaised, pocketLeft);
 
     // Landing spot: the beach cell nearest fresh water (tmp = distance to river or lake)
     {

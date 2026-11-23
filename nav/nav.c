@@ -638,6 +638,14 @@ static int nav_Steps(NavWorld* w, int x, int y, int z, int flags, int minX, int 
     return n;
 }
 
+int NavSteps(NavWorld* w, NavPoint p, bool reverse, NavPoint* out, int max) {
+    nav_Step st[NAV_MAX_STEPS];
+    int n = nav_Steps(w, p.x, p.y, p.z, reverse ? NAV_STEP_REVERSE : 0, 0, 0, w->width, w->height, NULL, st);
+    if (n > max) n = max;
+    for (int i = 0; i < n; i++) out[i] = (NavPoint){st[i].x, st[i].y, st[i].z};
+    return n;
+}
+
 // Cost of the single step a -> b (-1 if there is none)
 static int nav_StepCost(NavWorld* w, NavPoint a, NavPoint b, const int* extra, int flags) {
     nav_Step st[NAV_MAX_STEPS];

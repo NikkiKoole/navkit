@@ -65,7 +65,7 @@ done <<'EOF'
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit
 24  | 0 | --game dollhouse
 2   | 0 | --game survival
-30  | 0 | --game island
+23  | 0 | --game island
 EOF
 
 echo

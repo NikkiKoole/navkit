@@ -110,5 +110,21 @@ come from trampling, `groundwear`), buildings.
   patch sizes, rain blur) are tuned on 256 and scale with the map (`cs` = map / 256), so 1024
   is the same island, sharper. 1024 (seed 3): 2.7 s world gen + graph, 311 MB peak, 4.1 ms per
   tick with 100 movers (water 2.4 ms), 98.5% of dry ground reachable.
+- **One-way pockets** (fixed 2026-11-23, with navkit-8e): leaving a ramp sideways is a one-way
+  step (nobody enters a ramp from the side), so a low patch whose only way in was past a ramp's
+  side trapped whoever walked in. One stranded settler in `island-colony` re-ran ~250 failing
+  path searches every few ticks. Regions call such a patch reachable, so `DryGroundPrintStats`
+  never saw it. Measured with the pathfinder's own steps (`NavSteps` in `nav/nav.h`): cells
+  reachable from the main land minus cells that can get back; 256, seeds 1-5: 68-437 pocket
+  cells (biggest 131). Fix in two parts: a ramp is only placed where its side cells (if you can
+  stand there) have ground one step toward the foot too (`IslandRampSidesOk`), and
+  `IslandFixPockets` searches forward and backward from the main land and gives each pocket or
+  cut-off patch a two-way ramp, or turns ramps leading into an unfixable pocket back into ground
+  (never re-placed there, so it ends). Now 0 pocket cells on seeds 1-5 at 256 and 1024, main land
+  (there and back) unchanged within 0.5%, test "should leave no one-way pockets".
+  Other terrains (same count): hills 0-1 pocket cells, hills+water 10-58, perlin 0; not changed.
+- **128 islands are mostly cut off** (on master before this too): only 12-26% of dry ground is
+  main land at 128 (90-93% at 256). The `cs` scaling makes 128 steep and narrow; the game uses
+  256. Not looked into.
 - Still open: a few big rivers cross the coastal plain in straight lines where the slope cap
   turned steep ground into an even ramp; height stays 16 levels at any width (1024 is gentle).

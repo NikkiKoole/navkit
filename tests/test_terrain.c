@@ -4,6 +4,7 @@
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/terrain.h"
+#include "../src/world/pathfinding.h"
 #include "../src/game_state.h"
 #include "../src/simulation/water.h"
 #include "../src/entities/items.h"
@@ -433,6 +434,26 @@ static unsigned IslandChecksum(void) {
     return h;
 }
 
+// Every cell reachable from a (reverse: every cell that can reach a), by the pathfinder's own
+// single steps; mark[] gets 1 for those. q: scratch, one int per cell.
+static void IslandSearch(NavPoint a, bool reverse, unsigned char* mark, int* q) {
+    int n = gridWidth * gridHeight * gridDepth, head = 0, tail = 0;
+    memset(mark, 0, (size_t)n);
+    int start = (a.z * gridHeight + a.y) * gridWidth + a.x;
+    mark[start] = 1;
+    q[tail++] = start;
+    NavPoint st[16];
+    while (head < tail) {
+        int id = q[head++];
+        NavPoint p = {id % gridWidth, (id / gridWidth) % gridHeight, id / (gridWidth * gridHeight)};
+        int k = NavSteps(NavGame(), p, reverse, st, 16);
+        for (int i = 0; i < k; i++) {
+            int t = (st[i].z * gridHeight + st[i].y) * gridWidth + st[i].x;
+            if (!mark[t]) { mark[t] = 1; q[tail++] = t; }
+        }
+    }
+}
+
 describe(island_generator) {
     it("should make an island: sea at the frame, land in the middle, rivers") {
         uint64_t origSeed = worldSeed;
@@ -549,6 +570,47 @@ describe(island_generator) {
                 }
         expect(trees > 50);
         expect(floating == 0);
+        worldSeed = origSeed;
+    }
+
+    // Leaving a ramp sideways is a one-way step, so ground reached only that way traps whoever
+    // walks in (a settler stranded so re-ran hundreds of failing path searches). Pockets:
+    // reachable from the main land (forward search) but no way back (backward search).
+    it("should leave no one-way pockets: everything reachable can get back") {
+        uint64_t origSeed = worldSeed;
+        gridDepth = 16;
+        InitGridWithSizeAndChunkSize(256, 256, 16, 16);   // the island game's size (128 islands are mostly cut off: docs/todo/world/island.md)
+        int n = gridWidth * gridHeight * gridDepth;
+        unsigned char* F = malloc((size_t)n);
+        unsigned char* B = malloc((size_t)n);
+        int* q = malloc(sizeof(int) * (size_t)n);
+        int pockets = 0, mainLand = 0;
+        for (uint64_t seed = 1; seed <= 3; seed++) {
+            worldSeed = seed;
+            GenerateIsland();
+            // main land: of a few sampled cells, the one with the biggest there-and-back area
+            NavPoint anchor = {-1, -1, -1};
+            int best = 0;
+            for (int k = 0; k < 40; k++) {
+                Point c = GetRandomWalkableCell();       // dry land only: the shallow sea bed is walkable too
+                if (c.x < 0 || GetWaterLevel(c.x, c.y, c.z) > 0) continue;
+                IslandSearch((NavPoint){c.x, c.y, c.z}, false, F, q);
+                IslandSearch((NavPoint){c.x, c.y, c.z}, true, B, q);
+                int two = 0;
+                for (int i = 0; i < n; i++) two += F[i] && B[i];
+                if (two > best) { best = two; anchor = (NavPoint){c.x, c.y, c.z}; }
+            }
+            expect(anchor.x >= 0);
+            if (anchor.x < 0) continue;
+            IslandSearch(anchor, false, F, q);
+            IslandSearch(anchor, true, B, q);
+            for (int i = 0; i < n; i++) if (F[i] && !B[i]) pockets++;
+            mainLand += best;
+        }
+        if (test_verbose) printf("main land %d cells, pocket cells %d (seeds 1-3)\n", mainLand, pockets);
+        expect(mainLand > 3 * 15000);                // the search saw the island, not a corner of it
+        expect(pockets == 0);
+        free(F); free(B); free(q);
         worldSeed = origSeed;
     }
 }
