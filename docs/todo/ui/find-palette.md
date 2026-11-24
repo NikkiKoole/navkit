@@ -66,6 +66,38 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
    mode, draft (hovered mover) and deconstruct (hovered workshop).
 6. **Describe hooks per row** (settings already have help and live tooltips).
 
+## Next steps (pick up here; written 2026-11-24)
+
+The palette works end to end (`/` in game). In order:
+
+1. **The user plays with it first.** Does `/` feel right, does search rank the right things
+   first, is there something they look for and can't find? Fold that in before more features.
+2. **Right-click context (C, the second half of the decision).** Right-click a mover, workshop,
+   stockpile or cell: the same palette cut down to what applies to it: its verbs (draft, follow,
+   priority, ... from the `SelectionVerb` table), the commands that take a place (spawn here,
+   clear here, tp), and its describe lines on top (`describe.c`). Mostly wiring: verbs are data,
+   `FindRow.kind == FIND_VERB` rows already carry their selection kind in the path. Check first
+   what right-click does in normal mode today (it should be nothing important).
+3. **Small polish** (can go along with 2):
+   - pins and recent saved between runs: a small per-user file, not the save game
+     (`FindNoteUsed` / `FindSetPinned` keep kind + ref, so they survive a rebuild);
+   - the palette blocks clicks to widgets under it (shared/ui.h widgets don't check
+     `ui_add_block_rect`; the dev sidebar sits left of the window so it doesn't bite yet);
+   - mouse wheel sets the item brush count (now: 1, Shift 10);
+   - settings remember the last typed value too (commands already do).
+4. **Fill the gaps in find**: what is still hand-written becomes rows: speed, the spawn-movers
+   stepper, stockpile spawns, cutscene / shake as command rows; the global keys (input.c) as
+   data with a key-clash test (step 5 of the data tidying). Then everything in the dev sidebar
+   is also in find.
+5. **Retire what find covers (the user's call)**: does the TAB sidebar shrink to a few pinned
+   things or stay for browsing settings; which debug keys go. Judge after using find a while.
+6. **The player toolbar**, the other side of the decision: `GameDef.tools` already reads the
+   registry; it could get icons, unlocks and the play HUD layout from `../ui-redesign.md`.
+   A bigger design topic; pairs with City 1999 (`../../vision/city-1999.md`), which needs its own
+   toolbar.
+
+Recommended: 1, then 2 with 3 alongside.
+
 ## Done so far
 
 - 2026-11-24: **the palette window, v1 (`src/ui/palette.c`).** `/` opens it (the typed character,
