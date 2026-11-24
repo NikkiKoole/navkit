@@ -136,33 +136,40 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
 
 // --- Room classification ---
 
+// Lobby: an entrance hall this big is a building's shared one, not a dwelling's own hall
+#define LOBBY_MIN_CELLS 24
+
 static void ClassifyRoom(DetectedRoom *room) {
     // Open air first: a walled garden with a bench is a garden, not a living room
     bool empty = room->furnCount == 0 && room->cookingWorkshopCount == 0 &&
                  room->craftingWorkshopCount == 0 && room->stockpileCellCount == 0;
     if (room->outdoors) {
         room->type = ROOM_TYPE_OUTDOORS;
-    } else if (room->cookingWorkshopCount > 0 || room->coldStorageCount > 0) {
-        room->type = ROOM_TYPE_KITCHEN;
+    } else if (room->cookingWorkshopCount > 0) {
+        room->type = ROOM_TYPE_KITCHEN;        // cooking, not a fridge: staff rooms and shops have those
     } else if (room->craftingWorkshopCount > 0) {
         room->type = ROOM_TYPE_WORKSHOP;
+    } else if (room->doubleBedCount > 0 || room->bedCount == 1) {
+        room->type = ROOM_TYPE_BEDROOM;        // a double bed and a cot: still a bedroom
     } else if (room->bedCount >= 2) {
         room->type = ROOM_TYPE_BARRACKS;
-    } else if (room->bedCount == 1) {
-        room->type = ROOM_TYPE_BEDROOM;
-    } else if (room->toiletCount > 0 && (room->washingCount == 0 || room->cellCount <= 3)) {
-        room->type = ROOM_TYPE_WC;             // a toilet, at most a hand basin squeezed in
+    } else if (room->bathingCount > 0) {
+        room->type = ROOM_TYPE_BATHROOM;       // a bath or shower, toilet or not
+    } else if (room->toiletCount > 0) {
+        room->type = ROOM_TYPE_WC;             // toilets, hand basins at most
     } else if (room->washingCount > 0) {
-        room->type = ROOM_TYPE_BATHROOM;
+        room->type = ROOM_TYPE_BATHROOM;       // only sinks (a wash room, a toilet lobby)
     } else if (room->sofaCount > 0) {
         room->type = ROOM_TYPE_LIVING;         // a sofa makes a living room, table or not
+    } else if (room->deskCount > 0 && room->seatCount > 0) {
+        room->type = ROOM_TYPE_OFFICE;
     } else if (room->diningSetCount > 0) {
         room->type = ROOM_TYPE_DINING;
     } else if (room->seatCount > 0) {
         room->type = ROOM_TYPE_LIVING;         // seats without a table
     } else if (room->stockpileCellCount > 0) {
         room->type = ROOM_TYPE_STORAGE;
-    } else if (empty && room->exteriorDoorCount > 0 && room->cellCount >= 12) {
+    } else if (empty && room->exteriorDoorCount > 0 && room->cellCount >= LOBBY_MIN_CELLS) {
         room->type = ROOM_TYPE_LOBBY;
     } else if (empty && room->verticalCount > 0) {
         room->type = ROOM_TYPE_STAIRS;
@@ -295,6 +302,9 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             if (caps & CAP_WASHING) room->washingCount++;
             if (caps & CAP_COLD_STORAGE) room->coldStorageCount++;
             if (ft == FURNITURE_SOFA) room->sofaCount++;
+            if (ft == FURNITURE_BATH || ft == FURNITURE_SHOWER) room->bathingCount++;
+            if (ft == FURNITURE_DOUBLE_BED) room->doubleBedCount++;
+            if (ft == FURNITURE_DESK) room->deskCount++;
             if (ft == FURNITURE_CHAIR) room->chairCount++;
             if (ft == FURNITURE_TABLE) {
                 room->tableCount++;
@@ -522,7 +532,8 @@ const char* RoomTypeName(RoomType type) {
     static const char* names[] = {
         "Room", "Kitchen", "Workshop", "Barracks",
         "Bedroom", "Dining Room", "Storage",
-        "Living Room", "Hall", "WC", "Bathroom", "Stairs", "Lobby", "Outdoors"
+        "Living Room", "Hall", "WC", "Bathroom", "Stairs", "Lobby", "Outdoors",
+        "Office"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == ROOM_TYPE_COUNT,
                    "RoomTypeName out of sync with RoomType enum");

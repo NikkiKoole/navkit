@@ -380,8 +380,8 @@ static void StartDollhouse(void) {
     //   0  # # w # w # # # # # # w # #
     //   1  # h T h . . #   # S . . t #     kitchen: table + chairs, stove, counter, sink, tap,
     //   2  # . . . . . D   D . . . . #              food stockpile with the fridge in it
-    //   3  # s c k p . #   # . . . . #     hall (1 wide) between everything, front door below
-    //   4  # . F F F f #   # # # # # #     bathroom: sink, toilet
+    //   3  # s c k p . #   # . . . W #     hall (1 wide) between everything, front door below
+    //   4  # . F F F f #   # # # # # #     bathroom: sink, toilet, shower (W)
     //   5  # # # # # # #   # . . . d #     bedroom: double bed, desk + chair, bookshelf
     //   6  # . o o . . #   D . . . h #     living room: sofa (2 seats), bookshelf
     //   7  w . . . . . D   # . . B . w
@@ -475,6 +475,7 @@ static void StartDollhouse(void) {
     // Bathroom
     DH_FURN(9, 1, FURNITURE_SINK, MAT_GRANITE);
     DH_FURN(12, 1, FURNITURE_TOILET, MAT_GRANITE);
+    DH_FURN(12, 3, FURNITURE_SHOWER, MAT_GRANITE);
     // Bedroom
     DH_FURN(11, 7, FURNITURE_DOUBLE_BED, MAT_OAK);   // both sleep in it
     DH_FURN(12, 5, FURNITURE_DESK, MAT_OAK);

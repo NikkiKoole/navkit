@@ -644,10 +644,15 @@ describe(building_rooms) {
         expect(RoomAt(4, 4)->type == ROOM_TYPE_KITCHEN);
     }
 
-    it("a fridge alone makes a kitchen") {
+    it("a fridge alone is no kitchen (staff rooms, shops), a fridge and a stove are") {
         SetupFlatGround(16, 16);
         BuildWalledRoom(3, 3, 8, 8);
         SpawnFurniture(5, 5, 1, FURNITURE_FRIDGE, MAT_IRON);
+        SpawnFurniture(6, 5, 1, FURNITURE_TABLE, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type != ROOM_TYPE_KITCHEN);
+        CreateWorkshop(4, 6, 1, WORKSHOP_STOVE);
+        InvalidateRooms();
         UpdateRooms();
         expect(RoomAt(4, 4)->type == ROOM_TYPE_KITCHEN);
     }
@@ -679,16 +684,61 @@ describe(building_rooms) {
         expect(RoomAt(4, 4)->type == ROOM_TYPE_LIVING);
     }
 
-    it("a toilet alone is a WC, toilet and sink in a bigger room a bathroom") {
-        SetupFlatGround(16, 16);
+    it("toilets without a bath or shower are a WC, hand basin or not; a shower makes a bathroom") {
+        SetupFlatGround(20, 16);
         BuildWalledRoom(2, 2, 4, 5);       // 1x2 inside
         SpawnFurniture(3, 3, 1, FURNITURE_TOILET, MAT_GRANITE);
-        BuildWalledRoom(6, 2, 10, 6);      // 3x3 inside
+        BuildWalledRoom(6, 2, 10, 6);      // 3x3 inside: toilet + hand basin
         SpawnFurniture(7, 3, 1, FURNITURE_TOILET, MAT_GRANITE);
         SpawnFurniture(9, 3, 1, FURNITURE_SINK, MAT_GRANITE);
+        BuildWalledRoom(12, 2, 16, 6);     // 3x3 inside: toilet, sink, shower
+        SpawnFurniture(13, 3, 1, FURNITURE_TOILET, MAT_GRANITE);
+        SpawnFurniture(14, 3, 1, FURNITURE_SINK, MAT_GRANITE);
+        SpawnFurniture(15, 3, 1, FURNITURE_SHOWER, MAT_GRANITE);
         UpdateRooms();
         expect(RoomAt(3, 4)->type == ROOM_TYPE_WC);
-        expect(RoomAt(8, 5)->type == ROOM_TYPE_BATHROOM);
+        expect(RoomAt(8, 5)->type == ROOM_TYPE_WC);
+        expect(RoomAt(14, 5)->type == ROOM_TYPE_BATHROOM);
+    }
+
+    it("a bath alone makes a bathroom, sinks alone a wash room (bathroom)") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(2, 2, 6, 6);
+        SpawnFurniture(3, 3, 1, FURNITURE_BATH, MAT_GRANITE);
+        BuildWalledRoom(8, 2, 12, 6);
+        SpawnFurniture(9, 3, 1, FURNITURE_SINK, MAT_GRANITE);
+        SpawnFurniture(10, 3, 1, FURNITURE_SINK, MAT_GRANITE);
+        UpdateRooms();
+        expect(RoomAt(4, 5)->type == ROOM_TYPE_BATHROOM);
+        expect(RoomAt(10, 5)->type == ROOM_TYPE_BATHROOM);
+    }
+
+    it("a desk with a seat is an office; with a bed it stays a bedroom") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(2, 2, 6, 6);
+        SpawnFurniture(3, 3, 1, FURNITURE_DESK, MAT_OAK);
+        SpawnFurniture(3, 4, 1, FURNITURE_CHAIR, MAT_OAK);
+        BuildWalledRoom(8, 2, 12, 6);
+        SpawnFurniture(9, 3, 1, FURNITURE_DESK, MAT_OAK);
+        SpawnFurniture(9, 4, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(11, 5, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(5, 5)->type == ROOM_TYPE_OFFICE);
+        expect(strcmp(RoomTypeName(ROOM_TYPE_OFFICE), "Office") == 0);
+        expect(RoomAt(10, 5)->type == ROOM_TYPE_BEDROOM);
+    }
+
+    it("a double bed and a cot are a bedroom, two single beds barracks") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(2, 2, 6, 6);
+        SpawnFurniture(3, 3, 1, FURNITURE_DOUBLE_BED, MAT_OAK);
+        SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        BuildWalledRoom(8, 2, 12, 6);
+        SpawnFurniture(9, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        SpawnFurniture(11, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(4, 5)->type == ROOM_TYPE_BEDROOM);
+        expect(RoomAt(10, 5)->type == ROOM_TYPE_BARRACKS);
     }
 
     it("an empty room between two doors is a hall; with one door it stays a room") {
@@ -711,6 +761,17 @@ describe(building_rooms) {
         UpdateRooms();
         expect(RoomAt(6, 6)->exteriorDoorCount == 1);
         expect(RoomAt(6, 6)->type == ROOM_TYPE_LOBBY);
+    }
+
+    it("a dwelling's hall with the front door (under 24 cells) is a hall, not a lobby") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(3, 3, 8, 8);       // 4x4 = 16 inside
+        PlaceDoor(5, 8);                   // front door
+        BuildWalledRoom(8, 3, 12, 8);
+        PlaceDoor(8, 5);                   // to the next room
+        UpdateRooms();
+        expect(RoomAt(5, 5)->exteriorDoorCount == 1);
+        expect(RoomAt(5, 5)->type == ROOM_TYPE_HALL);
     }
 
     it("an empty room with a ladder is stairs") {

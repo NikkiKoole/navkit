@@ -31,11 +31,12 @@ typedef enum {
     // append only (dreamengine's room names map 1:1); see ClassifyRoom for the rules
     ROOM_TYPE_LIVING,      // a sofa, or seats without a table
     ROOM_TYPE_HALL,        // empty, connects 2+ doors
-    ROOM_TYPE_WC,          // a toilet, at most a hand basin in a tiny room
-    ROOM_TYPE_BATHROOM,    // washing (sink, bath, shower), maybe a toilet
+    ROOM_TYPE_WC,          // a toilet, no bath or shower (a hand basin is fine)
+    ROOM_TYPE_BATHROOM,    // a bath or shower (or only sinks), maybe a toilet
     ROOM_TYPE_STAIRS,      // empty but for ladders/ramps/a shaft
-    ROOM_TYPE_LOBBY,       // a big empty hall with a door to the outside
+    ROOM_TYPE_LOBBY,       // a big (24+ cells) empty hall with a door to the outside
     ROOM_TYPE_OUTDOORS,    // enclosed but mostly open to the sky: garden, yard, balcony, terrace
+    ROOM_TYPE_OFFICE,      // a desk with a seat (no bed, no sofa)
     ROOM_TYPE_COUNT
 } RoomType;
 
@@ -57,7 +58,10 @@ typedef struct {
     int sofaCount;
     int seatCount;               // furniture with CAP_SEATING (chairs, sofas)
     int toiletCount;             // CAP_TOILET
-    int washingCount;            // CAP_WASHING (sinks)
+    int washingCount;            // CAP_WASHING (sinks, baths, showers)
+    int bathingCount;            // baths and showers
+    int doubleBedCount;
+    int deskCount;
     int coldStorageCount;        // CAP_COLD_STORAGE (fridges)
     int verticalCount;           // ladder, ramp and shaft cells
     int doorCount;               // doors on its edge

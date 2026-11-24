@@ -35,6 +35,8 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_SHELF]      = { "Shelf",      0.0f,    false, 20, CAP_DISPLAY },
     [FURNITURE_SOFA]       = { "Sofa",       0.5f,    false, 11, CAP_SEATING },
     [FURNITURE_TILL]       = { "Till",       0.0f,    false, 16, CAP_SELLING },
+    [FURNITURE_BATH]       = { "Bath",       0.0f,    false, 20, CAP_WASHING },
+    [FURNITURE_SHOWER]     = { "Shower",     0.0f,    false, 11, CAP_WASHING },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,

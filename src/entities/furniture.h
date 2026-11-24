@@ -16,7 +16,7 @@ typedef enum {
     // dreamengine's building kinds (docs/todo/architecture/capability-based-tasks.md): on/off
     // marks, "is there one here or nearby?". A level, where one matters, comes from the def
     // (restRate for seating and sleeping), as heat does.
-    CAP_WASHING       = 1 << 3,  // sink, bath, shower: wash hands, wash up
+    CAP_WASHING       = 1 << 3,  // sink, bath, shower: wash hands, wash up, wash
     CAP_TOILET        = 1 << 4,  // toilet
     CAP_SEATING       = 1 << 5,  // chair, sofa, bench
     CAP_FLAT_SURFACE  = 1 << 6,  // table, desk: eat or work at it (a prep surface is a counter's)
@@ -46,6 +46,8 @@ typedef enum {
     FURNITURE_SHELF,       // display (books, goods)
     FURNITURE_SOFA,        // seating, makes a living room
     FURNITURE_TILL,        // a shop's counter: selling (City 1999's shop counter / snack stand)
+    FURNITURE_BATH,        // washing; a bath or shower makes a bathroom (a toilet alone: a WC)
+    FURNITURE_SHOWER,      // washing
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
