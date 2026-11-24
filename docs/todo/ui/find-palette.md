@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction; data tidying step 1 started (2026-11-24)
+> Status: decided direction; data tidying steps 1-2 done (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,17 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **tool options as data (step 2).** `ActionOption` (action_registry.h): label,
+  choices (count / name), get / set, and a style: numbered (keys 1-9), cycle (one key, e.g. R
+  for recipes, T for tree type) or keyed (a key per choice: ramp A/arrows/HJKL, belt
+  arrows/HJKL/PgUp/PgDn). One spec per tool in input.c (`actionOptions[]`, next to the tool
+  handlers): draw material, five recipe categories, ramp and belt direction, crop, brush size,
+  torch colour, tree type. The option bar (input_mode.c) and the keys (`HandleToolOptionKeys`)
+  are both made from it; the registry rows carry their mouse hints (`ActionDef.hints`). The
+  draw materials are one table (input.c `drawMaterials`, `DrawMaterialFor`) instead of three
+  copies (input.c and two ghost previews in main.c). Every tool's bar was dumped from the old
+  and new build and compared: identical except "Cycle tree (Oak)" -> "Tree: Oak". Clicking an
+  option in the bar now works for ramp direction and recipes too (they only took key presses).
 - 2026-11-24: **command table, first part.** `src/core/command_args.c/.h` (argument specs: int,
   float, choice with optional number range, item by name, name from another table; parsing,
   usage text; pure, tested in `tests/test_commands.c`) and `src/ui/commands.c/.h` (the table:

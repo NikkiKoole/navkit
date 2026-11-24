@@ -3,6 +3,8 @@
 #define INPUT_MODE_H
 
 #include <stdbool.h>
+#include "../world/material.h"   // MaterialType (DrawMaterialFor)
+#include "../entities/items.h"   // ItemType (DrawMaterialFor)
 
 // Top-level input modes
 typedef enum {
@@ -140,6 +142,8 @@ extern InputMode inputMode;
 extern WorkSubMode workSubMode;  // Sub-mode within WORK
 extern InputAction inputAction;
 extern int selectedMaterial;  // 1-based material index
+// Draw material for a selectedMaterial value (input.c drawMaterials: also the ghost preview)
+void DrawMaterialFor(int selected, MaterialType* outMat, ItemType* outSource);
 
 // Soil pile mode settings
 extern float soilPileRadius;  // How far soil spreads in pile mode (shift+draw)

@@ -2007,20 +2007,9 @@ int main(int argc, char** argv) {
                     inputAction == ACTION_DRAW_RAMP);
 
                 if (useGhostPreview) {
-                    MaterialType mat = MAT_GRANITE;
-                    ItemType source = ITEM_BLOCKS;
-                    switch (selectedMaterial) {
-                        case 2: mat = MAT_OAK;       source = ITEM_PLANKS; break;
-                        case 3: mat = MAT_DIRT;      source = ITEM_DIRT;   break;
-                        case 4: mat = MAT_OAK;       source = ITEM_PLANKS; break;
-                        case 5: mat = MAT_PINE;      source = ITEM_PLANKS; break;
-                        case 6: mat = MAT_BIRCH;     source = ITEM_PLANKS; break;
-                        case 7: mat = MAT_WILLOW;    source = ITEM_PLANKS; break;
-                        case 8: mat = MAT_SANDSTONE; source = ITEM_BLOCKS; break;
-                        case 9: mat = MAT_SLATE;     source = ITEM_BLOCKS; break;
-                        default: mat = MAT_GRANITE;  source = ITEM_BLOCKS; break;
-                    }
-                    if (selectedMaterial == 2) source = ITEM_LOG;
+                    MaterialType mat;
+                    ItemType source;
+                    DrawMaterialFor(selectedMaterial, &mat, &source);   // the draw tools' table (input.c)
 
                     for (int dz = z1; dz <= z2; dz++) {
                         for (int dx = x1; dx <= x2; dx++) {
@@ -2121,22 +2110,9 @@ int main(int argc, char** argv) {
                 if (useGhostPreview) {
                     // Ghost preview: draw actual sprites semi-transparent
                     // Determine sprite based on action + selected material
-                    MaterialType mat = MAT_GRANITE;
-                    ItemType source = ITEM_BLOCKS;
-                    // Replicate GetDrawMaterial logic (it's static in input.c)
-                    switch (selectedMaterial) {
-                        case 2: mat = MAT_OAK;    source = ITEM_PLANKS; break;
-                        case 3: mat = MAT_DIRT;    source = ITEM_DIRT;   break;
-                        case 4: mat = MAT_OAK;    source = ITEM_PLANKS; break;
-                        case 5: mat = MAT_PINE;   source = ITEM_PLANKS; break;
-                        case 6: mat = MAT_BIRCH;  source = ITEM_PLANKS; break;
-                        case 7: mat = MAT_WILLOW; source = ITEM_PLANKS; break;
-                        case 8: mat = MAT_SANDSTONE; source = ITEM_BLOCKS; break;
-                        case 9: mat = MAT_SLATE;     source = ITEM_BLOCKS; break;
-                        default: mat = MAT_GRANITE;  source = ITEM_BLOCKS; break;
-                    }
-                    // Material case 2 is log, not planks
-                    if (selectedMaterial == 2) source = ITEM_LOG;
+                    MaterialType mat;
+                    ItemType source;
+                    DrawMaterialFor(selectedMaterial, &mat, &source);   // the draw tools' table (input.c)
 
                     for (int dy = y1; dy <= y2; dy++) {
                         for (int dx = x1; dx <= x2; dx++) {

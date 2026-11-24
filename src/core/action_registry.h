@@ -16,7 +16,38 @@ typedef struct {
     InputAction parentAction;   // ACTION_NONE for top-level, or parent category action
     bool canDrag;               // Can be executed with drag
     bool canErase;              // Right-click erases (for draw actions)
+    // Mouse hints shown after the tool's option in the bar ("L-drag place", "R-drag erase",
+    // "+Shift=source"). NULL: "L-drag designate" / "R-drag cancel" from canDrag / canErase.
+    const char* hints[4];
 } ActionDef;
+
+// A tool's option (docs/todo/ui/find-palette.md "Data tidying" step 2): what the tool can be
+// set to (draw material, recipe, ramp / belt direction, brush size, torch colour, crop, tree).
+// The option bar and the keys that change it are both made from this (input_mode.c, input.c),
+// and a palette can show it as a chooser or child rows. Options are indexed by action next to
+// the tool handlers in input.c (their state lives there): GetActionOption.
+typedef enum {
+    OPT_NUMBERED,   // keys 1..count, bar "1:Stone 2:Wood ..." (count <= 9)
+    OPT_CYCLE,      // one key steps through, bar "Recipe: Wood wall" (cycleKey)
+    OPT_KEYED,      // a key per choice (keys / altKeys), bar shows each choice, or keysHint
+} ActionOptionStyle;
+
+#define ACTION_OPTION_MAX_KEYED 8
+typedef struct ActionOption {
+    const char* label;                 // "Recipe", "Dir", "Tree"
+    ActionOptionStyle style;
+    int ctx;                           // passed to the callbacks (e.g. the recipe category)
+    int  (*count)(int ctx);
+    const char* (*nameAt)(int ctx, int i);
+    int  (*get)(int ctx);              // index of the current choice
+    void (*set)(int ctx, int i);       // choose (and say so, if the tool did before)
+    int cycleKey;                      // OPT_CYCLE
+    int keys[ACTION_OPTION_MAX_KEYED];     // OPT_KEYED: key per choice
+    int altKeys[ACTION_OPTION_MAX_KEYED];  // OPT_KEYED: second key per choice (HJKL), 0 = none
+    const char* keysHint;              // OPT_KEYED: show "Label: name" + this instead of every choice
+} ActionOption;
+
+const ActionOption* GetActionOption(InputAction action);   // NULL = the tool has none (input.c)
 
 extern const ActionDef ACTION_REGISTRY[];
 extern const int ACTION_REGISTRY_COUNT;

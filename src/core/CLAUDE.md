@@ -50,8 +50,10 @@ Save files use hex markers for readability: `MARKER_GRIDS` (0x47524944), `MARKER
 ## Input System
 
 - Action registry: hierarchical mode/submode/parent system in `ACTION_REGISTRY[]`
-- Draw mode materials: keys 1-9 mapped via `GetDrawMaterial()` in `input.c`
-- Recipe cycling: M key per category, tracked via `selectedWallRecipe` / `selectedFloorRecipe` / `selectedLadderRecipe`
+- Tool options (draw material 1-9, recipe R, ramp/belt direction, brush, torch, crop, tree T):
+  one `ActionOption` per tool in `input.c` `actionOptions[]`; the option bar and the keys are
+  made from it. Draw materials: the `drawMaterials` table (`DrawMaterialFor`). Mouse hints per
+  tool: `ActionDef.hints` in the registry. See docs/todo/ui/find-palette.md.
 
 ## Time System
 

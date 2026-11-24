@@ -254,150 +254,29 @@ int InputMode_GetBarItems(BarItem* items) {
                         children[i]->barUnderlinePos, false, false, false);
         }
     } else {
-        // Leaf action — show action-specific UI (special cases that depend on runtime state)
-        switch (inputAction) {
-            case ACTION_DRAW_WALL:
-            case ACTION_DRAW_FLOOR:
-                n = AddItem(items, n, "1:Stone", KEY_ONE, 0, false, false, selectedMaterial == 1);
-                n = AddItem(items, n, "2:Wood", KEY_TWO, 0, false, false, selectedMaterial == 2);
-                n = AddItem(items, n, "3:Dirt", KEY_THREE, 0, false, false, selectedMaterial == 3);
-                n = AddItem(items, n, "4:Oak plank", KEY_FOUR, 0, false, false, selectedMaterial == 4);
-                n = AddItem(items, n, "5:Pine plank", KEY_FIVE, 0, false, false, selectedMaterial == 5);
-                n = AddItem(items, n, "6:Birch plank", KEY_SIX, 0, false, false, selectedMaterial == 6);
-                n = AddItem(items, n, "7:Willow plank", KEY_SEVEN, 0, false, false, selectedMaterial == 7);
-                n = AddItem(items, n, "8:Sandstone", KEY_EIGHT, 0, false, false, selectedMaterial == 8);
-                n = AddItem(items, n, "9:Slate", KEY_NINE, 0, false, false, selectedMaterial == 9);
-                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-                if (inputAction == ACTION_DRAW_WALL) {
-                    n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-                }
-                break;
-            case ACTION_DRAW_LADDER:
-                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-                break;
-            case ACTION_DRAW_RAMP:
-                n = AddItem(items, n, "Auto", KEY_A, -1, false, false, selectedRampDirection == CELL_AIR);
-                n = AddItem(items, n, "N", KEY_UP, -1, false, false, selectedRampDirection == CELL_RAMP_N);
-                n = AddItem(items, n, "E", KEY_RIGHT, -1, false, false, selectedRampDirection == CELL_RAMP_E);
-                n = AddItem(items, n, "S", KEY_DOWN, -1, false, false, selectedRampDirection == CELL_RAMP_S);
-                n = AddItem(items, n, "W", KEY_LEFT, -1, false, false, selectedRampDirection == CELL_RAMP_W);
-                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-                break;
-            case ACTION_DRAW_STOCKPILE:
-            case ACTION_DRAW_REFUSE_PILE:
-                n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-                break;
-            case ACTION_DRAW_WORKSHOP_STONECUTTER:
-            case ACTION_DRAW_WORKSHOP_SAWMILL:
-            case ACTION_DRAW_WORKSHOP_KILN:
-            case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
-            case ACTION_DRAW_WORKSHOP_HEARTH:
-            case ACTION_DRAW_WORKSHOP_DRYING_RACK:
-            case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
-            case ACTION_DRAW_WORKSHOP_CARPENTER:
-                n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
-                break;
-            case ACTION_DRAW_SOIL_DIRT:
-            case ACTION_DRAW_SOIL_CLAY:
-            case ACTION_DRAW_SOIL_GRAVEL:
-            case ACTION_DRAW_SOIL_SAND:
-            case ACTION_DRAW_SOIL_PEAT:
-            case ACTION_DRAW_SOIL_ROCK:
-                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-                n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
-                break;
-
-            case ACTION_WORK_CONSTRUCT:
-                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedWallRecipeName()), KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_LADDER:
-                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedLadderRecipeName()), KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_FLOOR:
-                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedFloorRecipeName()), KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_FURNITURE:
-                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedFurnitureRecipeName()), KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_DOOR:
-                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedDoorRecipeName()), KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_BELT:
-                n = AddItem(items, n, TextFormat("Dir: %s", GetSelectedBeltDirectionName()), 0, -1, false, true, false);
-                n = AddItem(items, n, "Arrows / PgUp lift / PgDn chute", 0, -1, false, true, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_SHAFT:
-                n = AddItem(items, n, "Shaft: from here up one level", 0, -1, false, true, false);
-                n = AddItem(items, n, "On a shaft top: one more level", 0, -1, false, true, false);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag take down", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_RAMP:
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            case ACTION_SANDBOX_WATER:
-                n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-                n = AddItem(items, n, "+Shift=source/drain", 0, -1, false, true, false);
-                break;
-            case ACTION_SANDBOX_FIRE:
-                n = AddItem(items, n, "L-drag ignite", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag extinguish", 0, -1, false, true, false);
-                n = AddItem(items, n, "+Shift=source", 0, -1, false, true, false);
-                break;
-            case ACTION_SANDBOX_TREE:
-                n = AddItem(items, n, TextFormat("Cycle tree (%s)", TreeTypeName(currentTreeType)), KEY_T, 0, false, false, false);
-                n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-                break;
-            case ACTION_SANDBOX_SCULPT:
-                n = AddItem(items, n, "1:1x1", KEY_ONE, 0, false, false, terrainBrushRadius == 0);
-                n = AddItem(items, n, "2:3x3", KEY_TWO, 0, false, false, terrainBrushRadius == 1);
-                n = AddItem(items, n, "3:5x5", KEY_THREE, 0, false, false, terrainBrushRadius == 2);
-                n = AddItem(items, n, "4:7x7", KEY_FOUR, 0, false, false, terrainBrushRadius == 3);
-                n = AddItem(items, n, "L-drag raise", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag lower", 0, -1, false, true, false);
-                break;
-            case ACTION_SANDBOX_LIGHT:
-                n = AddItem(items, n, "1:Warm", KEY_ONE, 0, false, false, currentTorchPreset == TORCH_PRESET_WARM);
-                n = AddItem(items, n, "2:Cool", KEY_TWO, 0, false, false, currentTorchPreset == TORCH_PRESET_COOL);
-                n = AddItem(items, n, "3:Fire", KEY_THREE, 0, false, false, currentTorchPreset == TORCH_PRESET_FIRE);
-                n = AddItem(items, n, "4:Green", KEY_FOUR, 0, false, false, currentTorchPreset == TORCH_PRESET_GREEN);
-                n = AddItem(items, n, "5:White", KEY_FIVE, 0, false, false, currentTorchPreset == TORCH_PRESET_WHITE);
-                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-                break;
-            case ACTION_WORK_FARM:
-                n = AddItem(items, n, "1:Wheat", KEY_ONE, 0, false, false, selectedMaterial == 1);
-                n = AddItem(items, n, "2:Lentils", KEY_TWO, 0, false, false, selectedMaterial == 2);
-                n = AddItem(items, n, "3:Flax", KEY_THREE, 0, false, false, selectedMaterial == 3);
-                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                break;
-            default:
-                // Generic: show drag/cancel hints based on registry canDrag/canErase
-                if (def->canDrag) {
-                    n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-                }
-                if (def->canErase) {
-                    n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-                }
-                break;
+        // Leaf action — the tool's option (ActionOption, input.c) and its mouse hints (registry)
+        const ActionOption* o = GetActionOption(inputAction);
+        if (o) {
+            int count = o->count(o->ctx), cur = o->get(o->ctx);
+            if (o->style == OPT_NUMBERED) {
+                for (int i = 0; i < count && i < 9; i++)
+                    n = AddItem(items, n, TextFormat("%d:%s", i + 1, o->nameAt(o->ctx, i)), KEY_ONE + i, 0, false, false, cur == i);
+            } else if (o->style == OPT_CYCLE) {
+                n = AddItem(items, n, TextFormat("%s: %s", o->label, cur >= 0 ? o->nameAt(o->ctx, cur) : "?"), o->cycleKey, 0, false, false, false);
+            } else if (o->keysHint) {   // OPT_KEYED with a hint instead of every choice
+                n = AddItem(items, n, TextFormat("%s: %s", o->label, cur >= 0 ? o->nameAt(o->ctx, cur) : "?"), 0, -1, false, true, false);
+                n = AddItem(items, n, o->keysHint, 0, -1, false, true, false);
+            } else {
+                for (int i = 0; i < count && i < ACTION_OPTION_MAX_KEYED; i++)
+                    n = AddItem(items, n, o->nameAt(o->ctx, i), o->keys[i], -1, false, false, cur == i);
+            }
+        }
+        if (def->hints[0]) {
+            for (int i = 0; i < 4 && def->hints[i]; i++) n = AddItem(items, n, def->hints[i], 0, -1, false, true, false);
+        } else {
+            // Generic: drag/cancel hints from the registry's canDrag/canErase
+            if (def->canDrag) n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+            if (def->canErase) n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
         }
     }
     
