@@ -32,6 +32,7 @@ int carCityCount = 100;
 int carCitySeed = 7;
 bool carCityLights = true;
 int carCityRoundabouts = 3;
+bool carCityAvenues = true;
 
 int carPlanCount = 0, carPlanExpansionsMax = 0;
 double carPlanMsTotal = 0, carPlanMsMax = 0;

@@ -80,6 +80,10 @@ typedef struct {
     float pullWait;        // seconds waiting for a gap to pull out
     float noRoom;          // seconds our junction request waits for room past the junction
     int reroutes;          // times we planned round a full exit
+    float latOff;          // px: changing lanes, our old lane's offset from the new one (shrinks to 0)
+    int ghostLane;         // changing lanes: the lane we're leaving, still partly in it (-1: none)
+    float lcCool;          // seconds before we may change lanes again
+    int overtakes, keepRights;   // lane changes: out to overtake, back to the right-hand lane
     int why;               // TrafficWhy: why we brake (debug)
 
     // Stats (this leg, and totals)
@@ -109,6 +113,7 @@ extern int carCityCount;       // cars in the cars-city scenario
 extern int carCitySeed;        // its road layout
 extern bool carCityLights;     // traffic lights on its 4-way junctions
 extern int carCityRoundabouts; // 4-way junctions that become roundabouts
+extern bool carCityAvenues;    // middle row + column: two lanes each way, overtaking
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance

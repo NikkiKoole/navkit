@@ -1,8 +1,9 @@
 # Cars experiment (2026-11-24)
 
 > Status (2026-11-24): one car with real steering; long roads + speed; 30-car jam test; **a road
-> network with lanes and reserved junctions: 100 cars drive without touching each other or walls
-> (`cars-city`)**. Next: parking (lots, Hybrid A*), pedestrians. Branch `cars-experiment`.
+> network (`cars-city`): 100 cars with lanes, reserved junctions, parking bays, traffic lights,
+> roundabouts and overtaking on avenues - no touches, no wall contacts, no red-light runs**.
+> Next: pedestrians, movers driving, parking lots. Branch `cars-experiment`.
 > Builds on [vehicles.md](vehicles.md) ("cars are parked for now"). Target game: City 1999.
 
 ## Goal
@@ -278,6 +279,30 @@ Results, 10 game minutes, 5 layouts x 100 / 128 cars, with lights and 3 roundabo
 546-681 trips, junction waits 28-62 s, pull-out waits 21-59 s, longest standstill 28-58 s,
 **0 touches, 0 wall contacts, 0 red-light runs, no deadlocks**.
 
+## Avenues and overtaking (2026-11-24)
+
+Setting `carCityAvenues`: the middle row and column of `cars-city` are avenues, 12 cells wide,
+two lanes each way: the right-hand lane by the kerb (bays along it) and an overtaking lane
+inside. Each lane has its own curves through a junction (to the lane with the same index, or a
+smaller road's only lane); the conflict check lets side-by-side straight paths go together.
+Avenue junctions get 9 cells of setback; no roundabouts on avenues.
+
+- **Overtaking:** behind a slow car (one pulling into a bay, or slower than us with road in
+  front of it) within 6 cells + 2 s, move to the overtaking lane if it's clear (behind: a car
+  length + 2 cells + 1.5 s at the other car's speed; ahead: a car length + 3 cells + 1 s at
+  ours; nobody at its bays). Not near the lane's end, not on the road we park on, not once
+  we've asked for / hold the next junction; 4 s between changes. The route is planned again
+  from the new lane.
+- **Back to the right-hand lane** when it's clear and has no slow car just ahead.
+- **A lane change is a drift, not a jump:** the steering aims at a line that moves from the old
+  lane to the new one over 6 cells. Until the car is within a cell of the new lane it still
+  counts as a car on its old lane for the cars behind it there.
+- Found on the way: I had put the second lane outside the first, so the bays along the
+  right-hand lane sat on top of it (cars pulling out touched cars passing).
+
+Results, 10 game minutes, 5 layouts x 100 / 128 cars, with lights, roundabouts and avenues:
+503-690 trips, ~36 overtakes per run, junction waits 27-42 s, **0 touches, 0 wall contacts**.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
@@ -285,8 +310,9 @@ Results, 10 game minutes, 5 layouts x 100 / 128 cars, with lights and 3 roundabo
   drive, park, get out; drive-or-walk choice next to `MaybeTakeTrain`.
 - Parking lots off the network (Hybrid A* into a space and back out, the driveway reserved
   like a junction); kerbside bays are done.
-- Overtaking (multi-lane roads); actuated lights (green on demand) or a green wave; priority
-  roads (PriorityComing already handles any lane with right of way).
+- Actuated lights (green on demand) or a green wave; priority roads (PriorityComing already
+  handles any lane with right of way); lane choice before turns on avenues.
+- Pedestrians (step 4 of the original plan); movers deciding to drive (step 2).
 - **Step 4: pedestrians.** Cars brake for movers on the arc; movers step aside.
 - Parking: a goal heading (park facing the street) is a small planner change.
 - Reeds-Shepp shots, for tight spots and fewer expansions.

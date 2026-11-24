@@ -53,7 +53,9 @@ typedef struct {
 typedef struct {
     int a, b;          // nodes
     float bend;        // cells: the middle of the road pushed this far sideways (0 = straight)
-    int lane[2];       // lane segments: [0] a -> b, [1] b -> a (-1 on a one-way road)
+    int lane[2];       // lane segments: [0] a -> b, [1] b -> a (-1 on a one-way road); the right-hand lane
+    int lane2[2];      // the second (left, overtaking) lane each way on an avenue, else -1
+    int lanesPerDir;   // 1, or 2 on an avenue (12 cells wide)
     bool oneWay;       // one lane, a -> b, on the centre line
     bool arc;          // an arc round (arcX, arcY) at radius arcR px, angle decreasing (roundabouts)
     float arcX, arcY, arcR;
@@ -72,6 +74,9 @@ typedef struct {
     float bayS;        // bay in: lane s where it leaves the lane; bay out: lane s where it joins (px)
     int bays[4], nBays;          // lane: its bays
     bool priority;     // lane: has right of way at its junction (roundabout ring)
+    int edge;          // lane: its road
+    int laneIdx;       // lane: 0 = the right-hand lane, 1 = the overtaking lane
+    int parallel;      // lane: the other lane the same way on the same road (-1: none)
 } RdSeg;
 
 extern RdNode rdNodes[RD_MAX_NODES];
@@ -86,6 +91,7 @@ extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traf
 void RoadsClear(void);
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
+void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild)
 // A 4-way (or any) junction becomes a roundabout: a one-way ring of radius rCells round
 // it (anticlockwise on screen: right-hand traffic), each road ending at its own ring
 // junction; the ring has right of way. Before RoadsBuild.

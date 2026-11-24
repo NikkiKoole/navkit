@@ -44,6 +44,7 @@ static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0
 #define TR_STANLEY_K 2.5f      // 1/s: sideways error correction
 #define TR_GIVE_WAY_S 3.0f     // s: give way to a car with right of way this close (in time)
 #define TR_GIVE_WAY_CELLS 3.0f // cells: ... or this close
+#define TR_LANE_CHANGE_CELLS 6.0f   // cells of road a lane change takes
 #define TR_LET_IN 3.0f         // s: a car waiting this long to pull out gets let in
 #define TR_PULL_BEHIND 8.0f    // cells: the lane must be clear this far behind a bay's exit (+ 2 s at the car's speed)
 #define TR_QUEUE_COST 8.0f     // cells of route cost per slow car on a lane
@@ -56,6 +57,7 @@ static int trHoldN[RD_MAX_NODES];
 static TrReq trReq[RD_MAX_NODES][TR_MAX_REQ];
 static int trReqN[RD_MAX_NODES];
 static int segHead[RD_MAX_SEGS], carNext[MAX_CARS];
+static int ghostHead[RD_MAX_SEGS], ghostNext[MAX_CARS];   // cars changing out of a lane, still partly in it
 static float trTime = 0;
 static short bayCar[RD_MAX_BAYS];   // the car parked in / heading for a bay, -1 free
 static unsigned int trRng = 1;
@@ -98,8 +100,9 @@ void TrafficSetupLights(bool on) {
                 if (ang[idx[b]] < ang[idx[a]]) { int t = idx[a]; idx[a] = idx[b]; idx[b] = t; }
         for (int k = 0; k < 4; k++) {
             const RdEdge* e = &rdEdges[N->edge[idx[k]]];
-            int in = e->a == nd ? e->lane[1] : e->lane[0];
-            if (in >= 0) tlGroup[in] = (signed char)(k % 2);
+            int d = e->a == nd ? 1 : 0;
+            if (e->lane[d] >= 0) tlGroup[e->lane[d]] = (signed char)(k % 2);
+            if (e->lane2[d] >= 0) tlGroup[e->lane2[d]] = (signed char)(k % 2);
         }
         tlOn[nd] = true;
         tlOffset[nd] = TrRandF() * 2 * TL_HALF;
@@ -211,6 +214,7 @@ int TrafficSpawn(int lane, float s, int z) {
     c->s = s;
     c->holdNode = -1;
     c->bay = c->bayFrom = -1;
+    c->ghostLane = -1;
     NewTrip(i);
     return i;
 }
@@ -231,6 +235,7 @@ int TrafficSpawnParked(int bay, float parkFor, int z) {
     c->holdNode = -1;
     c->bay = bay;
     c->bayFrom = -1;
+    c->ghostLane = -1;
     c->parkTime = parkFor > 0 ? parkFor : 0.01f;
     bayCar[bay] = (short)i;
     return i;
@@ -473,6 +478,21 @@ static void RouteFrame(const Car* c, float ahead, float* x, float* y, float* h, 
     *kappa = d > 1 ? CarAngleWrap(hb - ha) / d : 0;
 }
 
+// Nearest point on a segment, searching the whole segment
+static float ProjectOnWide(int seg, float s0, float x, float y) {
+    const RdSeg* sg = &rdSegs[seg];
+    float best = 1e30f, bs = s0;
+    for (int i = 0; i + 1 < sg->n; i++) {
+        int k = sg->p0 + i;
+        float ex = rdX[k + 1] - rdX[k], ey = rdY[k + 1] - rdY[k], L2 = ex * ex + ey * ey;
+        float t = L2 > 0 ? ((x - rdX[k]) * ex + (y - rdY[k]) * ey) / L2 : 0;
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        float px = rdX[k] + ex * t - x, py = rdY[k] + ey * t - y, d = px * px + py * py;
+        if (d < best) { best = d; bs = rdS[k] + (rdS[k + 1] - rdS[k]) * t; }
+    }
+    return bs;
+}
+
 // Nearest point to (x, y) on a segment, searching around arc length s0
 static float ProjectOn(int seg, float s0, float x, float y) {
     const RdSeg* sg = &rdSegs[seg];
@@ -511,6 +531,71 @@ static bool PullOutClear(int b) {
         for (int o = segHead[O->out]; o >= 0; o = carNext[o]) if (cars[o].s > 0.5f * CS && fabsf(O->s1 - B->s1) < 8 * CS) return false;
     }
     return true;
+}
+
+// Is lane P clear for us at s (cars and cars changing into / out of it, cars at its
+// bays), with room behind for its cars at their speed?
+static bool LaneClearAt(int i, int P, float s) {
+    float CS = CELL_SIZE, L = carLength * CS, v = cars[i].speed;
+    for (int pass = 0; pass < 2; pass++)
+        for (int o = pass == 0 ? segHead[P] : ghostHead[P]; o >= 0; o = pass == 0 ? carNext[o] : ghostNext[o]) {
+            if (o == i) continue;
+            float so = cars[o].s;
+            if (so > s - (L + 2 * CS + cars[o].speed * 1.5f) && so < s + L + 3 * CS + v * 1.0f) return false;
+        }
+    for (int q = 0; q < rdSegs[P].nBays; q++) {
+        const RdBay* B = &rdBays[rdSegs[P].bays[q]];
+        if (B->s0 > s + 10 * CS || B->s1 < s - 6 * CS) continue;
+        if (segHead[B->in] >= 0 || segHead[B->out] >= 0) return false;
+    }
+    return true;
+}
+
+// Overtake a slow car on a two-lane road, or move back to the right-hand lane once it's
+// clear. Not near the lane's end, not on the road we park on, not once we've asked
+// or hold the next junction.
+static void MaybeChangeLane(int i, int lead, float gap, float vWant) {
+    Car* c = &cars[i];
+    float CS = CELL_SIZE, L = carLength * CS;
+    int cur = c->route[c->routeIdx];
+    const RdSeg* S = &rdSegs[cur];
+    if (S->kind != RD_LANE || S->parallel < 0 || c->latOff != 0 || c->parkTime > 0) return;
+    if (c->requested || c->holdNode >= 0) return;
+    if (c->s < 2 * CS || StepEnd(c, c->routeIdx) - c->s < TR_LANE_CHANGE_CELLS * CS + 3 * CS) return;
+    int destLane = c->bay >= 0 ? rdBays[c->bay].lane : c->route[c->routeLen - 1];
+    if (rdSegs[destLane].edge == S->edge) return;
+    int P = S->parallel;
+    bool out = false;
+    if (S->laneIdx == 0) {
+        // a slow car ahead (not just queuing: it has road in front of it, or it's pulling in)
+        if (lead < 0 || cars[lead].route[cars[lead].routeIdx] != cur) return;
+        const Car* l = &cars[lead];
+        bool parking = l->routeIdx + 1 < l->routeLen && rdSegs[l->route[l->routeIdx + 1]].kind == RD_BAYIN;
+        if (gap > 6 * CS + c->speed * 2.0f) return;
+        if (!parking && (l->speed > vWant - 1.5f * CS || l->gap < 8 * CS)) return;
+        out = true;
+    } else {
+        // back to the right-hand lane when there's no slow car there just ahead
+        for (int o = segHead[P]; o >= 0; o = carNext[o])
+            if (cars[o].s > c->s && cars[o].s < c->s + 10 * CS && cars[o].speed < c->speed - 1.0f * CS) return;
+    }
+    float sP = ProjectOnWide(P, c->s, c->x, c->y);
+    if (!LaneClearAt(i, P, sP)) return;
+    short r[CAR_MAX_ROUTE];
+    int n = RoadRoute(P, destLane, r, CAR_MAX_ROUTE - 1);
+    if (n <= 0) return;
+    if (c->bay >= 0) r[n++] = (short)rdBays[c->bay].in;
+    float px, py, ph;
+    RoadPointAt(P, sP, &px, &py, &ph);
+    c->latOff = (c->x - px) * -sinf(ph) + (c->y - py) * cosf(ph);
+    c->ghostLane = cur;
+    memcpy(c->route, r, sizeof(short) * n);
+    c->routeLen = n;
+    c->routeIdx = 0;
+    c->s = sP;
+    c->lcCool = 4.0f;
+    if (out) c->overtakes++; else c->keepRights++;
+    (void)L;
 }
 
 static void DriveCar(int i, float dt) {
@@ -560,7 +645,7 @@ static void DriveCar(int i, float dt) {
 
     // Look along the route: the car ahead, a junction not granted yet, bends
     float gap = 1e9f, vLead = 0;
-    int why = WHY_FREE;
+    int why = WHY_FREE, lead = -1;
     float vAllow = fminf(carMaxSpeed, rdSegs[c->route[c->routeIdx]].vmax) * CS;
     float lookD = brakeD + 3 * L + TR_ASK_AHEAD * CS;
     float acc = StepStart(c, c->routeIdx) - c->s;   // from the car centre to step k's start point
@@ -579,14 +664,15 @@ static void DriveCar(int i, float dt) {
             if (va < vAllow) { vAllow = va; if (why == WHY_FREE) why = WHY_BEND; }
         }
         bool found = false;
-        for (int o = segHead[sg]; o >= 0; o = carNext[o]) {
-            if (o == i) continue;
-            float so = cars[o].s;
-            if (so < st || so > en + L) continue;
-            if (k == c->routeIdx && so <= c->s) continue;
-            float d = acc + (so - st) - L;   // bumper to bumper
-            if (d < gap) { gap = d; vLead = cars[o].speed > 0 ? cars[o].speed : 0; why = WHY_FOLLOW; found = true; }
-        }
+        for (int pass = 0; pass < 2; pass++)   // cars on the lane, then cars changing out of it
+            for (int o = pass == 0 ? segHead[sg] : ghostHead[sg]; o >= 0; o = pass == 0 ? carNext[o] : ghostNext[o]) {
+                if (o == i) continue;
+                float so = cars[o].s;
+                if (so < st || so > en + L) continue;
+                if (k == c->routeIdx && so <= c->s) continue;
+                float d = acc + (so - st) - L;   // bumper to bumper
+                if (d < gap) { gap = d; vLead = cars[o].speed > 0 ? cars[o].speed : 0; why = WHY_FOLLOW; found = true; lead = o; }
+            }
         // A lane: cars pulling into / out of its bays are still in it for a few cells; a
         // car that has waited TR_LET_IN s to pull out gets let in (we stop short of its exit)
         if (rdSegs[sg].kind == RD_LANE)
@@ -676,6 +762,9 @@ static void DriveCar(int i, float dt) {
     if (i == traceCar && ((int)(trTime * 60) % 30) == 0)
         printf("t %.1f car %d seg %d (%s) s %.1f/%.1f v %.2f gap %.1f why %d vAllow %.1f hold %d req %d routeIdx %d/%d\n", trTime, i, c->route[c->routeIdx], rdSegs[c->route[c->routeIdx]].kind == RD_CONN ? "conn" : "lane", c->s / CS, rdSegs[c->route[c->routeIdx]].len / CS, v / CS, gap / CS, why, vAllow / CS, c->holdNode, c->requested, c->routeIdx, c->routeLen);
 
+    if (c->lcCool > 0) c->lcCool -= dt;
+    else MaybeChangeLane(i, lead, gap, fmaxf(vAllow, 0.5f * CS));
+
     // IDM
     float a0 = carAccel * CS, v0 = fmaxf(vAllow, 0.5f * CS), s0 = TR_MIN_GAP * CS;
     float sStar = s0 + v * TR_TIME_GAP + v * (v - vLead) / (2 * sqrtf(a0 * bc));
@@ -694,6 +783,12 @@ static void DriveCar(int i, float dt) {
     float wb = carLength * CS * 0.6f;
     float px, py, hp, kappa;
     RouteFrame(c, wb * 0.5f, &px, &py, &hp, &kappa);
+    if (c->latOff != 0) {   // changing lanes: aim at a line drifting from the old lane to the new one
+        px += -sinf(hp) * c->latOff; py += cosf(hp) * c->latOff;
+        float shrink = fmaxf(v, 1.0f * CS) * dt * (3.0f / TR_LANE_CHANGE_CELLS);
+        if (fabsf(c->latOff) <= shrink) c->latOff = 0; else c->latOff -= c->latOff > 0 ? shrink : -shrink;
+        if (fabsf(c->latOff) < 1.0f * CS) c->ghostLane = -1;
+    }
     float fx = c->x + cosf(c->heading) * wb * 0.5f, fy = c->y + sinf(c->heading) * wb * 0.5f;
     float e = (fx - px) * -sinf(hp) + (fy - py) * cosf(hp);   // + = front is on the +90 degree side
     float want = CarAngleWrap(hp - c->heading) - atan2f(TR_STANLEY_K * e, v + 0.5f * CS) + atanf(wb * kappa);
@@ -795,13 +890,14 @@ static void Sample(void) {
 void TrafficTick(float dt) {
     if (rdSegCount == 0) return;
     trTime += dt;
-    for (int s = 0; s < rdSegCount; s++) segHead[s] = -1;
+    for (int s = 0; s < rdSegCount; s++) segHead[s] = ghostHead[s] = -1;
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
         if (!c->active || !c->onRoad) continue;
         int sg = c->route[c->routeIdx];
         carNext[i] = segHead[sg];
         segHead[sg] = i;
+        if (c->ghostLane >= 0) { ghostNext[i] = ghostHead[c->ghostLane]; ghostHead[c->ghostLane] = i; }
     }
     // Queues make a lane look longer to new trips (drivers avoid jams)
     for (int s = 0; s < rdSegCount; s++) {
@@ -900,8 +996,9 @@ void TrafficPrintStats(void) {
     printf("Roads: %d junctions (%d with lights), %d roads, %d lanes, %d segments\n", rdNodeCount, trafficLightCount, rdEdgeCount, RoadLaneCount(), rdSegCount);
     printf("Traffic: %d cars, %d trips (%.1f per car per driving minute), mean speed now %.1f cells/s, %d moving now\n",
            n, trips, drive > 0 ? trips / (drive / 60.0f) * 1.0f : 0, speedSum / n / CELL_SIZE, moving);
-    int rer = 0;
-    for (int i = 0; i < carCount; i++) rer += cars[i].reroutes;
+    int rer = 0, ot = 0, kr = 0;
+    for (int i = 0; i < carCount; i++) { rer += cars[i].reroutes; ot += cars[i].overtakes; kr += cars[i].keepRights; }
+    printf("  lane changes: %d out to overtake, %d back to the right-hand lane\n", ot, kr);
     printf("  junctions: %d cars hold a connector, %d waiting for one; longest wait for a grant %.1f s; %d re-routes round full exits\n",
            held, asked, trafficJunctionWaitMax, rer);
     int parked = 0;

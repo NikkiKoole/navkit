@@ -3366,7 +3366,12 @@ static void SetupCarsCity(void) {
     for (int n = 0; n < nodes; n++) { nx[n] = rdNodes[n].x / CELL_SIZE; ny[n] = rdNodes[n].y / CELL_SIZE; }
     RoadsClear();
     for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
-    for (int e = 0; e < nk; e++) RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
+    for (int e = 0; e < nk; e++) {
+        int ne = RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
+        // Avenues: the middle row and the middle column, two lanes each way
+        int ia = keep[e].a % cols, ja = keep[e].a / cols, ib = keep[e].b % cols, jb = keep[e].b / cols;
+        if (carCityAvenues && ((ja == rows / 2 && jb == rows / 2) || (ia == cols / 2 && ib == cols / 2))) RoadSetAvenue(ne);
+    }
     // Roundabouts on some 4-way junctions (not next to each other, not on the edge)
     int made = 0;
     unsigned char near[RD_MAX_NODES] = {0};
@@ -3374,6 +3379,7 @@ static void SetupCarsCity(void) {
         int n = CityRand(nodes);
         int i = n % cols, j = n / cols;
         if (i == 0 || j == 0 || i == cols - 1 || j == rows - 1 || rdNodes[n].nEdge != 4 || near[n]) continue;
+        if (carCityAvenues && (i == cols / 2 || j == rows / 2)) continue;   // not on an avenue
         int nb[RD_MAX_NODE_EDGES], nn = rdNodes[n].nEdge;
         for (int k = 0; k < nn; k++) {
             const RdEdge* e = &rdEdges[rdNodes[n].edge[k]];

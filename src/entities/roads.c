@@ -45,10 +45,15 @@ int RoadAddEdge(int a, int b, float bendCells) {
     RdEdge* e = &rdEdges[rdEdgeCount];
     memset(e, 0, sizeof(*e));
     e->a = a; e->b = b; e->bend = bendCells;
-    e->lane[0] = e->lane[1] = -1;
+    e->lane[0] = e->lane[1] = e->lane2[0] = e->lane2[1] = -1;
+    e->lanesPerDir = 1;
     rdNodes[a].edge[rdNodes[a].nEdge++] = rdEdgeCount;
     rdNodes[b].edge[rdNodes[b].nEdge++] = rdEdgeCount;
     return rdEdgeCount++;
+}
+
+void RoadSetAvenue(int edge) {
+    if (edge >= 0 && edge < rdEdgeCount && !rdEdges[edge].oneWay) rdEdges[edge].lanesPerDir = 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +150,7 @@ static int EdgeCentre(const RdEdge* e) {
 
 // One lane of an edge: the centre line offset to the right of travel, without the
 // RD_SETBACK at each end. dir 0: a -> b, 1: b -> a.
-static int BuildLane(int ei, int dir) {
+static int BuildLane(int ei, int dir, int k) {
     const RdEdge* e = &rdEdges[ei];
     int n = EdgeCentre(e);
     static float cx[RD_TMP], cy[RD_TMP], cs[RD_TMP];
@@ -158,7 +163,8 @@ static int BuildLane(int ei, int dir) {
     }
     int startNode = dir == 0 ? e->a : e->b, endNode = dir == 0 ? e->b : e->a;
     float sbA = rdNodes[startNode].setback * CELL_SIZE, sbB = rdNodes[endNode].setback * CELL_SIZE;
-    float off = e->oneWay ? 0 : RD_LANE_OFF * CELL_SIZE;
+    // the right-hand lane (k 0) is the outer one, by the kerb; the overtaking lane (k 1) inner
+    float off = e->oneWay ? 0 : (RD_LANE_OFF + 3.0f * (e->lanesPerDir - 1 - k)) * CELL_SIZE;
     int m = 0;
     for (int i = 0; i < n; i++) {
         if (cs[i] < sbA || cs[i] > acc - sbB) continue;
@@ -176,6 +182,9 @@ static int BuildLane(int ei, int dir) {
     sg->to = dir == 0 ? e->b : e->a;
     sg->node = sg->to;
     sg->priority = e->arc;
+    sg->edge = ei;
+    sg->laneIdx = k;
+    sg->parallel = -1;
     rdLanes[rdLaneCount++] = seg;
     return seg;
 }
@@ -322,22 +331,45 @@ bool RoadMakeRoundabout(int node, float rCells) {
 void RoadsBuild(float latAccel) {
     rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     for (int i = 0; i < rdNodeCount; i++) rdNodes[i].nConn = 0;
+    // An avenue's junctions need more room (its lanes reach 6 cells from its centre line)
+    for (int e = 0; e < rdEdgeCount; e++)
+        if (rdEdges[e].lanesPerDir == 2)
+            for (int s = 0; s < 2; s++) {
+                RdNode* nd = &rdNodes[s == 0 ? rdEdges[e].a : rdEdges[e].b];
+                if (!nd->ring && nd->setback < RD_SETBACK + 2) nd->setback = RD_SETBACK + 2;
+            }
     for (int e = 0; e < rdEdgeCount; e++) {
-        rdEdges[e].lane[0] = BuildLane(e, 0);
-        rdEdges[e].lane[1] = rdEdges[e].oneWay ? -1 : BuildLane(e, 1);
+        RdEdge* E = &rdEdges[e];
+        E->lane[0] = BuildLane(e, 0, 0);
+        E->lane[1] = E->oneWay ? -1 : BuildLane(e, 1, 0);
+        E->lane2[0] = E->lane2[1] = -1;
+        if (E->lanesPerDir == 2) {
+            E->lane2[0] = BuildLane(e, 0, 1);
+            E->lane2[1] = BuildLane(e, 1, 1);
+            for (int d = 0; d < 2; d++)
+                if (E->lane[d] >= 0 && E->lane2[d] >= 0) {
+                    rdSegs[E->lane[d]].parallel = E->lane2[d];
+                    rdSegs[E->lane2[d]].parallel = E->lane[d];
+                }
+        }
     }
-    // Connectors: every lane ending at a node to every lane leaving it on another road
+    // Connectors: each lane ending at a node to the lane with the same index (or the
+    // road's only lane) leaving it on every other road
     for (int ni = 0; ni < rdNodeCount; ni++) {
         RdNode* nd = &rdNodes[ni];
         for (int i = 0; i < nd->nEdge; i++) {
             const RdEdge* ei = &rdEdges[nd->edge[i]];
-            int in = ei->a == ni ? ei->lane[1] : ei->lane[0];    // the lane arriving here
-            if (in < 0) continue;
-            for (int j = 0; j < nd->nEdge; j++) {
-                if (j == i) continue;
-                const RdEdge* ej = &rdEdges[nd->edge[j]];
-                int out = ej->a == ni ? ej->lane[0] : ej->lane[1];   // the lane leaving here
-                if (out >= 0) BuildConnector(ni, in, out);
+            int d = ei->a == ni ? 1 : 0;                               // the direction arriving here
+            int ins[2] = {ei->lane[d], ei->lane2[d]};
+            for (int k = 0; k < 2; k++) {
+                if (ins[k] < 0) continue;
+                for (int j = 0; j < nd->nEdge; j++) {
+                    if (j == i) continue;
+                    const RdEdge* ej = &rdEdges[nd->edge[j]];
+                    int od = ej->a == ni ? 0 : 1;                      // the direction leaving here
+                    int out = (k == 1 && ej->lane2[od] >= 0) ? ej->lane2[od] : ej->lane[od];
+                    if (out >= 0) BuildConnector(ni, ins[k], out);
+                }
             }
         }
         for (int i = 0; i < nd->nConn; i++)
@@ -347,6 +379,7 @@ void RoadsBuild(float latAccel) {
     // Parking bays: one on a lane of 18+ cells, two on 32+ (between the lane's ends)
     for (int i = 0; i < rdLaneCount; i++) {
         int l = rdLanes[i];
+        if (rdSegs[l].laneIdx != 0) continue;   // only along the right-hand lane
         float len = rdSegs[l].len / CELL_SIZE;
         int nb = len >= 32 ? 2 : (len >= 18 ? 1 : 0);
         for (int b = 0; b < nb; b++) {
@@ -446,11 +479,11 @@ void RoadsCarve(int z) {
     for (int e = 0; e < rdEdgeCount; e++) {
         int n = EdgeCentre(&rdEdges[e]);
         for (int i = 0; i < n; i += 2)
-            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RD_ROAD_WIDTH * 0.5f + 0.5f, z);   // + half a cell: slanted roads are carved in whole cells
+            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RD_ROAD_WIDTH * 0.5f * rdEdges[e].lanesPerDir + 0.5f, z);   // + half a cell: slanted roads are carved in whole cells
     }
     for (int i = 0; i < rdNodeCount; i++)
         if (rdNodes[i].nEdge > 0 && !rdNodes[i].ring)   // (a roundabout's ring junctions: the island stays)
-            CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, RD_SETBACK + 1.0f, z);
+            CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, rdNodes[i].setback + 1.0f, z);
     // Room round every route a car can drive (lanes and junction curves): the body
     // (half-diagonal ~1.4 cells) always has ~0.5 cell to spare, whatever the angles
     for (int s = 0; s < rdSegCount; s++)
