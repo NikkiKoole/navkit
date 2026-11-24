@@ -70,6 +70,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (6k lines, ~85 functions)
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)
 - `environmental/fire-ignition-materials.md` — Fix: wood walls won't ignite, floors don't burn, tree trunks only top segment
+- `gameplay/survival-toilet.md` — Bush -> pit latrine -> dry toilet -> bucket flush + cesspit -> piped flush toilet by gravity; levels 0-2 need no new systems, pipes shared with dreamengine's plumbing model
 - `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains
 - ~~`gameplay/water-dependent-crafting.md`~~ — moved to done/ (mud mixer implemented)
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
