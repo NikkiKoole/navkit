@@ -86,6 +86,7 @@
 #include "core/games.c"
 #include "core/settings.c"
 #include "core/command_args.c"
+#include "core/find_index.c"
 #include "core/describe.c"
 #include "core/sim_step.c"
 #include "core/day_budget.c"
@@ -102,6 +103,7 @@
 #include "ui/cutscene.c"
 #include "ui/console.c"
 #include "ui/commands.c"
+#include "ui/find.c"
 
 // Entry point (contains global state definitions)
 #include "main.c"

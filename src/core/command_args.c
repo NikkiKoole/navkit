@@ -41,6 +41,7 @@ static int ArgUsage(const CmdArg* a, char* buf, int len, int at) {
             break;
         case CARG_ITEM: n = snprintf(inner, sizeof(inner), "%s", a->name); break;
         case CARG_NAME: n = snprintf(inner, sizeof(inner), "%s|list", a->name); break;
+        case CARG_TEXT: n = snprintf(inner, sizeof(inner), "%s...", a->name); break;
     }
     (void)n;
     at = Append(buf, len, at, a->optional ? "[" : "<");
@@ -131,14 +132,16 @@ bool CommandParse(const CommandDef* d, int argc, const char** argv, CmdValue* ou
                     return false;
                 }
                 break;
+            case CARG_TEXT:
             case CARG_ITEM: {
-                // The rest of the line is the item name ("stone hammer")
+                // The rest of the line is the item name ("stone hammer") or the text
                 static char joined[128];
                 int n = 0;
                 for (int j = at - 1; j < argc && n < (int)sizeof(joined) - 1; j++)
                     n += snprintf(joined + n, sizeof(joined) - (size_t)n, "%s%s", j > at - 1 ? " " : "", argv[j]);
                 at = argc;
                 v->s = joined;
+                if (a->type == CARG_TEXT) break;
                 v->i = FindItemType(joined);
                 if (v->i == ITEM_NONE) { snprintf(err, (size_t)errLen, "unknown item: %s", joined); return false; }
                 break;

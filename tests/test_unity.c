@@ -134,4 +134,5 @@ bool bladderEnabled = false;
 #include "../src/world/grid_layers.c"
 #include "../src/core/describe.c"
 #include "../src/core/command_args.c"
+#include "../src/core/find_index.c"
 #include "../src/core/selection.c"

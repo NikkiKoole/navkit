@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction; data tidying steps 1-4 done, 5 partly (2026-11-24)
+> Status: decided direction; data tidying steps 1-4 done, 5 partly; find index built, palette UI next (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,18 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **the find index (palette step 1).** `src/core/find_index.c/.h` (pure, tested in
+  `tests/test_find.c`): rows with a kind (command, tool, setting, verb, item, scenario, game), a
+  tree path, label, machine name, key path ("W B H F") and extra search words (a command's
+  choices, a setting's options). Browse: `FindTreeChildren(path)`. Search: every word must match
+  the start of a word (label, name split at capitals, path, extra words) or a synonym
+  (campfire = fire pit, delete = clear, settler = mover, ...); ranked by match, then kind
+  (commands first), recent (+600) and pinned (+400) on top; nothing matches: did-you-mean by
+  edit distance (swapped letters count once, misspelt synonyms too). Recent / pinned are kept
+  by kind + ref (not persisted yet). `src/ui/find.c` fills it from the game's tables (~430 rows;
+  tools skip the Draw twins and categories, which are branches). Console: `find <text>` searches,
+  `find /Tools/Work/Build` browses (new argument type `CARG_TEXT`: the rest of the line).
+  **Next: the palette UI** (browse tree + search, rows arm / run / edit; then right-click context).
 - 2026-11-24: **one build tool with a "how" (step 3, rest; the user's call).** The Draw bar no
   longer lists the twinned tools (wall, floor, ladder, ramp, workshop): they are picked in the
   Work bar and come out *now* (the Draw tool) or *by order* (the Work tool) per `buildNow`

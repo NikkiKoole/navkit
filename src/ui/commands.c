@@ -2,6 +2,7 @@
 // Moved here from console.c's Cmd_* functions (behaviour kept) and from the dev sidebar's
 // hand-written buttons (ui_panels.c), which now run these rows.
 #include "commands.h"
+#include "find.h"
 #include "console.h"
 #include "../game_state.h"
 #include "../../shared/ui.h"
@@ -245,6 +246,38 @@ static void RunSpawnMovers(const CmdValue* v) {
     else SpawnMoversDemo(v[0].i);
 }
 
+// find: search every table row (src/ui/find.c), or browse its tree with a leading '/'
+static void FindSay(const char* line) { Say(WHITE, "%s", line); printf("%s\n", line); }
+static void RunFind(const CmdValue* v) {
+    FindBuildIndex();
+    const char* text = v[0].given ? v[0].s : "";
+    char line[200];
+    if (text[0] == '\0' || text[0] == '/') {
+        const char* path = text[0] == '/' ? text + 1 : "";
+        FindChild kids[256];
+        int n = FindTreeChildren(path, kids, 256);
+        snprintf(line, sizeof(line), "find /%s: %d entries (%d rows in all)", path, n, FindCount());
+        FindSay(line);
+        for (int i = 0; i < n; i++) {
+            if (kids[i].isBranch) snprintf(line, sizeof(line), "  %s/", kids[i].name);
+            else { char row[160]; FindRowLine(kids[i].row, row, sizeof(row)); snprintf(line, sizeof(line), "  %s", row); }
+            FindSay(line);
+        }
+        return;
+    }
+    int hits[12];
+    bool near = false;
+    int n = FindSearch(text, hits, 12, &near);
+    snprintf(line, sizeof(line), n == 0 ? "find %s: nothing" : near ? "find %s: did you mean" : "find %s:", text);
+    FindSay(line);
+    for (int i = 0; i < n; i++) {
+        char row[160];
+        FindRowLine(hits[i], row, sizeof(row));
+        snprintf(line, sizeof(line), "  %s", row);
+        FindSay(line);
+    }
+}
+
 #define ARG_CHOICE(n, arr) { .name = (n), .type = CARG_CHOICE, .choices = (arr), .choiceCount = (int)(sizeof(arr) / sizeof((arr)[0])) }
 #define ARG_NAME(n, cnt, at) { .name = (n), .type = CARG_NAME, .nameCount = (cnt), .nameAt = (at) }
 
@@ -275,6 +308,8 @@ static const CommandDef commandTable[] = {
       1, { ARG_NAME("scenario", ScenarioNameCount, ScenarioNameAt) }, RunScenarioCmd, ScenarioList },
     { "game", "Games", "Start a game",
       1, { ARG_NAME("game", GameNameCount, GameNameAt) }, RunGameCmd, GameList },
+    { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
+      1, { { .name = "text", .type = CARG_TEXT, .optional = true } }, RunFind, NULL },
     { "spawnmovers", "Entities/Movers", "Replace all movers with N wandering ones (add: keep the current ones)",
       2, { { .name = "n", .type = CARG_INT, .lo = 1, .hi = 100000 }, { .name = "mode", .type = CARG_CHOICE, .optional = true,
            .choices = addChoices, .choiceCount = 1 } },
