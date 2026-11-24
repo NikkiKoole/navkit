@@ -40,6 +40,7 @@ done <<'EOF'
 107 | 0 | --set scenarioMovers 48 --scenario ladder-choice
 77  | 0 | --scenario ladder-oneway
 175 | 0 | --scenario door-oneway
+98  | 0 | --scenario oneway-tiers
 85  | 1 | --scenario mood
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train

@@ -20,6 +20,9 @@ Asked for 2026-11-24: ladders with a direction (one way), keys and doors, maybe 
   fails on any climb against the direction). Tests: `one_way_ladders` in test_pathfinding,
   and the nav fuzz makes a quarter of its ladders one-way (2000-world sweep clean; putting the
   old two-way edges back makes it fail at once).
+- Showcase scenario `oneway-tiers`: a stepped tower of three decks, up-only ladders on the
+  north side, down-only on the south, a down-only "fire pole" from the top deck to the ground
+  (the busiest way down). Arrows show through open air from above (up to 4 levels, dimmer).
 - Not yet: a build tool / recipe option for a one-way ladder (only the console sets it).
 
 ## Built: one-way doors
