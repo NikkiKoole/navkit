@@ -27,6 +27,7 @@
 #include "../simulation/groundwear.h"
 #include "../ui/console.h"
 #include "../simulation/tide.h"
+#include "../entities/notice.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -555,10 +556,18 @@ static const Setting settings[] = {
     // --- Movers ---
     SET_BOOL("stringPull", "String Pulling", "Entities/Movers", useStringPulling,
       "Straighten paths by skipping waypoints with line of sight."),
+    SET_BOOL("notice", "Noticing", "Entities/Movers/Noticing", noticeEnabled,
+      "Movers notice others near them (same level, line of sight). For now only their face looks at the one they noticed most when standing still."),
+    SET_FLOAT("noticeRadius", "Radius (cells)", "Entities/Movers/Noticing", noticeRadius, 0.1f, 1.0f, 20.0f,
+      "How far a mover notices others, in cells.", NULL),
+    SET_INT("noticeEveryTicks", "Look every N ticks", "Entities/Movers/Noticing", noticeEveryTicks, 1.0f, 1, 120,
+      "Each mover looks around once per this many ticks (staggered over movers).", NULL),
     SET_BOOL("endlessMode", "Endless Mode", "Entities/Movers", endlessMoverMode,
       "Movers pick a new random goal when they arrive."),
     SET_BOOL("preferDiffZ", "Prefer Diff Z", "Entities/Movers", preferDifferentZ,
       "Endless movers prefer goals on a different z-level."),
+    SET_FLOAT("wanderPause", "Wander Pause (s)", "Entities/Movers", moverWanderPause, 0.1f, 0.0f, 30.0f,
+      "Seconds a wandering mover stands at its goal before picking the next (randomised +-50%). 0 = walks on at once.", NULL),
     SET_INT("wanderRadius", "Wander Radius", "Entities/Movers", moverWanderRadius, 4.0f, 0, 4096,
       "Spawned and endless movers pick goals within this many cells (0 = anywhere). Cross-map paths on big maps cost tens of ms each.", NULL),
     SET_BOOL("allowFall", "Allow Falling", "Entities/Movers", allowFallingFromAvoidance,

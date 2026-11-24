@@ -65,6 +65,7 @@
 #include "entities/ladders.c"
 #include "entities/elevators.c"
 #include "entities/mover.c"
+#include "entities/notice.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"
 #include "simulation/rooms.c"

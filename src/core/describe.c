@@ -10,6 +10,8 @@
 #include "../entities/furniture.h"
 #include "../entities/namegen.h"
 #include "../entities/animals.h"
+#include "../entities/notice.h"
+#include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../simulation/trees.h"
@@ -312,6 +314,25 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     }
 }
 
+// Who this mover noticed (debug): "Notices: Anna 3s, #4 0s" (docs/todo/social/noticing.md)
+static void DescribeMoverNotices(int idx, DescLines* d) {
+    if (!noticeEnabled) return;
+    const MoverNotice* n = &moverNotice[idx];
+    if (n->count == 0) { DescAdd(d, DESC_MUTED, "Notices: nobody"); return; }
+    char buf[160] = "";
+    size_t len = 0;
+    for (int k = 0; k < n->count && len < sizeof(buf); k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active) continue;
+        char who[24];
+        if (movers[j].name[0]) snprintf(who, sizeof(who), "%s", movers[j].name);
+        else snprintf(who, sizeof(who), "#%d", j);
+        len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s %.0fs", len ? ", " : "", who,
+                                gameTime - n->e[k].since);
+    }
+    DescAdd(d, DESC_INFO, "Notices: %s", buf);
+}
+
 static void DescribeMoverDebug(const Mover* m, const Job* job, DescLines* d) {
     DescAdd(d, m->pathLength > 0 ? DESC_NORMAL : DESC_BAD, "Path: %d/%d, Goal: (%d,%d,z%d)",
             m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);
@@ -396,7 +417,10 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         else DescAdd(out, DESC_INFO, "By train: %s line", route);
     }
 
-    if (detail == DESC_DEBUG) DescribeMoverDebug(m, job, out);
+    if (detail == DESC_DEBUG) {
+        DescribeMoverDebug(m, job, out);
+        DescribeMoverNotices(idx, out);
+    }
 }
 
 // ---------------------------------------------------------------------------

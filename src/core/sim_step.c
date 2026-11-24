@@ -4,6 +4,7 @@
 #include "../entities/mover.h"
 #include "../entities/items.h"
 #include "../entities/animals.h"
+#include "../entities/notice.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/jobs.h"
@@ -20,6 +21,10 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Items);
     ItemsTick(dt);
     PROFILE_END(Items);
+
+    PROFILE_BEGIN(Notice);
+    NoticeTick();
+    PROFILE_END(Notice);
 
     PROFILE_BEGIN(Animals);
     AnimalsTick(dt);

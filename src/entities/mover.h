@@ -191,6 +191,7 @@ extern bool useStringPulling;
 extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
+extern float moverWanderPause;  // seconds a wanderer stands at its goal before the next (0 = none)
 extern int moverWanderRadius;  // wandering/spawned movers: goals within this many cells (0 = anywhere)
 // The wander radius applies (it doesn't cover the whole map)
 static inline bool MoverWanderLocal(void) {

@@ -4,6 +4,7 @@
 #include "elevators.h"
 #include "namegen.h"
 #include "animals.h"
+#include "notice.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -76,6 +77,8 @@ bool useStringPulling = true;
 bool endlessMoverMode = true;
 bool useMoverAvoidance = true;
 bool preferDifferentZ = true;
+float moverWanderPause = 0.0f;   // seconds a wanderer stands at its goal before the next (+-50%)
+static bool moverWanderRested[MAX_MOVERS];
 int moverWanderRadius = 256;   // wandering/spawned movers: goals within this many cells (0 = anywhere)
 bool allowFallingFromAvoidance = false;
 bool useKnotFix = true;
@@ -1135,6 +1138,7 @@ float MoverRouteCellsLeft(int i) {
 }
 
 void ClearMovers(void) {
+    ClearNotices();
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -1873,6 +1877,13 @@ void UpdateMovers(void) {
                     m->repathCooldown--;
                     continue;
                 }
+                // Stand a while at the goal before the next one (setting wanderPause)
+                if (moverWanderPause > 0.0f && !moverWanderRested[i]) {
+                    moverWanderRested[i] = true;
+                    m->repathCooldown = (int)(moverWanderPause * TICK_RATE * GetRandomValue(50, 150) / 100.0f);
+                    continue;
+                }
+                moverWanderRested[i] = false;
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
                     // No path found, wait before retrying

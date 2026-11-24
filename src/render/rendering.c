@@ -7,6 +7,7 @@
 #include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
+#include "../entities/notice.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/item_defs.h"
@@ -1707,8 +1708,8 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
 // --- Mover faces --------------------------------------------------------------
 // Which head sprite a mover shows: a view (where it looks) x a mouth (head_<view>_<mouth>
 // slices in worksheet8x8.ase). Facing is render-only for now: toward the next waypoint
-// (where it is heading, steady under avoidance pushes, also while paused), front with no
-// path. Later the noticing layer sets it apart from walking (docs/todo/social/noticing.md).
+// (where it is heading, steady under avoidance pushes, also while paused); standing still,
+// at the mover it noticed most (notice.c), else front (docs/todo/social/noticing.md).
 enum { FACE_FRONT, FACE_LEFT, FACE_RIGHT, FACE_UP, FACE_DOWN, FACE_VIEW_COUNT };
 enum { MOUTH_GRIN, MOUTH_FLAT, MOUTH_SMALL, MOUTH_SMILE, MOUTH_SAD, MOUTH_OPEN, MOUTH_CLOSE, MOUTH_COUNT };
 static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
@@ -1726,10 +1727,17 @@ static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
 static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
 
 static int MoverFaceView(int i, const Mover* m) {
-    if (m->pathLength <= 0 || m->pathIndex < 0) return moverFaceView[i] = FACE_FRONT;
-    Point wp = moverPaths[i][m->pathIndex];
-    float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
-    float dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    float dx, dy;
+    if (m->pathLength > 0 && m->pathIndex >= 0) {
+        Point wp = moverPaths[i][m->pathIndex];
+        dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+        dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    } else {
+        int seen = NoticeTop(i);   // standing still: look at who it noticed most
+        if (seen < 0) return moverFaceView[i] = FACE_FRONT;
+        dx = movers[seen].x - m->x;
+        dy = movers[seen].y - m->y;
+    }
     float ax = fabsf(dx), ay = fabsf(dy);
     if (ax + ay < 1.0f) return moverFaceView[i];   // on the waypoint: keep looking the same way
     int last = moverFaceView[i];

@@ -24,6 +24,7 @@
 #include "../simulation/temperature.h"
 #include <string.h>
 #include <strings.h>
+#include "../entities/notice.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -32,7 +33,7 @@
 // ---------------------------------------------------------------------------
 typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ, mood;
-    float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
+    float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -56,7 +57,7 @@ static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ, moodEnabled,
-                                           dayLength, balance.baseMoverSpeed, jobDistanceWeight,
+                                           moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed};
         haveSavedSettings = true;
         return;
@@ -67,6 +68,7 @@ static void SnapshotOrRestoreSettings(void) {
     endlessMoverMode = savedSettings.endless;
     preferDifferentZ = savedSettings.preferDiffZ;
     moodEnabled = savedSettings.mood;
+    moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
@@ -197,6 +199,71 @@ static void SetupFaces(void) {
     }
     currentViewZ = 1;
     AddMessage("Faces: columns are sad, flat, grin, smile; they look where they walk", GREEN);
+}
+
+// social: 10 movers wandering a plaza with two wall pieces (line of sight), noticing each
+// other (notice.c). Standing between goals they look at whoever they noticed most.
+// Headless stats: noticed per mover, how often attention switches, standing movers looking.
+static long socialTicks, socialNoticedSum, socialSwitches, socialFlickBacks, socialStanding, socialStandingLooking;
+static int socialPrevTop[MAX_MOVERS], socialPrevPrevTop[MAX_MOVERS];
+
+static void SetupSocial(void) {
+    socialTicks = socialNoticedSum = socialSwitches = socialFlickBacks = socialStanding = socialStandingLooking = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) socialPrevTop[i] = socialPrevPrevTop[i] = -1;
+    for (int y = 6; y <= 12; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
+    for (int y = 20; y <= 26; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 3.0f;   // stand a while between goals: that is when they look around
+    int n = scenarioMovers > 0 ? scenarioMovers : 10;
+    for (int i = 0; i < n; i++) SpawnMoverAt(4 + (i % 5) * 6, 4 + (i / 5) * 20 % 28, 1);
+    currentViewZ = 1;
+    AddMessage("Social: movers notice each other; standing still they look at who they noticed", GREEN);
+}
+
+static void SocialTickStats(void) {
+    socialTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        socialNoticedSum += moverNotice[i].count;
+        int top = NoticeTop(i);
+        if (top != socialPrevTop[i] && socialPrevTop[i] >= 0 && top >= 0) {
+            socialSwitches++;
+            if (top == socialPrevPrevTop[i]) socialFlickBacks++;   // A -> B -> A
+        }
+        if (top != socialPrevTop[i]) { socialPrevPrevTop[i] = socialPrevTop[i]; socialPrevTop[i] = top; }
+        if (movers[i].pathLength <= 0 || movers[i].pathIndex < 0) {
+            socialStanding++;
+            if (top >= 0) socialStandingLooking++;
+        }
+    }
+}
+
+static void SocialPrintStats(void) {
+    int active = CountActiveMovers();
+    double minutes = socialTicks / (double)TICK_RATE / 60.0;
+    printf("Noticing: %s, radius %.1f cells, every %d ticks\n", noticeEnabled ? "on" : "off",
+           noticeRadius, noticeEveryTicks);
+    printf("Avg movers noticed per mover: %.2f\n",
+           socialTicks && active ? socialNoticedSum / (double)(socialTicks * active) : 0.0);
+    printf("Attention switches per mover per minute: %.1f\n",
+           minutes > 0 && active ? socialSwitches / (minutes * active) : 0.0);
+    printf("  of which back to the one before (A->B->A): %.1f\n",
+           minutes > 0 && active ? socialFlickBacks / (minutes * active) : 0.0);
+    printf("Standing mover-ticks: %ld, ", socialStanding);
+    printf("Standing still looking at someone: %.0f%% of standing mover-ticks\n",
+           socialStanding ? 100.0 * socialStandingLooking / socialStanding : 0.0);
+}
+
+static bool SocialCheck(char* why, int whyLen) {
+    if (noticeEnabled && socialNoticedSum == 0) {
+        snprintf(why, (size_t)whyLen, "nobody noticed anybody");
+        return false;
+    }
+    return true;
 }
 
 static void SetupLadders(void) {
@@ -3285,6 +3352,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"social",     "10 movers wandering a plaza with two wall pieces: they notice each other (setting notice)",
+                   NULL,        SetupSocial,   SocialTickStats, SocialPrintStats, SocialCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
                    "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
