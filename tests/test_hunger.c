@@ -13,6 +13,7 @@
 #include "../src/simulation/mood.h"
 #include "../src/entities/containers.h"
 #include "../src/entities/furniture.h"
+#include "../src/entities/inventory.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/water.h"
@@ -1714,6 +1715,172 @@ describe(heat) {
     }
 }
 
+// =============================================================================
+// Scrounging: big portions leave leftovers; a hungry scavenger lives off the bins
+// =============================================================================
+
+// A mover at (5,5) standing on a stockpiled burger (just hungry: not very hungry)
+static int ScroungeDiner(void) {
+    int mi = SetupMover(5, 5);
+    int sp = CreateStockpile(5, 5, 1, 1, 1);
+    int burger = TrashSpawnAt(5, 5, ITEM_BURGER);
+    PlaceItemInStockpile(sp, 5, 5, burger);
+    movers[mi].traits[0] = TRAIT_NONE; movers[mi].traits[1] = TRAIT_NONE;
+    movers[mi].hunger = 0.29f;   // just hungry (seeks below 0.3): needs 0.71, a burger is 1.0
+    energyEnabled = false; bodyTempEnabled = false; thirstEnabled = false;
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    BuildItemSpatialGrid();
+    return mi;
+}
+
+static void ScroungeEatUp(int mi) {
+    for (int i = 0; i < 3000; i++) {
+        int before = movers[mi].freetimeState;
+        ProcessFreetimeNeeds();
+        if (before == FREETIME_EATING && movers[mi].freetimeState != FREETIME_EATING) return;
+    }
+}
+
+static int CountType(ItemType t, int containedIn) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == t && items[i].containedIn == containedIn) n += items[i].stackCount;
+    return n;
+}
+
+// A bin at (5,5) with `units` leftovers, and a hungry scavenger at (2,5)
+static int ScroungeSetup(int units, int* outBin) {
+    int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+    int left = TrashSpawnAt(5, 5, ITEM_LEFTOVERS);
+    items[left].stackCount = units;
+    PutItemInContainer(left, bin);
+    int mi = SetupMover(2, 5);
+    movers[mi].traits[0] = TRAIT_SCAVENGER; movers[mi].traits[1] = TRAIT_NONE;
+    movers[mi].hunger = 0.2f;
+    energyEnabled = false; bodyTempEnabled = false; thirstEnabled = false;
+    *outBin = bin;
+    return mi;
+}
+
+describe(scrounging) {
+    it("leftovers: a burger leaves what didn't fit, in units of 0.1; other food leaves nothing") {
+        expect(ItemLeftoverUnits(ITEM_BURGER, 0.7f) == 3);
+        expect(ItemLeftoverUnits(ITEM_BURGER, 0.5f) == 5);
+        expect(ItemLeftoverUnits(ITEM_BURGER, 0.95f) == 0);   // a bite: eaten anyway
+        expect(ItemLeftoverUnits(ITEM_SNACK, 0.1f) == 0);
+        expect(ItemIsEdible(ITEM_LEFTOVERS) && ItemSpoils(ITEM_LEFTOVERS));
+    }
+
+    it("a diner who isn't very hungry throws the leftovers in the bin with the wrapper") {
+        SetupClean();
+        int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+        int mi = ScroungeDiner();
+        ScroungeEatUp(mi);
+        ProcessFreetimeNeeds();   // at the bin (same cell): in it goes
+        expect(movers[mi].heldTrash == ITEM_NONE && MoverFreeHands(mi) == 2);
+        expect(CountType(ITEM_LEFTOVERS, bin) == 3);
+        expect(CountType(ITEM_WRAPPER, bin) == 1);
+    }
+
+    it("no bin: the leftovers end up on the ground with the wrapper") {
+        SetupClean();
+        int mi = ScroungeDiner();
+        ScroungeEatUp(mi);
+        expect(MoverFreeHands(mi) == 2);
+        expect(CountType(ITEM_LEFTOVERS, -1) == 3);
+    }
+
+    it("a scavenger keeps its leftovers: in the pocket, not the bin") {
+        SetupClean();
+        int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+        int mi = ScroungeDiner();
+        movers[mi].traits[0] = TRAIT_SCAVENGER;
+        int jacket = TrashSpawnAt(5, 5, ITEM_POCKET_JACKET);
+        MoverWear(mi, jacket);
+        // (a scavenger skips stockpiled food: put the burger on the ground)
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].type == ITEM_BURGER && items[i].state == ITEM_IN_STOCKPILE) {
+                RemoveItemFromStockpileSlot(items[i].x, items[i].y, (int)items[i].z);
+                items[i].state = ITEM_ON_GROUND;
+            }
+        ScroungeEatUp(mi);
+        ProcessFreetimeNeeds();
+        expect(CountType(ITEM_LEFTOVERS, jacket) == 3);
+        expect(CountType(ITEM_LEFTOVERS, bin) == 0);
+    }
+
+    it("a scavenger takes no food from a stockpile (no money)") {
+        SetupClean();
+        int mi = ScroungeDiner();
+        movers[mi].traits[0] = TRAIT_SCAVENGER;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState != FREETIME_SEEKING_FOOD);
+    }
+
+    it("a hungry scavenger walks to a bin with food, rummages, eats one, stows the rest") {
+        SetupClean();
+        int bin;
+        int mi = ScroungeSetup(3, &bin);
+        MoverWear(mi, TrashSpawnAt(2, 5, ITEM_POCKET_JACKET));
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_SCROUNGE);
+        expect(items[bin].reservedBy == mi);
+        expect(movers[mi].goal.x == 5 && movers[mi].goal.y == 5);
+        // arrive
+        movers[mi].x = 5.5f * CELL_SIZE; movers[mi].y = 5.5f * CELL_SIZE;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SCROUNGING);
+        for (int i = 0; i < 2000 && movers[mi].freetimeState == FREETIME_SCROUNGING; i++) ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_EATING);
+        expect(items[bin].reservedBy == -1);
+        expect(CountType(ITEM_LEFTOVERS, bin) == 0);
+        expect(CountType(ITEM_LEFTOVERS, movers[mi].equippedClothing) == 2);   // the rest, kept
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
+    it("someone who isn't a scavenger searches a bin only when starving") {
+        SetupClean();
+        int bin;
+        int mi = ScroungeSetup(2, &bin);
+        movers[mi].traits[0] = TRAIT_NONE;
+        movers[mi].hunger = 0.2f;   // hungry, not starving
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_NONE);
+        movers[mi].needSearchCooldown = 0.0f;
+        movers[mi].hunger = balance.hungerCriticalThreshold - 0.01f;   // starving
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_SCROUNGE);
+    }
+
+    it("one searcher per bin") {
+        SetupClean();
+        int bin;
+        int a = ScroungeSetup(2, &bin);
+        int b = SetupMover(2, 6);
+        movers[b].traits[0] = TRAIT_SCAVENGER; movers[b].traits[1] = TRAIT_NONE;
+        movers[b].hunger = 0.2f;
+        ProcessFreetimeNeeds();
+        expect(movers[a].freetimeState == FREETIME_SEEKING_SCROUNGE);
+        expect(movers[b].freetimeState == FREETIME_NONE);
+        expect(movers[b].needSearchCooldown > 0.0f);
+    }
+
+    it("food in the mover's own pocket comes first") {
+        SetupClean();
+        int bin;
+        int mi = ScroungeSetup(2, &bin);
+        int jacket = TrashSpawnAt(2, 5, ITEM_POCKET_JACKET);
+        MoverWear(mi, jacket);
+        int own = TrashSpawnAt(2, 5, ITEM_LEFTOVERS);
+        MoverStow(mi, own);
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_EATING);
+        expect(movers[mi].needTarget == own);
+        expect(items[own].containedIn == -1 && items[own].reservedBy == mi);
+        expect(items[bin].reservedBy == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1740,6 +1907,7 @@ int main(int argc, char* argv[]) {
     test(hunger_daylength_independence);
     test(trash);
     test(heat);
+    test(scrounging);
 
     dayLength = 60.0f; // restore
     return summary();

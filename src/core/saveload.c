@@ -1017,8 +1017,13 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= V106_INVENTORY) {
+    if (version >= V107_SCROUNGE) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V106_INVENTORY) {
+        // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
+        static StockpileV106 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV106), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V106_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V105_CONCRETE) {
         // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
         static StockpileV105 oldSp[MAX_STOCKPILES];

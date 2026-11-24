@@ -62,6 +62,8 @@ typedef enum {
     FREETIME_SEEKING_FORAGE,        // Hungry, no food lying around: walking to a ripe berry bush
     FREETIME_FORAGING,              // Picking berries from the bush (then eats them)
     FREETIME_SEEKING_BIN,           // Taking the trash in hand (heldTrash) to a bin
+    FREETIME_SEEKING_SCROUNGE,      // Hungry: walking to a trash bin with food in it (bin reserved)
+    FREETIME_SCROUNGING,            // Rummaging in the bin (then eats what it found)
 } FreetimeState;
 
 

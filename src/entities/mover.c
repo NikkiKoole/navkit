@@ -1252,6 +1252,7 @@ static void KillMover(Mover* m, int i) {
     switch (m->freetimeState) {
         case FREETIME_SEEKING_FOOD: case FREETIME_EATING:
         case FREETIME_SEEKING_DRINK: case FREETIME_DRINKING:
+        case FREETIME_SEEKING_SCROUNGE: case FREETIME_SCROUNGING:   // the reserved bin
             if (t >= 0 && t < MAX_ITEMS && items[t].active && items[t].reservedBy == i)
                 ReleaseItemReservation(t);
             break;

@@ -118,6 +118,7 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
     // Trash: no moodlet effect; read by the trash disposal in needs.c
     [TRAIT_TIDY] = { "Tidy", "Takes trash to a bin, even a far one", {0} },
     [TRAIT_SLOB] = { "Slob", "Drops trash on the spot", {0} },
+    [TRAIT_SCAVENGER] = { "Scavenger", "Lives off what others throw away", {0} },
 };
 
 // --- Trait adjustment ---
@@ -540,10 +541,10 @@ void AssignRandomTraits(Mover* m) {
 
     // 70% chance of first trait, 30% chance of second
     if ((rand() % 100) < 70) {
-        m->traits[0] = 1 + (rand() % (TRAIT_COUNT - 1));  // skip TRAIT_NONE
+        m->traits[0] = 1 + (rand() % (TRAIT_ROLLED_COUNT - 1));  // skip TRAIT_NONE
     }
     if ((rand() % 100) < 30) {
-        TraitType second = 1 + (rand() % (TRAIT_COUNT - 1));
+        TraitType second = 1 + (rand() % (TRAIT_ROLLED_COUNT - 1));
         // No duplicates
         if (second != m->traits[0]) {
             m->traits[1] = second;

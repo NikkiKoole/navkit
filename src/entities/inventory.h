@@ -28,6 +28,11 @@ InvPlace MoverStow(int moverIdx, int itemIdx);
 void MoverDropAll(int moverIdx);                   // hands and back (death); clothing via DropEquippedClothing
 void MoverSyncInventory(int moverIdx);             // held/worn items follow the mover (each tick)
 bool ItemInMoverHands(int moverIdx, int itemIdx);
+int  MoverHandHolding(int moverIdx, int itemType);  // hand (0/1) holding an item of that type, -1 = none
+bool MoverPutHeldInto(int moverIdx, int hand, int containerIdx);   // from the hand into a container (if it has room)
+// Take an item out of the mover's inventory (a pocket, the backpack, a held bag, a hand) and
+// put it down at the mover's feet (to eat it there)
+bool MoverTakeOut(int moverIdx, int itemIdx);
 bool ItemIsInMoverInventory(int moverIdx, int itemIdx);   // held/worn, or inside one of those
 
 #endif

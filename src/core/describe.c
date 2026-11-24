@@ -128,6 +128,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         if (m->freetimeState == FREETIME_SEEKING_FOOD) DescAdd(d, DESC_WARN, "  Seeking food...");
         else if (m->freetimeState == FREETIME_SEEKING_FORAGE) DescAdd(d, DESC_WARN, "  Going to pick berries...");
         else if (m->freetimeState == FREETIME_FORAGING) DescAdd(d, DESC_GOOD, "  Picking berries");
+        else if (m->freetimeState == FREETIME_SEEKING_SCROUNGE) DescAdd(d, DESC_WARN, "  Going to search a bin...");
+        else if (m->freetimeState == FREETIME_SCROUNGING) DescAdd(d, DESC_MILD, "  Searching a bin");
         else if (m->freetimeState == FREETIME_EATING)
             DescAdd(d, DESC_GOOD, "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
     }

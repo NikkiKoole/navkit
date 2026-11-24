@@ -96,8 +96,17 @@ ItemType ItemLeavesBehind(ItemType type) {
     switch (type) {
         case ITEM_SODA:  return ITEM_EMPTY_CAN;
         case ITEM_SNACK: return ITEM_WRAPPER;
+        case ITEM_BURGER: return ITEM_WRAPPER;
         default:         return ITEM_NONE;
     }
+}
+
+int ItemLeftoverUnits(ItemType type, float need) {
+    if (type != ITEM_BURGER) return 0;
+    if (need < 0.0f) need = 0.0f;
+    float rest = ItemNutrition(type) - need;
+    if (rest < 1.5f * LEFTOVER_UNIT_NUTRITION) return 0;   // a bite or two: eaten anyway
+    return (int)(rest / LEFTOVER_UNIT_NUTRITION + 0.5f);
 }
 
 void DeleteItem(int index) {

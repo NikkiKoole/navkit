@@ -162,7 +162,8 @@ int AuditItemReservations(bool verbose) {
             movers[reservedBy].needTarget == i) {
             FreetimeState fs = movers[reservedBy].freetimeState;
             isNeedTarget = (fs == FREETIME_SEEKING_FOOD || fs == FREETIME_EATING ||
-                            fs == FREETIME_SEEKING_DRINK || fs == FREETIME_DRINKING);
+                            fs == FREETIME_SEEKING_DRINK || fs == FREETIME_DRINKING ||
+                            fs == FREETIME_SEEKING_SCROUNGE || fs == FREETIME_SCROUNGING);
         }
 
         if (!foundJob && !isEquippedTool && !isEquippedClothing && !isNeedTarget) {

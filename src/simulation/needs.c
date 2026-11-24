@@ -21,6 +21,8 @@
 #include "../entities/furniture.h"
 #include "../entities/workshops.h"
 #include "../entities/containers.h"
+#include "../entities/inventory.h"
+#include "../entities/stacking.h"
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
 #include "../simulation/water.h"
@@ -207,16 +209,27 @@ static bool StartForaging(Mover* m, int moverIdx) {
     return true;
 }
 
+static bool MoverHasTrait(const Mover* m, TraitType t);
+static bool EatFromInventory(Mover* m, int moverIdx);
+static bool StartScrounging(Mover* m, int moverIdx);
+
 static void StartFoodSearch(Mover* m, int moverIdx) {
-    // Try stockpile first, then ground items
-    int itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
+    // Food the mover carries (pockets, backpack, a bag, a hand) comes first
+    if (EatFromInventory(m, moverIdx)) return;
+    // Then stockpiles, then the ground. A scavenger has no money (for now: no coins yet), so
+    // the food in stockpiles (shops, stands) is not for it.
+    int itemIdx = -1;
+    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
     if (itemIdx < 0) {
         itemIdx = FindNearestEdibleOnGround(m->x, m->y, (int)m->z);
     }
 
     if (itemIdx < 0) {
-        // No food lying around: pick berries from a bush. Nothing at all: cooldown
+        // No food lying around: pick berries from a bush; then search a trash bin (a
+        // scavenger at once, anyone else only when starving). Nothing at all: cooldown
         if (StartForaging(m, moverIdx)) return;
+        if ((MoverHasTrait(m, TRAIT_SCAVENGER) || m->hunger < balance.hungerCriticalThreshold) &&
+            StartScrounging(m, moverIdx)) return;
         m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
         return;
     }
@@ -644,9 +657,25 @@ int FindTrashBinFor(int moverIdx, ItemType trash) {
     return s.best;
 }
 
+// Leftovers a mover holds to throw away (a scavenger keeps them: they go in its pockets)
+static int LeftoversToThrow(const Mover* m, int moverIdx) {
+    if (MoverHasTrait(m, TRAIT_SCAVENGER)) return -1;
+    return MoverHandHolding(moverIdx, ITEM_LEFTOVERS);
+}
+
+static bool HasTrashToThrow(const Mover* m, int moverIdx) {
+    return m->heldTrash != ITEM_NONE || LeftoversToThrow(m, moverIdx) >= 0;
+}
+
 // The trash in hand becomes a real item: in the bin if it still has room, else on the ground
-// where the mover stands (next to a bin that filled up meanwhile, or as litter)
+// where the mover stands (next to a bin that filled up meanwhile, or as litter). Leftovers
+// held in a hand go the same way.
 static void LetGoOfTrash(Mover* m, int moverIdx, int bin) {
+    int hand = LeftoversToThrow(m, moverIdx);
+    if (hand >= 0) {
+        if (bin >= 0 && MoverPutHeldInto(moverIdx, hand, bin)) EventLog("Mover %d put leftovers in bin %d", moverIdx, bin);
+        else { MoverDropHand(moverIdx, hand); EventLog("Mover %d dropped leftovers", moverIdx); }
+    }
     ItemType t = (ItemType)m->heldTrash;
     m->heldTrash = ITEM_NONE;
     if (t <= ITEM_NONE || t >= ITEM_TYPE_COUNT) return;
@@ -666,8 +695,8 @@ static void GetRidOfTrash(Mover* m, int moverIdx) {
     m->freetimeState = FREETIME_NONE;
     m->needTarget = -1;
     m->needProgress = 0.0f;
-    if (m->heldTrash == ITEM_NONE) return;
-    int bin = FindTrashBinFor(moverIdx, (ItemType)m->heldTrash);
+    if (!HasTrashToThrow(m, moverIdx)) return;
+    int bin = FindTrashBinFor(moverIdx, m->heldTrash != ITEM_NONE ? (ItemType)m->heldTrash : ITEM_LEFTOVERS);
     if (bin < 0) { LetGoOfTrash(m, moverIdx, -1); return; }
     m->freetimeState = FREETIME_SEEKING_BIN;
     m->needTarget = bin;
@@ -685,6 +714,135 @@ static void TakeLeftover(Mover* m, int moverIdx, ItemType consumed) {
     m->heldTrash = left;
 }
 
+// A big portion eaten by someone not very hungry: the rest becomes Leftovers. A scavenger
+// keeps them (pockets, backpack, bag); anyone else holds them to throw away with the wrapper
+// (no free hand: they stay where the meal was)
+static void LeaveLeftovers(Mover* m, int moverIdx, ItemType food, float need) {
+    int units = ItemLeftoverUnits(food, need);
+    if (units <= 0) return;
+    int it = SpawnItem(m->x, m->y, m->z, ITEM_LEFTOVERS);
+    if (it < 0) return;
+    items[it].stackCount = units;
+    EventLog("Mover %d left %d leftovers of %s", moverIdx, units, ItemName(food));
+    if (MoverHasTrait(m, TRAIT_SCAVENGER)) MoverStow(moverIdx, it);
+    else MoverHold(moverIdx, it);
+}
+
+// ---- Eating from what the mover carries ----
+static bool EatFromInventory(Mover* m, int moverIdx) {
+    int best = -1;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || !ItemIsEdible(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
+        if (items[i].state != ITEM_IN_CONTAINER && items[i].state != ITEM_CARRIED) continue;
+        if (!ItemIsInMoverInventory(moverIdx, i)) continue;
+        if (LeftoversToThrow(m, moverIdx) >= 0 && ItemInMoverHands(moverIdx, i)) continue;   // on its way to the bin
+        if (best < 0 || ItemNutrition(items[i].type) > ItemNutrition(items[best].type)) best = i;
+    }
+    if (best < 0 || !MoverTakeOut(moverIdx, best)) return false;
+    if (!ReserveItem(best, moverIdx)) return false;
+    EventLog("Mover %d eats %s from its own pockets/bag", moverIdx, ItemName(items[best].type));
+    m->freetimeState = FREETIME_EATING;
+    m->needTarget = best;
+    m->needProgress = 0.0f;
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    return true;
+}
+
+// ---- Scrounging: a hungry mover searches a trash bin for food ----
+// The nearest reachable bin with something edible inside (by walking), one searcher per bin
+// (the bin is reserved: IF_FIXED, no job ever takes it). Rummage a while, eat what is best;
+// a scavenger also stows the rest.
+#define SCROUNGE_SEARCH_COST (48 * 10)
+#define SCROUNGE_DURATION_GH 0.2f
+#define MAX_SCROUNGE_BINS 256
+typedef struct { int n; int idx[MAX_SCROUNGE_BINS]; Point cell[MAX_SCROUNGE_BINS]; } ScroungeBins;
+
+static bool ScroungeBinAt(void* user, int x, int y, int z) {
+    const ScroungeBins* b = user;
+    for (int i = 0; i < b->n; i++)
+        if (b->cell[i].x == x && b->cell[i].y == y && b->cell[i].z == z) return true;
+    return false;
+}
+
+static int BinAtCell(const ScroungeBins* b, Point p) {
+    for (int i = 0; i < b->n; i++)
+        if (b->cell[i].x == p.x && b->cell[i].y == p.y && b->cell[i].z == p.z) return b->idx[i];
+    return -1;
+}
+
+static void CollectBinsWithFood(ScroungeBins* b) {
+    b->n = 0;
+    for (int i = 0; i < itemHighWaterMark && b->n < MAX_SCROUNGE_BINS; i++) {
+        if (!items[i].active || items[i].containedIn < 0 || !ItemIsEdible(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
+        int bin = GetOutermostContainer(i);
+        if (bin < 0 || items[bin].type != ITEM_TRASH_BIN || items[bin].state != ITEM_ON_GROUND) continue;
+        if (items[bin].reservedBy != -1 || !NeedItemReachable(bin)) continue;
+        bool known = false;
+        for (int k = 0; k < b->n && !known; k++) known = b->idx[k] == bin;
+        if (known) continue;
+        b->idx[b->n] = bin;
+        b->cell[b->n] = (Point){(int)(items[bin].x / CELL_SIZE), (int)(items[bin].y / CELL_SIZE), (int)items[bin].z};
+        b->n++;
+    }
+}
+
+static bool StartScrounging(Mover* m, int moverIdx) {
+    static ScroungeBins bins;
+    CollectBinsWithFood(&bins);
+    if (bins.n == 0) return false;
+    Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+    Point found = from;
+    int bin = BinAtCell(&bins, from);
+    if (bin < 0) {
+        if (NavFindNearest(NavGame(), from, ScroungeBinAt, &bins, SCROUNGE_SEARCH_COST, &found, NULL, 0, NULL) < 0) return false;
+        bin = BinAtCell(&bins, found);
+    }
+    if (bin < 0 || !ReserveItem(bin, moverIdx)) return false;
+    EventLog("Mover %d SEEKING_SCROUNGE bin %d at (%d,%d,%d)", moverIdx, bin, found.x, found.y, found.z);
+    m->freetimeState = FREETIME_SEEKING_SCROUNGE;
+    m->needTarget = bin;
+    m->goal = found;
+    StartSeekClock(m);
+    m->needsRepath = true;
+    return true;
+}
+
+// Done rummaging in `bin`: eat the best food in it, a scavenger stows the rest
+static void FinishScrounging(Mover* m, int moverIdx, int bin) {
+    if (items[bin].reservedBy == moverIdx) ReleaseItemReservation(bin);
+    int found[16], n = 0, best = -1;
+    for (int i = 0; i < itemHighWaterMark && n < 16; i++) {
+        if (!items[i].active || items[i].containedIn != bin || !ItemIsEdible(items[i].type)) continue;
+        if (items[i].condition == CONDITION_ROTTEN) continue;
+        found[n++] = i;
+        if (best < 0 || ItemNutrition(items[i].type) > ItemNutrition(items[best].type)) best = i;
+    }
+    m->freetimeState = FREETIME_NONE;
+    m->needTarget = -1;
+    m->needProgress = 0.0f;
+    if (best < 0) {
+        EventLog("Mover %d found nothing to eat in bin %d", moverIdx, bin);
+        m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+        return;
+    }
+    bool scavenger = MoverHasTrait(m, TRAIT_SCAVENGER);
+    RemoveItemFromContainer(best);   // lands at the bin, where the mover stands
+    if (scavenger) {
+        if (items[best].stackCount > 1) {
+            int rest = SplitStack(best, items[best].stackCount - 1);
+            if (rest >= 0) MoverStow(moverIdx, rest);
+        }
+        for (int k = 0; k < n; k++) if (found[k] != best) MoverStow(moverIdx, found[k]);
+    }
+    if (!ReserveItem(best, moverIdx)) return;
+    EventLog("Mover %d found %s in bin %d and eats it", moverIdx, ItemName(items[best].type), bin);
+    m->freetimeState = FREETIME_EATING;
+    m->needTarget = best;
+}
+
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FORAGE || m->freetimeState == FREETIME_FORAGING)) {
@@ -695,6 +853,12 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS && items[m->needTarget].reservedBy == moverIdx) {
             ReleaseItemReservation(m->needTarget);
         }
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
+    if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_SCROUNGE || m->freetimeState == FREETIME_SCROUNGING)) {
+        if (m->needTarget >= 0 && m->needTarget < MAX_ITEMS && items[m->needTarget].reservedBy == moverIdx)
+            ReleaseItemReservation(m->needTarget);
         m->freetimeState = FREETIME_NONE;
         m->needTarget = -1;
     }
@@ -934,6 +1098,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->needProgress >= GameHoursToGameSeconds(balance.eatingDurationGH)) {
                 // Consume food: restore hunger, delete item
                 float nutrition = ItemNutrition(items[ti].type);
+                float need = 1.0f - m->hunger;   // what fit: a big portion leaves the rest
                 m->hunger += nutrition;
                 if (m->hunger > 1.0f) m->hunger = 1.0f;
                 EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
@@ -976,6 +1141,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 }
 
                 TakeLeftover(m, moverIdx, foodType);
+                LeaveLeftovers(m, moverIdx, foodType, need);
                 GetRidOfTrash(m, moverIdx);
             }
             break;
@@ -1228,7 +1394,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         case FREETIME_SEEKING_BIN: {
             int bin = m->needTarget;
             if (bin < 0 || bin >= MAX_ITEMS || !items[bin].active || items[bin].type != ITEM_TRASH_BIN ||
-                m->heldTrash == ITEM_NONE) {
+                !HasTrashToThrow(m, moverIdx)) {
                 // bin gone (or nothing in hand): look for another one now, or drop it
                 GetRidOfTrash(m, moverIdx);
                 break;
@@ -1250,6 +1416,46 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
             }
+            break;
+        }
+
+        case FREETIME_SEEKING_SCROUNGE: {
+            int bin = m->needTarget;
+            if (bin < 0 || bin >= MAX_ITEMS || !items[bin].active || items[bin].reservedBy != moverIdx) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                break;
+            }
+            if ((int)m->z == (int)items[bin].z && (int)(m->x / CELL_SIZE) == (int)(items[bin].x / CELL_SIZE) &&
+                (int)(m->y / CELL_SIZE) == (int)(items[bin].y / CELL_SIZE)) {
+                m->freetimeState = FREETIME_SCROUNGING;
+                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                bool noWay = NoWayThere(moverIdx);
+                ReleaseItemReservation(bin);
+                MarkNeedItemUnreachable(bin, noWay ? NO_WAY_ITEM_HOURS : 1.0f);
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                if (!noWay) m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+            }
+            break;
+        }
+
+        case FREETIME_SCROUNGING: {
+            m->timeWithoutProgress = 0.0f;
+            int bin = m->needTarget;
+            if (bin < 0 || bin >= MAX_ITEMS || !items[bin].active) {
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress >= GameHoursToGameSeconds(SCROUNGE_DURATION_GH)) FinishScrounging(m, moverIdx, bin);
             break;
         }
 

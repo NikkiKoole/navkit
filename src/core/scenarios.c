@@ -2710,20 +2710,26 @@ static void TideIslandPrintStats(void) {
 static int trashBins[3];
 static const int trashBinX[3] = { 8, 18, 36 };
 
-static void TrashRestock(void) {
+// The stand: a 3x2 stockpile, top row `top`, bottom row `bottom`; an empty slot gets a full
+// stack (a delivery). Items go into the stockpile slots (in the shop), not on the ground.
+static int trashStand = -1;
+static void StandRestock(ItemType top, ItemType bottom) {
+    if (trashStand < 0 || !stockpiles[trashStand].active) return;
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 3; dx++) {
             int x = TRASH_STAND_X + dx, y = TRASH_STAND_Y + dy;
-            bool taken = false;
-            for (int i = 0; i < itemHighWaterMark && !taken; i++)
-                if (items[i].active && items[i].state == ITEM_IN_STOCKPILE &&
-                    (int)(items[i].x / CELL_SIZE) == x && (int)(items[i].y / CELL_SIZE) == y) taken = true;
-            if (taken) continue;
-            int idx = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1,
-                                dy == 0 ? ITEM_SNACK : ITEM_SODA);
-            if (idx >= 0) items[idx].stackCount = ItemMaxStack(items[idx].type);
+            const Stockpile* sp = &stockpiles[trashStand];
+            int slot = (y - sp->y) * sp->width + (x - sp->x);
+            if (sp->slots[slot] >= 0 && sp->slotCounts[slot] > 0) continue;
+            ItemType t = dy == 0 ? top : bottom;
+            int idx = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1, t);
+            if (idx < 0) continue;
+            items[idx].stackCount = ItemMaxStack(t);
+            PlaceItemInStockpile(trashStand, x, y, idx);
         }
 }
+
+static void TrashRestock(void) { StandRestock(ITEM_SNACK, ITEM_SODA); }
 
 static void SetupTrash(void) {
     hungerEnabled = true; thirstEnabled = true;
@@ -2731,7 +2737,7 @@ static void SetupTrash(void) {
     dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
     balance.baseMoverSpeed = 600.0f;    // (before the movers spawn: they take it from here)
     endlessMoverMode = true;            // wander between meals: foot traffic
-    CreateStockpile(TRASH_STAND_X, TRASH_STAND_Y, 1, 3, 2);
+    trashStand = CreateStockpile(TRASH_STAND_X, TRASH_STAND_Y, 1, 3, 2);
     TrashRestock();
     for (int b = 0; b < 3; b++)
         trashBins[b] = SpawnItem(trashBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, 11 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_TRASH_BIN);
@@ -2921,6 +2927,82 @@ static bool InventoryCheck(char* why, int whyLen) {
     return true;
 }
 
+// scrounge: hunger-driven bin searching (docs/vision/city-1999.md "Scrounging"). The trash
+// street, but the stand sells burgers (a big portion) and sodas. 10 NPCs eat when hungry;
+// whoever isn't starving can't finish a burger and throws the leftovers in a bin with the
+// wrapper. Two Scavengers (no money: they take nothing from the stand) live off the bins:
+// search, eat the best, keep the rest in a pocket jacket (scavenger 0) or a hand (1).
+// Stats: bin searches and meals per scavenger, their lowest hunger, leftovers in bins.
+static int scrScav[2], scrSearches[2], scrMeals[2], scrPrevState[2];
+static float scrMinHunger[2];
+
+static void ScroungeRestock(void) { StandRestock(ITEM_BURGER, ITEM_SODA); }
+
+static void SetupScrounge(void) {
+    SetupTrash();
+    // The stand sells burgers instead of snacks: empty the top row, restock
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_SNACK && items[i].state == ITEM_IN_STOCKPILE) {
+            RemoveItemFromStockpileSlot(items[i].x, items[i].y, (int)items[i].z);
+            DeleteItem(i);
+        }
+    ScroungeRestock();
+    for (int k = 0; k < 2; k++) {
+        SpawnMoverAt(30 + k * 4, 20, 1);
+        int mi = moverCount - 1;
+        Mover* m = &movers[mi];
+        m->traits[0] = TRAIT_SCAVENGER; m->traits[1] = TRAIT_NONE;
+        m->hunger = 0.25f; m->thirst = 1.0f;
+        if (k == 0) MoverWear(mi, SpawnItem(m->x, m->y, 1, ITEM_POCKET_JACKET));
+        scrScav[k] = mi; scrSearches[k] = scrMeals[k] = 0; scrPrevState[k] = FREETIME_NONE;
+        scrMinHunger[k] = 1.0f;
+    }
+}
+
+static void ScroungeTickStats(void) {
+    if (currentTick % 600 == 0) ScroungeRestock();
+    for (int k = 0; k < 2; k++) {
+        const Mover* m = &movers[scrScav[k]];
+        if (m->freetimeState == FREETIME_SCROUNGING && scrPrevState[k] != FREETIME_SCROUNGING) scrSearches[k]++;
+        if (m->freetimeState == FREETIME_EATING && scrPrevState[k] != FREETIME_EATING) scrMeals[k]++;
+        if (m->hunger < scrMinHunger[k]) scrMinHunger[k] = m->hunger;
+        scrPrevState[k] = m->freetimeState;
+    }
+}
+
+static int ScroungeLeftoversIn(bool bins) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || items[i].type != ITEM_LEFTOVERS) continue;
+        int top = GetOutermostContainer(i);
+        bool inBin = items[i].containedIn >= 0 && items[top].type == ITEM_TRASH_BIN;
+        if (inBin == bins) n += items[i].stackCount;
+    }
+    return n;
+}
+
+static void ScroungePrintStats(void) {
+    for (int k = 0; k < 2; k++) {
+        const Mover* m = &movers[scrScav[k]];
+        printf("Scavenger %d: %d bin searches, %d meals, hunger now %.0f%% (lowest %.0f%%), hands %d/%d\n",
+               k, scrSearches[k], scrMeals[k], m->hunger * 100.0f, scrMinHunger[k] * 100.0f, m->hands[0], m->hands[1]);
+    }
+    printf("Leftovers: %d units in bins, %d elsewhere (pockets, hands, ground)\n",
+           ScroungeLeftoversIn(true), ScroungeLeftoversIn(false));
+}
+
+static bool ScroungeCheck(char* why, int whyLen) {
+    for (int k = 0; k < 2; k++) {
+        if (scrSearches[k] < 1 || scrMeals[k] < 1) {
+            snprintf(why, (size_t)whyLen, "scavenger %d: %d searches, %d meals (want >= 1 each)", k, scrSearches[k], scrMeals[k]);
+            return false;
+        }
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -2994,6 +3076,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupHeat, HeatTickStats, HeatPrintStats, HeatCheck, 40, 24},
     {"inventory",  "Six wandering movers kitted out: pocket jacket, backpack, a plastic bag + a can, a log in both hands, all of it, nothing (click them)",
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
+    {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
+                   NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

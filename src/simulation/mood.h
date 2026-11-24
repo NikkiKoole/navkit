@@ -73,8 +73,12 @@ typedef enum {
     TRAIT_IMPATIENT,    // Gives up on lines early: re-plans sooner, leaves, walks instead of waiting for a train.
     TRAIT_TIDY,         // Walks twice as far to put trash in a bin.
     TRAIT_SLOB,         // Drops trash where they stand unless a bin is right there.
+    // Not rolled at random (TRAIT_ROLLED_COUNT): set by a game or scenario
+    TRAIT_SCAVENGER,    // Lives off bins: searches them when hungry, keeps leftovers. For now
+                        // also "no money": takes no food from stockpiles (until coins exist).
     TRAIT_COUNT
 } TraitType;
+#define TRAIT_ROLLED_COUNT TRAIT_SCAVENGER   // AssignRandomTraits picks from traits below this
 
 #define MAX_MOODLETS 8
 #define MAX_TRAITS   2

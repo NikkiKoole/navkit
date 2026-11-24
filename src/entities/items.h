@@ -89,6 +89,8 @@ typedef enum {
     ITEM_POCKET_JACKET,  // Clothing with pockets: worn on the body, a small container
     ITEM_BACKPACK,       // Worn on the back (IF_WORN_BACK): a container, hands stay free
     ITEM_PLASTIC_BAG,    // Held in one hand: a container
+    ITEM_BURGER,         // City meal, a big portion: who isn't very hungry leaves some (leftovers)
+    ITEM_LEFTOVERS,      // What was left of a meal: a little food per unit, spoils fast
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -143,6 +145,10 @@ void DeleteItem(int index);
 
 // What consuming one of this type leaves behind (soda -> empty can), ITEM_NONE = nothing
 ItemType ItemLeavesBehind(ItemType type);
+// Units of ITEM_LEFTOVERS (LEFTOVER_UNIT_NUTRITION each) left when an eater who needed only
+// `need` (1 - hunger) eats one of type. Only big portions (burger) leave anything.
+#define LEFTOVER_UNIT_NUTRITION 0.1f
+int ItemLeftoverUnits(ItemType type, float need);
 
 // Reservation
 bool ReserveItem(int itemIndex, int moverIndex);

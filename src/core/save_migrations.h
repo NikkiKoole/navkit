@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 106
+#define CURRENT_SAVE_VERSION 107
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -89,6 +89,10 @@ _Static_assert(MAT_CONCRETE == V104_MAT_COUNT, "v104 materials end where MAT_CON
 #define MOVER_V105_DATA   348   // the part of it that holds fields (up to and with heldTrash)
 _Static_assert(offsetof(Mover, hands) == MOVER_V105_DATA, "Mover v105 layout must be a prefix of Mover");
 _Static_assert(MAT_COUNT == V105_MAT_COUNT, "v106 changes no materials: add a migration if MAT_COUNT grew");
+// v107: scrounging. Two item types (burger, leftovers: stockpile allowedTypes grows from
+// V106_ITEM_TYPE_COUNT). New FreetimeState values and a trait are appended (no size change).
+#define V107_SCROUNGE 107
+#define V106_ITEM_TYPE_COUNT 81
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
@@ -377,6 +381,28 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV105;
+
+// V106 Stockpile struct (v106 only: allowedTypes V106_ITEM_TYPE_COUNT)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V106_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V105_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV106;
 
 // Copy an old stockpile (StockpileV90 / V103 / V104) into a Stockpile; item types the old
 // save didn't know are not allowed, materials it didn't know are

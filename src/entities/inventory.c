@@ -131,13 +131,46 @@ void MoverDropAll(int moverIdx) {
 
 void MoverSyncInventory(int moverIdx) {
     const Mover* m = &movers[moverIdx];
-    int slots[3] = { m->hands[0], m->hands[1], m->wornBack };
-    for (int k = 0; k < 3; k++) {
+    int slots[4] = { m->hands[0], m->hands[1], m->wornBack, m->equippedClothing };
+    for (int k = 0; k < 4; k++) {
         if (!ValidItem(slots[k])) continue;
         items[slots[k]].x = m->x; items[slots[k]].y = m->y; items[slots[k]].z = m->z;
     }
     // Contents keep their old position until the container is let go (LetGo moves them):
     // moving them every tick would scan all items per mover
+}
+
+int MoverHandHolding(int moverIdx, int itemType) {
+    const Mover* m = &movers[moverIdx];
+    for (int h = 0; h < 2; h++)
+        if (ValidItem(m->hands[h]) && (int)items[m->hands[h]].type == itemType) return h;
+    return -1;
+}
+
+bool MoverPutHeldInto(int moverIdx, int hand, int containerIdx) {
+    if (hand < 0 || hand > 1) return false;
+    Mover* m = &movers[moverIdx];
+    int it = m->hands[hand];
+    if (!ValidItem(it) || !ValidItem(containerIdx) || !CanPutItemInContainer(it, containerIdx)) return false;
+    if (m->hands[0] == it) m->hands[0] = -1;
+    if (m->hands[1] == it) m->hands[1] = -1;
+    items[it].reservedBy = -1;
+    PutItemInContainer(it, containerIdx);
+    return true;
+}
+
+bool MoverTakeOut(int moverIdx, int itemIdx) {
+    if (!ValidItem(itemIdx)) return false;
+    if (ItemInMoverHands(moverIdx, itemIdx)) {
+        Mover* m = &movers[moverIdx];
+        int hand = m->hands[0] == itemIdx ? 0 : 1;
+        MoverDropHand(moverIdx, hand);
+        return true;
+    }
+    if (!ItemIsInMoverInventory(moverIdx, itemIdx) || items[itemIdx].containedIn < 0) return false;
+    MoverSyncInventory(moverIdx);   // containers where the mover is: it lands at its feet
+    RemoveItemFromContainer(itemIdx);
+    return true;
 }
 
 bool ItemInMoverHands(int moverIdx, int itemIdx) {

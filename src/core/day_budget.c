@@ -50,7 +50,8 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
     switch (m->freetimeState) {
         case FREETIME_RESTING:               return DB_SLEEP;
         case FREETIME_EATING:
-        case FREETIME_FORAGING:              return DB_EAT;
+        case FREETIME_FORAGING:
+        case FREETIME_SCROUNGING:            return DB_EAT;
         case FREETIME_DRINKING:
         case FREETIME_DRINKING_NATURAL:
         case FREETIME_DRINKING_TAP:          return DB_DRINK;
@@ -66,6 +67,7 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
         case FREETIME_SEEKING_TOILET:
         case FREETIME_SEEKING_BUSH:
         case FREETIME_SEEKING_FORAGE:
+        case FREETIME_SEEKING_SCROUNGE:
         case FREETIME_SEEKING_BIN:           return DB_TO_NEED;
         default: break;
     }
@@ -76,6 +78,7 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
 static int WalkOf(int s) {
     switch (s) {
         case FREETIME_SEEKING_FOOD:
+        case FREETIME_SEEKING_SCROUNGE:
         case FREETIME_SEEKING_FORAGE:        return DW_FOOD;
         case FREETIME_SEEKING_DRINK:
         case FREETIME_SEEKING_NATURAL_WATER:
