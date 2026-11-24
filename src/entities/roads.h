@@ -19,10 +19,9 @@
 
 #include <stdbool.h>
 
-#define RD_MAX_NODES 512
-#define RD_MAX_EDGES 1024
-#define RD_MAX_SEGS 8192
-#define RD_MAX_PTS 400000
+#define RD_MAX_NODES 4096
+#define RD_MAX_EDGES 8192
+#define RD_MAX_SEGS 32000    // (routes store segments as short)
 #define RD_MAX_NODE_EDGES 6
 #define RD_MAX_CONN 32       // connectors per junction (6 roads: 6 x 5)
 #define RD_MAX_OUT 6         // connectors leaving one lane
@@ -35,7 +34,7 @@ typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
 // Parking bays (lay-bys): from lane s0, a curve into a spot RD_BAY_OFF cells to the right
 // (the bay's IN segment ends at the spot), and from the spot a curve back into the lane
 // at s1 = s0 + RD_BAY_LEN (OUT segment).
-#define RD_MAX_BAYS 2048
+#define RD_MAX_BAYS 8192
 #define RD_BAY_OFF 2.5f      // cells: the spot's centre from the lane's centre
 #define RD_BAY_LEN 12.0f     // cells of lane a bay takes
 typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
@@ -74,6 +73,7 @@ typedef struct {
     float bayS;        // bay in: lane s where it leaves the lane; bay out: lane s where it joins (px)
     int bays[4], nBays;          // lane: its bays
     bool priority;     // lane: has right of way at its junction (roundabout ring)
+    float bx0, by0, bx1, by1;   // bounding box (px), for drawing
     int edge;          // lane: its road
     int laneIdx;       // lane: 0 = the right-hand lane, 1 = the overtaking lane
     int parallel;      // lane: the other lane the same way on the same road (-1: none)
@@ -85,8 +85,8 @@ extern RdSeg rdSegs[RD_MAX_SEGS];
 extern int rdNodeCount, rdEdgeCount, rdSegCount;
 extern RdBay rdBays[RD_MAX_BAYS];
 extern int rdBayCount;
-extern float rdX[RD_MAX_PTS], rdY[RD_MAX_PTS], rdS[RD_MAX_PTS];
-extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traffic: queues)   // pixels; rdS = arc length from the segment start
+extern float *rdX, *rdY, *rdS;   // the points of all segments (grown as needed); pixels; rdS = arc length from the segment start
+extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traffic: queues)
 
 void RoadsClear(void);
 int RoadAddNode(float cellX, float cellY);

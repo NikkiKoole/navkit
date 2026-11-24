@@ -34,7 +34,11 @@ void SimStep(float dt) {
     BeltsTick(dt);
     PROFILE_END(Belts);
 
-    if (carCount > 0) CarsTick(dt);   // cars experiment
+    if (carCount > 0) {   // cars experiment
+        PROFILE_BEGIN(Cars);
+        CarsTick(dt);
+        PROFILE_END(Cars);
+    }
 
     PROFILE_BEGIN(Designations);
     DesignationsTick(dt);

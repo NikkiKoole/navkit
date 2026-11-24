@@ -71,6 +71,8 @@ static void DrawRoadsDebug(void) {
     float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
     for (int s = 0; s < rdSegCount; s++) {
         const RdSeg* sg = &rdSegs[s];
+        Vector2 b0 = CarScreen(sg->bx0, sg->by0), b1 = CarScreen(sg->bx1, sg->by1);
+        if (b1.x < 0 || b1.y < 0 || b0.x > sw || b0.y > sh) continue;
         bool held = false;
         if (sg->kind == RD_CONN) {
             for (int i = 0; i < carCount && !held; i++) if (cars[i].onRoad && cars[i].holdNode == s) held = true;
@@ -91,6 +93,11 @@ static void DrawTrafficLights(void) {
     for (int s = 0; s < rdSegCount; s++) {
         const RdSeg* sg = &rdSegs[s];
         if (sg->kind != RD_LANE) continue;
+        {
+            float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+            Vector2 e = CarScreen(rdX[sg->p0 + sg->n - 1], rdY[sg->p0 + sg->n - 1]);
+            if (e.x < -20 || e.y < -20 || e.x > sw + 20 || e.y > sh + 20) continue;
+        }
         int st = TrafficLightAt(sg->to, s);
         if (st < 0) continue;
         int k = sg->p0 + sg->n - 1;
@@ -106,6 +113,7 @@ static void DrawTrafficLights(void) {
 
 void DrawCars(void) {
     if (carCount == 0) return;
+    PROFILE_BEGIN(DrawCars);
     if (rdSegCount > 0) DrawTrafficLights();
     bool roads = rdSegCount > 0;
     if (carDebug && !roads) DrawCarClearance(currentViewZ);
@@ -147,6 +155,7 @@ void DrawCars(void) {
             DrawCircleV(CarScreen(c->x, c->y), fmaxf(2.0f, 0.3f * CELL_SIZE * zoom), wc);
         }
     }
+    PROFILE_END(DrawCars);
 }
 
 // Camera follows car 0 (setting carFollow), eased like the mover follow

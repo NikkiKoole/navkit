@@ -3,7 +3,8 @@
 > Status (2026-11-24): one car with real steering; long roads + speed; 30-car jam test; **a road
 > network (`cars-city`): 100 cars with lanes, reserved junctions, parking bays, traffic lights,
 > roundabouts and overtaking on avenues - no touches, no wall contacts, no red-light runs**.
-> Next: pedestrians, movers driving, parking lots. Branch `cars-experiment`.
+> Scales to 4000 cars on a 1024 map at ~2.3 ms/tick. Next: pedestrians, movers driving,
+> parking lots. Branch `cars-experiment`.
 > Builds on [vehicles.md](vehicles.md) ("cars are parked for now"). Target game: City 1999.
 
 ## Goal
@@ -302,6 +303,52 @@ Avenue junctions get 9 cells of setback; no roundabouts on avenues.
 
 Results, 10 game minutes, 5 layouts x 100 / 128 cars, with lights, roundabouts and avenues:
 503-690 trips, ~36 overtakes per run, junction waits 27-42 s, **0 touches, 0 wall contacts**.
+
+## Scale: thousands of cars (2026-11-25)
+
+`--set scenarioSize N` makes `cars-city` fill an N x N map (1024: 28 x 28 junctions, 932 junctions
+with the ring junctions, 3092 lanes, ~14.7k segments, ~1860 bays; avenues every 8th row / column,
+roundabouts per 63 junctions). Limits now: 4096 cars, 4096 junctions, 32000 segments (routes
+store segments as short: about a 1024 city). `carCityParking 0`: cars start on the roads and
+just drive (with parking, more cars than bays end up nearly all parked, waiting for a bay).
+
+CPU, 1024 city, every car driving (`carCityParking 0`), 5 game minutes, `--profile`:
+
+| cars | Cars ms/tick (avg) | moving at the end | trips |
+|---|---|---|---|
+| 1000 | 0.38 | 578 | 825 |
+| 2000 | 0.98 | 904 | 1055 |
+| 4000 | 2.27 | 1252 | 907 (heavy congestion: mean speed 1.1 cells/s) |
+
+Almost all of it is driving the cars (`TrafficDrive`); junctions, lists and the touch sampling
+are ~0.04-0.16 ms. Worst ticks of 20-57 ms are machine noise (other sessions building): the
+trivial `TrafficLists` loop shows the same 30-70x spikes. **0 touches, 0 wall contacts at every
+size.** Past ~3000 cars on this map it's the roads that saturate, not the CPU.
+
+What scaling found (each measured, each fixed):
+1. **Routing** was a linear scan over all lanes per step (Dijkstra without a heap): now a heap.
+2. **99% of route searches failed** on big maps: avenue overtaking lanes where an avenue starts
+   had no way in (curves only joined lane k to lane k), cutting off every lane behind them.
+   A one-lane road's lane now also feeds an avenue's overtaking lane. `TR_NET=1` checks every
+   lane is reachable.
+3. **Parked cars with every bay taken** fell back to a lane trip from the bay's curve (no way
+   on): 20 failing searches every 5 s each. They now just stay parked a while longer; picking
+   a free bay tries 300 random bays (free to skip) instead of 30.
+4. A car that found no other way round a full exit searched again **every tick**: 5 s pause.
+5. **Lane changes:** only with room to pull out past the car ahead; while still partly in the
+   old lane the cars ahead there count; the drift shrinks with distance driven, not time (a car
+   changing lanes in a queue was told to be in the new lane while standing still, ended across
+   both and was hit).
+6. **Turns sharper than 120 degrees** swept the stop lines of other roads: built only where a lane
+   would otherwise have no way in or out.
+7. **Cramped junctions:** a curve passing within 2.6 cells of where a car waits at another
+   lane's stop line pushes that junction's lanes back a cell (the network is built again, up to
+   6 times).
+8. Touch sampling uses an 8-cell bucket grid; roundabout occupancy is counted once per tick.
+
+Diagnostics added: `TR_NET` (reachability), `TR_FAILS` (failing route searches); the stats show
+route searches per caller and the most in one tick. Profiler sections: `Cars`,
+`TrafficLists/Junctions/Drive/Sample`, `DrawCars`.
 
 ## Open questions / next steps
 

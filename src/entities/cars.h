@@ -18,10 +18,10 @@
 
 #include <stdbool.h>
 
-#define MAX_CARS 128
+#define MAX_CARS 4096
 #define CAR_MAX_PATH 4096   // 4 px per point: routes up to ~500 cells
 #define CAR_MAX_STOPS 16
-#define CAR_MAX_ROUTE 256   // road segments in a road route
+#define CAR_MAX_ROUTE 512   // road segments in a road route
 
 typedef enum {
     DRIVE_PARKED,     // waiting at a stop (or no stops)
@@ -83,6 +83,7 @@ typedef struct {
     float latOff;          // px: changing lanes, our old lane's offset from the new one (shrinks to 0)
     int ghostLane;         // changing lanes: the lane we're leaving, still partly in it (-1: none)
     float lcCool;          // seconds before we may change lanes again
+    float rerouteCool;     // seconds before we try another way round a full exit again
     int overtakes, keepRights;   // lane changes: out to overtake, back to the right-hand lane
     int why;               // TrafficWhy: why we brake (debug)
 
@@ -114,6 +115,7 @@ extern int carCitySeed;        // its road layout
 extern bool carCityLights;     // traffic lights on its 4-way junctions
 extern int carCityRoundabouts; // 4-way junctions that become roundabouts
 extern bool carCityAvenues;    // middle row + column: two lanes each way, overtaking
+extern bool carCityParking;    // cars park in bays between trips (off: they just drive)
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance

@@ -5,11 +5,13 @@
 // waits 45 s; TR_JDUMP dumps junctions with old requests at the end of the run; TR_PULL
 // prints what blocks a car waiting 45 s to pull out of a bay; TR_HOLDS lists junction
 // holders at the end; TR_BAY=<bay segment> prints that bay's geometry; TR_STILL lists cars
-// standing 60+ s at the end; TR_RING prints roundabout occupancy at the end.
+// standing 60+ s at the end; TR_RING prints roundabout occupancy at the end; TR_NET checks
+// every lane is reachable; TR_FAILS prints the first failing route searches.
 #include "traffic.h"
 #include "roads.h"
 #include "cars.h"
 #include "mover.h"            // CELL_SIZE
+#include "../../shared/profiler.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -44,6 +46,7 @@ static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0
 #define TR_STANLEY_K 2.5f      // 1/s: sideways error correction
 #define TR_GIVE_WAY_S 3.0f     // s: give way to a car with right of way this close (in time)
 #define TR_GIVE_WAY_CELLS 3.0f // cells: ... or this close
+#define TR_PULL_OUT_ROOM 1.5f      // cells (+ 0.5 s at our speed) to the car ahead before changing lanes
 #define TR_LANE_CHANGE_CELLS 6.0f   // cells of road a lane change takes
 #define TR_LET_IN 3.0f         // s: a car waiting this long to pull out gets let in
 #define TR_PULL_BEHIND 8.0f    // cells: the lane must be clear this far behind a bay's exit (+ 2 s at the car's speed)
@@ -59,6 +62,22 @@ static int trReqN[RD_MAX_NODES];
 static int segHead[RD_MAX_SEGS], carNext[MAX_CARS];
 static int ghostHead[RD_MAX_SEGS], ghostNext[MAX_CARS];   // cars changing out of a lane, still partly in it
 static float trTime = 0;
+// Route searches (the expensive call): per caller, total and the most in one tick
+static long trRoutes[4];
+static int trRoutesTick, trRoutesTickMax;
+static long trRouteFails[4];
+static int TrRoute(int caller, int from, int to, short* out, int max) {
+    trRoutes[caller]++;
+    trRoutesTick++;
+    int n = RoadRoute(from, to, out, max);
+    if (n <= 0) {
+        trRouteFails[caller]++;
+        static int told = 0;
+        if (getenv("TR_FAILS") && told++ < 8)
+            printf("route fail (caller %d): from seg %d kind %d nOut %d to lane %d kind %d\n", caller, from, rdSegs[from].kind, rdSegs[from].nOut, to, rdSegs[to].kind);
+    }
+    return n;
+}
 static short bayCar[RD_MAX_BAYS];   // the car parked in / heading for a bay, -1 free
 static unsigned int trRng = 1;
 
@@ -70,6 +89,8 @@ void TrafficReset(void) {
     memset(trReqN, 0, sizeof(trReqN));
     trTime = 0;
     trRng = 1;
+    memset(trRoutes, 0, sizeof(trRoutes));
+    trRoutesTick = trRoutesTickMax = 0;
     trafficOverlapMax = trafficOffRoadMax = trafficSamples = 0;
     trafficOverlapSamples = 0;
     trafficWaitMax = trafficJunctionWaitMax = trafficPullOutWaitMax = 0;
@@ -148,11 +169,12 @@ static float StepStart(const Car* c, int k) {
 static bool TripToBay(int i) {
     Car* c = &cars[i];
     if (rdBayCount < 2) return false;
+    if (!carCityParking && rdSegs[c->route[c->routeIdx]].kind == RD_LANE) return false;   // just driving
     bool parked = c->routeLen > 0 && rdSegs[c->route[c->routeIdx]].kind == RD_BAYIN;
     int from = parked ? c->bay : -1;
     int lane = parked ? rdBays[from].lane : c->route[c->routeIdx];
     float s = parked ? rdBays[from].s1 : c->s;
-    for (int tries = 0; tries < 30; tries++) {
+    for (int tries = 0; tries < 300; tries++) {   // (a taken bay costs nothing to skip; searching is the cost)
         int d = (int)(TrRand() % (unsigned)rdBayCount);
         if (bayCar[d] >= 0 || d == from) continue;
         short r[CAR_MAX_ROUTE];
@@ -160,7 +182,7 @@ static bool TripToBay(int i) {
         if (parked) r[n++] = (short)rdBays[from].out;
         if (rdBays[d].lane == lane && rdBays[d].s0 > s + 4 * CELL_SIZE) r[n++] = (short)lane;
         else {
-            int m = RoadRoute(lane, rdBays[d].lane, r + n, CAR_MAX_ROUTE - n - 1);
+            int m = TrRoute(0, lane, rdBays[d].lane, r + n, CAR_MAX_ROUTE - n - 1);
             if (m <= 0) continue;
             n += m;
         }
@@ -182,6 +204,7 @@ static bool NewTrip(int i) {
     if (TripToBay(i)) return true;
     Car* c = &cars[i];
     int cur = c->route[c->routeIdx];
+    if (rdSegs[cur].kind != RD_LANE) return false;   // parked, every bay taken: stay a while longer
     for (int tries = 0; tries < 20; tries++) {
         int dl = RoadLaneAt((int)(TrRand() % (unsigned)RoadLaneCount()));
         float len = rdSegs[dl].len;
@@ -189,7 +212,7 @@ static bool NewTrip(int i) {
         float ds = 3 * CELL_SIZE + (len - 6 * CELL_SIZE) * (TrRand() / 32767.0f);
         int n;
         if (dl == cur && ds > c->s + 4 * CELL_SIZE) { c->route[0] = (short)cur; n = 1; }
-        else n = RoadRoute(cur, dl, c->route, CAR_MAX_ROUTE);
+        else n = TrRoute(0, cur, dl, c->route, CAR_MAX_ROUTE);
         if (n <= 0) continue;
         c->routeLen = n;
         c->routeIdx = 0;
@@ -293,7 +316,7 @@ static void RerouteAvoiding(int i, int avoidLane) {
         if (lap < 0) return;
         int next = rdSegs[lap].to;
         r[0] = (short)cur; r[1] = (short)lap;
-        int m = next == destLane ? 1 : RoadRoute(next, destLane, r + 2, CAR_MAX_ROUTE - 3);
+        int m = next == destLane ? 1 : TrRoute(1, next, destLane, r + 2, CAR_MAX_ROUTE - 3);
         if (m <= 0) return;
         if (next == destLane) r[2] = (short)next;
         n = 2 + m;
@@ -301,7 +324,7 @@ static void RerouteAvoiding(int i, int avoidLane) {
         if (destLane == avoidLane) return;
         float saved = rdSegExtra[avoidLane];
         rdSegExtra[avoidLane] += 1e7f;
-        n = RoadRoute(cur, destLane, r, CAR_MAX_ROUTE - 1);
+        n = TrRoute(1, cur, destLane, r, CAR_MAX_ROUTE - 1);
         rdSegExtra[avoidLane] = saved;
         if (n < 2 || rdSegs[r[1]].to == avoidLane) return;
     }
@@ -339,15 +362,30 @@ static bool OnRing(const Car* c, int r) {
 }
 
 static long dbgEnterAsk = 0, dbgRingFull = 0;
-static bool RingFull(int r) {
-    int lanes = 0, n = 0;
+static short ringLanes[RD_MAX_NODES], ringCars[RD_MAX_NODES];   // per roundabout centre, counted each tick
+
+static void CountRings(void) {
+    memset(ringLanes, 0, sizeof(short) * (size_t)rdNodeCount);
+    memset(ringCars, 0, sizeof(short) * (size_t)rdNodeCount);
     for (int i = 0; i < RoadLaneCount(); i++) {
         const RdSeg* S = &rdSegs[RoadLaneAt(i)];
-        if (S->priority && rdNodes[S->to].ringOf == r) lanes++;
+        if (S->priority && rdNodes[S->to].ringOf >= 0) ringLanes[rdNodes[S->to].ringOf]++;
     }
-    int cap = lanes > 1 ? lanes : 1;
-    for (int i = 0; i < carCount; i++) if (cars[i].active && cars[i].onRoad && OnRing(&cars[i], r)) n++;
-    return n >= cap;
+    for (int i = 0; i < carCount; i++) {
+        const Car* c = &cars[i];
+        if (!c->active || !c->onRoad) continue;
+        int sg = c->route[c->routeIdx], r = -1;
+        const RdSeg* S = &rdSegs[sg];
+        if (S->kind == RD_LANE && S->priority) r = rdNodes[S->to].ringOf;
+        else if (S->kind == RD_CONN && rdSegs[S->to].priority) r = rdNodes[S->node].ringOf;
+        else if (c->holdNode >= 0 && rdSegs[rdSegs[c->holdNode].to].priority) r = rdNodes[rdSegs[c->holdNode].node].ringOf;
+        if (r >= 0) ringCars[r]++;
+    }
+}
+
+static bool RingFull(int r) {
+    int cap = ringLanes[r] > 1 ? ringLanes[r] : 1;
+    return ringCars[r] >= cap;
 }
 
 // A car with right of way arriving at junction nd within TR_GIVE_WAY_S whose next
@@ -421,6 +459,7 @@ static void ServeJunctions(float dt) {
                 }
                 if (room >= need && trHoldN[nd] < TR_MAX_HOLD) {
                     trHold[nd][trHoldN[nd]++] = (TrHold){r->car, r->seg};
+                    if (N->ringOf >= 0 && !prio && rdSegs[rdSegs[r->seg].to].priority) ringCars[N->ringOf]++;
                     cars[r->car].holdNode = r->seg;
                     cars[r->car].requested = false;
                     claimed[ci] = 1;
@@ -579,10 +618,12 @@ static void MaybeChangeLane(int i, int lead, float gap, float vWant) {
         for (int o = segHead[P]; o >= 0; o = carNext[o])
             if (cars[o].s > c->s && cars[o].s < c->s + 10 * CS && cars[o].speed < c->speed - 1.0f * CS) return;
     }
+    // room to pull out: the car ahead in our lane far enough that our nose clears it
+    if (gap < TR_PULL_OUT_ROOM * CS + c->speed * 0.5f) return;
     float sP = ProjectOnWide(P, c->s, c->x, c->y);
     if (!LaneClearAt(i, P, sP)) return;
     short r[CAR_MAX_ROUTE];
-    int n = RoadRoute(P, destLane, r, CAR_MAX_ROUTE - 1);
+    int n = TrRoute(2, P, destLane, r, CAR_MAX_ROUTE - 1);
     if (n <= 0) return;
     if (c->bay >= 0) r[n++] = (short)rdBays[c->bay].in;
     float px, py, ph;
@@ -613,9 +654,14 @@ static void DriveCar(int i, float dt) {
     }
     // Waiting at a junction for room past it: on a roundabout's ring go round again after
     // 1 s (a car stopped on the ring blocks it), elsewhere look for another way after 15 s
-    if (c->requested && c->noRoom > (rdSegs[c->route[c->routeIdx]].priority ? 1.0f : 15.0f) &&
-        c->routeIdx + 1 < c->routeLen && rdSegs[c->route[c->routeIdx + 1]].kind == RD_CONN)
+    // (an attempt that finds no other way waits 5 s before the next: route searches are the
+    // expensive part, and a stuck car used to search every tick)
+    if (c->rerouteCool > 0) c->rerouteCool -= dt;
+    else if (c->requested && c->noRoom > (rdSegs[c->route[c->routeIdx]].priority ? 1.0f : 15.0f) &&
+             c->routeIdx + 1 < c->routeLen && rdSegs[c->route[c->routeIdx + 1]].kind == RD_CONN) {
         RerouteAvoiding(i, rdSegs[c->route[c->routeIdx + 1]].to);
+        c->rerouteCool = 5.0f;
+    }
     // About to pull out: wait for a gap in the lane
     if (c->routeIdx == 0 && rdSegs[c->route[0]].kind == RD_BAYOUT && c->s < 0.5f * CS && c->speed < 0.1f * CS) {
         int b = rdSegs[c->route[0]].bay;
@@ -672,6 +718,13 @@ static void DriveCar(int i, float dt) {
                 if (k == c->routeIdx && so <= c->s) continue;
                 float d = acc + (so - st) - L;   // bumper to bumper
                 if (d < gap) { gap = d; vLead = cars[o].speed > 0 ? cars[o].speed : 0; why = WHY_FOLLOW; found = true; lead = o; }
+            }
+        // Changing lanes: until we're out of the old lane, cars ahead in it are in our way too
+        if (k == c->routeIdx && c->ghostLane >= 0)
+            for (int o = segHead[c->ghostLane]; o >= 0; o = carNext[o]) {
+                if (o == i || cars[o].s <= c->s || cars[o].s > c->s + 4 * L) continue;
+                float d = cars[o].s - c->s - L;
+                if (d < gap) { gap = d < 0 ? 0 : d; vLead = cars[o].speed > 0 ? cars[o].speed : 0; why = WHY_FOLLOW; found = true; lead = o; }
             }
         // A lane: cars pulling into / out of its bays are still in it for a few cells; a
         // car that has waited TR_LET_IN s to pull out gets let in (we stop short of its exit)
@@ -783,11 +836,16 @@ static void DriveCar(int i, float dt) {
     float wb = carLength * CS * 0.6f;
     float px, py, hp, kappa;
     RouteFrame(c, wb * 0.5f, &px, &py, &hp, &kappa);
+    if (c->ghostLane >= 0) {   // still partly in the old lane until our centre is within a cell of the new one
+        float cx = c->x - cosf(c->heading) * wb * 0.5f + cosf(hp) * wb * 0.5f, cy = c->y - sinf(c->heading) * wb * 0.5f + sinf(hp) * wb * 0.5f;
+        if (fabsf((cx - px) * -sinf(hp) + (cy - py) * cosf(hp)) < 1.0f * CS && c->latOff == 0) c->ghostLane = -1;
+    }
     if (c->latOff != 0) {   // changing lanes: aim at a line drifting from the old lane to the new one
         px += -sinf(hp) * c->latOff; py += cosf(hp) * c->latOff;
-        float shrink = fmaxf(v, 1.0f * CS) * dt * (3.0f / TR_LANE_CHANGE_CELLS);
+        // by distance driven, not time: a car changing lanes in a queue mustn't be told to be
+        // in the new lane while it stands still (it ended up across both, and was hit)
+        float shrink = v * dt * (3.0f / TR_LANE_CHANGE_CELLS);
         if (fabsf(c->latOff) <= shrink) c->latOff = 0; else c->latOff -= c->latOff > 0 ? shrink : -shrink;
-        if (fabsf(c->latOff) < 1.0f * CS) c->ghostLane = -1;
     }
     float fx = c->x + cosf(c->heading) * wb * 0.5f, fy = c->y + sinf(c->heading) * wb * 0.5f;
     float e = (fx - px) * -sinf(hp) + (fy - py) * cosf(hp);   // + = front is on the +90 degree side
@@ -848,8 +906,22 @@ static void DriveCar(int i, float dt) {
 // ---------------------------------------------------------------------------
 // "Not silly" samples: cars touching each other, cars touching walls
 // ---------------------------------------------------------------------------
+// Cars bucketed in a coarse grid (8 cells) so the touch test only compares neighbours
+#define TR_BUCKET 8
+static int bucketHead[(2048 / TR_BUCKET + 1) * (2048 / TR_BUCKET + 1)], bucketNext[MAX_CARS];
+
 static void Sample(void) {
     int pairs = 0, off = 0;
+    int bw = gridWidth / TR_BUCKET + 1, bh = gridHeight / TR_BUCKET + 1;
+    for (int b = 0; b < bw * bh; b++) bucketHead[b] = -1;
+    for (int i = 0; i < carCount; i++) {
+        const Car* a = &cars[i];
+        if (!a->active || !a->onRoad) continue;
+        int bx = (int)(a->x / CELL_SIZE) / TR_BUCKET, by = (int)(a->y / CELL_SIZE) / TR_BUCKET;
+        if (bx < 0 || by < 0 || bx >= bw || by >= bh) continue;
+        bucketNext[i] = bucketHead[by * bw + bx];
+        bucketHead[by * bw + bx] = i;
+    }
     for (int i = 0; i < carCount; i++) {
         const Car* a = &cars[i];
         if (!a->active || !a->onRoad) continue;
@@ -863,9 +935,13 @@ static void Sample(void) {
                        a->speed / CELL_SIZE, a->steer * 57.3f);
             }
         }
-        for (int j = i + 1; j < carCount; j++) {
+        int bx = (int)(a->x / CELL_SIZE) / TR_BUCKET, by = (int)(a->y / CELL_SIZE) / TR_BUCKET;
+        for (int ny = by - 1; ny <= by + 1; ny++)
+        for (int nx = bx - 1; nx <= bx + 1; nx++) {
+        if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+        for (int j = bucketHead[ny * bw + nx]; j >= 0; j = bucketNext[j]) {
+            if (j <= i) continue;
             const Car* b = &cars[j];
-            if (!b->active || !b->onRoad) continue;
             float dx = a->x - b->x, dy = a->y - b->y;
             if (dx * dx + dy * dy > 9.0f * CELL_SIZE * CELL_SIZE) continue;
             if (CarBodiesOverlap(a->x, a->y, a->heading, b->x, b->y, b->heading, -2.0f)) {
@@ -880,6 +956,7 @@ static void Sample(void) {
                 }
             }
         }
+        }
     }
     trafficSamples++;
     trafficOverlapSamples += pairs;
@@ -890,6 +967,9 @@ static void Sample(void) {
 void TrafficTick(float dt) {
     if (rdSegCount == 0) return;
     trTime += dt;
+    PROFILE_BEGIN(TrafficLists);
+    if (trRoutesTick > trRoutesTickMax) trRoutesTickMax = trRoutesTick;
+    trRoutesTick = 0;
     for (int s = 0; s < rdSegCount; s++) segHead[s] = ghostHead[s] = -1;
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
@@ -899,17 +979,25 @@ void TrafficTick(float dt) {
         segHead[sg] = i;
         if (c->ghostLane >= 0) { ghostNext[i] = ghostHead[c->ghostLane]; ghostHead[c->ghostLane] = i; }
     }
+    PROFILE_END(TrafficLists);
     // Queues make a lane look longer to new trips (drivers avoid jams)
     for (int s = 0; s < rdSegCount; s++) {
         float slow = 0;
         for (int o = segHead[s]; o >= 0; o = carNext[o]) if (cars[o].speed < 1.0f * CELL_SIZE) slow += 1;
         rdSegExtra[s] = slow * TR_QUEUE_COST * CELL_SIZE;
     }
+    CountRings();
+    PROFILE_BEGIN(TrafficJunctions);
     ServeJunctions(dt);
+    PROFILE_END(TrafficJunctions);
+    PROFILE_BEGIN(TrafficDrive);
     for (int i = 0; i < carCount; i++)
         if (cars[i].active && cars[i].onRoad) DriveCar(i, dt);
+    PROFILE_END(TrafficDrive);
     static int tick = 0;
+    PROFILE_BEGIN(TrafficSample);
     if ((tick++ % 30) == 0) Sample();
+    PROFILE_END(TrafficSample);
 }
 
 static void DumpJunctions(void) {
@@ -937,6 +1025,21 @@ static void DumpJunctions(void) {
 }
 
 void TrafficPrintStats(void) {
+    if (getenv("TR_NET")) {
+        static int in[RD_MAX_SEGS];
+        memset(in, 0, sizeof(in));
+        int noOut = 0, noIn = 0, unreach = 0;
+        for (int s = 0; s < rdSegCount; s++) if (rdSegs[s].kind == RD_CONN) in[rdSegs[s].to]++;
+        for (int i = 0; i < RoadLaneCount(); i++) {
+            int l = RoadLaneAt(i);
+            if (rdSegs[l].nOut == 0) { if (noOut++ < 5) printf("  lane %d: no way out (node %d, %d roads, ring %d)\n", l, rdSegs[l].to, rdNodes[rdSegs[l].to].nEdge, rdNodes[rdSegs[l].to].ring); }
+            if (in[l] == 0) { if (noIn++ < 5) printf("  lane %d: no way in (from node %d, %d roads, ring %d)\n", l, rdSegs[l].from, rdNodes[rdSegs[l].from].nEdge, rdNodes[rdSegs[l].from].ring); }
+        }
+        short tmp[CAR_MAX_ROUTE];
+        int l0 = RoadLaneAt(0);
+        for (int i = 0; i < RoadLaneCount(); i++) if (RoadRoute(l0, RoadLaneAt(i), tmp, CAR_MAX_ROUTE) <= 0) unreach++;
+        printf("network: %d lanes, %d with no way out, %d with no way in, %d unreachable from lane %d\n", RoadLaneCount(), noOut, noIn, unreach, l0);
+    }
     if (getenv("TR_RING")) {
         printf("ring: entering asks %ld, ring full %ld\n", dbgEnterAsk, dbgRingFull);
         for (int r = 0; r < rdNodeCount; r++) {
@@ -1003,6 +1106,8 @@ void TrafficPrintStats(void) {
            held, asked, trafficJunctionWaitMax, rer);
     int parked = 0;
     for (int i = 0; i < carCount; i++) if (cars[i].active && cars[i].onRoad && cars[i].parkTime > 0) parked++;
+    printf("  route searches: %ld for trips (%ld found nothing), %ld re-routes (%ld), %ld lane changes (%ld); most in one tick %d\n",
+           trRoutes[0], trRouteFails[0], trRoutes[1], trRouteFails[1], trRoutes[2], trRouteFails[2], trRoutesTickMax);
     if (trafficLightCount > 0)
         printf("  lights: %d cars entered lit junctions, %d of them on red\n", trafficLightEntries, trafficRedRuns);
     printf("  parking: %d bays, %d cars parked now; longest wait to pull out %.1f s\n", rdBayCount, parked, trafficPullOutWaitMax);

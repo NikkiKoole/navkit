@@ -3318,6 +3318,9 @@ static bool CityConnected(const unsigned char* gone, int nodes) {
     return count == nodes;
 }
 
+// Avenues: the middle row / column of a small city, every 8th in a big one
+static bool CityAvenueRow(int k, int n) { return n <= 12 ? k == n / 2 : (k % 8) == 4; }
+
 static void SetupCarsCity(void) {
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
@@ -3331,8 +3334,12 @@ static void SetupCarsCity(void) {
     carFollow = false;
 
     cityRng = (unsigned int)carCitySeed;
-    const int cols = 9, rows = 7;
+    // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
     const float spacing = 36, origin = 20;
+    int cols = (int)((gridWidth - 2 * origin) / spacing) + 1, rows = (int)((gridHeight - 2 * origin) / spacing) + 1;
+    if (cols < 3) cols = 3;
+    if (rows < 3) rows = 3;
+    if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
     RoadsClear();
     for (int j = 0; j < rows; j++)
         for (int i = 0; i < cols; i++)
@@ -3370,16 +3377,17 @@ static void SetupCarsCity(void) {
         int ne = RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
         // Avenues: the middle row and the middle column, two lanes each way
         int ia = keep[e].a % cols, ja = keep[e].a / cols, ib = keep[e].b % cols, jb = keep[e].b / cols;
-        if (carCityAvenues && ((ja == rows / 2 && jb == rows / 2) || (ia == cols / 2 && ib == cols / 2))) RoadSetAvenue(ne);
+        if (carCityAvenues && ((ja == jb && CityAvenueRow(ja, rows)) || (ia == ib && CityAvenueRow(ia, cols)))) RoadSetAvenue(ne);
     }
     // Roundabouts on some 4-way junctions (not next to each other, not on the edge)
     int made = 0;
     unsigned char near[RD_MAX_NODES] = {0};
-    for (int tries = 0; tries < 200 && made < carCityRoundabouts; tries++) {
+    int wantRings = carCityRoundabouts * cols * rows / 63;   // per 63 junctions (the default city)
+    for (int tries = 0; tries < 200 + 20 * wantRings && made < wantRings; tries++) {
         int n = CityRand(nodes);
         int i = n % cols, j = n / cols;
         if (i == 0 || j == 0 || i == cols - 1 || j == rows - 1 || rdNodes[n].nEdge != 4 || near[n]) continue;
-        if (carCityAvenues && (i == cols / 2 || j == rows / 2)) continue;   // not on an avenue
+        if (carCityAvenues && (CityAvenueRow(i, cols) || CityAvenueRow(j, rows))) continue;   // not on an avenue
         int nb[RD_MAX_NODE_EDGES], nn = rdNodes[n].nEdge;
         for (int k = 0; k < nn; k++) {
             const RdEdge* e = &rdEdges[rdNodes[n].edge[k]];
@@ -3398,7 +3406,7 @@ static void SetupCarsCity(void) {
 
     // Cars parked in random bays, leaving over the first 30 s; any left over on lanes
     int placed = 0;
-    for (int tries = 0; tries < carCityCount * 20 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
+    for (int tries = 0; carCityParking && tries < carCityCount * 4 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
         if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
     for (int tries = 0; tries < carCityCount * 50 && placed < carCityCount; tries++) {
         int lane = RoadLaneAt(CityRand(RoadLaneCount()));

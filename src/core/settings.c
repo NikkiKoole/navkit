@@ -684,6 +684,8 @@ static const Setting settings[] = {
       "How many 4-way junctions of cars-city become roundabouts (restart the scenario to apply).", NULL),
     SET_BOOL("carCityAvenues", "City Avenues", "Experiments/Cars", carCityAvenues,
       "The middle row and column of cars-city are avenues: two lanes each way, cars overtake (restart the scenario to apply)."),
+    SET_BOOL("carCityParking", "City Parking", "Experiments/Cars", carCityParking,
+      "Cars in cars-city park in bays between trips. Off: they start on the roads and just drive (for load tests with more cars than bays)."),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
       "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,

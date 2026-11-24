@@ -12,14 +12,26 @@ RdNode rdNodes[RD_MAX_NODES];
 RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
 int rdNodeCount = 0, rdEdgeCount = 0, rdSegCount = 0;
-float rdX[RD_MAX_PTS], rdY[RD_MAX_PTS], rdS[RD_MAX_PTS];
-static int rdPtCount = 0;
+float *rdX = NULL, *rdY = NULL, *rdS = NULL;
+static int rdPtCount = 0, rdPtCap = 0;
+
+static void EnsurePts(int n) {
+    if (rdPtCount + n <= rdPtCap) return;
+    int cap = rdPtCap ? rdPtCap : 65536;
+    while (cap < rdPtCount + n) cap *= 2;
+    rdX = realloc(rdX, sizeof(float) * cap);
+    rdY = realloc(rdY, sizeof(float) * cap);
+    rdS = realloc(rdS, sizeof(float) * cap);
+    rdPtCap = cap;
+}
 RdBay rdBays[RD_MAX_BAYS];
 int rdBayCount = 0;
 float rdSegExtra[RD_MAX_SEGS];
 static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 
 #define RD_STEP 8.0f            // px between points
+#define RD_MAX_TURN 2.1f        // radians (~120 degrees): sharpest turn through a junction
+#define RD_MAX_TURN_SHARP 2.6f  // (~150) allowed where nothing else leads in / out of a lane
 #define RD_CONFLICT 2.6f        // cells: connectors closer than this conflict
 #define RD_ROUTE_TMP 4096
 
@@ -69,13 +81,16 @@ static int SegFromTmp(int n, RdSegKind kind) {
     memset(sg, 0, sizeof(*sg));
     sg->kind = kind;
     sg->bay = -1;
+    float total = 0;
+    for (int i = 0; i + 1 < n; i++) total += sqrtf((tmpX[i + 1] - tmpX[i]) * (tmpX[i + 1] - tmpX[i]) + (tmpY[i + 1] - tmpY[i]) * (tmpY[i + 1] - tmpY[i]));
+    EnsurePts((int)(total / RD_STEP) + 4);
     sg->p0 = rdPtCount;
     float acc = 0;            // arc length at tmp[i]
     float next = 0;           // next sample's arc length
-    for (int i = 0; i + 1 < n && rdPtCount < RD_MAX_PTS - 2; i++) {
+    for (int i = 0; i + 1 < n; i++) {
         float dx = tmpX[i + 1] - tmpX[i], dy = tmpY[i + 1] - tmpY[i];
         float L = sqrtf(dx * dx + dy * dy);
-        while (next <= acc + L && rdPtCount < RD_MAX_PTS - 2) {
+        while (next <= acc + L) {
             float t = L > 1e-6f ? (next - acc) / L : 0;
             rdX[rdPtCount] = tmpX[i] + dx * t;
             rdY[rdPtCount] = tmpY[i] + dy * t;
@@ -93,6 +108,11 @@ static int SegFromTmp(int n, RdSegKind kind) {
     }
     sg->n = rdPtCount - sg->p0;
     sg->len = rdS[rdPtCount - 1];
+    sg->bx0 = sg->by0 = 1e30f; sg->bx1 = sg->by1 = -1e30f;
+    for (int i = sg->p0; i < rdPtCount; i++) {
+        sg->bx0 = fminf(sg->bx0, rdX[i]); sg->bx1 = fmaxf(sg->bx1, rdX[i]);
+        sg->by0 = fminf(sg->by0, rdY[i]); sg->by1 = fmaxf(sg->by1, rdY[i]);
+    }
     return rdSegCount++;
 }
 
@@ -190,14 +210,14 @@ static int BuildLane(int ei, int dir, int k) {
 }
 
 // A connector through `node` from the end of lane `in` to the start of lane `out`
-static int BuildConnector(int node, int in, int out) {
+static int BuildConnector(int node, int in, int out, float maxTurn) {
     const RdSeg* a = &rdSegs[in];
     const RdSeg* b = &rdSegs[out];
     float x0 = rdX[a->p0 + a->n - 1], y0 = rdY[a->p0 + a->n - 1];
     float x3 = rdX[b->p0], y3 = rdY[b->p0];
     float h0 = SegHeading(in, a->n - 1), h3 = SegHeading(out, 0);
     float turn = fabsf(AngleDiff(h3 - h0));
-    if (turn > 2.6f) return -1;                       // ~150 degrees: a U-turn, not offered
+    if (turn > maxTurn) return -1;   // a U-turn, or (> ~120 degrees) so sharp it sweeps the stop lines
     float d = sqrtf((x3 - x0) * (x3 - x0) + (y3 - y0) * (y3 - y0));
     float k = d * (turn < 0.3f ? 0.33f : 0.42f);
     float x1 = x0 + cosf(h0) * k, y1 = y0 + sinf(h0) * k;
@@ -328,7 +348,45 @@ bool RoadMakeRoundabout(int node, float rCells) {
     return true;
 }
 
+static void BuildAll(float latAccel);
+
+// Junctions where a curve passes within RD_CONFLICT of where a car waits at another
+// lane's stop line (its centre ~1.4 cells before the lane's end) get one more cell of
+// setback; true if any did (then build again)
+static bool PushBackCrampedJunctions(void) {
+    bool changed = false;
+    float lim = RD_CONFLICT * CELL_SIZE, back = 1.4f * CELL_SIZE;
+    for (int ni = 0; ni < rdNodeCount; ni++) {
+        RdNode* nd = &rdNodes[ni];
+        if (nd->ring || nd->nConn == 0 || nd->setback >= 14) continue;
+        bool cramped = false;
+        for (int q = 0; q < nd->nConn && !cramped; q++) {
+            const RdSeg* C = &rdSegs[nd->conn[q]];
+            for (int q2 = 0; q2 < nd->nConn && !cramped; q2++) {
+                int lane = rdSegs[nd->conn[q2]].from;
+                if (lane == C->from) continue;
+                const RdSeg* Ln = &rdSegs[lane];
+                float wx, wy, wh;
+                RoadPointAt(lane, Ln->len - back, &wx, &wy, &wh);
+                for (int i = 0; i < C->n; i++) {
+                    float dx = rdX[C->p0 + i] - wx, dy = rdY[C->p0 + i] - wy;
+                    if (dx * dx + dy * dy < lim * lim) { cramped = true; break; }
+                }
+            }
+        }
+        if (cramped) { nd->setback += 1.0f; changed = true; }
+    }
+    return changed;
+}
+
 void RoadsBuild(float latAccel) {
+    for (int pass = 0; pass < 6; pass++) {
+        BuildAll(latAccel);
+        if (!PushBackCrampedJunctions()) break;
+    }
+}
+
+static void BuildAll(float latAccel) {
     rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     for (int i = 0; i < rdNodeCount; i++) rdNodes[i].nConn = 0;
     // An avenue's junctions need more room (its lanes reach 6 cells from its centre line)
@@ -354,7 +412,9 @@ void RoadsBuild(float latAccel) {
         }
     }
     // Connectors: each lane ending at a node to the lane with the same index (or the
-    // road's only lane) leaving it on every other road
+    // road's only lane) leaving it on every other road; a one-lane road's lane also to an
+    // avenue's overtaking lane (else, where an avenue starts, nothing leads into that lane
+    // and every lane only reachable through it is cut off - found on big maps)
     for (int ni = 0; ni < rdNodeCount; ni++) {
         RdNode* nd = &rdNodes[ni];
         for (int i = 0; i < nd->nEdge; i++) {
@@ -368,8 +428,37 @@ void RoadsBuild(float latAccel) {
                     const RdEdge* ej = &rdEdges[nd->edge[j]];
                     int od = ej->a == ni ? 0 : 1;                      // the direction leaving here
                     int out = (k == 1 && ej->lane2[od] >= 0) ? ej->lane2[od] : ej->lane[od];
-                    if (out >= 0) BuildConnector(ni, ins[k], out);
+                    if (out >= 0) BuildConnector(ni, ins[k], out, RD_MAX_TURN);
+                    if (k == 0 && ins[1] < 0 && ej->lane2[od] >= 0) BuildConnector(ni, ins[0], ej->lane2[od], RD_MAX_TURN);
                 }
+            }
+        }
+        // Sharper turns (up to ~150 degrees) only where a lane would otherwise have no way
+        // out or no way in (roads meeting at a sharp angle)
+        for (int i = 0; i < nd->nEdge; i++) {
+            const RdEdge* ei = &rdEdges[nd->edge[i]];
+            int d = ei->a == ni ? 1 : 0, od0 = ei->a == ni ? 0 : 1;
+            int lanesIn[2] = {ei->lane[d], ei->lane2[d]}, lanesOut[2] = {ei->lane[od0], ei->lane2[od0]};
+            for (int k = 0; k < 2; k++) {
+                int in = lanesIn[k];
+                if (in >= 0 && rdSegs[in].nOut == 0)
+                    for (int j = 0; j < nd->nEdge; j++) {
+                        if (j == i) continue;
+                        const RdEdge* ej = &rdEdges[nd->edge[j]];
+                        int out = ej->a == ni ? ej->lane[0] : ej->lane[1];
+                        if (out >= 0) BuildConnector(ni, in, out, RD_MAX_TURN_SHARP);
+                    }
+                int out = lanesOut[k];
+                if (out < 0) continue;
+                bool fed = false;
+                for (int q = 0; q < nd->nConn && !fed; q++) if (rdSegs[nd->conn[q]].to == out) fed = true;
+                if (!fed)
+                    for (int j = 0; j < nd->nEdge; j++) {
+                        if (j == i) continue;
+                        const RdEdge* ej = &rdEdges[nd->edge[j]];
+                        int in2 = ej->a == ni ? ej->lane[1] : ej->lane[0];
+                        if (in2 >= 0) BuildConnector(ni, in2, out, RD_MAX_TURN_SHARP);
+                    }
             }
         }
         for (int i = 0; i < nd->nConn; i++)
@@ -408,6 +497,37 @@ void RoadPointAt(int seg, float s, float* x, float* y, float* h) {
 // ---------------------------------------------------------------------------
 // Routing: Dijkstra over lanes (a lane's cost = its length + the connector into it)
 // ---------------------------------------------------------------------------
+// A binary heap of (dist, lane) for RoadRoute; stale entries are skipped on pop
+typedef struct { float d; int l; } RdHeapItem;
+static RdHeapItem rdHeap[RD_MAX_SEGS * 2];
+static int rdHeapN = 0;
+static void RdHeapPush(float d, int l) {
+    if (rdHeapN >= RD_MAX_SEGS * 2) return;
+    int i = rdHeapN++;
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (rdHeap[p].d <= d) break;
+        rdHeap[i] = rdHeap[p];
+        i = p;
+    }
+    rdHeap[i] = (RdHeapItem){d, l};
+}
+static RdHeapItem RdHeapPop(void) {
+    RdHeapItem top = rdHeap[0], last = rdHeap[--rdHeapN];
+    int i = 0;
+    for (;;) {
+        int a = 2 * i + 1, b = a + 1, m = i;
+        float md = last.d;
+        if (a < rdHeapN && rdHeap[a].d < md) { m = a; md = rdHeap[a].d; }
+        if (b < rdHeapN && rdHeap[b].d < md) { m = b; }
+        if (m == i) break;
+        rdHeap[i] = rdHeap[m];
+        i = m;
+    }
+    rdHeap[i] = last;
+    return top;
+}
+
 int RoadRoute(int fromLane, int toLane, short* out, int max) {
     static float dist[RD_MAX_SEGS];
     static int prevLane[RD_MAX_SEGS], prevConn[RD_MAX_SEGS];
@@ -416,27 +536,26 @@ int RoadRoute(int fromLane, int toLane, short* out, int max) {
         int l = rdLanes[i];
         dist[l] = 1e30f; prevLane[l] = -1; prevConn[l] = -1; done[l] = 0;
     }
+    rdHeapN = 0;
     // Start: the lanes reachable from fromLane's end (fromLane itself only by a loop)
     const RdSeg* f = &rdSegs[fromLane];
     for (int k = 0; k < f->nOut; k++) {
         int c = f->out[k], l = rdSegs[c].to;
         float d = rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
-        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; }
+        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; RdHeapPush(d, l); }
     }
     for (;;) {
-        int best = -1;
-        for (int i = 0; i < rdLaneCount; i++) {
-            int l = rdLanes[i];
-            if (!done[l] && dist[l] < 1e29f && (best < 0 || dist[l] < dist[best])) best = l;
-        }
-        if (best < 0) return 0;
+        if (rdHeapN == 0) return 0;
+        RdHeapItem it = RdHeapPop();
+        int best = it.l;
+        if (done[best] || it.d > dist[best]) continue;
         if (best == toLane) break;
         done[best] = 1;
         const RdSeg* b = &rdSegs[best];
         for (int k = 0; k < b->nOut; k++) {
             int c = b->out[k], l = rdSegs[c].to;
             float d = dist[best] + rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
-            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; }
+            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; RdHeapPush(d, l); }
         }
     }
     // Walk back: toLane, conn, lane, ..., fromLane (stop when we reach fromLane the first time
