@@ -51,5 +51,8 @@ Open points, from the first look:
   plus a small region-door graph.
 - dreamengine's lock scheme (0 never locked, 1..999 household, 1000+g group key) maps onto
   key items carrying that id.
+- Use case from dreamengine: the station FARE_GATE (proposed there): passed both ways by
+  anyone holding a ticket, so a ticket is just another key item; plus an escape flag that
+  opens it for everyone in a fire.
 - Questions for later: keyring/pocket slot vs hands; doors that stay unlocked once opened;
   who gets keys at the start; fetch-the-key-first jobs (one level only).
