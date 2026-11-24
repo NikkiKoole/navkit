@@ -23,6 +23,7 @@ __pycache__/
 
 # Debug/temp
 navkit_sound.log
+navkit_find.txt
 screenshot*.png
 daw_output.wav
 daw_sound.log

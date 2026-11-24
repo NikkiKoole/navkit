@@ -47,6 +47,44 @@ static struct {
 
 // The item brush: an item row picked in the palette, placed with left clicks
 static int brushItem = -1;
+static int brushCount = 1;   // items per click (mouse wheel)
+
+// Pins and recent survive a restart: a small per-user file (not the save game), rows named by
+// path + label (FindRowKey), so a row that moved or went away is simply dropped
+#define PAL_USE_FILE "navkit_find.txt"
+static bool useLoaded;
+
+static void LoadUse(void) {
+    useLoaded = true;
+    FILE* f = fopen(PAL_USE_FILE, "r");
+    if (!f) return;
+    char line[256];
+    int recentRows[FIND_MAX_RECENT], nRecent = 0;
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strncmp(line, "pin ", 4) == 0) {
+            int row = FindRowByKey(line + 4);
+            if (row >= 0) FindSetPinned(row, true);
+        } else if (strncmp(line, "recent ", 7) == 0 && nRecent < FIND_MAX_RECENT) {
+            int row = FindRowByKey(line + 7);
+            if (row >= 0) recentRows[nRecent++] = row;
+        }
+    }
+    fclose(f);
+    for (int i = nRecent - 1; i >= 0; i--) FindNoteUsed(recentRows[i]);   // file: most recent first
+}
+
+static void SaveUse(void) {
+    FILE* f = fopen(PAL_USE_FILE, "w");
+    if (!f) return;
+    int rows[FIND_MAX_PINNED];
+    char key[FIND_PATH_LEN + FIND_LABEL_LEN + 2];
+    int n = FindPinned(rows, FIND_MAX_PINNED);
+    for (int i = 0; i < n; i++) { FindRowKey(rows[i], key, sizeof(key)); fprintf(f, "pin %s\n", key); }
+    n = FindRecent(rows, FIND_MAX_RECENT);
+    for (int i = 0; i < n; i++) { FindRowKey(rows[i], key, sizeof(key)); fprintf(f, "recent %s\n", key); }
+    fclose(f);
+}
 
 // What the mouse was over when / was pressed (or the selection): its verbs and a few describe
 // lines go on top of the palette, and its verbs run on it
@@ -100,6 +138,7 @@ bool Palette_IsOpen(void) { return pal.open; }
 
 void Palette_Open(void) {
     FindBuildIndex();
+    if (!useLoaded) LoadUse();
     pal.open = true;
     pal.query[0] = '\0';
     pal.qlen = 0;
@@ -111,7 +150,11 @@ void Palette_Open(void) {
     PickContext();
 }
 
-void Palette_Close(void) { pal.open = false; pal.cmdRow = -1; }
+void Palette_Close(void) {
+    if (pal.open) SaveUse();
+    pal.open = false;
+    pal.cmdRow = -1;
+}
 
 // ---------------------------------------------------------------------------
 // Settings: show and change a value in place
@@ -328,7 +371,8 @@ static void ActivateRow(int row) {
         }
         case FIND_ITEM:
             brushItem = r->ref;
-            AddMessage(TextFormat("%s: L-click places (Shift: 10), R-click or Esc stops", r->label), SKYBLUE);
+            brushCount = 1;
+            AddMessage(TextFormat("%s: L-click places, wheel sets how many, R-click or Esc stops", r->label), SKYBLUE);
             Palette_Close();
             break;
         case FIND_SCENARIO:
@@ -428,15 +472,28 @@ static bool UpdateBrush(void) {
     if (UpdateTeleportPick()) return true;
     if (brushItem < 0) return false;
     if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { brushItem = -1; return true; }
+    float wheel = GetMouseWheelMove();   // the wheel sets the count (no zoom while brushing)
+    if (wheel != 0) {
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        brushCount += (wheel > 0 ? 1 : -1) * (shift ? 10 : 1);
+        if (brushCount < 1) brushCount = 1;
+        if (brushCount > 100) brushCount = 100;
+        return true;
+    }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ui_wants_mouse()) {
-        bool many = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        CommandRunLine(TextFormat("spawn %d %s", many ? 10 : 1, itemDefs[brushItem].name));
+        CommandRunLine(TextFormat("spawn %d %s", brushCount, itemDefs[brushItem].name));
         return true;
     }
     return false;
 }
 
+// While the palette is open the other widgets (dev sidebar, inspector) must not see the mouse:
+// shared/ui.h widgets read GetMousePosition() themselves while drawing. The palette reads the
+// real position here, then moves the mouse far away for the rest of the frame.
+#define PAL_HIDE_MOUSE (-100000)
+
 bool Palette_Update(void) {
+    SetMouseOffset(0, 0);
     if (!pal.open) {
         // '/' opens (the character, so any keyboard layout works); other typed characters
         // are nobody else's when the console is closed
@@ -518,6 +575,7 @@ bool Palette_Update(void) {
                 else if (s->type == SETTING_CHOICE) SettingStep(s, 1, false);
             } else if (shift && pal.entries[hover].kind == PE_ROW) {
                 FindSetPinned(pal.entries[hover].row, !FindIsPinned(pal.entries[hover].row));   // Shift+click pins
+                SaveUse();
             } else {
                 pal.sel = hover;
                 Activate(hover);
@@ -529,9 +587,11 @@ bool Palette_Update(void) {
         int i = pinKey ? pal.sel : hover;
         if (i >= 0 && i < pal.count && pal.entries[i].kind == PE_ROW)
             FindSetPinned(pal.entries[i].row, !FindIsPinned(pal.entries[i].row));
+            SaveUse();
     } else if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
         Activate(pal.count > 0 ? pal.sel : -1);
     }
+    if (pal.open) SetMouseOffset(PAL_HIDE_MOUSE, PAL_HIDE_MOUSE);
     return true;
 }
 
@@ -557,7 +617,7 @@ static void DrawBrushLabel(void) {
         return;
     }
     if (brushItem < 0) return;
-    const char* t = TextFormat("%s  (L-click place, Shift 10, R-click stop)", itemDefs[brushItem].name);
+    const char* t = TextFormat("%s x%d  (L-click place, wheel count, R-click stop)", itemDefs[brushItem].name, brushCount);
     DrawTextShadow(t, (int)m.x + 16, (int)m.y + 12, PAL_FONT, SKYBLUE);
 }
 

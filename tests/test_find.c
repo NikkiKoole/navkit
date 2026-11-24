@@ -127,6 +127,15 @@ describe(find_use) {
         int r[4];
         expect(FindRecent(r, 4) == 2 && r[0] == 0 && r[1] == 1);
     }
+    it("names a row by path and label, and finds it again after a rebuild") {
+        Rows();
+        char key[160];
+        FindRowKey(1, key, sizeof(key));
+        expect(strcmp(key, "Tools/Work/Build/Workshop/Fire pit") == 0);
+        Rows();
+        expect(FindRowByKey(key) == 1);
+        expect(FindRowByKey("Tools/Gone") == -1);
+    }
     it("pins and unpins") {
         Rows();
         FindForgetUse();

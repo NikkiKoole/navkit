@@ -82,7 +82,8 @@ The palette works end to end (`/` in game). In order:
    clear here, tp), and its describe lines on top (`describe.c`). Mostly wiring: verbs are data,
    `FindRow.kind == FIND_VERB` rows already carry their selection kind in the path. Check first
    what right-click does in normal mode today (it should be nothing important).
-3. **Small polish** (can go along with 2):
+3. **Small polish**: done 2026-11-25 except "settings remember the last typed value" (see Done
+   so far). Original list:
    - pins and recent saved between runs: a small per-user file, not the save game
      (`FindNoteUsed` / `FindSetPinned` keep kind + ref, so they survive a rebuild);
    - the palette blocks clicks to widgets under it (shared/ui.h widgets don't check
@@ -104,6 +105,13 @@ Recommended: 1, then 2 with 3 alongside.
 
 ## Done so far
 
+- 2026-11-25: **palette polish.** Pins and recent survive a restart: `navkit_find.txt` in the
+  working directory (git-ignored), rows named by path + label (`FindRowKey` / `FindRowByKey`),
+  loaded on the first `/`, saved when a pin changes and when the palette closes. While the
+  palette is open the other widgets don't see the mouse (`SetMouseOffset` moves it away after
+  the palette has read it), so clicks can't fall through to the dev sidebar or inspector.
+  The item brush count is set with the mouse wheel (Shift: 10 at a time; no zoom while
+  brushing), shown on the cursor ("Log x5").
 - 2026-11-25: **mover dev verbs** (b55d59f3): Teleport (then L-click a cell), Fill needs, Cancel
   job, Debug (path in orange + inspector shows DESC_DEBUG lines). Rows in the SelectionVerb
   table, so the palette (hover + `/`) and the inspector show them; inspector verb buttons wrap.
