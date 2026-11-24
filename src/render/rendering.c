@@ -314,28 +314,28 @@ static int PlankSpriteForMaterial(MaterialType mat) {
     }
 }
 
-// A railing runs along its railing neighbours: N/S makes it vertical, E/W horizontal.
-// With no railing neighbour it lines up with a wall it butts against. A north+east
-// corner is └, north+west ┘; other corners, junctions and a lone post draw horizontal.
-static bool RailingLinksTo(int x, int y, int z, bool wallsToo) {
+// A railing joins its railing neighbours: one rail-* tile per N/E/S/W mask (corners,
+// T-junctions, cross). With no railing neighbour it joins the walls it butts against.
+// A dead end draws straight; a lone railing draws east-west.
+static bool RailingLinksTo(int x, int y, int z, bool walls) {
     if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
     CellType c = GRID(x, y, z);
-    if (c == CELL_RAILING) return true;
-    return wallsToo && CellBlocksMovement(c);
+    return walls ? CellBlocksMovement(c) && c != CELL_RAILING : c == CELL_RAILING;
 }
 
 static int RailingSpriteAt(int x, int y, int z) {
-    for (int pass = 0; pass < 2; pass++) {
-        bool walls = pass == 1;
-        bool n = RailingLinksTo(x, y - 1, z, walls), s = RailingLinksTo(x, y + 1, z, walls);
-        bool e = RailingLinksTo(x + 1, y, z, walls), w = RailingLinksTo(x - 1, y, z, walls);
-        bool ns = n || s, ew = e || w;
-        if (n && !s && e && !w) return SPRITE_light_ne;
-        if (n && !s && w && !e) return SPRITE_light_nw;
-        if (ns && !ew) return SPRITE_light_vertical;
-        if (ns || ew) return SPRITE_light_horizontal;
+    static const int railSprites[16] = {   // bit 1 N, 2 E, 4 S, 8 W
+        [0]  = SPRITE_rail_ew,   [1]  = SPRITE_rail_ns,   [2]  = SPRITE_rail_ew,   [3]  = SPRITE_rail_ne,
+        [4]  = SPRITE_rail_ns,   [5]  = SPRITE_rail_ns,   [6]  = SPRITE_rail_es,   [7]  = SPRITE_rail_nes,
+        [8]  = SPRITE_rail_ew,   [9]  = SPRITE_rail_nw,   [10] = SPRITE_rail_ew,   [11] = SPRITE_rail_new,
+        [12] = SPRITE_rail_sw,   [13] = SPRITE_rail_nsw,  [14] = SPRITE_rail_esw,  [15] = SPRITE_rail_nesw,
+    };
+    int mask = 0;
+    for (int walls = 0; walls < 2 && mask == 0; walls++) {
+        mask = (RailingLinksTo(x, y - 1, z, walls) ? 1 : 0) | (RailingLinksTo(x + 1, y, z, walls) ? 2 : 0)
+             | (RailingLinksTo(x, y + 1, z, walls) ? 4 : 0) | (RailingLinksTo(x - 1, y, z, walls) ? 8 : 0);
     }
-    return SPRITE_light_horizontal;
+    return railSprites[mask];
 }
 
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
@@ -1867,6 +1867,12 @@ static void DrawMovers(void) {
         PROFILE_END(MoverPaths);
     }
     
+    // The debugged mover's path (mover verb Debug, selection.c), always
+    if (debugMoverIdx >= 0 && debugMoverIdx < moverCount && debugMoverIdx != hoveredMover && !showMoverPaths) {
+        Mover* m = &movers[debugMoverIdx];
+        if (m->active && m->pathIndex >= 0 && (int)m->z == viewZ)
+            DrawMoverPath(debugMoverIdx, m, offset.x + m->x * zoom, offset.y + m->y * zoom, viewZ, ORANGE, 2.0f, 2.0f, 0.6f);
+    }
     // Draw hovered mover's path (always, even if showMoverPaths is off)
     if (hoveredMover >= 0 && !showMoverPaths) {
         Mover* m = &movers[hoveredMover];
