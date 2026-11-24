@@ -42,6 +42,9 @@ typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
 
 typedef struct {
     float x, y;                         // pixels
+    float setback;                      // cells: lanes stop this far from it (RD_SETBACK; less on a roundabout)
+    bool ring;                          // a junction on a roundabout
+    int ringOf;                         // ring junction: the roundabout's centre node (-1: none)
     int edge[RD_MAX_NODE_EDGES], nEdge;
     int conn[RD_MAX_CONN], nConn;       // connector segments through this junction
     unsigned char conflict[RD_MAX_CONN][RD_MAX_CONN];   // by index into conn[]
@@ -50,7 +53,10 @@ typedef struct {
 typedef struct {
     int a, b;          // nodes
     float bend;        // cells: the middle of the road pushed this far sideways (0 = straight)
-    int lane[2];       // lane segments: [0] a -> b, [1] b -> a
+    int lane[2];       // lane segments: [0] a -> b, [1] b -> a (-1 on a one-way road)
+    bool oneWay;       // one lane, a -> b, on the centre line
+    bool arc;          // an arc round (arcX, arcY) at radius arcR px, angle decreasing (roundabouts)
+    float arcX, arcY, arcR;
 } RdEdge;
 
 typedef struct {
@@ -65,6 +71,7 @@ typedef struct {
     int bay;           // bay segments: their bay; lanes: -1
     float bayS;        // bay in: lane s where it leaves the lane; bay out: lane s where it joins (px)
     int bays[4], nBays;          // lane: its bays
+    bool priority;     // lane: has right of way at its junction (roundabout ring)
 } RdSeg;
 
 extern RdNode rdNodes[RD_MAX_NODES];
@@ -79,6 +86,14 @@ extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traf
 void RoadsClear(void);
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
+// A 4-way (or any) junction becomes a roundabout: a one-way ring of radius rCells round
+// it (anticlockwise on screen: right-hand traffic), each road ending at its own ring
+// junction; the ring has right of way. Before RoadsBuild.
+// Refuses (false) when two roads arrive so close in angle that a ring stretch between
+// their ring junctions would be shorter than RD_RING_MIN_LANE cells.
+#define RD_RING_SETBACK 3.5f    // cells: lanes stop this far from a ring junction
+#define RD_RING_MIN_LANE 6.0f   // cells: shortest ring stretch (a car + room to clear the junction)
+bool RoadMakeRoundabout(int node, float rCells);
 void RoadsBuild(float latAccel);          // lanes, connectors, conflicts, bend limits
 void RoadsCarve(int z);                   // open the roads (and junctions) in the world at z
 // Point, heading and curvature (1/px) at arc length s on a segment (clamped)

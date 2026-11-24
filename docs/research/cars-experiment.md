@@ -212,7 +212,8 @@ What it took (each measured):
 6. Junctions 30 cells apart left lanes of 8-11 cells (2-3 cars): queues spilled back
    fast. 36 apart. Then **traffic-aware routes** halved the worst waits (100 s -> 26 s).
 
-Diagnostics: `TR_TRACE=<car>`, `TR_WALLS=1`, `TR_TOUCH=1`, `TR_LONG=1`, `TR_JDUMP=1` (env, headless).
+Diagnostics (env, headless): `TR_TRACE=<car>`, `TR_WALLS`, `TR_TOUCH`, `TR_LONG`, `TR_JDUMP`,
+`TR_PULL`, `TR_HOLDS`, `TR_STILL`, `TR_RING`, `TR_BAY=<bay segment>` (see traffic.c's header).
 
 ## Parking bays (2026-11-24)
 
@@ -251,6 +252,32 @@ lights run** out of ~2000-2300 entries into lit junctions per run (counted, and 
 check fails on any). Throughput drops ~27% against first-come junctions (555 vs 765 trips at
 100 cars); junction waits 27-41 s (a red phase + the queue).
 
+## Roundabouts (2026-11-24)
+
+Setting `carCityRoundabouts` (3): 4-way junctions become a one-way ring (radius 12 cells, round
+a concrete island), anticlockwise on screen (right-hand traffic); each road ends at its own ring
+junction. New in the network: one-way roads, arc roads, a per-junction setback (3.5 cells on a
+ring), lanes with right of way (the ring).
+
+- **Ring has right of way:** its requests are served first; an entering car gives way to any
+  ring car whose path conflicts and is within 3 cells + 3 s of the junction (it may not have
+  asked yet).
+- **At most one car per ring stretch on the ring** (entering waits otherwise). "Capacity minus
+  one space per stretch" still let two cars per stretch lock the whole ring.
+- **Full exit: go round again.** A ring car whose exit has no room for 1 s takes one more lap
+  (it would otherwise stop on the ring and block it). Elsewhere a car waiting 15 s for room past
+  a junction plans another way round, if there is one.
+- **A junction only becomes a roundabout if every ring stretch is 6+ cells**: jittered roads
+  arriving at close angles made a 2.6-cell stretch nobody could ever enter (a permanent block).
+
+Found on the way (all junctions): a grant needs room for the car + its gap + **the distance to
+get its rear out of the junction** (0.6 cell more). With exactly a car + gap it could stop half
+in and keep holding the junction, blocking every crossing path.
+
+Results, 10 game minutes, 5 layouts x 100 / 128 cars, with lights and 3 roundabouts each:
+546-681 trips, junction waits 28-62 s, pull-out waits 21-59 s, longest standstill 28-58 s,
+**0 touches, 0 wall contacts, 0 red-light runs, no deadlocks**.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
@@ -258,8 +285,8 @@ check fails on any). Throughput drops ~27% against first-come junctions (555 vs 
   drive, park, get out; drive-or-walk choice next to `MaybeTakeTrain`.
 - Parking lots off the network (Hybrid A* into a space and back out, the driveway reserved
   like a junction); kerbside bays are done.
-- Roundabouts; overtaking (multi-lane roads); actuated lights (green on demand) or a green wave;
-  priority roads.
+- Overtaking (multi-lane roads); actuated lights (green on demand) or a green wave; priority
+  roads (PriorityComing already handles any lane with right of way).
 - **Step 4: pedestrians.** Cars brake for movers on the arc; movers step aside.
 - Parking: a goal heading (park facing the street) is a small planner change.
 - Reeds-Shepp shots, for tight spots and fewer expansions.

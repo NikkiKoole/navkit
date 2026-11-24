@@ -78,6 +78,8 @@ typedef struct {
     int bayFrom;           // the bay we're pulling out of (freed once we're on the lane)
     float parkTime;        // seconds left parked (> 0: parked)
     float pullWait;        // seconds waiting for a gap to pull out
+    float noRoom;          // seconds our junction request waits for room past the junction
+    int reroutes;          // times we planned round a full exit
     int why;               // TrafficWhy: why we brake (debug)
 
     // Stats (this leg, and totals)
@@ -106,6 +108,7 @@ extern int carTrafficCount;    // cars in the cars-traffic scenario
 extern int carCityCount;       // cars in the cars-city scenario
 extern int carCitySeed;        // its road layout
 extern bool carCityLights;     // traffic lights on its 4-way junctions
+extern int carCityRoundabouts; // 4-way junctions that become roundabouts
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance

@@ -680,6 +680,8 @@ static const Setting settings[] = {
       "Road layout of the cars-city scenario (restart the scenario to apply).", NULL),
     SET_BOOL("carCityLights", "City Traffic Lights", "Experiments/Cars", carCityLights,
       "Traffic lights on the 4-way junctions of cars-city (others: first come, first served). Restart the scenario to apply."),
+    SET_INT("carCityRoundabouts", "City Roundabouts", "Experiments/Cars", carCityRoundabouts, 0.1f, 0, 12,
+      "How many 4-way junctions of cars-city become roundabouts (restart the scenario to apply).", NULL),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
       "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,

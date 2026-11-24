@@ -34,6 +34,8 @@ int RoadAddNode(float cellX, float cellY) {
     memset(n, 0, sizeof(*n));
     n->x = cellX * CELL_SIZE;
     n->y = cellY * CELL_SIZE;
+    n->setback = RD_SETBACK;
+    n->ringOf = -1;
     return rdNodeCount++;
 }
 
@@ -41,6 +43,7 @@ int RoadAddEdge(int a, int b, float bendCells) {
     if (rdEdgeCount >= RD_MAX_EDGES) return -1;
     if (rdNodes[a].nEdge >= RD_MAX_NODE_EDGES || rdNodes[b].nEdge >= RD_MAX_NODE_EDGES) return -1;
     RdEdge* e = &rdEdges[rdEdgeCount];
+    memset(e, 0, sizeof(*e));
     e->a = a; e->b = b; e->bend = bendCells;
     e->lane[0] = e->lane[1] = -1;
     rdNodes[a].edge[rdNodes[a].nEdge++] = rdEdgeCount;
@@ -116,6 +119,18 @@ static float SegVmax(int seg, float latAccel) {
 // The centre line of an edge, dense, into tmp; returns the count
 static int EdgeCentre(const RdEdge* e) {
     float ax = rdNodes[e->a].x, ay = rdNodes[e->a].y, bx = rdNodes[e->b].x, by = rdNodes[e->b].y;
+    if (e->arc) {   // from a to b round the centre, angle decreasing
+        float t0 = atan2f(ay - e->arcY, ax - e->arcX), t1 = atan2f(by - e->arcY, bx - e->arcX);
+        while (t1 >= t0) t1 -= 6.2831853f;
+        while (t1 < t0 - 6.2831853f) t1 += 6.2831853f;
+        int n = 200;
+        for (int i = 0; i <= n; i++) {
+            float t = t0 + (t1 - t0) * i / n;
+            tmpX[i] = e->arcX + cosf(t) * e->arcR;
+            tmpY[i] = e->arcY + sinf(t) * e->arcR;
+        }
+        return n + 1;
+    }
     float mx = (ax + bx) * 0.5f, my = (ay + by) * 0.5f;
     float dx = bx - ax, dy = by - ay, L = sqrtf(dx * dx + dy * dy);
     float cx = mx + (-dy / L) * 2.0f * e->bend * CELL_SIZE, cy = my + (dx / L) * 2.0f * e->bend * CELL_SIZE;
@@ -141,10 +156,12 @@ static int BuildLane(int ei, int dir) {
         if (i > 0) acc += sqrtf((cx[i] - cx[i - 1]) * (cx[i] - cx[i - 1]) + (cy[i] - cy[i - 1]) * (cy[i] - cy[i - 1]));
         cs[i] = acc;
     }
-    float sb = RD_SETBACK * CELL_SIZE, off = RD_LANE_OFF * CELL_SIZE;
+    int startNode = dir == 0 ? e->a : e->b, endNode = dir == 0 ? e->b : e->a;
+    float sbA = rdNodes[startNode].setback * CELL_SIZE, sbB = rdNodes[endNode].setback * CELL_SIZE;
+    float off = e->oneWay ? 0 : RD_LANE_OFF * CELL_SIZE;
     int m = 0;
     for (int i = 0; i < n; i++) {
-        if (cs[i] < sb || cs[i] > acc - sb) continue;
+        if (cs[i] < sbA || cs[i] > acc - sbB) continue;
         int a = i > 0 ? i - 1 : 0, b = i + 1 < n ? i + 1 : n - 1;
         float tx = cx[b] - cx[a], ty = cy[b] - cy[a], tl = sqrtf(tx * tx + ty * ty);
         tx /= tl; ty /= tl;
@@ -158,6 +175,7 @@ static int BuildLane(int ei, int dir) {
     sg->from = dir == 0 ? e->a : e->b;
     sg->to = dir == 0 ? e->b : e->a;
     sg->node = sg->to;
+    sg->priority = e->arc;
     rdLanes[rdLaneCount++] = seg;
     return seg;
 }
@@ -245,12 +263,68 @@ static bool ConnectorsConflict(int s1, int s2) {
     return false;
 }
 
+bool RoadMakeRoundabout(int node, float rCells) {
+    RdNode* N = &rdNodes[node];
+    int n = N->nEdge;
+    if (n < 3 || rdNodeCount + n > RD_MAX_NODES) return false;
+    float r = rCells * CELL_SIZE;
+    int ringNode[RD_MAX_NODE_EDGES];
+    float ang[RD_MAX_NODE_EDGES];
+    // every ring stretch long enough?
+    for (int k = 0; k < n; k++) {
+        const RdEdge* e = &rdEdges[N->edge[k]];
+        const RdNode* o = &rdNodes[e->a == node ? e->b : e->a];
+        ang[k] = atan2f(o->y - N->y, o->x - N->x);
+    }
+    for (int k = 0; k < n; k++) {
+        float gap = 1e9f;
+        for (int j = 0; j < n; j++) {
+            if (j == k) continue;
+            float d = ang[k] - ang[j];
+            while (d <= 0) d += 6.2831853f;
+            if (d < gap) gap = d;
+        }
+        if (gap * rCells - 2 * RD_RING_SETBACK < RD_RING_MIN_LANE) return false;
+    }
+    for (int k = 0; k < n; k++) {
+        RdEdge* e = &rdEdges[N->edge[k]];
+        const RdNode* o = &rdNodes[e->a == node ? e->b : e->a];
+        ang[k] = atan2f(o->y - N->y, o->x - N->x);
+        int rn = RoadAddNode((N->x + cosf(ang[k]) * r) / CELL_SIZE, (N->y + sinf(ang[k]) * r) / CELL_SIZE);
+        N = &rdNodes[node];   // (rdNodes is a fixed array; keep the pointer honest anyway)
+        rdNodes[rn].ring = true;
+        rdNodes[rn].ringOf = node;
+        rdNodes[rn].setback = RD_RING_SETBACK;
+        if (e->a == node) e->a = rn; else e->b = rn;
+        rdNodes[rn].edge[rdNodes[rn].nEdge++] = N->edge[k];
+        ringNode[k] = rn;
+    }
+    // ring: each ring junction to the next one with a smaller angle (anticlockwise on screen)
+    for (int k = 0; k < n; k++) {
+        int next = -1;
+        float best = -1e9f;
+        for (int j = 0; j < n; j++) {
+            if (j == k) continue;
+            float d = ang[j] - ang[k];
+            while (d >= 0) d -= 6.2831853f;   // going down from ang[k]
+            if (d > best) { best = d; next = j; }
+        }
+        int e = RoadAddEdge(ringNode[k], ringNode[next], 0);
+        if (e < 0) continue;
+        rdEdges[e].oneWay = true;
+        rdEdges[e].arc = true;
+        rdEdges[e].arcX = N->x; rdEdges[e].arcY = N->y; rdEdges[e].arcR = r;
+    }
+    N->nEdge = 0;
+    return true;
+}
+
 void RoadsBuild(float latAccel) {
     rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     for (int i = 0; i < rdNodeCount; i++) rdNodes[i].nConn = 0;
     for (int e = 0; e < rdEdgeCount; e++) {
         rdEdges[e].lane[0] = BuildLane(e, 0);
-        rdEdges[e].lane[1] = BuildLane(e, 1);
+        rdEdges[e].lane[1] = rdEdges[e].oneWay ? -1 : BuildLane(e, 1);
     }
     // Connectors: every lane ending at a node to every lane leaving it on another road
     for (int ni = 0; ni < rdNodeCount; ni++) {
@@ -375,7 +449,8 @@ void RoadsCarve(int z) {
             CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RD_ROAD_WIDTH * 0.5f + 0.5f, z);   // + half a cell: slanted roads are carved in whole cells
     }
     for (int i = 0; i < rdNodeCount; i++)
-        CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, RD_SETBACK + 1.0f, z);
+        if (rdNodes[i].nEdge > 0 && !rdNodes[i].ring)   // (a roundabout's ring junctions: the island stays)
+            CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, RD_SETBACK + 1.0f, z);
     // Room round every route a car can drive (lanes and junction curves): the body
     // (half-diagonal ~1.4 cells) always has ~0.5 cell to spare, whatever the angles
     for (int s = 0; s < rdSegCount; s++)

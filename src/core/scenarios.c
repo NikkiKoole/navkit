@@ -3367,6 +3367,23 @@ static void SetupCarsCity(void) {
     RoadsClear();
     for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
     for (int e = 0; e < nk; e++) RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
+    // Roundabouts on some 4-way junctions (not next to each other, not on the edge)
+    int made = 0;
+    unsigned char near[RD_MAX_NODES] = {0};
+    for (int tries = 0; tries < 200 && made < carCityRoundabouts; tries++) {
+        int n = CityRand(nodes);
+        int i = n % cols, j = n / cols;
+        if (i == 0 || j == 0 || i == cols - 1 || j == rows - 1 || rdNodes[n].nEdge != 4 || near[n]) continue;
+        int nb[RD_MAX_NODE_EDGES], nn = rdNodes[n].nEdge;
+        for (int k = 0; k < nn; k++) {
+            const RdEdge* e = &rdEdges[rdNodes[n].edge[k]];
+            nb[k] = e->a == n ? e->b : e->a;
+        }
+        if (!RoadMakeRoundabout(n, 12.0f)) { near[n] = 1; continue; }   // roads too close in angle
+        for (int k = 0; k < nn; k++) near[nb[k]] = 1;
+        near[n] = 1;
+        made++;
+    }
     RoadsBuild(carLatAccel);
     TrafficSetupLights(carCityLights);
     RoadsCarve(1);
