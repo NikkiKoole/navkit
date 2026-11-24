@@ -590,11 +590,42 @@ describe(dining_table) {
     }
 }
 
+// CELL_RAILING (dreamengine's balconies, galleries, pens): stops walking, nothing else
+describe(railing) {
+    it("blocks walking but is not solid and lets fluids through") {
+        expect(CellBlocksMovement(CELL_RAILING));
+        expect(!CellIsSolid(CELL_RAILING));
+        expect(!CellBlocksFluids(CELL_RAILING));
+        expect(strcmp(CellTypeName(CELL_RAILING), "RAILING") == 0);
+    }
+
+    it("is not walkable") {
+        SetupFlatGround(16, 16);
+        GRID(5, 5, 1) = CELL_RAILING;
+        expect(!IsCellWalkableAt(1, 5, 5));
+        expect(IsCellWalkableAt(1, 5, 6));
+    }
+
+    it("splits walking, not space: a railed pen inside a room is the same room") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(2, 2, 12, 12);
+        PlaceDoor(7, 12);
+        for (int y = 3; y <= 6; y++) GRID(6, y, 1) = CELL_RAILING;   // pen: x 3..5, y 3..6
+        for (int x = 3; x <= 6; x++) GRID(x, 7, 1) = CELL_RAILING;
+        UpdateRooms();
+        uint16_t pen = GetRoomAt(4, 4, 1);
+        expect(pen != ROOM_NONE);
+        expect(pen == GetRoomAt(9, 9, 1));
+        expect(GetRoomAt(6, 4, 1) == pen);   // the railing itself is in the room
+    }
+}
+
 int main(int argc, char *argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
 
     test(test_rooms);
     test(dining_table);
+    test(railing);
     return summary();
 }

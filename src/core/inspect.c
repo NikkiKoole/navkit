@@ -1440,8 +1440,13 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= V104_TRASH) {
+    if (version >= V105_CONCRETE) {
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V104_TRASH) {
+        // v104: allowedMaterials was V104_MAT_COUNT (19) bools
+        static StockpileV104 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV104), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V104_ITEM_TYPE_COUNT);
     } else if (version >= 91) {
         // v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT (73) bools
         static StockpileV103 oldSp[MAX_STOCKPILES];

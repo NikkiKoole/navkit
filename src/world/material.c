@@ -43,6 +43,7 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_MUD]     = {"Mud",      SPRITE_dirt,              0,            0,    0,      ITEM_MUD,     INSULATION_TIER_AIR,   MAT_MUD},
     [MAT_COB]     = {"Cob",      SPRITE_clay,              0,            0,    0,      ITEM_COB,     INSULATION_TIER_STONE, MAT_COB},
     [MAT_BEDROCK] = {"Bedrock",  SPRITE_bedrock,           MF_UNMINEABLE,0,    0,      ITEM_NONE,    INSULATION_TIER_STONE, MAT_BEDROCK},
+    [MAT_CONCRETE] = {"Concrete", 0,                       0,            0,    0,      ITEM_GRAVEL,  INSULATION_TIER_STONE, MAT_CONCRETE},
 };
 
 void InitSpriteOverrides(void) {

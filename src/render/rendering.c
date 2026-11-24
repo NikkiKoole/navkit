@@ -95,6 +95,7 @@ static Color MaterialTint(MaterialType mat) {
         case MAT_PINE: return (Color){180, 140, 100, 255};
         case MAT_BIRCH: return (Color){220, 210, 190, 255};
         case MAT_WILLOW: return (Color){160, 140, 100, 255};
+        case MAT_CONCRETE: return (Color){170, 170, 165, 255};   // placeholder grey until it has a sprite
         default: return WHITE;
     }
 }

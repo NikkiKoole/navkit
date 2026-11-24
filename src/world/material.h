@@ -33,6 +33,7 @@ typedef enum {
     MAT_COB,           // Cob (mud + dried grass)
     // Special materials
     MAT_BEDROCK,       // Unmineable bedrock
+    MAT_CONCRETE,      // City walls and floors (dreamengine NKP_MAT_CONCRETE); append only: saves store it
     MAT_COUNT
 } MaterialType;
 

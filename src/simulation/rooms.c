@@ -105,6 +105,14 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
 
             CellType cell = GRID(nx, ny, z);
 
+            // Railings split walking, not space: a gallery and the hall it looks over, a pen
+            // inside a barn, are one room. The railing cell joins the room.
+            if (cell == CELL_RAILING) {
+                visited[ny][nx] = true;
+                roomBfsQueue[qTail++] = (RoomBfsNode){nx, ny};
+                continue;
+            }
+
             // Walls/windows stop the flood entirely (not added to room)
             if (CellBlocksMovement(cell) && cell != CELL_DOOR) continue;
 
@@ -287,7 +295,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             if (ncell == CELL_WINDOW) {
                 windowPositions++;
             }
-            if (CellBlocksMovement(ncell) && ncell != CELL_DOOR) {
+            if (CellBlocksMovement(ncell) && ncell != CELL_DOOR && ncell != CELL_RAILING) {
                 totalWallNeighbors++;
                 if (!IsWallNatural(nx, ny, z)) {
                     constructedWallNeighbors++;
