@@ -1,6 +1,7 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
 #include "play_hud.h"
+#include "../ui/commands.h"   // command buttons run the command table (src/ui/commands.c)
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../world/biome.h"
@@ -401,118 +402,11 @@ void DrawUI(void) {
             DrawTextShadow("Grid:", ix, y, 14, GRAY);
             {
                 float bx = ix + 34;
-                bool clicked = false;
-                bx += PushButtonInline(bx, y, "32x32", &clicked);
-                if (clicked) {
-                    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-                    gridDepth = 6;
-                    for (int z = 1; z < gridDepth; z++)
-                        for (int gy = 0; gy < gridHeight; gy++)
-                            for (int gx = 0; gx < gridWidth; gx++)
-                                GRID(gx, gy, z) = CELL_AIR;
-                    FillGroundLevel();
-                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                    InitDesignations();
-                    InitSimActivity();
-                    InitWater();
-                    InitFire();
-                    InitSmoke();
-                    InitSteam();
-                    InitTemperature();
-                    InitGroundWear();
-                    InitFloorDirt();
-                    InitSnow();
-                    InitLighting();
-                    BuildEntrances();
-                    BuildGraph();
-                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-                }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "64x64", &clicked);
-                if (clicked) {
-                    InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-                    gridDepth = 6;
-                    for (int z = 1; z < gridDepth; z++)
-                        for (int gy = 0; gy < gridHeight; gy++)
-                            for (int gx = 0; gx < gridWidth; gx++)
-                                GRID(gx, gy, z) = CELL_AIR;
-                    FillGroundLevel();
-                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                    InitDesignations();
-                    InitSimActivity();
-                    InitWater();
-                    InitFire();
-                    InitSmoke();
-                    InitSteam();
-                    InitTemperature();
-                    InitGroundWear();
-                    InitFloorDirt();
-                    InitSnow();
-                    InitLighting();
-                    BuildEntrances();
-                    BuildGraph();
-                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-                }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "128x128", &clicked);
-                if (clicked) {
-                    InitGridWithSizeAndChunkSize(128, 128, 16, 16);
-                    gridDepth = 6;
-                    for (int z = 1; z < gridDepth; z++)
-                        for (int gy = 0; gy < gridHeight; gy++)
-                            for (int gx = 0; gx < gridWidth; gx++)
-                                GRID(gx, gy, z) = CELL_AIR;
-                    FillGroundLevel();
-                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                    InitDesignations();
-                    InitSimActivity();
-                    InitWater();
-                    InitFire();
-                    InitSmoke();
-                    InitSteam();
-                    InitTemperature();
-                    InitGroundWear();
-                    InitFloorDirt();
-                    InitSnow();
-                    InitLighting();
-                    BuildEntrances();
-                    BuildGraph();
-                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-                }
-                clicked = false;
-                PushButtonInline(bx, y, "256x256", &clicked);
-                if (clicked) {
-                    InitGridWithSizeAndChunkSize(256, 256, 16, 16);
-                    gridDepth = 3;
-                    for (int z = 1; z < gridDepth; z++)
-                        for (int gy = 0; gy < gridHeight; gy++)
-                            for (int gx = 0; gx < gridWidth; gx++)
-                                GRID(gx, gy, z) = CELL_AIR;
-                    FillGroundLevel();
-                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                    InitDesignations();
-                    InitSimActivity();
-                    InitWater();
-                    InitFire();
-                    InitSmoke();
-                    InitSteam();
-                    InitTemperature();
-                    InitGroundWear();
-                    InitFloorDirt();
-                    InitSnow();
-                    InitLighting();
-                    BuildEntrances();
-                    BuildGraph();
-                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-                }
+                // The grid command (src/ui/commands.c)
+                bx += CommandButtonInline(bx, y, "32x32", "grid 32");
+                bx += CommandButtonInline(bx, y, "64x64", "grid 64");
+                bx += CommandButtonInline(bx, y, "128x128", "grid 128");
+                CommandButtonInline(bx, y, "256x256", "grid 256");
             }
             y += 22;
             if (PushButton(ix, y, "Fill with Walls")) {
@@ -583,9 +477,7 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("World/Entropy", ix, &y);   // src/core/settings.c
             y += 22;
-            if (PushButton(ix, y, "Clear Wear")) {
-                ClearGroundWear();
-            }
+            CommandButton(ix, y, "Clear Wear", "clear wear");
             y += 22;
 
             // Advanced sub-section
@@ -624,9 +516,7 @@ void DrawUI(void) {
                 SpawnMoversDemo(moverCountSetting);
             }
             y += 22;
-            if (PushButton(ix, y, "Clear Movers")) {
-                ClearMovers();
-            }
+            CommandButton(ix, y, "Clear Movers", "clear movers");
             y += 22;
             // Rows from src/core/settings.c
             DrawSettingsGroup("Entities/Movers", ix, &y);
@@ -668,8 +558,7 @@ void DrawUI(void) {
             bx += PushButtonInline(bx, y, "+W", &clicked);
             if (clicked) SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR);
             clicked = false;
-            PushButtonInline(bx, y, "Clear", &clicked);
-            if (clicked) ClearAnimals();
+            CommandButtonInline(bx, y, "Clear", "clear animals");
         }
         y += 22;
         DrawSettingsGroup("Entities/Animals", ix + 10, &y);
@@ -765,9 +654,7 @@ void DrawUI(void) {
                 if (bx > (float)ix) y += 22;
             }
 
-            if (PushButton(ix, y, "Clear Items")) {
-                ClearItems();
-            }
+            CommandButton(ix, y, "Clear Items", "clear items");
             y += 22;
             if (PushButton(ix, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
             y += 22;
@@ -777,9 +664,7 @@ void DrawUI(void) {
             y += 22;
             if (PushButton(ix, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
             y += 22;
-            if (PushButton(ix, y, "Clear Stockpiles")) {
-                ClearStockpiles();
-            }
+            CommandButton(ix, y, "Clear Stockpiles", "clear stockpiles");
         }
     }
     y += 22;
@@ -792,14 +677,7 @@ void DrawUI(void) {
         y += 18;
 
         // Clear All Sim — consolidated button at top
-        if (PushButton(ix, y, "Clear All Sim")) {
-            ClearWater();
-            ClearFire();
-            ClearSmoke();
-            ClearSteam();
-            ClearTemperature();
-            ClearGroundWear();
-        }
+        CommandButton(ix, y, "Clear All Sim", "clear all");
         y += 22;
 
         // Rows come from the settings table (src/core/settings.c); buttons and
@@ -810,28 +688,16 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("Simulation/Water", ix, &y);
             y += 22;
-            if (PushButton(ix, y, "Clear Water")) {
-                ClearWater();
-            }
+            CommandButton(ix, y, "Clear Water", "clear water");
             y += 22;
             DrawTextShadow(IsRaining() ? "Rain (active):" : "Rain:", ix, y, 14, IsRaining() ? BLUE : GRAY);
             y += 18;
             {
                 float bx = (float)ix;
-                bool clicked = false;
-                bx += PushButtonInline(bx, (float)y, "Light", &clicked);
-                if (clicked) { SpawnSkyWater(5); AddMessage("Light rain started", BLUE); }
-                clicked = false;
-                bx += PushButtonInline(bx, (float)y, "Medium", &clicked);
-                if (clicked) { SpawnSkyWater(20); AddMessage("Medium rain started", BLUE); }
-                clicked = false;
-                bx += PushButtonInline(bx, (float)y, "Heavy", &clicked);
-                if (clicked) { SpawnSkyWater(50); AddMessage("Heavy rain started", BLUE); }
-                if (IsRaining()) {
-                    clicked = false;
-                    PushButtonInline(bx, (float)y, "Stop", &clicked);
-                    if (clicked) { StopRain(); AddMessage("Rain stopped", GRAY); }
-                }
+                bx += CommandButtonInline(bx, (float)y, "Light", "rain light");
+                bx += CommandButtonInline(bx, (float)y, "Medium", "rain medium");
+                bx += CommandButtonInline(bx, (float)y, "Heavy", "rain heavy");
+                if (IsRaining()) CommandButtonInline(bx, (float)y, "Stop", "rain stop");
             }
             y += 22;
 
@@ -848,9 +714,7 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("Simulation/Fire", ix, &y);
             y += 22;
-            if (PushButton(ix, y, "Clear Fire")) {
-                ClearFire();
-            }
+            CommandButton(ix, y, "Clear Fire", "clear fire");
             y += 22;
             DrawTextShadow("Wetness: damp -50% spread, wet -90%, soaked blocks", ix, y, 14, GRAY);
             y += 16;
@@ -876,9 +740,7 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("Simulation/Smoke", ix, &y);
             y += 22;
-            if (PushButton(ix, y, "Clear Smoke")) {
-                ClearSmoke();
-            }
+            CommandButton(ix, y, "Clear Smoke", "clear smoke");
             y += 22;
             DrawTextShadow("Wet cells: 2-3x smoke. Rain: slower rise/dissipation", ix, y, 14, GRAY);
         }
@@ -889,9 +751,7 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("Simulation/Steam", ix, &y);
             y += 22;
-            if (PushButton(ix, y, "Clear Steam")) {
-                ClearSteam();
-            }
+            CommandButton(ix, y, "Clear Steam", "clear steam");
             y += 22;
 
             // Advanced: condensation/generation parameters
@@ -907,9 +767,7 @@ void DrawUI(void) {
             y += 18;
             DrawSettingsGroup("Simulation/Temperature", ix, &y);
             y += 22;
-            if (PushButton(ix, y, "Reset to Ambient")) {
-                ClearTemperature();
-            }
+            CommandButton(ix, y, "Reset to Ambient", "clear temp");
             y += 22;
 
             // Advanced: insulation, heat sources, physics
@@ -943,31 +801,17 @@ void DrawUI(void) {
             DrawTextShadow("Force:", ix, y, 14, GRAY);
             {
                 float bx = ix + 40;
-                bool clicked = false;
-                bx += PushButtonInline(bx, y, "Clear", &clicked);
-                if (clicked) { weatherState.current = WEATHER_CLEAR; weatherState.intensity = 1.0f; }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Cloudy", &clicked);
-                if (clicked) { weatherState.current = WEATHER_CLOUDY; weatherState.intensity = 1.0f; }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Mist", &clicked);
-                if (clicked) { weatherState.current = WEATHER_MIST; weatherState.intensity = 1.0f; }
-                clicked = false;
-                PushButtonInline(bx, y, "Rain", &clicked);
-                if (clicked) { weatherState.current = WEATHER_RAIN; weatherState.intensity = 1.0f; }
+                bx += CommandButtonInline(bx, y, "Clear", "weather clear");
+                bx += CommandButtonInline(bx, y, "Cloudy", "weather cloudy");
+                bx += CommandButtonInline(bx, y, "Mist", "weather mist");
+                CommandButtonInline(bx, y, "Rain", "weather rain");
             }
             y += 22;
             {
                 float bx = ix;
-                bool clicked = false;
-                bx += PushButtonInline(bx, y, "Heavy", &clicked);
-                if (clicked) { weatherState.current = WEATHER_HEAVY_RAIN; weatherState.intensity = 1.0f; }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Thunder", &clicked);
-                if (clicked) { weatherState.current = WEATHER_THUNDERSTORM; weatherState.intensity = 1.0f; }
-                clicked = false;
-                PushButtonInline(bx, y, "Snow", &clicked);
-                if (clicked) { weatherState.current = WEATHER_SNOW; weatherState.intensity = 1.0f; }
+                bx += CommandButtonInline(bx, y, "Heavy", "weather heavy");
+                bx += CommandButtonInline(bx, y, "Thunder", "weather thunder");
+                CommandButtonInline(bx, y, "Snow", "weather snow");
             }
             y += 22;
 
@@ -1029,19 +873,11 @@ void DrawUI(void) {
             DrawTextShadow("Jump to Season:", ix, y, 14, GRAY);
             y += 18;
             {
-                bool clicked = false;
                 float bx = ix;
-                bx += PushButtonInline(bx, y, "Spring", &clicked);
-                if (clicked) { dayNumber = 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Summer", &clicked);
-                if (clicked) { dayNumber = daysPerSeason + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Autumn", &clicked);
-                if (clicked) { dayNumber = daysPerSeason * 2 + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
-                clicked = false;
-                PushButtonInline(bx, y, "Winter", &clicked);
-                if (clicked) { dayNumber = daysPerSeason * 3 + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
+                bx += CommandButtonInline(bx, y, "Spring", "season spring");
+                bx += CommandButtonInline(bx, y, "Summer", "season summer");
+                bx += CommandButtonInline(bx, y, "Autumn", "season autumn");
+                CommandButtonInline(bx, y, "Winter", "season winter");
             }
             y += 22;
 
@@ -1165,10 +1001,7 @@ void DrawUI(void) {
             }
             y += 18;
 
-            if (PushButton(ix, y, "Clear Lights")) {
-                ClearLightSources();
-                InvalidateLighting();
-            }
+            CommandButton(ix, y, "Clear Lights", "clear lights");
         }
         y += 22;
 

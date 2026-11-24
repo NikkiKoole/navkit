@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction, data tidying not started (2026-11-24)
+> Status: decided direction; data tidying step 1 started (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,18 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **command table, first part.** `src/core/command_args.c/.h` (argument specs: int,
+  float, choice with optional number range, item by name, name from another table; parsing,
+  usage text; pure, tested in `tests/test_commands.c`) and `src/ui/commands.c/.h` (the table:
+  spawn, clear, tp, rain, reveal, weather, season, terrain, grid, scenario, game, spawnmovers).
+  The console registers every row (help shows "help: usage" made from the spec; bad input says
+  what was wrong plus the usage). The dev sidebar's duplicated buttons (grid sizes, which were
+  pasted four times; the clear buttons; rain; weather; season) run command lines through the
+  table with their layout unchanged (`CommandButton`, `CommandButtonInline`), so a button and
+  its console command can't drift apart. Feedback goes to the console log and on screen when
+  the console is closed. One behaviour change: "Clear All Sim" now also clears lights (like
+  `clear all` did). Still hand-written: the other sidebar buttons (speed, spawn movers stepper,
+  stockpile spawns, cutscene/shake), the `?` help panel and the F-keys (step 5, keys as data).
 - 2026-11-24: stockpile filter key clash fixed (7e4233c7): Textile used X, so "X toggles all"
   was unreachable; Textile is Y now, guarded by a test in `tests/test_action_registry.c`.
   Found by the nk-find survey.
