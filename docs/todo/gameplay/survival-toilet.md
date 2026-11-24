@@ -115,19 +115,82 @@ Levels 1-2 need no new systems. 3 brings the first pipes (drain only), 4 the sec
 - Later: frozen pipes in winter (temperature), a burst pipe as a water source in the water sim,
   river pollution downstream of an outlet.
 
+## The pipe layer (`pipeGrid`, agreed with dreamengine)
+
+One byte per cell, a grid layer of its own (`cellFlags` is full): one `LAYER_DEF` row, untouched
+pages cost no memory, saves run-length code it (a save bump; older saves: no pipes). Pipes take
+no cell of their own, so walking, rooms and the pathfinder don't change. Same layout as
+dreamengine's proposed vocabulary (`docs/design/nk-plumbing.md` there), so a generated flat
+and a survival hut run on one system.
+
+| bit | meaning |
+|---|---|
+| 0 FLOOR_SUPPLY | a water pipe in this cell's floor |
+| 1 FLOOR_DRAIN | a drain in this cell's floor |
+| 2 WALL_SUPPLY | a water pipe in this wall cell |
+| 3 WALL_DRAIN | a drain in this wall cell |
+| 4 STACK | this wall cell's pipes go on to the STACK cells straight above and below (riser, soil stack) |
+| 5 END | where the network meets the outside: with supply an intake (brook, barrel, water main), with drain an outlet (cesspit, sewer, river) |
+| 6 VALVE | a stopcock on the branches leaving this cell (a stack runs on through it) |
+| 7 VALVE_CLOSED | that stopcock is shut |
+
+- **Floor bits** always sit on the cell standing on that floor (z 0 included: the crawl space).
+- **Connecting** (like RimWorld conduits): pipes of one network join their 4 neighbours on the
+  same level; STACK cells join up and down. A fixture is on a network if its own floor, or a
+  wall cell next to it, carries that network's bit.
+- **Physics on top, as rules, not bits:** a drain never runs uphill on its way to an outlet; a
+  supply works if its intake is on water whose surface is higher than the fixture, or on a
+  source piece (water main, barrel, tank). An intake with no water source is an error
+  (dreamengine checks the same norm).
+- **A network pass after every pipe change** (not per tick): for each fixture, is supply
+  connected, is the drain connected. A fixture gives its capability (toilet flush, tap, sink)
+  only when connected, and only in worlds that have pipes; until then `toiletsPlumbed` stands in.
+- **Laying pipes:** pipe items (clay pipes from the kiln; hollow logs earlier?), laid as a line
+  of blueprints a mover builds, with the belt placement tool; the drain's fall is checked while
+  drawing. Pieces: intake, outlet / cesspit, valve.
+
+## Seeing the water (open pipes)
+
+Hidden or visible is drawing, not the layer, so pipes can show everything:
+
+1. **Pipes on bare ground are visible.** A floor pipe in a cell without a constructed floor
+   lies on the ground and is drawn; lay a plank or concrete floor over it and it is "in the
+   floor", hidden. Likewise a wall pipe drawn along a wall you build, hidden in a generated
+   wall. In survival (dirt) every pipe is out in the open by default; dreamengine's flats keep
+   theirs in walls and screed, as real ones do. No extra bit: visibility follows from where it runs.
+2. **Show what flows.** The network pass knows per pipe whether it is supplied and connected:
+   draw supplied pipes blue-tinted, dry ones grey, mark a broken run or a closed valve. When a
+   toilet flushes or a tap runs, small water flecks run along the pipe (the trick rivers use,
+   `waterFlecks`), and waste goes down the drain to the pit. Drawing only, no extra simulation.
+3. **A pipe overlay** shows hidden pipes too, for planning and debugging.
+
+## Open channels (real water, no pipes)
+
+The most visible version needs almost nothing new: dig a ditch from the brook to the hut and
+the water sim fills it, and the water really flows. If an intake may sit on any water cell, a
+dug channel *is* the supply line, no pipe items needed; an open ditch away from the hut can be
+the drain to a pit. A good early rung before clay pipes:
+
+- **Level 3.5, channel and basin:** a channel from the brook to a basin by the hut; a toilet
+  (or tap) next to the basin flushes from it, like from a pot but endless while the brook runs.
+  Needs: the flush (3a) counting a water cell within reach as a source, and digging a channel
+  (digging exists; maybe a "dig channel" line tool). Check how the water sim fills a long
+  dug channel, and that it doesn't flood the hut (a channel's water level follows the brook's).
+
 ## What can be built now
 
 - **Levels 0-2: yes, small.** One switch, one furniture type, toilet search by capability,
   comfort levels and moodlets, one craftable item and two construction recipes. No save bump
   except if the pit should fill up.
-- **Level 3: medium.** The barrel and the fill job touch items/containers (coordinate with the
-  City 1999 inventory work); the drain is the first pipe layer (save bump), a new blueprint kind
-  and a placement tool.
+- **Level 3a (built):** the flush from water within 3 cells; `toiletsPlumbed` for mains worlds.
+- **Level 3.5, channel and basin: small.** A water cell as a flush source plus a channel tool.
+- **Level 3b: medium.** The pipe layer (save bump), the network pass, pipe items, the blueprint
+  line with the belt tool, the cesspit as outlet; visible pipes and flecks.
 - **Level 4: large-ish.** The supply network, intakes, the height check, the connected gate,
   and keeping every pipeless world working.
 
-Suggested order: 0+1+2 as one step (playable: bush -> latrine -> toilet in the hut), then 3,
-then 4 together with dreamengine's plumbing so the pipe model is built once.
+Suggested order: 0+1+2 (done), 3a (done), then open channels (3.5), then the pipe layer with
+drains and a cesspit (3b), then supply pipes (4), the pipe model shared with dreamengine's plumbing.
 
 ## Open questions
 
@@ -135,3 +198,5 @@ then 4 together with dreamengine's plumbing so the pipe model is built once.
   found objects / ruins in world generation first; crafting covers the ladder without it.
 - Pipe material per era: hollowed logs or bamboo, clay pipes from the kiln, iron later?
 - Pollution: does a drain into the river make the water downstream undrinkable (boil it)?
+- Do pipes cost items and a mover's time (fits survival), or can the player draw them freely?
+- Does the dollhouse get real pipes, or stay on `toiletsPlumbed`?
