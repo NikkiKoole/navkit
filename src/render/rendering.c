@@ -314,8 +314,30 @@ static int PlankSpriteForMaterial(MaterialType mat) {
     }
 }
 
+// A railing runs along its railing neighbours: N/S makes it vertical, E/W horizontal.
+// With no railing neighbour it lines up with a wall it butts against. A corner or a
+// lone post draws horizontal (no corner sprite yet).
+static bool RailingLinksTo(int x, int y, int z, bool wallsToo) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    CellType c = GRID(x, y, z);
+    if (c == CELL_RAILING) return true;
+    return wallsToo && CellBlocksMovement(c);
+}
+
+static int RailingSpriteAt(int x, int y, int z) {
+    for (int pass = 0; pass < 2; pass++) {
+        bool walls = pass == 1;
+        bool ns = RailingLinksTo(x, y - 1, z, walls) || RailingLinksTo(x, y + 1, z, walls);
+        bool ew = RailingLinksTo(x - 1, y, z, walls) || RailingLinksTo(x + 1, y, z, walls);
+        if (ns && !ew) return SPRITE_light_vertical;
+        if (ns || ew) return SPRITE_light_horizontal;
+    }
+    return SPRITE_light_horizontal;
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_PLATFORM) return SPRITE_dark_shade;
+    if (cell == CELL_RAILING) return RailingSpriteAt(x, y, z);   // never a material's wall sprite
     if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
     if (cell == CELL_WALL && GetWallSourceItem(x, y, z) == ITEM_PLANKS) {
