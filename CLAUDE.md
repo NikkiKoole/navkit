@@ -189,6 +189,16 @@ draws its tunables from the table; spawn counts, editor tool/terrain pickers, bu
 readouts stay hand-written. Saved settings are still a separate list
 (`SETTINGS_TABLE` in `saveload.c`).
 
+## Commands (dev / cheat commands)
+
+Console commands live in one table in `src/ui/commands.c` (name, group, help, typed arguments
+from `src/core/command_args.h`: int / float range, choice, item by name, name from another
+table; plus a run function). One row gives you a console command with parsing, usage text and
+error messages made from its spec. Dev sidebar buttons that do a command run the line through
+the table (`CommandButton(x, y, "Clear Water", "clear water")`). **Add new commands as a row
+there**, not with `Console_RegisterCmd` + strcmp parsing. Plan for the rest (tool options, verb
+tables, keys as data, the find palette): `docs/todo/ui/find-palette.md`.
+
 ## Descriptions (what the game says about an entity)
 
 `src/core/describe.c` builds an entity's text as lines with a semantic tone (good / warn /
