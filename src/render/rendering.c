@@ -3070,15 +3070,18 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
 
 // One-way ladders and doors: a small arrow on the cell. Ladders: up-only points north (up
 // the screen), green; down-only south, orange. Doors: the way through, light blue.
+// Seen from above through open air: the first non-empty cell at most 4 levels down, dimmer
+// the deeper it is.
 static void DrawOneWayLadders(void) {
     float size = CELL_SIZE * zoom;
-    int z = currentViewZ;
-    if (z < 0 || z >= gridDepth) return;
+    if (currentViewZ < 0 || currentViewZ >= gridDepth) return;
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (!SparseLayerHasBlock(&oneWayLayer, x, y)) { x |= STORE_MASK; continue; }
+            int z = currentViewZ, depth = 0;
+            while (z > 0 && depth < 4 && GRID(x, y, z) == CELL_AIR && !HAS_FLOOR(x, y, z)) { z--; depth++; }
             uint8_t ow = ONE_WAY(x, y, z);
             if (ow == ONEWAY_NONE) continue;
             CellType ct = GRID(x, y, z);
@@ -3092,6 +3095,7 @@ static void DrawOneWayLadders(void) {
                 fx = ax[ow - ONEWAY_N]; fy = ay[ow - ONEWAY_N];
                 c = (Color){130, 200, 255, 230};
             } else continue;
+            c.a = (unsigned char)(c.a * (1.0f - 0.18f * depth));
             float cx = offset.x + (x + 0.5f) * size, cy = offset.y + (y + 0.5f) * size, r = size * 0.3f;
             // tip ahead, base corners behind on either side (px,py = perpendicular)
             float px = -fy, py = fx;

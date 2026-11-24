@@ -260,6 +260,44 @@ static void SetupLadderOneWay(void) {
     AddMessage("One-way ladders: up at (18,16), down at (18,6), 16 movers", GREEN);
 }
 
+// oneway-tiers: a stepped tower of plank decks east of the ground (z=2 from x=10, z=3 from
+// x=16, z=4 from x=22). Each tier joins the next by an up-only ladder on the north side and
+// a down-only ladder on the south side, and a down-only "fire pole" drops from the top deck
+// to the ground (28,16). Movers wander between levels: up the north ladders tier by tier,
+// down the south ladders or the pole. --check fails on a climb against a ladder.
+static void SetupOneWayTiers(void) {
+    ResetLadderStats();
+    static const int tierX[3] = {10, 16, 22};
+    for (int t = 0; t < 3; t++) {
+        int z = 2 + t;
+        for (int y = 4; y < 28; y++)
+            for (int x = tierX[t]; x < 30; x++) {
+                SET_FLOOR(x, y, z);
+                SetFloorMaterial(x, y, z, t == 0 ? MAT_OAK : t == 1 ? MAT_PINE : MAT_BIRCH);
+            }
+        // ladders at the deck's west edge, from the level below (z-1) up onto it (z)
+        GRID(tierX[t], 6, z - 1) = CELL_LADDER_BOTH;  GRID(tierX[t], 6, z) = CELL_LADDER_BOTH;
+        GRID(tierX[t], 25, z - 1) = CELL_LADDER_BOTH; GRID(tierX[t], 25, z) = CELL_LADDER_BOTH;
+        RecalculateLadderColumn(tierX[t], 6);
+        RecalculateLadderColumn(tierX[t], 25);
+        SetLadderOneWay(tierX[t], 6, z, ONEWAY_UP);
+        SetLadderOneWay(tierX[t], 25, z, ONEWAY_DOWN);
+    }
+    // the fire pole: one ladder through every deck, top to ground, down only
+    for (int z = 1; z <= 4; z++) GRID(28, 16, z) = CELL_LADDER_BOTH;
+    RecalculateLadderColumn(28, 16);
+    SetLadderOneWay(28, 16, 4, ONEWAY_DOWN);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    preferDifferentZ = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 24;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 6), 6 + (i / 6) * 5, 1);
+    currentViewZ = 4;
+    AddMessage("One-way tiers: up the north ladders, down the south ladders or the fire pole", GREEN);
+}
+
 // door-oneway: a building with a door in (south wall, passed going north) and a door out
 // (north wall, also going north), 16 wandering movers: everyone goes in at the south and
 // out at the north, like a shop with turnstiles. --check fails on a pass the wrong way.
@@ -3196,6 +3234,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"ladder-oneway", "Deck with an up-only and a down-only ladder, 16 movers: traffic goes round",
                    NULL,        SetupLadderOneWay, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"oneway-tiers", "Stepped tower: up-only ladders north, down-only south, a fire pole down; 24 movers",
+                   NULL,        SetupOneWayTiers, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"door-oneway", "Building with a one-way door in and a one-way door out, 16 movers",
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
