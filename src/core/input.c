@@ -3031,6 +3031,8 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputAction == ACTION_NONE) {
+        // I in the Work bar flips how builds are done (now / order)
+        if (inputMode == MODE_WORK && CheckKey(KEY_I)) { InputMode_FlipHow(); return; }
         // Re-tap submode key to go back (e.g. WORK > DIG -> press D -> WORK)
         if (inputMode == MODE_WORK && workSubMode != SUBMODE_NONE) {
             bool backFromSubmode = false;
@@ -3058,7 +3060,7 @@ void HandleInput(void) {
         int count = GetActionsForContext(inputMode, workSubMode, ACTION_NONE, defs, MAX_BAR_ITEMS);
         for (int i = 0; i < count; i++) {
             if (CheckKey(KeyFromChar(defs[i]->barKey))) {
-                inputAction = defs[i]->action;
+                InputMode_SelectAction(InputMode_HowOf(defs[i]->action));   // now or order
                 // Reset material for draw actions that need it
                 if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR ||
                     inputAction == ACTION_DRAW_LADDER) {
@@ -3077,12 +3079,7 @@ void HandleInput(void) {
     {
         const ActionDef* curDef = GetActionDef(inputAction);
         if (curDef->twin != ACTION_NONE && CheckKey(KEY_I)) {
-            const ActionDef* t = GetActionDef(curDef->twin);
-            inputMode = t->requiredMode;
-            workSubMode = t->requiredSubMode;
-            inputAction = t->action;
-            if (inputMode == MODE_DRAW) AddMessage(TextFormat("%s: instant (dev)", t->name), YELLOW);
-            else AddMessage(TextFormat("%s: order (the workers build it)", t->name), BLUE);
+            InputMode_FlipHow();   // also flips how the next picked tool builds
             return;
         }
     }
@@ -3091,13 +3088,15 @@ void HandleInput(void) {
     // Category child selection — data-driven from registry
     // ========================================================================
     {
+        // A now category (Draw with a Work twin) picks from its twin's kinds, like its bar shows
         const ActionDef* curDef = GetActionDef(inputAction);
+        if (curDef->requiredMode == MODE_DRAW && curDef->twin != ACTION_NONE) curDef = GetActionDef(curDef->twin);
         const ActionDef* children[MAX_BAR_ITEMS];
-        int childCount = GetActionsForContext(curDef->requiredMode, curDef->requiredSubMode, inputAction, children, MAX_BAR_ITEMS);
+        int childCount = GetActionsForContext(curDef->requiredMode, curDef->requiredSubMode, curDef->action, children, MAX_BAR_ITEMS);
         if (childCount > 0) {
             for (int i = 0; i < childCount; i++) {
                 if (CheckKey(KeyFromChar(children[i]->barKey))) {
-                    inputAction = children[i]->action;
+                    InputMode_SelectAction(InputMode_HowOf(children[i]->action));   // now or order
                     return;
                 }
             }
@@ -3294,6 +3293,7 @@ static const struct { const char* keys; const char* help; } globalKeyHelp[] = {
     { "L-click",     "Select a mover, animal, workshop, stockpile" },
     { "Tab",         "Dev overlay (tools, settings)" },
     { "`",           "Console (type help)" },
+    { "I",           "Build tools: instant / by order (Work bar)" },
     { "F5 / F6",     "Quick save / quick load" },
     { "F7",          "State audit" },
     { "F8",          "Dump the event log" },

@@ -100,6 +100,7 @@ static int FindTerrainIndex(const char* name) {
 
 void ScenarioResetWorld(const char* terrain) {
     springTrickle = false;   // sources are taps unless the terrain says otherwise (island)
+    buildNow = true;         // dev setups: the build tools work instantly (I flips to order)
     SnapshotOrRestoreSettings();
     moverGoalPicker = NULL;
     // Entities first (ClearMovers also drops jobs and reservations)

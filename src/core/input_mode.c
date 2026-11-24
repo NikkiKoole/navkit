@@ -11,6 +11,7 @@ InputMode inputMode = MODE_NORMAL;
 WorkSubMode workSubMode = SUBMODE_NONE;
 InputAction inputAction = ACTION_NONE;
 int selectedMaterial = 1;
+bool buildNow = true;
 
 // Terrain brush state
 int terrainBrushRadius = 1;  // Default 3x3
@@ -36,10 +37,41 @@ void InputMode_Reset(void) {
     isDragging = false;
 }
 
+// A now tool (Draw with a Work twin) lives in the Work bar's path: switch to the twin first
+// so backing out lands where the tool was picked
+static void ToWorkPath(void) {
+    if (inputAction == ACTION_NONE) return;
+    const ActionDef* def = GetActionDef(inputAction);
+    if (def->requiredMode != MODE_DRAW || def->twin == ACTION_NONE) return;
+    const ActionDef* t = GetActionDef(def->twin);
+    inputMode = t->requiredMode;
+    workSubMode = t->requiredSubMode;
+    inputAction = t->action;
+}
+
+InputAction InputMode_HowOf(InputAction action) {
+    const ActionDef* def = GetActionDef(action);
+    if (def->twin == ACTION_NONE) return action;
+    bool isNow = def->requiredMode == MODE_DRAW;
+    return isNow == buildNow ? action : def->twin;
+}
+
+void InputMode_FlipHow(void) {
+    buildNow = !buildNow;
+    if (inputAction != ACTION_NONE && GetActionDef(inputAction)->twin != ACTION_NONE) {
+        InputAction a = InputMode_HowOf(inputAction);
+        InputMode_SelectAction(a);
+        if (buildNow) selectedMaterial = 1;
+    }
+    if (buildNow) AddMessage("Builds now: instant (dev)", YELLOW);
+    else AddMessage("Builds by order: the workers build it", BLUE);
+}
+
 void InputMode_Back(void) {
     if (isDragging) return;  // Don't back out while dragging
     
     if (inputAction != ACTION_NONE) {
+        ToWorkPath();
         // If this action has a parent action, go back to the parent (not to ACTION_NONE)
         const ActionDef* def = GetActionDef(inputAction);
         if (def->parentAction != ACTION_NONE) {
@@ -171,6 +203,8 @@ int InputMode_GetBarItems(BarItem* items) {
                     n = AddItem(items, n, "Harvest", KEY_H, 0, false, false, false);
                     // Top-level WORK actions from registry (Clean, Gather, etc.)
                     n = AddRegistryItems(items, n, MODE_WORK, SUBMODE_NONE, ACTION_NONE);
+                    // How builds are done (now / order): I flips it
+                    n = AddItem(items, n, buildNow ? "I:order" : "I:instant", KEY_I, 0, false, false, false);
                 } else {
                     n = AddBackHeader(items, n, "WORK >", 2);  // back past submode to WORK:
                     switch (workSubMode) {
@@ -203,12 +237,16 @@ int InputMode_GetBarItems(BarItem* items) {
     // Action selected — show mode header, submode header, action header from registry
     // Count depth to calculate backSteps for each header
     const ActionDef* def = GetActionDef(inputAction);
-    bool hasParentAction = (def->parentAction != ACTION_NONE);
-    bool hasSubmode = (workSubMode != SUBMODE_NONE);
+    // A now tool (Draw with a Work twin) shows the Work path it was picked from
+    bool isNowTool = def->requiredMode == MODE_DRAW && def->twin != ACTION_NONE;
+    const ActionDef* pathDef = isNowTool ? GetActionDef(def->twin) : def;
+    bool hasParentAction = (pathDef->parentAction != ACTION_NONE);
+    WorkSubMode pathSubMode = pathDef->requiredSubMode;
+    bool hasSubmode = (pathSubMode != SUBMODE_NONE);
     
     // Mode header: backs out to mode level (past action, parent action, and submode)
     int modeBackSteps = 1 + (hasParentAction ? 1 : 0) + (hasSubmode ? 1 : 0);
-    switch (inputMode) {
+    switch (pathDef->requiredMode) {
         case MODE_DRAW:    n = AddBackHeader(items, n, "DRAW >", modeBackSteps); break;
         case MODE_WORK:    n = AddBackHeader(items, n, "WORK >", modeBackSteps); break;
         case MODE_SANDBOX: n = AddBackHeader(items, n, "SANDBOX >", modeBackSteps); break;
@@ -219,7 +257,7 @@ int InputMode_GetBarItems(BarItem* items) {
     if (hasSubmode) {
         int subBackSteps = 1 + (hasParentAction ? 1 : 0);
         const char* subName = NULL;
-        switch (workSubMode) {
+        switch (pathSubMode) {
             case SUBMODE_DIG:     subName = "DIG >"; break;
             case SUBMODE_BUILD:   subName = "BUILD >"; break;
             case SUBMODE_HARVEST: subName = "HARVEST >"; break;
@@ -232,7 +270,7 @@ int InputMode_GetBarItems(BarItem* items) {
     
     // Parent action header (e.g. "SOIL >" when in DRAW > SOIL > DIRT)
     if (hasParentAction) {
-        const ActionDef* parentDef = GetActionDef(def->parentAction);
+        const ActionDef* parentDef = GetActionDef(pathDef->parentAction);
         char parentHeader[32];
         snprintf(parentHeader, sizeof(parentHeader), "%s >", parentDef->name);
         n = AddBackHeader(items, n, parentHeader, 1);  // back to parent category
@@ -241,15 +279,16 @@ int InputMode_GetBarItems(BarItem* items) {
     // Action header — backs out one level (to parent action or to action=NONE)
     const char* actionName = GetActionName();
     char actionHeader[32];
-    snprintf(actionHeader, sizeof(actionHeader), "%s:", actionName);
+    snprintf(actionHeader, sizeof(actionHeader), isNowTool ? "%s (now):" : "%s:", actionName);
     n = AddBackHeader(items, n, actionHeader, 1);
     // The same tool the other way: I flips now (instant) <-> order (workers) (registry twin)
     if (def->twin != ACTION_NONE)
         n = AddItem(items, n, def->requiredMode == MODE_DRAW ? "I:order" : "I:instant", KEY_I, 0, false, false, false);
     
     // Check if this action has children (is a category like WORKSHOP/SOIL)
+    // (a now category lists its Work twin's kinds: same order and keys as by order)
     const ActionDef* children[MAX_BAR_ITEMS];
-    int childCount = GetActionsForContext(def->requiredMode, def->requiredSubMode, inputAction, children, MAX_BAR_ITEMS);
+    int childCount = GetActionsForContext(pathDef->requiredMode, pathDef->requiredSubMode, pathDef->action, children, MAX_BAR_ITEMS);
     if (childCount > 0) {
         // Category action — show children from registry
         for (int i = 0; i < childCount; i++) {

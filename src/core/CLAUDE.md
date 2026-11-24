@@ -54,6 +54,10 @@ Save files use hex markers for readability: `MARKER_GRIDS` (0x47524944), `MARKER
   one `ActionOption` per tool in `input.c` `actionOptions[]`; the option bar and the keys are
   made from it. Draw materials: the `drawMaterials` table (`DrawMaterialFor`). Mouse hints per
   tool: `ActionDef.hints` in the registry. See docs/todo/ui/find-palette.md.
+- Build tools with a Draw/Work twin (`ActionDef.twin`) are one tool with a "how": picked in the
+  Work bar, done now (Draw) or by order (Work) per `buildNow`; `InputMode_HowOf` picks the
+  side, I flips it (`InputMode_FlipHow`). Games set it (`GameDef.buildNow`). The Draw bar leaves
+  the twinned tools out (`GetActionsForContext`).
 
 ## Time System
 

@@ -182,6 +182,15 @@ void InputMode_ExitToNormal(void);   // Go directly to normal (re-tap mode key)
 // Select an action the way its menu would: mode and submode come from the action registry.
 void InputMode_SelectAction(InputAction action);
 
+// How a build tool with a Draw/Work twin is done (docs/todo/ui/find-palette.md step 3):
+// true = now (the Draw tool: instant, the developer's cheat), false = order (the Work tool: a
+// designation or blueprint the workers carry out). The Draw bar no longer lists the twinned
+// tools; picking one in the Work bar gives the tool in this how, and I flips it. Each game sets
+// it (GameDef.buildNow: sandbox / dollhouse now, survival / island order); scenarios: now.
+extern bool buildNow;
+InputAction InputMode_HowOf(InputAction action);   // the action or its twin, per buildNow
+void InputMode_FlipHow(void);                      // I: flip buildNow and the current tool
+
 // Link stockpiles to workshop `wsIdx`: the next stockpile click links it (ESC/L ends).
 void InputMode_StartLinking(int wsIdx);
 

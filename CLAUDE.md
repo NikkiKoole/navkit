@@ -171,6 +171,8 @@ mouth), **dollhouse**, **sandbox**. Started from the play HUD, the dev UI "Games
   (`gameMode`, `hungerEnabled`, ...): it may not assume what the previous game left.
 - `gameMode` (`GAME_MODE_SANDBOX` / `GAME_MODE_SURVIVAL`) is the rules switch for death and
   fog of war; dollhouse runs on `GAME_MODE_SANDBOX` rules.
+- `GameDef.buildNow`: whether the dev build tools (Work bar: wall, floor, workshop, ...) work
+  instantly or as orders the workers carry out (I flips it in game). Player toolbars always order.
 - **The dev UI (TAB) is an overlay over any game**: toggling it does not change the game
   or its rules. Use it to inspect/cheat inside survival without leaving survival.
 - Scenarios (below) are dev/test setups; games are player-facing.

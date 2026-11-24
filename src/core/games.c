@@ -610,7 +610,7 @@ static bool HasPlanksOrClay(const GameToolContext* c) { return c->hasPlanks || c
     {HUD_TAB_NATURE, "Knap Stone",       ACTION_WORK_KNAP,              -1, HasRocks}, \
     {HUD_TAB_BUILD,  "Place Stockpile",  ACTION_DRAW_STOCKPILE,         -1, HasItems}, \
     {HUD_TAB_BUILD,  "Gather Zone",      ACTION_WORK_GATHER,            -1, HasItems}, \
-    {HUD_TAB_BUILD,  "Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
+    {HUD_TAB_BUILD,  "Build Campfire",   ACTION_WORK_WORKSHOP_CAMPFIRE, -1, HasSticks}, \
     {HUD_TAB_BUILD,  "Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
     {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}, \
     {HUD_TAB_BUILD,  "Build Pit Latrine", ACTION_WORK_FURNITURE, CONSTRUCTION_PIT_LATRINE, HasSticks}, \
@@ -633,13 +633,13 @@ static const GameTool sandboxTools[]   = { BASIC_TOOLS };
 
 static const GameDef games[] = {
     {"survival",  "Survival",  "One settler, 128x128 wilderness, fog of war: starve, dehydrate or freeze",
-                  StartSurvival,  false, TOOLS(survivalTools)},
+                  StartSurvival,  false, false, TOOLS(survivalTools)},
     {"dollhouse", "Dollhouse", "Two people in a small apartment: needs and mood, nobody dies",
-                  StartDollhouse, true,  TOOLS(dollhouseTools)},
+                  StartDollhouse, true,  true,  TOOLS(dollhouseTools)},
     {"island",    "Island",    "Three settlers wash ashore on an island grown from the seed: rivers, forest, moor; survival rules",
-                  StartIsland,    false, TOOLS(survivalTools)},
+                  StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
-                  StartSandbox,   true,  TOOLS(sandboxTools)},
+                  StartSandbox,   true,  true,  TOOLS(sandboxTools)},
 };
 #undef TOOLS
 #define GAME_COUNT ((int)(sizeof(games) / sizeof(games[0])))
@@ -689,6 +689,7 @@ bool StartGame(const char* name) {
     ClearElevators();
     g->start();
     devUI = g->devUI;
+    buildNow = g->buildNow;
     if (!devUI) InputMode_ExitToNormal();
     currentGame = g;
     TraceLog(LOG_INFO, "Game '%s': %d movers on %dx%dx%d", g->name, moverCount, gridWidth, gridHeight, gridDepth);

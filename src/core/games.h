@@ -47,6 +47,7 @@ typedef struct {
     const char* description;   // one line, shown in lists and tooltips
     void (*start)(void);       // builds the world and sets the rules
     bool devUI;                // dev overlay open when the game starts
+    bool buildNow;             // dev build tools default to now (instant) or order (input_mode.h)
     const GameTool* tools;     // play HUD tool buttons, in order
     int toolCount;
 } GameDef;

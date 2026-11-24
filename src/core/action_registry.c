@@ -1339,6 +1339,9 @@ int GetActionsForContext(InputMode mode, WorkSubMode subMode, InputAction parent
     int count = 0;
     for (int i = 0; i < ACTION_REGISTRY_COUNT && count < maxOut; i++) {
         const ActionDef* def = &ACTION_REGISTRY[i];
+        // The Draw bar leaves out the tools that have a Work twin: they are picked in the Work
+        // bar and done now or by order (buildNow, I flips it)
+        if (mode == MODE_DRAW && parent == ACTION_NONE && def->twin != ACTION_NONE) continue;
         if (def->requiredMode == mode &&
             def->requiredSubMode == subMode &&
             def->parentAction == parent &&

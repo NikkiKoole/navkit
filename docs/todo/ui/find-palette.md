@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction; data tidying steps 1, 2, 4 done, 3 and 5 partly (2026-11-24)
+> Status: decided direction; data tidying steps 1-4 done, 5 partly (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,16 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **one build tool with a "how" (step 3, rest; the user's call).** The Draw bar no
+  longer lists the twinned tools (wall, floor, ladder, ramp, workshop): they are picked in the
+  Work bar and come out *now* (the Draw tool) or *by order* (the Work tool) per `buildNow`
+  (input_mode.h). Each game sets it (`GameDef.buildNow`: sandbox and dollhouse now, survival and
+  island order); scenarios reset it to now. **I** flips it, in a tool or in the Work bar, and it
+  sticks for the next tool. A now tool keeps the Work path in its bar ("WORK > BUILD > WALL
+  (now):"), backing out lands in the Work bar, and a now workshop lists the Work kinds (same
+  order and keys). Draw keeps the Draw-only tools: stockpile, refuse pile, soil, train.
+  Survival's player toolbar now builds the campfire **by order** (5 sticks + a settler), its
+  button shows once there are sticks, like the latrine. Not done: a palette's "how" chooser.
 - 2026-11-24: **Draw/Work twins (step 3, first part).** `ActionDef.twin` links each Draw tool
   (now: the developer's instant cheat) with its Work tool (order: workers build it): wall /
   construct, floor, ladder, ramp, the workshop category and its 19 kinds (48 links, symmetric,

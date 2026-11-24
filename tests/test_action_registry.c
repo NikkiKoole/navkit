@@ -82,6 +82,14 @@ describe(action_twins) {
         }
         expect(linked == 48);   // 23 + the workshop category + wall/construct, both ways
     }
+    it("the Draw bar leaves out twinned tools (picked in the Work bar, now or by order)") {
+        const ActionDef* defs[64];
+        int n = GetActionsForContext(MODE_DRAW, SUBMODE_NONE, ACTION_NONE, defs, 64);
+        expect(n > 0);   // stockpile, refuse pile, soil, train stay
+        for (int i = 0; i < n; i++) { expect(defs[i]->twin == ACTION_NONE); }
+        // Inside the Draw workshop category (reached by flipping) its kinds are still listed
+        expect(GetActionsForContext(MODE_DRAW, SUBMODE_NONE, ACTION_DRAW_WORKSHOP, defs, 64) == 19);
+    }
     it("no key clash: I (the flip) is no bar key") {
         for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) { expect(ACTION_REGISTRY[i].barKey != 'i'); }
     }
