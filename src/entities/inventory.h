@@ -21,7 +21,7 @@ int  MoverFreeHands(int moverIdx);                 // 0, 1 or 2 (a job's load in
 // Jobs and hands: what a job carries sits in the hands (a log in both). Before a job picks
 // something up, MoverMakeHandsFor puts down what is in the way (a bag) at the mover's feet,
 // reserved for the mover; afterwards the mover goes back for it (needs.c, FREETIME_FETCHING_OWN).
-// The set-aside list is not saved: after a load the things just lie there.
+// The set-aside list is saved (Mover.setAside); a load gives the mover its reservations back.
 int  MoverJobCarry(int moverIdx);                  // item a job carries now (load or fuel), -1 = none
 void MoverMakeHandsFor(int moverIdx, int itemIdx);
 int  MoverSetAsideItem(int moverIdx);              // something put down for a job, still there; -1 = none
@@ -45,6 +45,7 @@ float MoverCarriedWeight(int moverIdx);
 void  MoverRecalcCarried(int moverIdx);
 void  RecalcAllCarried(void);                     // after a load
 void  MoverResetInventoryCache(int moverIdx);      // a new mover in this slot
+void  ReserveAllMoverGear(void);                   // after a load: reservations were cleared
 // Walking speed factor from carried weight (same curve as a job's load: 1 / (1 + 0.02 kg))
 static inline float CarriedSpeedFactor(int moverIdx) { return 1.0f / (1.0f + MoverCarriedWeight(moverIdx) * 0.02f); }
 bool ItemInMoverHands(int moverIdx, int itemIdx);

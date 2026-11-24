@@ -46,6 +46,7 @@ static void SetupGround(void) {
     InitFloorDirt();
     InitBalance();
     bladderEnabled = true;
+    toiletsPlumbed = false;   // survival: no mains
     hungerEnabled = false;
     thirstEnabled = false;
     energyEnabled = false;
@@ -166,6 +167,23 @@ describe(survival_toilet) {
         int mi = SetupNeedyMover(5, 5);
         UseToiletUntilDone(mi);
         expect(GetFloorDirt(6, 5, 1) == 0);
+    }
+
+    it("with mains water (toiletsPlumbed) every toilet flushes, a latrine still smells") {
+        SetupGround();
+        toiletsPlumbed = true;
+        SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
+        int mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
+        expect(GetFloorDirt(6, 5, 1) == 0);
+
+        SetupGround();
+        toiletsPlumbed = true;
+        SpawnFurniture(6, 5, 1, FURNITURE_PIT_LATRINE, MAT_OAK);
+        mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
+        expect(GetFloorDirt(6, 5, 1) == latrineDirtPerUse);
+        toiletsPlumbed = false;
     }
 
     it("a pot of water by the toilet flushes it, one water at a time") {

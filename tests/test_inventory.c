@@ -20,6 +20,10 @@
 
 static bool test_verbose = false;
 
+// From core/saveload.c
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+
 static int Spawn(int cx, int cy, ItemType t) {
     return SpawnItem(cx * CELL_SIZE + CELL_SIZE * 0.5f, cy * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, t);
 }
@@ -384,6 +388,31 @@ describe(jobs_and_hands) {
         currentTick = TICK_RATE;
         ProcessFreetimeNeeds();
         expect(items[bag].reservedBy == mi);
+    }
+
+    it("save and load: worn, held and set-aside things stay the mover's own (reserved)") {
+        int mi = Setup();
+        int jacket = Spawn(5, 5, ITEM_POCKET_JACKET), pack = Spawn(5, 5, ITEM_BACKPACK);
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG), can = Spawn(5, 5, ITEM_EMPTY_CAN);
+        int soda = Spawn(5, 5, ITEM_SODA);
+        MoverWear(mi, jacket); MoverWear(mi, pack);
+        MoverHold(mi, bag); MoverStow(mi, can);   // the can goes in the pockets
+        MoverHold(mi, soda);
+        MoverMakeHandsFor(mi, Spawn(5, 5, ITEM_LOG));   // both hands: the bag and the soda go down
+        expect(MoverSetAsideItem(mi) >= 0);
+        expect(SaveWorld("/tmp/test_inventory_save.bin"));
+        ClearItems(); ClearMovers();
+        expect(LoadWorld("/tmp/test_inventory_save.bin"));
+        expect(moverCount == 1);
+        expect(movers[mi].equippedClothing == jacket && movers[mi].wornBack == pack);
+        expect(items[jacket].reservedBy == mi && items[pack].reservedBy == mi);
+        expect(movers[mi].setAside[0] >= 0 || movers[mi].setAside[1] >= 0);
+        expect(items[bag].reservedBy == mi && items[soda].reservedBy == mi);
+        expect(items[can].containedIn == jacket && FirstInContainer(jacket) == can);
+        expect(RunStateAudit(test_verbose) == 0);
+        // and it still goes back for them
+        int first = MoverSetAsideItem(mi);
+        expect(first == bag || first == soda);
     }
 
     it("death: set-aside things become free for anyone") {

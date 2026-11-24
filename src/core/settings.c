@@ -579,6 +579,8 @@ static const Setting settings[] = {
       "How fast food on a fridge spoils, as a share of the normal rate (0 = keeps forever, 1 = no fridge).", NULL),
     SET_INT("latrineDirt", "Latrine Dirt", "Entities/Movers/Needs", latrineDirtPerUse, 0.2f, 0, 255,
       "Floor dirt a pit latrine's cell gets each time it is used. Filthy from 80, cleaners come from 30.", NULL),
+    SET_BOOL("toiletsPlumbed", "Toilets Plumbed", "Entities/Movers/Needs", toiletsPlumbed,
+      "The world has mains water: every toilet flushes. Off (survival, island): a toilet flushes only with a tap, sink or water pot within 3 cells."),
     SET_INT("toiletDryDirt", "Dry Toilet Dirt", "Entities/Movers/Needs", toiletDryDirtPerUse, 0.2f, 0, 255,
       "Floor dirt a toilet gets per use when it can't be flushed: no tap or sink, and no water item (a filled pot), within 3 cells.", NULL),
     SET_FLOAT("carryLimit", "Carry Limit (kg)", "Entities/Movers/Needs", carryLimitKg, 0.5f, 5.0f, 200.0f,

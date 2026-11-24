@@ -13,14 +13,8 @@ static bool ValidItem(int i) { return i >= 0 && i < MAX_ITEMS && items[i].active
 
 float carryLimitKg = 30.0f;
 static float carried[MAX_MOVERS];   // not saved: RecalcAllCarried after a load
-static int setAside[MAX_MOVERS][2]; // put down for a job (not saved); valid while reservedBy the mover
-static bool setAsideInit = false;
-
-static void InitSetAside(void) {
-    if (setAsideInit) return;
-    for (int i = 0; i < MAX_MOVERS; i++) setAside[i][0] = setAside[i][1] = -1;
-    setAsideInit = true;
-}
+// Things put down for a job: Mover.setAside (saved), valid while reserved by the mover
+#define setAside(mi) (movers[(mi)].setAside)
 
 int MoverJobCarry(int moverIdx) {
     const Mover* m = &movers[moverIdx];
@@ -73,7 +67,6 @@ int MoverFreeHands(int moverIdx) {
 
 void MoverMakeHandsFor(int moverIdx, int itemIdx) {
     if (!ValidItem(itemIdx)) return;
-    InitSetAside();
     Mover* m = &movers[moverIdx];
     int need = ItemIsTwoHanded(items[itemIdx].type) ? 2 : 1;
     for (int h = 1; h >= 0 && HandsEmpty(moverIdx) < need; h--) {
@@ -84,21 +77,20 @@ void MoverMakeHandsFor(int moverIdx, int itemIdx) {
         SafeDropItem(it, m->x, m->y, (int)m->z);
         if (items[it].contentCount > 0) MoveContainer(it, items[it].x, items[it].y, items[it].z);
         items[it].reservedBy = moverIdx;   // still its own: nobody hauls it off
-        int slot = setAside[moverIdx][0] < 0 ? 0 : 1;
-        if (setAside[moverIdx][slot] >= 0) MoverForgetSetAside(moverIdx, setAside[moverIdx][slot]);
-        setAside[moverIdx][slot] = it;
+        int slot = setAside(moverIdx)[0] < 0 ? 0 : 1;
+        if (setAside(moverIdx)[slot] >= 0) MoverForgetSetAside(moverIdx, setAside(moverIdx)[slot]);
+        setAside(moverIdx)[slot] = it;
         EventLog("Mover %d puts down %s (item %d) to carry %s", moverIdx, ItemName(items[it].type), it, ItemName(items[itemIdx].type));
     }
     MoverRecalcCarried(moverIdx);
 }
 
 int MoverSetAsideItem(int moverIdx) {
-    InitSetAside();
     for (int k = 0; k < 2; k++) {
-        int it = setAside[moverIdx][k];
+        int it = setAside(moverIdx)[k];
         if (it < 0) continue;
         if (!ValidItem(it) || items[it].reservedBy != moverIdx || items[it].state != ITEM_ON_GROUND) {
-            setAside[moverIdx][k] = -1;   // gone, or someone else's now
+            setAside(moverIdx)[k] = -1;   // gone, or someone else's now
             continue;
         }
         return it;
@@ -107,10 +99,9 @@ int MoverSetAsideItem(int moverIdx) {
 }
 
 void MoverForgetSetAside(int moverIdx, int itemIdx) {
-    InitSetAside();
     for (int k = 0; k < 2; k++) {
-        if (setAside[moverIdx][k] != itemIdx) continue;
-        setAside[moverIdx][k] = -1;
+        if (setAside(moverIdx)[k] != itemIdx) continue;
+        setAside(moverIdx)[k] = -1;
         if (ValidItem(itemIdx) && items[itemIdx].reservedBy == moverIdx) items[itemIdx].reservedBy = -1;
     }
 }
@@ -120,14 +111,28 @@ bool ItemIsMoverGear(int moverIdx, int itemIdx) {
     if (itemIdx < 0) return false;
     if (itemIdx == m->equippedTool || itemIdx == m->equippedClothing || itemIdx == m->wornBack ||
         itemIdx == m->hands[0] || itemIdx == m->hands[1]) return true;
-    InitSetAside();
-    return setAside[moverIdx][0] == itemIdx || setAside[moverIdx][1] == itemIdx;
+    return setAside(moverIdx)[0] == itemIdx || setAside(moverIdx)[1] == itemIdx;
 }
 
 void MoverResetInventoryCache(int moverIdx) {
-    InitSetAside();
-    setAside[moverIdx][0] = setAside[moverIdx][1] = -1;
+    setAside(moverIdx)[0] = setAside(moverIdx)[1] = -1;
     carried[moverIdx] = 0.0f;
+}
+
+// A load clears every item reservation (jobs get theirs back in saveload.c). What a mover
+// wears, holds or put down for a job is its own: reserve it again.
+void ReserveAllMoverGear(void) {
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        int gear[5] = { m->equippedTool, m->equippedClothing, m->wornBack, m->hands[0], m->hands[1] };
+        for (int k = 0; k < 5; k++) if (ValidItem(gear[k])) items[gear[k]].reservedBy = i;
+        for (int k = 0; k < 2; k++) {
+            int it = m->setAside[k];
+            if (ValidItem(it) && items[it].state == ITEM_ON_GROUND) items[it].reservedBy = i;
+            else m->setAside[k] = -1;
+        }
+    }
 }
 
 // Out of wherever it is (stockpile slot, a container) and onto the mover, reserved by it
@@ -250,8 +255,7 @@ void MoverDropAll(int moverIdx) {
     MoverDropHand(moverIdx, 0);
     MoverDropHand(moverIdx, 1);
     MoverDropBack(moverIdx);
-    InitSetAside();
-    for (int k = 0; k < 2; k++) if (setAside[moverIdx][k] >= 0) MoverForgetSetAside(moverIdx, setAside[moverIdx][k]);
+    for (int k = 0; k < 2; k++) if (setAside(moverIdx)[k] >= 0) MoverForgetSetAside(moverIdx, setAside(moverIdx)[k]);
 }
 
 void MoverSyncInventory(int moverIdx) {

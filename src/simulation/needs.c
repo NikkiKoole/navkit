@@ -314,10 +314,16 @@ int latrineDirtPerUse = 40;   // setting latrineDirt
 int toiletDryDirtPerUse = 15; // setting toiletDryDirt: a toilet nobody could flush
 #define TOILET_FLUSH_REACH 3  // cells: a tap or sink, or a pot of water this close flushes it
 
-// Flush a toilet after use: a water source next to it (tap, sink: plumbing for now) costs
+// Flush a toilet after use. With mains water (toiletsPlumbed) it always flushes. Without
+// (survival): a water source next to it (tap, sink) costs
 // nothing, else one free water item close by (a pot kept full by the fill-water-pot job) is
 // used up. False = nothing to flush with: a dry toilet.
+bool toiletsPlumbed = true;   // setting toiletsPlumbed: the world has mains water (city, dollhouse)
+
 static bool FlushToilet(int fi) {
+    // A world with mains water: every toilet has its own cistern supply (until pipeGrid says
+    // which ones are connected)
+    if (toiletsPlumbed) return true;
     const Furniture* f = &furniture[fi];
     if (HasNearbyCapability(f->x, f->y, f->z, CAP_WATER_SOURCE, TOILET_FLUSH_REACH)) return true;
     for (int i = 0; i < itemHighWaterMark; i++) {

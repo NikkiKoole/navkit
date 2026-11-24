@@ -140,6 +140,9 @@ typedef struct Mover {
     // free). A two-handed item sits in both hands. The body slot is equippedClothing.
     int hands[2];
     int wornBack;
+    // Put down for a job (v109+, inventory.c MoverMakeHandsFor): still its own, reserved,
+    // fetched once no job comes. -1 = none
+    int setAside[2];
 } Mover;
 
 // Stuck detection thresholds

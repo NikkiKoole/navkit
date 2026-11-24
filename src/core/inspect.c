@@ -1487,9 +1487,15 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= V106_INVENTORY) {
-        // v106+: Mover struct with hands and wornBack
+    if (version >= V109_SET_ASIDE) {
+        // v109+: Mover struct with setAside
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+        for (int i = 0; i < insp_moverCount; i++) {
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= V106_INVENTORY) {
+        // v106-v108: Mover records without setAside (all movers, then all paths)
+        for (int i = 0; i < insp_moverCount; i++) fread(&insp_movers[i], MOVER_V108_SIZE, 1, f);
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
         }
@@ -1685,6 +1691,9 @@ int InspectSaveFile(int argc, char** argv) {
     }
     if (version < V106_INVENTORY) {
         for (int i = 0; i < insp_moverCount; i++) { insp_movers[i].hands[0] = insp_movers[i].hands[1] = -1; insp_movers[i].wornBack = -1; }
+    }
+    if (version < V109_SET_ASIDE) {
+        for (int i = 0; i < insp_moverCount; i++) insp_movers[i].setAside[0] = insp_movers[i].setAside[1] = -1;
     }
 
     // Initialize mood fields for old saves (v90+)

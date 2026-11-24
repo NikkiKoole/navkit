@@ -199,6 +199,7 @@ static void SetSurvivalRules(void) {
     bodyTempEnabled = true;
     thirstEnabled = true;
     bladderEnabled = true;    // bush, pit latrine, toilet (docs/todo/gameplay/survival-toilet.md)
+    toiletsPlumbed = false;   // no mains: a toilet flushes only with water close by
     moodEnabled = true;       // startup default
     toolRequirementsEnabled = true;
     jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
@@ -540,6 +541,7 @@ static void StartDollhouse(void) {
     energyEnabled = true;
     thirstEnabled = true;
     bladderEnabled = true;
+    toiletsPlumbed = true;    // mains water: every toilet flushes
     moodEnabled = true;
     bodyTempEnabled = false; // no weather in dollhouse for now
     toolRequirementsEnabled = false;
@@ -560,6 +562,7 @@ static void StartSandbox(void) {
     energyEnabled = false;
     thirstEnabled = false;
     bladderEnabled = false;
+    toiletsPlumbed = true;    // mains water: every toilet flushes
     bodyTempEnabled = false;
     moodEnabled = true;                      // startup default
     toolRequirementsEnabled = false;

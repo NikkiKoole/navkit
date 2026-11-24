@@ -669,6 +669,8 @@ void RebuildPostLoadState(void) {
                 sp->reservedBy[ly * sp->width + lx]++;
         }
     }
+    // ...and the movers their own gear: worn, held, put down for a job (inventory.c)
+    ReserveAllMoverGear();
 
     // Rebuild waterActiveCells from loaded water grid
     waterActiveCells = 0;
@@ -1068,9 +1070,15 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= V106_INVENTORY) {
-        // v106+: Mover struct with hands and wornBack
+    if (version >= V109_SET_ASIDE) {
+        // v109+: Mover struct with setAside
         fread(movers, sizeof(Mover), moverCount, f);
+        for (int i = 0; i < moverCount; i++) {
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= V106_INVENTORY) {
+        // v106-v108: Mover records without setAside (all movers, then all paths)
+        for (int i = 0; i < moverCount; i++) fread(&movers[i], MOVER_V108_SIZE, 1, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
         }
@@ -1280,6 +1288,9 @@ bool LoadWorld(const char* filename) {
     }
     if (version < V106_INVENTORY) {
         for (int i = 0; i < moverCount; i++) { movers[i].hands[0] = movers[i].hands[1] = -1; movers[i].wornBack = -1; }
+    }
+    if (version < V109_SET_ASIDE) {
+        for (int i = 0; i < moverCount; i++) movers[i].setAside[0] = movers[i].setAside[1] = -1;
     }
 
     // Initialize mood fields for old saves (v90+)

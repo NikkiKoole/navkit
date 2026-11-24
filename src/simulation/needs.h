@@ -39,6 +39,7 @@ int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
 extern int trashBinWalkCells;
 extern int latrineDirtPerUse;   // floor dirt a pit latrine gets per use (setting latrineDirt)
 extern int toiletDryDirtPerUse; // ... a toilet without water to flush it (setting toiletDryDirt)
+extern bool toiletsPlumbed;     // mains water: every toilet flushes (off in survival: water nearby needed)
 int FindTrashBinFor(int moverIdx, ItemType trash);   // bin item index with room, or -1
 
 #endif

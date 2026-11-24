@@ -48,6 +48,10 @@ no fall", "cistern empty"), so the answer to "why not?" is something on the map.
   toilet: `toiletDryDirt` (15) per use. So: latrine 40, dry toilet 15, flushed 0. The
   dollhouse toilet flushes from its bathroom sink. Keep a stockpile with water pots next to a
   survival toilet and it stays clean.
+- **Mains water is a game rule** (`toiletsPlumbed`): on in the dollhouse and sandbox (and city
+  buildings: their WCs have their own cistern pipe, which the 3-cell stand-in missed in many of
+  dreamengine's kinds), every toilet flushes; off in survival and island. pipeGrid's
+  "connected" replaces it later.
 - No new items, no save bump. Not yet: the pit filling up (needs a counter per furniture).
 
 ## The ladder
