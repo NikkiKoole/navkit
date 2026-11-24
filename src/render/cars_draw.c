@@ -106,6 +106,7 @@ static void DrawTrafficLights(void) {
         Vector2 p = CarScreen(rdX[k] - sinf(h) * 1.6f * CELL_SIZE, rdY[k] + cosf(h) * 1.6f * CELL_SIZE);
         Color c = st == 2 ? (Color){60, 220, 80, 255} : (st == 1 ? (Color){250, 190, 40, 255} : (Color){230, 40, 40, 255});
         float r = fmaxf(2.5f, 0.35f * CELL_SIZE * zoom);
+        if (r < 4) { DrawRectangle((int)(p.x - r), (int)(p.y - r), (int)(2 * r), (int)(2 * r), c); continue; }   // far out: a square
         DrawCircleV(p, r + 1, BLACK);
         DrawCircleV(p, r, c);
     }
@@ -116,14 +117,27 @@ void DrawCars(void) {
     PROFILE_BEGIN(DrawCars);
     if (rdSegCount > 0) DrawTrafficLights();
     bool roads = rdSegCount > 0;
-    if (carDebug && !roads) DrawCarClearance(currentViewZ);
-    if (carDebug && roads) DrawRoadsDebug();
     float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE;
     float wb = L * 0.6f;
+    float carPx = L * zoom;   // a car's length on screen: picks the level of detail
+    if (carDebug && !roads) DrawCarClearance(currentViewZ);
+    if (carDebug && roads && carPx >= 6) DrawRoadsDebug();
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight(), margin = carPx + 4;
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
         if (!c->active || c->z != currentViewZ) continue;
+        Vector2 sc = CarScreen(c->x, c->y);
+        if (sc.x < -margin || sc.y < -margin || sc.x > sw + margin || sc.y > sh + margin) continue;   // off screen
         Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        // Far out: one square / one rectangle per car (wheels and glass don't show anyway)
+        if (carPx < 3) {
+            DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col);
+            continue;
+        }
+        if (carPx < 8) {
+            CarPart(c, 0, 0, L - 2, W - 4, 0, col);
+            continue;
+        }
         if (carDebug && !c->onRoad) DrawCarDebug(c, col);
         if (carDebug && c->waitNow > 0.5f && c->whyCar >= 0) {
             Vector2 a = {offset.x + c->x * zoom, offset.y + c->y * zoom};
@@ -152,7 +166,8 @@ void DrawCars(void) {
         if (carDebug && c->onRoad) {
             static const Color whyCol[] = {{80, 220, 90, 255}, {255, 150, 40, 255}, {235, 50, 50, 255}, {240, 220, 60, 255}};
             Color wc = whyCol[c->why >= 0 && c->why < 4 ? c->why : 0];
-            DrawCircleV(CarScreen(c->x, c->y), fmaxf(2.0f, 0.3f * CELL_SIZE * zoom), wc);
+            float r = fmaxf(2.0f, 0.3f * CELL_SIZE * zoom);
+            DrawRectangle((int)(sc.x - r * 0.5f), (int)(sc.y - r * 0.5f), (int)r, (int)r, wc);   // (a circle is many triangles)
         }
     }
     PROFILE_END(DrawCars);
