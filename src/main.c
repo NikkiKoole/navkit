@@ -60,6 +60,7 @@ bool showGraph = false;
 bool showEntrances = false;
 bool showChunkBoundaries = false;
 bool showMovers = true;
+bool moverFaces = true;
 bool usePixelPerfectMovers = true;
 bool showMoverPaths = false;
 bool showJobLines = false;

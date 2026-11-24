@@ -681,6 +681,8 @@ static const Setting settings[] = {
 
     // --- Debug view toggles ---
     SET_BOOL("movers", "Show Movers", "Rendering & Debug/Debug/Rendering", showMovers, "Draw movers."),
+    SET_BOOL("moverFaces", "Mover Faces", "Rendering & Debug/Debug/Rendering", moverFaces,
+      "Movers look where they walk (front when standing) and their mouth shows mood; eyes shut asleep. Off: the old front-facing grin."),
     SET_BOOL("pixelPerfect", "Pixel Perfect", "Rendering & Debug/Debug/Rendering", usePixelPerfectMovers,
       "Snap mover sprites to whole pixels."),
     SET_BOOL("items", "Show Items", "Rendering & Debug/Debug/Rendering", showItems, "Draw items."),

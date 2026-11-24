@@ -1704,6 +1704,50 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
     }
 }
 
+// --- Mover faces --------------------------------------------------------------
+// Which head sprite a mover shows: a view (where it looks) x a mouth (head_<view>_<mouth>
+// slices in worksheet8x8.ase). Facing is render-only for now: toward the next waypoint
+// (where it is heading, steady under avoidance pushes, also while paused), front with no
+// path. Later the noticing layer sets it apart from walking (docs/todo/social/noticing.md).
+enum { FACE_FRONT, FACE_LEFT, FACE_RIGHT, FACE_UP, FACE_DOWN, FACE_VIEW_COUNT };
+enum { MOUTH_GRIN, MOUTH_FLAT, MOUTH_SMALL, MOUTH_SMILE, MOUTH_SAD, MOUTH_OPEN, MOUTH_CLOSE, MOUTH_COUNT };
+static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
+    {SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
+     SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close},
+    {SPRITE_head_left_grin, SPRITE_head_left_flat, SPRITE_head_left_small, SPRITE_head_left_smile,
+     SPRITE_head_left_sad, SPRITE_head_left_open, SPRITE_head_left_close},
+    {SPRITE_head_right_grin, SPRITE_head_right_flat, SPRITE_head_right_small, SPRITE_head_right_smile,
+     SPRITE_head_right_sad, SPRITE_head_right_open, SPRITE_head_right_close},
+    {SPRITE_head_up_grin, SPRITE_head_up_flat, SPRITE_head_up_small, SPRITE_head_up_smile,
+     SPRITE_head_up_sad, SPRITE_head_up_open, SPRITE_head_up_close},
+    {SPRITE_head_down_grin, SPRITE_head_down_flat, SPRITE_head_down_small, SPRITE_head_down_smile,
+     SPRITE_head_down_sad, SPRITE_head_down_open, SPRITE_head_down_close},
+};
+static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
+
+static int MoverFaceView(int i, const Mover* m) {
+    if (m->pathLength <= 0 || m->pathIndex < 0) return moverFaceView[i] = FACE_FRONT;
+    Point wp = moverPaths[i][m->pathIndex];
+    float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+    float dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    float ax = fabsf(dx), ay = fabsf(dy);
+    if (ax + ay < 1.0f) return moverFaceView[i];   // on the waypoint: keep looking the same way
+    int last = moverFaceView[i];
+    bool wasSide = (last == FACE_LEFT || last == FACE_RIGHT);
+    bool wasVert = (last == FACE_UP || last == FACE_DOWN);
+    const float bias = 1.3f;
+    bool side = wasSide ? (ax * bias > ay) : wasVert ? (ax > ay * bias) : (ax >= ay);
+    return moverFaceView[i] = side ? (dx < 0 ? FACE_LEFT : FACE_RIGHT) : (dy < 0 ? FACE_UP : FACE_DOWN);
+}
+
+static int MoverMouth(const Mover* m) {
+    if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
+    if (m->mood > 0.4f) return MOUTH_SMILE;
+    if (m->mood < -0.45f) return MOUTH_SAD;
+    if (m->mood < -0.15f) return MOUTH_FLAT;
+    return MOUTH_GRIN;
+}
+
 static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -1821,7 +1865,8 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
-        Rectangle src = SpriteGetRect(SPRITE_head);
+        Rectangle src = SpriteGetRect(moverFaces ? faceSprites[MoverFaceView(i, m)][MoverMouth(m)]
+                                                 : SPRITE_head);
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 
         // Draw clothing outline behind mover (larger tinted sprite)
@@ -3025,18 +3070,15 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
 
 // One-way ladders and doors: a small arrow on the cell. Ladders: up-only points north (up
 // the screen), green; down-only south, orange. Doors: the way through, light blue.
-// Seen from above through open air: the first non-empty cell at most 4 levels down, dimmer
-// the deeper it is.
 static void DrawOneWayLadders(void) {
     float size = CELL_SIZE * zoom;
-    if (currentViewZ < 0 || currentViewZ >= gridDepth) return;
+    int z = currentViewZ;
+    if (z < 0 || z >= gridDepth) return;
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             if (!SparseLayerHasBlock(&oneWayLayer, x, y)) { x |= STORE_MASK; continue; }
-            int z = currentViewZ, depth = 0;
-            while (z > 0 && depth < 4 && GRID(x, y, z) == CELL_AIR && !HAS_FLOOR(x, y, z)) { z--; depth++; }
             uint8_t ow = ONE_WAY(x, y, z);
             if (ow == ONEWAY_NONE) continue;
             CellType ct = GRID(x, y, z);
@@ -3050,7 +3092,6 @@ static void DrawOneWayLadders(void) {
                 fx = ax[ow - ONEWAY_N]; fy = ay[ow - ONEWAY_N];
                 c = (Color){130, 200, 255, 230};
             } else continue;
-            c.a = (unsigned char)(c.a * (1.0f - 0.18f * depth));
             float cx = offset.x + (x + 0.5f) * size, cy = offset.y + (y + 0.5f) * size, r = size * 0.3f;
             // tip ahead, base corners behind on either side (px,py = perpendicular)
             float px = -fy, py = fx;
