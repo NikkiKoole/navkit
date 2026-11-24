@@ -21,18 +21,19 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_PLANK_BED]  = { "Plank Bed",  1.0f,   false, 12, CAP_SLEEPING },
     [FURNITURE_CHAIR]      = { "Chair",      0.375f, false, 11, CAP_SEATING },
     [FURNITURE_TOILET]     = { "Toilet",     0.0f,    false, 11, CAP_TOILET },
-    // Not blocking (a blocking cell would drop out of its room), but costly to cross
+    // Mostly not blocking (things are put on them or used from them), but costly to cross.
+    // Blocking furniture stays part of its room (rooms.c IsRoomFloor).
     [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE | CAP_FLAT_SURFACE },
     [FURNITURE_TAP]        = { "Tap",        0.0f,    false, 11, CAP_WATER_SOURCE },
     // City heat: a grate is walked on (no cost), a barrel is stood next to
     [FURNITURE_HEAT_GRATE] = { "Heating Grate", 0.0f, false, 0,  CAP_HEAT, 1, 40 },
     [FURNITURE_FIRE_BARREL]= { "Burning Barrel", 0.0f, true, 0,  CAP_HEAT, 1, 150 },
-    // dreamengine's buildings. Not blocking for the same reason as the table.
+    // dreamengine's buildings. The fridge stays walkable: food is put on its cell.
     [FURNITURE_SINK]       = { "Sink",       0.0f,    false, 16, CAP_WASHING | CAP_WATER_SOURCE },
     [FURNITURE_DOUBLE_BED] = { "Double Bed", 1.0f,    false, 12, CAP_SLEEPING, 0, 0, 2 },
     [FURNITURE_FRIDGE]     = { "Fridge",     0.0f,    false, 20, CAP_COLD_STORAGE },
     [FURNITURE_DESK]       = { "Desk",       0.0f,    false, 16, CAP_FLAT_SURFACE },
-    [FURNITURE_SHELF]      = { "Shelf",      0.0f,    false, 20, CAP_DISPLAY },
+    [FURNITURE_SHELF]      = { "Shelf",      0.0f,    true,  0,  CAP_DISPLAY },   // walked round: aisles
     [FURNITURE_SOFA]       = { "Sofa",       0.5f,    false, 11, CAP_SEATING },
     [FURNITURE_TILL]       = { "Till",       0.0f,    false, 16, CAP_SELLING },
     [FURNITURE_BATH]       = { "Bath",       0.0f,    false, 20, CAP_WASHING },
@@ -203,7 +204,11 @@ void RebuildFurnitureMoveCostGrid(void) {
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active) continue;
         const FurnitureDef* def = &furnitureDefs[furniture[i].type];
-        if (!def->blocking && def->moveCost > 0) {
+        if (def->blocking) {
+            // The flag is saved with the cells; set it again in case the def became blocking
+            // after the save was made (shelves did)
+            SET_CELL_FLAG(furniture[i].x, furniture[i].y, furniture[i].z, CELL_FLAG_WORKSHOP_BLOCK);
+        } else if (def->moveCost > 0) {
             FURNITURE_MOVE_COST(furniture[i].x, furniture[i].y, furniture[i].z) = (uint8_t)def->moveCost;
         }
     }

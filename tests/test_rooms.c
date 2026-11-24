@@ -795,6 +795,29 @@ describe(building_rooms) {
         expect(strcmp(RoomTypeName(ROOM_TYPE_OUTDOORS), "Outdoors") == 0);
     }
 
+    it("a shelf blocks walking but stays in its room; a full shelf row makes aisles, one room") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(2, 2, 10, 10);
+        for (int x = 3; x <= 9; x++) SpawnFurniture(x, 6, 1, FURNITURE_SHELF, MAT_OAK);   // wall to wall
+        UpdateRooms();
+        expect(!IsCellWalkableAt(1, 6, 5));
+        uint16_t north = GetRoomAt(5, 4, 1);
+        expect(north != ROOM_NONE);
+        expect(GetRoomAt(5, 8, 1) == north);     // the aisle beyond the shelves: same room
+        expect(GetRoomAt(5, 6, 1) == north);     // the shelf's cell too
+        expect(GetRoom(north)->furnCount == 7);
+    }
+
+    it("a bed hemmed in by blocking furniture is still counted") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(2, 2, 8, 8);
+        SpawnFurniture(3, 3, 1, FURNITURE_SHELF, MAT_OAK);
+        SpawnFurniture(5, 5, 1, FURNITURE_DOUBLE_BED, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(3, 3) == RoomAt(6, 6));
+        expect(RoomAt(6, 6)->type == ROOM_TYPE_BEDROOM);
+    }
+
     it("furniture writes its capabilities, high bits included") {
         SetupFlatGround(16, 16);
         SpawnFurniture(2, 2, 1, FURNITURE_TOILET, MAT_GRANITE);

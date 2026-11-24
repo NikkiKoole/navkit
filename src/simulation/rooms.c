@@ -68,6 +68,17 @@ static float ComputeLightLevel(int x, int y, int z) {
     return sky > block ? sky : block;
 }
 
+// Floor space of a room: walkable, or would be but for blocking furniture or workshop
+// machinery standing on it (a shelf between two aisles, a kiln's body). Those cells and
+// what stands on them belong to the room; the flood goes on through them.
+static bool IsRoomFloor(int x, int y, int z) {
+    if (!HAS_CELL_FLAG(x, y, z, CELL_FLAG_WORKSHOP_BLOCK)) return IsCellWalkableAt(z, y, x);
+    CLEAR_CELL_FLAG(x, y, z, CELL_FLAG_WORKSHOP_BLOCK);
+    bool floor = IsCellWalkableAt(z, y, x);
+    SET_CELL_FLAG(x, y, z, CELL_FLAG_WORKSHOP_BLOCK);
+    return floor;
+}
+
 // --- Flood fill ---
 
 // BFS flood fill from seed (sx, sy) at z-level.
@@ -123,8 +134,8 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
                 continue;
             }
 
-            // Walkable cell — must actually be walkable (has support)
-            if (!IsCellWalkableAt(z, ny, nx)) continue;
+            // Floor space (has support; blocking furniture on it is fine)
+            if (!IsRoomFloor(nx, ny, z)) continue;
 
             visited[ny][nx] = true;
             roomBfsQueue[qTail++] = (RoomBfsNode){nx, ny};
@@ -409,8 +420,8 @@ static void RecomputeRooms(void) {
                     continue;
                 }
 
-                // Skip non-walkable cells (no support)
-                if (!IsCellWalkableAt(z, y, x)) {
+                // Skip cells that are no floor space (no support)
+                if (!IsRoomFloor(x, y, z)) {
                     visited[y][x] = true;
                     continue;
                 }
