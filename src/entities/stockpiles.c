@@ -87,6 +87,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_SHORT_STRING, FILTER_CAT_CRAFT,     "String",       BEIGE},
     {ITEM_CORDAGE,      FILTER_CAT_CRAFT,     "Cordage",      BEIGE},
     {ITEM_LYE,          FILTER_CAT_CRAFT,     "Lye",          BEIGE},
+    {ITEM_EMPTY_CAN,    FILTER_CAT_CRAFT,     "Empty Can",    LIGHTGRAY},
+    {ITEM_WRAPPER,      FILTER_CAT_CRAFT,     "Wrapper",      LIGHTGRAY},
     // Container
     {ITEM_BASKET,       FILTER_CAT_CONTAINER, "Basket",       BEIGE},
     {ITEM_CLAY_POT,     FILTER_CAT_CONTAINER, "Clay Pot",     ORANGE},
@@ -106,6 +108,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_BOILED_WATER, FILTER_CAT_FOOD,      "Boiled Water", SKYBLUE},
     {ITEM_HERBAL_TEA,   FILTER_CAT_FOOD,      "Herbal Tea",   GREEN},
     {ITEM_BERRY_JUICE,  FILTER_CAT_FOOD,      "Berry Juice",  PURPLE},
+    {ITEM_SODA,         FILTER_CAT_FOOD,      "Soda",         RED},
+    {ITEM_SNACK,        FILTER_CAT_FOOD,      "Snack",        ORANGE},
     // Farm
     {ITEM_WHEAT_SEEDS,  FILTER_CAT_FARM,      "Wheat Seeds",  YELLOW},
     {ITEM_LENTIL_SEEDS, FILTER_CAT_FARM,      "Lentil Seeds", GREEN},

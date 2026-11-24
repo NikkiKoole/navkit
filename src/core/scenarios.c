@@ -2695,6 +2695,90 @@ static void TideIslandPrintStats(void) {
     DryGroundPrintStats();
 }
 
+// trash: the city's trash loop (docs/vision/city-1999.md "Trash, bins and deposit bottles").
+// A snack stand (stockpile of snacks and sodas, topped up like a delivery) and three trash
+// bins: A by the stand, B 12 cells off, C at the far end (out of reach for most). 10 movers
+// wander about (foot traffic), start hungry and thirsty, eat and drink at the stand and take
+// the can or wrapper to the nearest bin with room within trashBinWalk cells; nothing in
+// reach: litter. Mover 0 is a Slob (drops it on the spot), mover 1 Tidy (walks twice as far).
+// Expected: A fills first, then B; litter once both are full (and the slob's at once).
+#define TRASH_STAND_X 4
+#define TRASH_STAND_Y 10
+static int trashBins[3];
+static const int trashBinX[3] = { 8, 18, 36 };
+
+static void TrashRestock(void) {
+    for (int dy = 0; dy < 2; dy++)
+        for (int dx = 0; dx < 3; dx++) {
+            int x = TRASH_STAND_X + dx, y = TRASH_STAND_Y + dy;
+            bool taken = false;
+            for (int i = 0; i < itemHighWaterMark && !taken; i++)
+                if (items[i].active && items[i].state == ITEM_IN_STOCKPILE &&
+                    (int)(items[i].x / CELL_SIZE) == x && (int)(items[i].y / CELL_SIZE) == y) taken = true;
+            if (taken) continue;
+            int idx = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 1,
+                                dy == 0 ? ITEM_SNACK : ITEM_SODA);
+            if (idx >= 0) items[idx].stackCount = ItemMaxStack(items[idx].type);
+        }
+}
+
+static void SetupTrash(void) {
+    hungerEnabled = true; thirstEnabled = true;
+    energyEnabled = false; bladderEnabled = false; bodyTempEnabled = false;
+    dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
+    balance.baseMoverSpeed = 600.0f;    // (before the movers spawn: they take it from here)
+    endlessMoverMode = true;            // wander between meals: foot traffic
+    CreateStockpile(TRASH_STAND_X, TRASH_STAND_Y, 1, 3, 2);
+    TrashRestock();
+    for (int b = 0; b < 3; b++)
+        trashBins[b] = SpawnItem(trashBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, 11 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_TRASH_BIN);
+    BuildEntrances(); BuildGraph();
+    for (int i = 0; i < 10; i++) {
+        SpawnMoverAt(2 + i * 3, 4 + (i % 3) * 7, 1);
+        Mover* m = &movers[moverCount - 1];
+        m->hunger = 0.15f + 0.02f * i;   // all below the seek thresholds, a little apart
+        m->thirst = 0.20f + 0.02f * i;
+        if (i == 0) { m->traits[0] = TRAIT_SLOB; m->traits[1] = TRAIT_NONE; }
+        if (i == 1) { m->traits[0] = TRAIT_TIDY; m->traits[1] = TRAIT_NONE; }
+    }
+    currentViewZ = 1;
+}
+
+static void TrashTickStats(void) {
+    if (currentTick % 600 == 0) TrashRestock();
+}
+
+static int TrashInBin(int bin) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].containedIn == bin) n += items[i].stackCount;
+    return n;
+}
+
+static int TrashLitter(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].state == ITEM_ON_GROUND &&
+            (items[i].type == ITEM_EMPTY_CAN || items[i].type == ITEM_WRAPPER)) n += items[i].stackCount;
+    return n;
+}
+
+static void TrashPrintStats(void) {
+    int held = 0;
+    for (int i = 0; i < moverCount; i++) if (movers[i].active && movers[i].heldTrash != ITEM_NONE) held++;
+    printf("Trash: bin A (by the stand) %d, bin B (12 cells) %d, bin C (far end) %d, litter %d, in hand %d\n",
+           TrashInBin(trashBins[0]), TrashInBin(trashBins[1]), TrashInBin(trashBins[2]), TrashLitter(), held);
+}
+
+static bool TrashCheck(char* why, int whyLen) {
+    int a = TrashInBin(trashBins[0]), total = a + TrashInBin(trashBins[1]) + TrashInBin(trashBins[2]) + TrashLitter();
+    if (total < 10 || a < 5) {
+        snprintf(why, (size_t)whyLen, "trash: %d pieces, %d in bin A (want >= 10 and >= 5)", total, a);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -2762,6 +2846,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupTide, TideTickStats, TidePrintStats, TideCheck, 64, 40},
     {"tide-island", "The island with the tide on its sea: flats fall dry, ramps from the beach down, 100 wandering movers; scenarioSize sets the map",
                    "Island",    SetupTideIsland, TideTickStats, TideIslandPrintStats, TideCheck, 256, 256},
+    {"trash",      "City trash loop: a snack stand, three bins at 4/14/32 cells, 10 wandering movers eat and drink, bins fill, then litter (setting trashBinWalk)",
+                   NULL,        SetupTrash, TrashTickStats, TrashPrintStats, TrashCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

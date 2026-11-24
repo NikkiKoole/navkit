@@ -162,6 +162,12 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         else if (m->freetimeState == FREETIME_USING_BUSH) DescAdd(d, DESC_MILD, "  Behind a bush...");
     }
 
+    // Trash in hand (what the last snack or drink left)
+    if (m->heldTrash > ITEM_NONE && m->heldTrash < ITEM_TYPE_COUNT) {
+        DescAdd(d, DESC_MUTED, "Holding: %s%s", ItemName(m->heldTrash),
+                m->freetimeState == FREETIME_SEEKING_BIN ? " (taking it to a bin)" : "");
+    }
+
     // Energy, with a projection: time until rested (resting) or until tired (awake)
     {
         const char* label = EnergyLabel(m->energy, &tone);

@@ -10,6 +10,8 @@
 #include "../src/entities/workshops.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
+#include "../src/simulation/mood.h"
+#include "../src/entities/containers.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/weather.h"
@@ -1441,6 +1443,173 @@ describe(hunger_daylength_independence) {
 // Main
 // =============================================================================
 
+// =============================================================================
+// Trash: what a snack or soda leaves goes to a bin, or becomes litter
+// =============================================================================
+
+static int TrashSpawnAt(int cx, int cy, ItemType type) {
+    return SpawnItem(cx * CELL_SIZE + CELL_SIZE * 0.5f, cy * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, type);
+}
+
+// A thirsty mover at (5,5) standing on a stockpiled soda, bins already spawned
+static int TrashThirstyMover(void) {
+    int mi = SetupMover(5, 5);
+    int sp = CreateStockpile(5, 5, 1, 1, 1);
+    int soda = TrashSpawnAt(5, 5, ITEM_SODA);
+    PlaceItemInStockpile(sp, 5, 5, soda);
+    items[soda].state = ITEM_IN_STOCKPILE;
+    movers[mi].traits[0] = TRAIT_NONE; movers[mi].traits[1] = TRAIT_NONE;
+    movers[mi].hunger = 1.0f;
+    movers[mi].thirst = 0.2f;
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    BuildItemSpatialGrid();
+    return mi;
+}
+
+// Drink the soda: returns once the mover is done drinking (state left FREETIME_DRINKING)
+static void TrashDrink(int mi) {
+    energyEnabled = false; bodyTempEnabled = false;
+    thirstEnabled = true;
+    for (int i = 0; i < 2000; i++) {
+        int before = movers[mi].freetimeState;
+        ProcessFreetimeNeeds();
+        if (before == FREETIME_DRINKING && movers[mi].freetimeState != FREETIME_DRINKING) return;
+    }
+}
+
+static int TrashOnGround(ItemType type) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == type && items[i].state == ITEM_ON_GROUND) n += items[i].stackCount;
+    return n;
+}
+
+static int TrashInContainer(int bin) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].containedIn == bin) n += items[i].stackCount;
+    return n;
+}
+
+describe(trash) {
+    it("a soda leaves an empty can, a snack a wrapper, berries nothing") {
+        expect(ItemLeavesBehind(ITEM_SODA) == ITEM_EMPTY_CAN);
+        expect(ItemLeavesBehind(ITEM_SNACK) == ITEM_WRAPPER);
+        expect(ItemLeavesBehind(ITEM_BERRIES) == ITEM_NONE);
+        expect(ItemIsDrinkable(ITEM_SODA) && GetItemHydration(ITEM_SODA) > 0.0f);
+        expect(ItemIsEdible(ITEM_SNACK) && ItemNutrition(ITEM_SNACK) > 0.0f);
+        expect(ItemIsContainer(ITEM_TRASH_BIN) && ItemIsFixed(ITEM_TRASH_BIN));
+    }
+
+    it("the can goes in a bin where the mover stands") {
+        SetupClean();
+        int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        // Arrived at once (the bin is in its cell): next tick it goes in
+        ProcessFreetimeNeeds();
+        expect(movers[mi].heldTrash == ITEM_NONE);
+        expect(TrashInContainer(bin) == 1);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 0);
+    }
+
+    it("a bin a few cells off: the mover takes the can there") {
+        SetupClean();
+        int bin = TrashSpawnAt(8, 5, ITEM_TRASH_BIN);
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_BIN);
+        expect(movers[mi].needTarget == bin);
+        expect(movers[mi].heldTrash == ITEM_EMPTY_CAN);
+        expect(movers[mi].goal.x == 8 && movers[mi].goal.y == 5);
+    }
+
+    it("no bin: the can is dropped as litter") {
+        SetupClean();
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        expect(movers[mi].heldTrash == ITEM_NONE);
+        expect(movers[mi].freetimeState != FREETIME_SEEKING_BIN);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 1);
+    }
+
+    it("a full bin is passed by: litter") {
+        SetupClean();
+        int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+        for (int k = 0; k < 4; k++) {   // four full stacks of wrappers: no room for a can
+            int w = TrashSpawnAt(5, 5, ITEM_WRAPPER);
+            items[w].stackCount = ItemMaxStack(ITEM_WRAPPER);
+            PutItemInContainer(w, bin);
+        }
+        expect(!ContainerHasRoomFor(bin, ITEM_EMPTY_CAN, ItemDefaultMaterial(ITEM_EMPTY_CAN)));
+        expect(ContainerHasRoomFor(bin, ITEM_WRAPPER, ItemDefaultMaterial(ITEM_WRAPPER)) == false);
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        expect(movers[mi].freetimeState != FREETIME_SEEKING_BIN);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 1);
+    }
+
+    it("a full bin with a can stack that has room still takes a can") {
+        SetupClean();
+        int bin = TrashSpawnAt(5, 5, ITEM_TRASH_BIN);
+        for (int k = 0; k < 4; k++) {
+            int c = TrashSpawnAt(5, 5, k == 0 ? ITEM_EMPTY_CAN : ITEM_WRAPPER);
+            items[c].stackCount = k == 0 ? 2 : ItemMaxStack(ITEM_WRAPPER);
+            PutItemInContainer(c, bin);
+        }
+        expect(ContainerHasRoomFor(bin, ITEM_EMPTY_CAN, ItemDefaultMaterial(ITEM_EMPTY_CAN)));
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        ProcessFreetimeNeeds();
+        expect(TrashInContainer(bin) == 2 + 3 * ItemMaxStack(ITEM_WRAPPER) + 1);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 0);
+    }
+
+    it("trashBinWalk: a bin farther off is litter; a Tidy mover walks twice as far") {
+        SetupClean();
+        int saved = trashBinWalkCells;
+        trashBinWalkCells = 3;
+        TrashSpawnAt(5, 0, ITEM_TRASH_BIN);   // 5 cells off
+        int mi = TrashThirstyMover();
+        TrashDrink(mi);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 1);
+
+        SetupClean();
+        TrashSpawnAt(5, 0, ITEM_TRASH_BIN);
+        mi = TrashThirstyMover();
+        movers[mi].traits[0] = TRAIT_TIDY;
+        TrashDrink(mi);
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_BIN);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 0);
+        trashBinWalkCells = saved;
+    }
+
+    it("a Slob drops it unless the bin is right there") {
+        SetupClean();
+        TrashSpawnAt(8, 5, ITEM_TRASH_BIN);   // 3 cells off: others walk there
+        int mi = TrashThirstyMover();
+        movers[mi].traits[0] = TRAIT_SLOB;
+        TrashDrink(mi);
+        expect(movers[mi].freetimeState != FREETIME_SEEKING_BIN);
+        expect(TrashOnGround(ITEM_EMPTY_CAN) == 1);
+    }
+
+    it("no job hauls a trash bin to a stockpile") {
+        SetupClean();
+        int mi = SetupMover(2, 2);
+        movers[mi].hunger = 1.0f;
+        CreateStockpile(7, 7, 1, 2, 2);   // allows every type
+        int bin = TrashSpawnAt(3, 3, ITEM_TRASH_BIN);   // nearer than the litter
+        int can = TrashSpawnAt(5, 5, ITEM_EMPTY_CAN);   // litter is haulable
+        InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+        BuildItemSpatialGrid();
+        AssignJobs();
+        expect(movers[mi].currentJobId >= 0);
+        expect(jobs[movers[mi].currentJobId].targetItem == can);
+        expect(items[bin].reservedBy == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1465,6 +1634,7 @@ int main(int argc, char* argv[]) {
     test(drying_rack_berries);
     test(starvation_survival);
     test(hunger_daylength_independence);
+    test(trash);
 
     dayLength = 60.0f; // restore
     return summary();

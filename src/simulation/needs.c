@@ -657,6 +657,77 @@ static bool CriticalNeed(Mover* m, int moverIdx, bool canSearch, void (*startSea
     return m->freetimeState != FREETIME_NONE;
 }
 
+// --- Trash ---
+
+int trashBinWalkCells = 12;
+
+static bool MoverHasTrait(const Mover* m, TraitType t) {
+    for (int i = 0; i < MAX_TRAITS; i++) if (m->traits[i] == t) return true;
+    return false;
+}
+
+typedef struct { ItemType trash; int best; float bestDistSq; } BinSearch;
+static void BinCandidate(int i, float distSq, void* user) {
+    BinSearch* s = user;
+    if (items[i].type != ITEM_TRASH_BIN || distSq >= s->bestDistSq) return;
+    if (!NeedItemReachable(i)) return;
+    if (!ContainerHasRoomFor(i, s->trash, ItemDefaultMaterial(s->trash))) return;
+    s->best = i;
+    s->bestDistSq = distSq;
+}
+
+int FindTrashBinFor(int moverIdx, ItemType trash) {
+    const Mover* m = &movers[moverIdx];
+    int radius = trashBinWalkCells;
+    if (MoverHasTrait(m, TRAIT_TIDY)) radius *= 2;
+    if (MoverHasTrait(m, TRAIT_SLOB)) radius = radius < 2 ? radius : 2;
+    if (radius <= 0) return -1;
+    BinSearch s = { trash, -1, 1e30f };
+    QueryItemsInRadius((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, radius, BinCandidate, &s);
+    return s.best;
+}
+
+// The trash in hand becomes a real item: in the bin if it still has room, else on the ground
+// where the mover stands (next to a bin that filled up meanwhile, or as litter)
+static void LetGoOfTrash(Mover* m, int moverIdx, int bin) {
+    ItemType t = (ItemType)m->heldTrash;
+    m->heldTrash = ITEM_NONE;
+    if (t <= ITEM_NONE || t >= ITEM_TYPE_COUNT) return;
+    int it = SpawnItem(m->x, m->y, m->z, t);
+    if (it < 0) return;
+    if (bin >= 0 && ContainerHasRoomFor(bin, t, items[it].material)) {
+        PutItemInContainer(it, bin);
+        EventLog("Mover %d put %s in bin %d", moverIdx, ItemName(t), bin);
+    } else {
+        EventLog("Mover %d dropped %s at (%d,%d,%d)", moverIdx, ItemName(t),
+                 (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z);
+    }
+}
+
+// After eating or drinking: take what was left to a bin, or drop it
+static void GetRidOfTrash(Mover* m, int moverIdx) {
+    m->freetimeState = FREETIME_NONE;
+    m->needTarget = -1;
+    m->needProgress = 0.0f;
+    if (m->heldTrash == ITEM_NONE) return;
+    int bin = FindTrashBinFor(moverIdx, (ItemType)m->heldTrash);
+    if (bin < 0) { LetGoOfTrash(m, moverIdx, -1); return; }
+    m->freetimeState = FREETIME_SEEKING_BIN;
+    m->needTarget = bin;
+    m->goal = (Point){(int)(items[bin].x / CELL_SIZE), (int)(items[bin].y / CELL_SIZE), (int)items[bin].z};
+    StartSeekClock(m);
+    m->needsRepath = true;
+}
+
+// What consuming one of type left (a can, a wrapper) goes in the hand; a mover that still
+// holds something lets go of that first
+static void TakeLeftover(Mover* m, int moverIdx, ItemType consumed) {
+    ItemType left = ItemLeavesBehind(consumed);
+    if (left == ITEM_NONE) return;
+    if (m->heldTrash != ITEM_NONE) LetGoOfTrash(m, moverIdx, -1);
+    m->heldTrash = left;
+}
+
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FORAGE || m->freetimeState == FREETIME_FORAGING)) {
@@ -944,9 +1015,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     DeleteItem(ti);
                 }
 
-                m->freetimeState = FREETIME_NONE;
-                m->needTarget = -1;
-                m->needProgress = 0.0f;
+                TakeLeftover(m, moverIdx, foodType);
+                GetRidOfTrash(m, moverIdx);
             }
             break;
         }
@@ -1194,6 +1264,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // Mood: drink quality moodlet
                 if (IsGoodDrink(items[ti].type)) AddMoodlet(m, MOODLET_DRANK_GOOD);
                 if (items[ti].temperature >= 40.0f) AddMoodlet(m, MOODLET_HOT_MEAL);
+                ItemType drinkType = items[ti].type;
                 if (items[ti].stackCount > 1) {
                     items[ti].stackCount--;
                     ReleaseItemReservation(ti);  // rest of the stack is free again (see eating)
@@ -1201,9 +1272,36 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     DeleteItem(ti);
                 }
 
+                TakeLeftover(m, moverIdx, drinkType);
+                GetRidOfTrash(m, moverIdx);
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_BIN: {
+            int bin = m->needTarget;
+            if (bin < 0 || bin >= MAX_ITEMS || !items[bin].active || items[bin].type != ITEM_TRASH_BIN ||
+                m->heldTrash == ITEM_NONE) {
+                // bin gone (or nothing in hand): look for another one now, or drop it
+                GetRidOfTrash(m, moverIdx);
+                break;
+            }
+            float dx = m->x - items[bin].x, dy = m->y - items[bin].y;
+            float reach = CELL_SIZE * 0.75f;
+            if ((int)m->z == (int)items[bin].z && dx * dx + dy * dy < reach * reach) {
+                LetGoOfTrash(m, moverIdx, bin);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needProgress = 0.0f;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                if (NoWayThere(moverIdx)) MarkNeedItemUnreachable(bin, NO_WAY_ITEM_HOURS);
+                LetGoOfTrash(m, moverIdx, -1);   // gave up: drops it where it stands
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
             }
             break;
         }

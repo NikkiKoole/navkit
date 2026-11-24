@@ -976,6 +976,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->bodyTemp = balance.bodyTempNormal;
     m->hypothermiaTimer = 0.0f;
     m->bladder = 1.0f;
+    m->heldTrash = ITEM_NONE;
     // Job system
     m->currentJobId = -1;
     // Tool system
@@ -1257,6 +1258,8 @@ static void KillMover(Mover* m, int i) {
     m->needTarget = -1;
     DropEquippedTool(i);
     DropEquippedClothing(i);
+    if (m->heldTrash > ITEM_NONE && m->heldTrash < ITEM_TYPE_COUNT) SpawnItem(m->x, m->y, m->z, (ItemType)m->heldTrash);
+    m->heldTrash = ITEM_NONE;
     m->freetimeState = FREETIME_NONE;
     m->active = false;
 }

@@ -20,6 +20,7 @@ const ContainerDef* GetContainerDef(ItemType type);
 
 // Core operations
 bool CanPutItemInContainer(int itemIdx, int containerIdx);
+bool ContainerHasRoomFor(int containerIdx, ItemType type, uint8_t material);  // a free slot or a stack to merge into
 void PutItemInContainer(int itemIdx, int containerIdx);
 void RemoveItemFromContainer(int itemIdx);
 

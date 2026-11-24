@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 103
+#define CURRENT_SAVE_VERSION 104
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -65,6 +65,13 @@
 // v103: springs (springTrickle bool, springRate float, after the tide settings). Older saves:
 // sources are taps (as they were saved).
 #define V103_SPRINGS 103
+// v104: trash. Five item types (soda, snack, empty can, wrapper, trash bin: stockpile
+// allowedTypes grows from V103_ITEM_TYPE_COUNT) and Mover.heldTrash at the end of the Mover.
+// Older saves: new types not allowed in old stockpiles, hands free.
+#define V104_TRASH 104
+#define V103_ITEM_TYPE_COUNT 73
+#define MOVER_V103_SIZE 344   // sizeof(Mover) in v93-v103 (ends with bladder)
+_Static_assert(offsetof(Mover, heldTrash) == MOVER_V103_SIZE, "Mover v103 layout must be a prefix of Mover");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
@@ -285,6 +292,53 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV90;
+
+// V103 Stockpile struct (v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT). Same fields as
+// StockpileV90, only the type count differs: one migration macro serves both.
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V103_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV103;
+
+// Copy an old stockpile (StockpileV90 / StockpileV103) into a Stockpile; types the old
+// save didn't know are not allowed
+#define MIGRATE_OLD_STOCKPILE(sp, old, oldTypeCount) do { \
+    (sp)->x = (old)->x; (sp)->y = (old)->y; (sp)->z = (old)->z; \
+    (sp)->width = (old)->width; (sp)->height = (old)->height; \
+    (sp)->active = (old)->active; \
+    memset((sp)->allowedTypes, 0, sizeof((sp)->allowedTypes)); \
+    memcpy((sp)->allowedTypes, (old)->allowedTypes, (oldTypeCount) * sizeof(bool)); \
+    memcpy((sp)->allowedMaterials, (old)->allowedMaterials, sizeof((sp)->allowedMaterials)); \
+    memcpy((sp)->cells, (old)->cells, sizeof((sp)->cells)); \
+    memcpy((sp)->slots, (old)->slots, sizeof((sp)->slots)); \
+    memcpy((sp)->reservedBy, (old)->reservedBy, sizeof((sp)->reservedBy)); \
+    memcpy((sp)->slotCounts, (old)->slotCounts, sizeof((sp)->slotCounts)); \
+    memcpy((sp)->slotTypes, (old)->slotTypes, sizeof((sp)->slotTypes)); \
+    memcpy((sp)->slotMaterials, (old)->slotMaterials, sizeof((sp)->slotMaterials)); \
+    (sp)->maxStackSize = (old)->maxStackSize; \
+    (sp)->priority = (old)->priority; \
+    (sp)->maxContainers = (old)->maxContainers; \
+    memcpy((sp)->slotIsContainer, (old)->slotIsContainer, sizeof((sp)->slotIsContainer)); \
+    memcpy((sp)->groundItemIdx, (old)->groundItemIdx, sizeof((sp)->groundItemIdx)); \
+    (sp)->freeSlotCount = (old)->freeSlotCount; \
+    (sp)->rejectsRotten = (old)->rejectsRotten; \
+} while (0)
 
 // V87 Train struct (before multi-car trail fields added in v88)
 typedef struct {

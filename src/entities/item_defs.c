@@ -12,6 +12,10 @@
 // Fields: name, sprite, flags, maxStack, defaultMaterial, weight(kg), nutrition, spoilageLimitGH (game hours: 24 = one day)
 // Use IF_MATERIAL_NAME for items that display their material (e.g. "Oak Log")
 #define MN IF_MATERIAL_NAME
+// GetItemHydration (item_defs.h) can't see the enum and uses these numbers
+_Static_assert(ITEM_WATER == 61 && ITEM_HERBAL_TEA == 62 && ITEM_BERRY_JUICE == 63 && ITEM_SODA == 73,
+               "update GetItemHydration in item_defs.h");
+
 const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
@@ -92,6 +96,13 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_MORTAR]         = { "Mortar",       SPRITE_clay,           IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_NONE, 2.0f, 0.0f, 0.0f },
     [ITEM_BOILED_WATER]   = { "Boiled Water", SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
     [ITEM_SANDWICH]       = { "Sandwich",     SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 0.4f, 0.7f, 120.0f },
+    // City (packaged: no spoiling; what they leave behind is in ItemLeavesBehind)
+    [ITEM_SODA]           = { "Soda",         SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 10, MAT_NONE, 0.35f, 0.0f, 0.0f },
+    [ITEM_SNACK]          = { "Snack",        SPRITE_division,       IF_STACKABLE | IF_EDIBLE, 10, MAT_NONE, 0.1f, 0.3f, 0.0f },
+    // Trash: stacks of 5, so a bin (4 stacks) takes about 20 pieces
+    [ITEM_EMPTY_CAN]      = { "Empty Can",    SPRITE_loose_rock,     IF_STACKABLE, 5, MAT_NONE, 0.02f, 0.0f, 0.0f },
+    [ITEM_WRAPPER]        = { "Wrapper",      SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 0.01f, 0.0f, 0.0f },
+    [ITEM_TRASH_BIN]      = { "Trash Bin",    SPRITE_crate_blue,     IF_CONTAINER | IF_FIXED, 1, MAT_NONE, 10.0f, 0.0f, 0.0f },
 };
 #undef MN
 

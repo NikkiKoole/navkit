@@ -65,7 +65,8 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
         case FREETIME_SEEKING_TAP:
         case FREETIME_SEEKING_TOILET:
         case FREETIME_SEEKING_BUSH:
-        case FREETIME_SEEKING_FORAGE:        return DB_TO_NEED;
+        case FREETIME_SEEKING_FORAGE:
+        case FREETIME_SEEKING_BIN:           return DB_TO_NEED;
         default: break;
     }
     if (m->currentJobId >= 0) return moving ? DB_TO_WORK : DB_WORK;

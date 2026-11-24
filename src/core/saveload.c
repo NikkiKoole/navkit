@@ -1017,34 +1017,18 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= 91) {
+    if (version >= V104_TRASH) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= 91) {
+        // v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT (73) bools
+        static StockpileV103 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV103), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V103_ITEM_TYPE_COUNT);
     } else {
         // v90 and below: allowedTypes was V90_ITEM_TYPE_COUNT (68) bools
-        StockpileV90 oldSp[MAX_STOCKPILES];
+        static StockpileV90 oldSp[MAX_STOCKPILES];
         fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            Stockpile* sp = &stockpiles[i];
-            sp->x = oldSp[i].x; sp->y = oldSp[i].y; sp->z = oldSp[i].z;
-            sp->width = oldSp[i].width; sp->height = oldSp[i].height;
-            sp->active = oldSp[i].active;
-            memset(sp->allowedTypes, 0, sizeof(sp->allowedTypes));
-            memcpy(sp->allowedTypes, oldSp[i].allowedTypes, V90_ITEM_TYPE_COUNT * sizeof(bool));
-            memcpy(sp->allowedMaterials, oldSp[i].allowedMaterials, sizeof(sp->allowedMaterials));
-            memcpy(sp->cells, oldSp[i].cells, sizeof(sp->cells));
-            memcpy(sp->slots, oldSp[i].slots, sizeof(sp->slots));
-            memcpy(sp->reservedBy, oldSp[i].reservedBy, sizeof(sp->reservedBy));
-            memcpy(sp->slotCounts, oldSp[i].slotCounts, sizeof(sp->slotCounts));
-            memcpy(sp->slotTypes, oldSp[i].slotTypes, sizeof(sp->slotTypes));
-            memcpy(sp->slotMaterials, oldSp[i].slotMaterials, sizeof(sp->slotMaterials));
-            sp->maxStackSize = oldSp[i].maxStackSize;
-            sp->priority = oldSp[i].priority;
-            sp->maxContainers = oldSp[i].maxContainers;
-            memcpy(sp->slotIsContainer, oldSp[i].slotIsContainer, sizeof(sp->slotIsContainer));
-            memcpy(sp->groundItemIdx, oldSp[i].groundItemIdx, sizeof(sp->groundItemIdx));
-            sp->freeSlotCount = oldSp[i].freeSlotCount;
-            sp->rejectsRotten = oldSp[i].rejectsRotten;
-        }
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
     }
 
     // Clear transient reservation counts (not meaningful across save/load)
@@ -1065,16 +1049,22 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 93) {
-        // v93+: Mover struct with bladder field
+    if (version >= V104_TRASH) {
+        // v104+: Mover struct with heldTrash
         fread(movers, sizeof(Mover), moverCount, f);
+        for (int i = 0; i < moverCount; i++) {
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= 93) {
+        // v93-v103: Mover with bladder, without heldTrash (all movers, then all paths)
+        for (int i = 0; i < moverCount; i++) fread(&movers[i], MOVER_V103_SIZE, 1, f);
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
         }
     } else if (version >= 90) {
         // v90-v92: Mover without bladder (4 bytes smaller at end)
         for (int i = 0; i < moverCount; i++) {
-            fread(&movers[i], sizeof(Mover) - sizeof(float), 1, f);
+            fread(&movers[i], MOVER_V103_SIZE - sizeof(float), 1, f);
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
             movers[i].bladder = 1.0f;
         }
@@ -1253,6 +1243,11 @@ bool LoadWorld(const char* filename) {
             movers[i].transportTrainIdx = -1;
             movers[i].transportFinalGoal = (Point){0, 0, 0};
         }
+    }
+
+    // Hands free in saves from before trash (v104)
+    if (version < V104_TRASH) {
+        for (int i = 0; i < moverCount; i++) movers[i].heldTrash = ITEM_NONE;
     }
 
     // Initialize mood fields for old saves (v90+)

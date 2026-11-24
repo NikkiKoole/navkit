@@ -8,6 +8,7 @@ ContainerDef containerDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BASKET]   = { .maxContents = 15, .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
     [ITEM_CHEST]    = { .maxContents = 20, .spoilageModifier = 0.7f, .weatherProtection = true,  .acceptsLiquids = false },
     [ITEM_CLAY_POT] = { .maxContents = 5,  .spoilageModifier = 0.5f, .weatherProtection = true,  .acceptsLiquids = true  },
+    [ITEM_TRASH_BIN]= { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
 };
 
 const ContainerDef* GetContainerDef(ItemType type) {
@@ -32,21 +33,24 @@ bool CanPutItemInContainer(int itemIdx, int containerIdx) {
         ancestor = items[ancestor].containedIn;
     }
 
-    // Check if there's a matching stack to merge into
-    ItemType inType = items[itemIdx].type;
-    uint8_t inMat = items[itemIdx].material;
+    return ContainerHasRoomFor(containerIdx, items[itemIdx].type, items[itemIdx].material);
+}
+
+bool ContainerHasRoomFor(int containerIdx, ItemType type, uint8_t material) {
+    if (containerIdx < 0 || containerIdx >= MAX_ITEMS || !items[containerIdx].active) return false;
+    const ContainerDef* def = GetContainerDef(items[containerIdx].type);
+    if (!def) return false;
+    // A free slot: no need to look for a stack to merge into
+    if (items[containerIdx].contentCount < def->maxContents) return true;
+
+    // Full: only room on a matching stack that isn't full yet
+    int maxStack = ItemMaxStack(type);
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].containedIn != containerIdx) continue;
-        if (items[i].type == inType && items[i].material == inMat) {
-            // Can merge if stack has room
-            int maxStack = ItemMaxStack(inType);
-            if (items[i].stackCount < maxStack) return true;
-        }
+        if (items[i].type == type && items[i].material == material && items[i].stackCount < maxStack) return true;
     }
-
-    // No merge target — need a new slot
-    return items[containerIdx].contentCount < def->maxContents;
+    return false;
 }
 
 void PutItemInContainer(int itemIdx, int containerIdx) {

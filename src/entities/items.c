@@ -91,6 +91,14 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
 // Forward declaration — implemented in containers.c (included after items.c in unity build)
 void SpillContainerContents(int containerIdx);
 
+ItemType ItemLeavesBehind(ItemType type) {
+    switch (type) {
+        case ITEM_SODA:  return ITEM_EMPTY_CAN;
+        case ITEM_SNACK: return ITEM_WRAPPER;
+        default:         return ITEM_NONE;
+    }
+}
+
 void DeleteItem(int index) {
     if (index >= 0 && index < MAX_ITEMS && items[index].active) {
         EventLog("DeleteItem %d (%s) at (%.0f,%.0f,z%.0f) state=%d",

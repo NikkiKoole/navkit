@@ -115,6 +115,9 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
     // Patience: no moodlet effect; read by MoverPatience() (mover.c) for queues
     [TRAIT_PATIENT] = { "Patient", "Waits calmly in lines", {0} },
     [TRAIT_IMPATIENT] = { "Impatient", "Hates waiting in lines", {0} },
+    // Trash: no moodlet effect; read by the trash disposal in needs.c
+    [TRAIT_TIDY] = { "Tidy", "Takes trash to a bin, even a far one", {0} },
+    [TRAIT_SLOB] = { "Slob", "Drops trash on the spot", {0} },
 };
 
 // --- Trait adjustment ---

@@ -573,6 +573,8 @@ static const Setting settings[] = {
       "Jobs need the right tool (e.g. an axe to chop)."),
     SET_FLOAT("foodCooling", "Food Cooling (GH)", "Entities/Movers/Needs", foodCoolingHalfLifeGH, 0.05f, 0.05f, 12.0f,
       "Game hours for hot food to lose half its heat over room temperature. Eaten at 40C or more = hot meal mood.", NULL),
+    SET_INT("trashBinWalk", "Bin Walk (cells)", "Entities/Movers/Needs", trashBinWalkCells, 0.2f, 0, 64,
+      "How far a mover walks to put a can or wrapper in a trash bin (Tidy: twice as far, Slob: 2). No bin with room that close: litter.", NULL),
 
     // --- Movers: avoidance ---
     SET_BOOL("avoidance", "Enabled", "Entities/Movers/Avoidance", useMoverAvoidance,

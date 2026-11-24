@@ -81,6 +81,11 @@ typedef enum {
     ITEM_MORTAR,         // Mortar (from lye + sand at stonecutter)
     ITEM_BOILED_WATER,   // Boiled water (safe drinking, from stove)
     ITEM_SANDWICH,       // Sandwich (bread + cooked meat, from counter)
+    ITEM_SODA,           // Can of soda (city drink; leaves an empty can)
+    ITEM_SNACK,          // Packaged snack (city food; leaves a wrapper)
+    ITEM_EMPTY_CAN,      // Trash: what a soda leaves behind
+    ITEM_WRAPPER,        // Trash: what a snack leaves behind
+    ITEM_TRASH_BIN,      // Bin: a container that stays where it is placed (IF_FIXED)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -132,6 +137,9 @@ int SpawnItem(float x, float y, float z, ItemType type);
 int SpawnItemWithMaterial(float x, float y, float z, ItemType type, uint8_t material);
 uint8_t DefaultMaterialForItemType(ItemType type);
 void DeleteItem(int index);
+
+// What consuming one of this type leaves behind (soda -> empty can), ITEM_NONE = nothing
+ItemType ItemLeavesBehind(ItemType type);
 
 // Reservation
 bool ReserveItem(int itemIndex, int moverIndex);

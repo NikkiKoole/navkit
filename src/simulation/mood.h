@@ -71,6 +71,8 @@ typedef enum {
     TRAIT_STOIC,        // All moodlets reduced by 50%. Steady but hard to make happy.
     TRAIT_PATIENT,      // Waits in lines (ladders, stations) about twice as long before giving up.
     TRAIT_IMPATIENT,    // Gives up on lines early: re-plans sooner, leaves, walks instead of waiting for a train.
+    TRAIT_TIDY,         // Walks twice as far to put trash in a bin.
+    TRAIT_SLOB,         // Drops trash where they stand unless a bin is right there.
     TRAIT_COUNT
 } TraitType;
 

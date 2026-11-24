@@ -32,4 +32,11 @@ bool MoverLyingIn(int moverIdx);   // resting, rested, staying in bed until it g
 #define NEEDS_WATER_SEARCH_COST (64 * 10)
 int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
 
+// Trash (docs/vision/city-1999.md "Trash, bins and deposit bottles"): what a meal or drink
+// leaves behind (ItemLeavesBehind) goes in the mover's hand (Mover.heldTrash), then into the
+// nearest trash bin with room within trashBinWalkCells (Tidy: twice as far, Slob: only a bin
+// right there), else onto the ground as litter. It becomes a real item only then.
+extern int trashBinWalkCells;
+int FindTrashBinFor(int moverIdx, ItemType trash);   // bin item index with room, or -1
+
 #endif

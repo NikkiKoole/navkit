@@ -61,6 +61,7 @@ typedef enum {
     FREETIME_DRINKING_TAP,          // Drinking at a tap
     FREETIME_SEEKING_FORAGE,        // Hungry, no food lying around: walking to a ripe berry bush
     FREETIME_FORAGING,              // Picking berries from the bush (then eats them)
+    FREETIME_SEEKING_BIN,           // Taking the trash in hand (heldTrash) to a bin
 } FreetimeState;
 
 
@@ -129,6 +130,9 @@ typedef struct Mover {
     Point transportFinalGoal;  // Original goal before redirect
     // Bladder (v93+)
     float bladder;              // 1.0=fine, 0.0=desperate
+    // Trash in hand (v104+): what the last meal/drink left behind, on its way to a bin. Not an
+    // item yet: it becomes one in the bin or on the ground (ITEM_NONE = hands free)
+    int heldTrash;
 } Mover;
 
 // Stuck detection thresholds
