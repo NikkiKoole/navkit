@@ -22,10 +22,10 @@
 
 typedef enum {
     ROOM_TYPE_GENERIC = 0, // enclosed but no qualifying furniture
-    ROOM_TYPE_KITCHEN,     // has cooking workshop
+    ROOM_TYPE_KITCHEN,     // has cooking workshop (fire, hearth, stove; not a counter)
     ROOM_TYPE_WORKSHOP,    // has crafting workshop
-    ROOM_TYPE_BARRACKS,    // 2+ beds
-    ROOM_TYPE_BEDROOM,     // 1 bed
+    ROOM_TYPE_BARRACKS,    // 3+ single beds (no double bed)
+    ROOM_TYPE_BEDROOM,     // 1-2 beds, or any with a double bed
     ROOM_TYPE_DINING,      // has a dining set (table with a chair next to it)
     ROOM_TYPE_STORAGE,     // has stockpile
     // append only (dreamengine's room names map 1:1); see ClassifyRoom for the rules

@@ -227,15 +227,16 @@ describe(test_rooms) {
         expect(r->type == ROOM_TYPE_BEDROOM);
     }
 
-    it("room with two beds is a barracks") {
+    it("room with three beds is a barracks") {
         SetupFlatGround(16, 16);
         BuildWalledRoom(3, 3, 8, 7);
         PlaceDoor(5, 7);
         SpawnFurniture(4, 5, 1, FURNITURE_PLANK_BED, MAT_NONE);
+        SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, MAT_NONE);
         SpawnFurniture(6, 5, 1, FURNITURE_PLANK_BED, MAT_NONE);
         UpdateRooms();
 
-        DetectedRoom* r = GetRoom(GetRoomAt(5, 5, 1));
+        DetectedRoom* r = GetRoom(GetRoomAt(5, 4, 1));
         expect(r != NULL);
         expect(r->type == ROOM_TYPE_BARRACKS);
     }
@@ -728,7 +729,7 @@ describe(building_rooms) {
         expect(RoomAt(10, 5)->type == ROOM_TYPE_BEDROOM);
     }
 
-    it("a double bed and a cot are a bedroom, two single beds barracks") {
+    it("a double bed and a cot, or two children's beds, are a bedroom; three singles barracks") {
         SetupFlatGround(20, 16);
         BuildWalledRoom(2, 2, 6, 6);
         SpawnFurniture(3, 3, 1, FURNITURE_DOUBLE_BED, MAT_OAK);
@@ -736,9 +737,22 @@ describe(building_rooms) {
         BuildWalledRoom(8, 2, 12, 6);
         SpawnFurniture(9, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
         SpawnFurniture(11, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        BuildWalledRoom(14, 2, 18, 6);
+        SpawnFurniture(15, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        SpawnFurniture(16, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        SpawnFurniture(17, 3, 1, FURNITURE_PLANK_BED, MAT_OAK);
         UpdateRooms();
         expect(RoomAt(4, 5)->type == ROOM_TYPE_BEDROOM);
-        expect(RoomAt(10, 5)->type == ROOM_TYPE_BARRACKS);
+        expect(RoomAt(10, 5)->type == ROOM_TYPE_BEDROOM);
+        expect(RoomAt(16, 5)->type == ROOM_TYPE_BARRACKS);
+    }
+
+    it("a counter alone is no kitchen (a shop's sales counter)") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        CreateWorkshop(5, 5, 1, WORKSHOP_COUNTER);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type != ROOM_TYPE_KITCHEN);
     }
 
     it("an empty room between two doors is a hall; with one door it stays a room") {

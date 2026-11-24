@@ -35,8 +35,8 @@ static bool IsCookingWorkshop(WorkshopType type) {
     return type == WORKSHOP_CAMPFIRE ||
            type == WORKSHOP_GROUND_FIRE ||
            type == WORKSHOP_HEARTH ||
-           type == WORKSHOP_STOVE ||      // the dollhouse / city kitchen
-           type == WORKSHOP_COUNTER;
+           type == WORKSHOP_STOVE;        // the dollhouse / city kitchen (a counter only
+                                          // preps: shops use it as a sales counter)
 }
 
 static bool IsCraftingWorkshop(WorkshopType type) {
@@ -160,10 +160,10 @@ static void ClassifyRoom(DetectedRoom *room) {
         room->type = ROOM_TYPE_KITCHEN;        // cooking, not a fridge: staff rooms and shops have those
     } else if (room->craftingWorkshopCount > 0) {
         room->type = ROOM_TYPE_WORKSHOP;
-    } else if (room->doubleBedCount > 0 || room->bedCount == 1) {
-        room->type = ROOM_TYPE_BEDROOM;        // a double bed and a cot: still a bedroom
-    } else if (room->bedCount >= 2) {
-        room->type = ROOM_TYPE_BARRACKS;
+    } else if (room->bedCount >= 3 && room->doubleBedCount == 0) {
+        room->type = ROOM_TYPE_BARRACKS;       // a dormitory: three or more single beds
+    } else if (room->bedCount > 0) {
+        room->type = ROOM_TYPE_BEDROOM;        // a double bed and a cot, two children's beds
     } else if (room->bathingCount > 0) {
         room->type = ROOM_TYPE_BATHROOM;       // a bath or shower, toilet or not
     } else if (room->toiletCount > 0) {
