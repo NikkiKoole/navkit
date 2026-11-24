@@ -35,6 +35,7 @@
 #include "../core/input_mode.h"
 #include "../ui/cutscene.h"
 #include <strings.h>
+#include "../entities/cars.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -687,6 +688,7 @@ bool StartGame(const char* name) {
     ClearBelts();   // games that don't go through ScenarioResetWorld (survival, island, dollhouse)
     ClearTide();
     ClearElevators();
+    ClearCars();   // cars experiment: only the "cars" scenario has them
     g->start();
     devUI = g->devUI;
     if (!devUI) InputMode_ExitToNormal();

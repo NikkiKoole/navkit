@@ -14,6 +14,7 @@
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
+#include "../entities/cars.h"
 #include "../entities/elevators.h"
 #include "../entities/containers.h"
 #include "../core/sim_manager.h"
@@ -106,6 +107,7 @@ void ScenarioResetWorld(const char* terrain) {
     ClearMovers();
     ClearAnimals();
     ClearTrains();
+    ClearCars();
     ClearElevators();
     ClearBelts();
     ClearTide();
@@ -3072,6 +3074,77 @@ static bool HandsJobsCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// cars: the cars experiment (src/entities/cars.c, docs/research/cars-experiment.md).
+// A 64x40 town: concrete buildings on z=1 with streets carved out, one 2x2 car
+// touring from its home lot (A) to a stop and back, again and again:
+//   B  3-wide street with a sharp 90-degree corner, to a small square
+//   C  2-wide dead end (no room to turn: it has to back out)
+//   D  2-wide street with a sharp 90-degree corner (does a 2x2 car fit round it?)
+//   E  2-wide street with a cut (rounded) corner, to a lot
+//   F  3-wide street with a corner, to a lot
+// The main avenue is 4 wide. Debug draw shows where a car centre fits.
+// ---------------------------------------------------------------------------
+static void CarsCarve(int x0, int y0, int x1, int y1) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+            GRID(x, y, 1) = CELL_AIR;
+            SetWallMaterial(x, y, 1, MAT_NONE);
+            SetVegetation(x, y, 0, VEG_NONE);
+        }
+}
+
+static void SetupCars(void) {
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_CONCRETE);
+        }
+    CarsCarve(2, 2, 13, 13);     // A: home lot
+    CarsCarve(2, 14, 13, 15);    //    lot opens onto the avenue
+    CarsCarve(2, 16, 61, 19);    // avenue, 4 wide
+    CarsCarve(20, 4, 22, 15);    // B: 3 wide north...
+    CarsCarve(23, 4, 29, 6);     //    ...sharp corner east...
+    CarsCarve(30, 2, 35, 8);     //    ...into a square
+    CarsCarve(40, 4, 41, 15);    // C: 2-wide dead end
+    CarsCarve(50, 6, 51, 15);    // D: 2 wide north...
+    CarsCarve(52, 6, 61, 7);     //    ...sharp corner east to the end
+    CarsCarve(30, 20, 31, 31);   // E: 2 wide south...
+    CarsCarve(32, 30, 45, 31);   //    ...corner east...
+    CarsCarve(32, 28, 32, 29);   //    ...inner corner cut off (rounded)
+    CarsCarve(33, 29, 33, 29);
+    CarsCarve(46, 27, 51, 34);   //    ...into a lot
+    CarsCarve(10, 20, 12, 35);   // F: 3 wide south...
+    CarsCarve(13, 33, 21, 35);   //    ...corner east...
+    CarsCarve(22, 32, 27, 37);   //    ...into a lot
+    BuildEntrances(); BuildGraph();
+    InvalidateLighting();
+
+    int c = SpawnCar(7, 7, 1, 0.0f);
+    static const struct { int x, y; char name; } stops[] = {
+        {33, 5, 'B'}, {7, 7, 'A'}, {40, 5, 'C'}, {7, 7, 'A'}, {60, 6, 'D'}, {7, 7, 'A'},
+        {48, 30, 'E'}, {7, 7, 'A'}, {24, 34, 'F'}, {7, 7, 'A'},
+    };
+    for (int i = 0; i < (int)(sizeof(stops) / sizeof(stops[0])); i++) CarAddStop(c, stops[i].x, stops[i].y, stops[i].name);
+    cars[c].stopIdx = 0;
+    CarDriveTo(c, stops[0].x, stops[0].y);   // on its way at once (a --screenshot shows the route)
+    currentViewZ = 1;
+    AddMessage("Cars: one 2x2 car tours its home lot (A) and five streets (setting group Experiments/Cars)", GREEN);
+}
+
+static void CarsScenarioPrintStats(void) { CarsPrintStats(); }
+
+// 3000 ticks: 5 legs (A-B-A, A-F-A started), C/D/E skipped (2-wide: no route for a
+// 2.0-wide car). Fail on a collapse: fewer than 4 legs, or the car got stuck.
+static bool CarsCheck(char* why, int whyLen) {
+    if (carCount < 1 || cars[0].legsDone < 4 || cars[0].stuck > 0) {
+        snprintf(why, (size_t)whyLen, "cars: %d legs done (want >= 4), %d times stuck",
+                 carCount ? cars[0].legsDone : 0, carCount ? cars[0].stuck : 0);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -3147,6 +3220,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
+    {"cars",       "Cars experiment: a 2x2 car with real steering tours a town from its home lot: 4/3/2-wide streets, sharp and cut corners, a dead end",
+                   NULL,        SetupCars, NULL, CarsScenarioPrintStats, CarsCheck, 64, 40},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
 };

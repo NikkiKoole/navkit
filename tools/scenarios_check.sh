@@ -63,6 +63,7 @@ done <<'EOF'
 51  | 0 | --scenario inventory
 58  | 0 | --scenario scrounge
 8   | 0 | --scenario hands-jobs
+0   | 0 | --scenario cars
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo

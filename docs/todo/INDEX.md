@@ -7,6 +7,7 @@
 
 ## Recently active
 
+- **2026-11-24 Cars experiment** (branch `cars-experiment`, `../research/cars-experiment.md`): a 2x2 car with real steering (kinematic bicycle), Hybrid A* planner (routes include 3-point turns and back-ups), feedforward + Stanley follower; scenario `cars` tours 4/3/2-wide streets. Finding: 2x2 cars need 3-wide streets. Next: a mover drives, then traffic, pedestrians
 - **2026-11-24 Find palette + data-driven UI** (`ui/find-palette.md`): decided with dreamengine's `nk-find` sketch: find = dev/cheat layer (browse tree + right-click context), players get a per-game toolbar, both read ACTION_REGISTRY; command table started (`src/ui/commands.c` + typed argument parsing in `src/core/command_args.c`: the console and the sidebar's duplicated buttons run one table). Stockpile Textile key X -> Y so "X toggles all" works (7e4233c7)
 - **2026-11-24 Survival toilet, levels 0-2** (`gameplay/survival-toilet.md`): bladder on in survival/island; pit latrine (4 sticks) and toilet (3 planks or clay) built in place, play HUD buttons; toilets found by CAP_TOILET and comfort (latrine 1, toilet 2); a latrine dirties its floor per use (`latrineDirt`). 3a bucket flush: water within 3 cells (tap, sink, or a pot: one water used) flushes a toilet clean, else dry-toilet dirt (`toiletDryDirt`). No save bump. Next: cesspit + drain pipes, then supply pipes (pipeGrid shared with dreamengine's plumbing)
 - **2026-11-24 Buildings vocabulary for dreamengine** (`architecture/capability-based-tasks.md` "Building capabilities", save v105; dreamengine's `docs/design/nk-navkit-wishlist.md`): MAT_CONCRETE, CELL_RAILING (blocks walking only; rooms flood through it); furniture SINK, DOUBLE_BED (sleeps two), FRIDGE (food on it spoils at `fridgeSpoil`), DESK, SHELF, SOFA, TILL; capability bits widened to 16 (WASHING, TOILET, SEATING, FLAT_SURFACE, SLEEPING, COLD_STORAGE, DISPLAY, SELLING); rooms: stove = kitchen, LIVING, HALL, WC, BATHROOM, STAIRS, LOBBY, OFFICE, unroofed = OUTDOORS; BATH and SHOWER make a bathroom (toilets alone: WC), a fridge alone no kitchen, a double bed a bedroom, lobby 24+ cells (batch 3 from dreamengine's port). Dollhouse is a concrete flat with hall, bathroom, living room, balcony. `--describe-cell X,Y,Z` headless. Next: wash hands after the toilet, the till as City 1999's exchange station, rooms counting blocking furniture (shelves as aisles)
@@ -137,6 +138,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 
 Measured findings and broad research; not plans by themselves.
 
+- `../research/cars-experiment.md` — Cars experiment: 2x2 car, real steering, Hybrid A*; measured findings (2026-11-24, branch `cars-experiment`)
 - `../research/vehicles.md` — Vehicles: how other colony games do them, what fits (incl. pushables: sledge = wheelbarrow = cart); no plan picked (2026-11-22)
 - `../research/metro.md` — Metro, tram, underground brainstorm (2026-11-22; trains work continues in `world/trains.md`)
 - `../research/many-destinations-navigation.md` — Thousands of agents, many destinations: full vs hierarchical flow fields vs HPA* (2026-11-19)

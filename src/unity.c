@@ -60,6 +60,7 @@
 #include "entities/furniture.c"
 #include "entities/animals.c"
 #include "entities/trains.c"
+#include "entities/cars.c"       // cars experiment (scenario "cars" only)
 #include "entities/belts.c"
 #include "entities/service.c"
 #include "entities/ladders.c"
@@ -93,6 +94,7 @@
 // Rendering
 #include "render/world_batch.c"
 #include "render/rendering.c"
+#include "render/cars_draw.c"
 #include "render/tooltips.c"
 #include "render/inspector.c"
 #include "render/play_hud.c"

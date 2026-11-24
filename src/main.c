@@ -1863,6 +1863,7 @@ int main(int argc, char** argv) {
         }
         DrawAnimals();
         DrawTrains();
+        DrawCars();
         DrawElevators();
         DrawJobLines();
 

@@ -28,6 +28,7 @@ void RebuildPostLoadState(void);
 #include "../entities/tool_quality.h"
 #include "../entities/namegen.h"
 #include "save_migrations.h"
+#include "../entities/cars.h"
 #include "save_rle.h"
 
 #define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
@@ -754,6 +755,7 @@ bool LoadWorld(const char* filename) {
     gridDepth = newDepth;
     
     // Clear current state
+    ClearCars();   // cars experiment: not saved
     ClearMovers();
     ClearJobs();
     ClearGatherZones();

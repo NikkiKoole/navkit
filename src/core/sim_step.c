@@ -6,6 +6,7 @@
 #include "../entities/animals.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/cars.h"
 #include "../entities/jobs.h"
 #include "../world/designations.h"
 #include "../simulation/needs.h"
@@ -32,6 +33,8 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Belts);
     BeltsTick(dt);
     PROFILE_END(Belts);
+
+    if (carCount > 0) CarsTick(dt);   // cars experiment
 
     PROFILE_BEGIN(Designations);
     DesignationsTick(dt);

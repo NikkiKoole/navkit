@@ -15,6 +15,7 @@
 #include "../entities/animals.h"
 #include "../entities/items.h"
 #include "../entities/trains.h"
+#include "../entities/cars.h"
 #include "../entities/belts.h"
 #include "../entities/furniture.h"   // fridgeSpoilageFactor
 #include "../entities/inventory.h"   // carryLimitKg
@@ -647,6 +648,32 @@ static const Setting settings[] = {
       "Route cost of a level up a built ramp (stairs) on top of its time, in cells of walking (down: half): movers take the elevator for long trips. Natural slopes: none. Rebuilds the pathfinder graph.", NULL, RebuildGraphForStairs),
     SET_BOOL("elevatorWaitCost", "Wait Cost", "Entities/Elevators", useElevatorWaitCost,
       "Routes count the expected wait for the car (doors, the car coming, the line ahead): with stairs nearby, movers take them when the elevator is busy. Waiting movers re-plan after a while."),
+
+    // --- Cars experiment (src/entities/cars.c, scenario "cars") ---
+    SET_FLOAT("carLength", "Length (cells)", "Experiments/Cars", carLength, 0.1f, 1.0f, 4.0f,
+      "Car length in cells. The planner only checks the width; length matters for turning (wheelbase = 0.6 x length).", NULL),
+    SET_FLOAT("carWidth", "Width (cells)", "Experiments/Cars", carWidth, 0.1f, 1.0f, 3.0f,
+      "Car width in cells: the planner needs a ceil(width) square free at every point of the route.", NULL),
+    SET_FLOAT("carMaxSpeed", "Top Speed (cells/s)", "Experiments/Cars", carMaxSpeed, 0.1f, 0.5f, 30.0f,
+      "Top speed on a straight road, cells per game second.", NULL),
+    SET_FLOAT("carAccel", "Acceleration", "Experiments/Cars", carAccel, 0.1f, 0.2f, 30.0f,
+      "Speeding up, cells/s per second.", NULL),
+    SET_FLOAT("carBrake", "Braking", "Experiments/Cars", carBrake, 0.1f, 0.5f, 60.0f,
+      "Braking, cells/s per second. Also sets how early the car slows for corners and the end of the route.", NULL),
+    SET_FLOAT("carLatAccel", "Cornering Grip", "Experiments/Cars", carLatAccel, 0.1f, 0.5f, 30.0f,
+      "Sideways acceleration limit (cells/s^2): how fast it takes a corner of a given radius.", NULL),
+    SET_FLOAT("carMaxSteer", "Steering Lock (deg)", "Experiments/Cars", carMaxSteerDeg, 1.0f, 10.0f, 60.0f,
+      "Most the front wheels turn. With the wheelbase this sets the turning circle (radius printed in the headless stats).", NULL),
+    SET_FLOAT("carSteerRate", "Steering Speed (deg/s)", "Experiments/Cars", carSteerRate, 5.0f, 20.0f, 720.0f,
+      "How fast the wheel turns.", NULL),
+    SET_FLOAT("carLookahead", "Lookahead (cells)", "Experiments/Cars", carLookahead, 0.1f, 0.5f, 6.0f,
+      "Pure pursuit: the car aims at the route point this far ahead (more at speed). Small = follows corners tightly, large = smooth but cuts corners.", NULL),
+    SET_FLOAT("carStopWait", "Wait at Stop (s)", "Experiments/Cars", carStopWait, 0.1f, 0.0f, 30.0f,
+      "Seconds parked at each stop before driving to the next.", NULL),
+    SET_FLOAT("carPlanMargin", "Plan Margin (px)", "Experiments/Cars", carPlanMargin, 0.1f, 0.0f, 8.0f,
+      "The planner keeps the car body this many pixels (of 32 per cell) away from walls, so small steering errors don't scrape. 0 = exactly to the wall.", NULL),
+    SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,
+      "Draw route, pursuit point, state, stops, and where a car centre fits (dots; big = room to turn, the planner prefers those)."),
 
     // --- Belts ---
     SET_FLOAT("beltSpeed", "Speed (cells/s)", "Entities/Belts", beltSpeed, 0.1f, 0.1f, 20.0f,

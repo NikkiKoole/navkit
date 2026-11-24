@@ -142,7 +142,8 @@ per ground type, and whether it ignores load weight.
 
 The city version proves the mechanic cheaply; the colony version adds the automation.
 
-Cars (City 1999, Cataclysm style) are parked for now.
+Cars (City 1999, Cataclysm style) are parked for now. Update 2026-11-24: an experiment with
+a 2x2 car and real steering is in [cars-experiment.md](cars-experiment.md).
 
 ## 7. Sources
 
