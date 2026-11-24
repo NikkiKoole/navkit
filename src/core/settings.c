@@ -689,7 +689,7 @@ static const Setting settings[] = {
     SET_BOOL("tempOverlay", "Temperature", "Rendering & Debug/Debug/Overlays", showTemperatureOverlay,
       "Color cells by temperature."),
     SET_BOOL("waterFlecks", "Water Flecks", "Rendering & Debug/Debug/Rendering", waterFlecks,
-      "Light flecks slide along flowing water, the way the current runs (still water gets none)."),
+      "Light flecks slide along flowing water, the way the current runs (still water gets none). Off by default for now."),
     SET_BOOL("flowOverlay", "Water Flow", "Rendering & Debug/Debug/Overlays", showWaterFlow,
       "Arrows showing which way water has been moving (the current) on the current z-level and the one below. Zoomed out, an arrow sums a block of cells."),
 };

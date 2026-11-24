@@ -97,7 +97,9 @@ cells are processed per tick, scanning bottom to top.
 
 - **The current is used** (2026-11-24): flowing water draws light flecks sliding downstream
   (`DrawWaterFlecks` in `rendering.c`, setting `waterFlecks`; still water unchanged, byte-identical;
-  ~0.2 ms/frame on a view full of flow). **Drift** (`ItemsDriftTick` in `items.c`, setting
+  ~0.2 ms/frame on a view full of flow). **Off by default** (2026-11-24): the short axis-aligned
+  dashes read as random pixels rather than flow; ideas if retried: longer thin streaks, tilted
+  with the current, one per cell. **Drift** (`ItemsDriftTick` in `items.c`, setting
   `itemsDrift`): loose floating items (wood material, plant matter) go with the current, 0.15-1
   cell per game-second; they float up to the moving surface layer (a log on a full river bed sees
   no current), need water deep enough (see below; a full cell below counts), slide along banks when blocked
