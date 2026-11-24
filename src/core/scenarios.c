@@ -3227,6 +3227,51 @@ static bool HandsJobsCheck(char* why, int whyLen) {
     return true;
 }
 
+// railings: every rail-* tile on show (RailingSpriteAt picks one per N/E/S/W mask),
+// with 6 movers wandering round them. West to east: a pen with a gate gap (corners,
+// dead ends), a 3x3 window frame (T-junctions, the cross), a lone post and a stub, a
+// railing butting a wall, and a zigzag along the bottom (corners both ways).
+static void Rail(int x, int y, MaterialType mat) {
+    GRID(x, y, 1) = CELL_RAILING;
+    SetWallMaterial(x, y, 1, mat);
+    ClearWallNatural(x, y, 1);
+}
+
+static void SetupRailings(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = bladderEnabled = false;
+    for (int x = 2; x <= 10; x++) { Rail(x, 2, MAT_IRON); if (x != 6) Rail(x, 8, MAT_IRON); }   // the pen
+    for (int y = 3; y <= 7; y++) { Rail(2, y, MAT_IRON); Rail(10, y, MAT_IRON); }
+    for (int y = 2; y <= 8; y++)                                                         // window frame
+        for (int x = 13; x <= 21; x++)
+            if (x == 13 || x == 17 || x == 21 || y == 2 || y == 5 || y == 8) Rail(x, y, MAT_OAK);
+    Rail(25, 3, MAT_GRANITE);                                                            // lone post
+    for (int x = 24; x <= 27; x++) Rail(x, 7, MAT_GRANITE);                              // a stub
+    for (int x = 30; x <= 36; x++) { GRID(x, 2, 1) = CELL_WALL; SetWallMaterial(x, 2, 1, MAT_BRICK); ClearWallNatural(x, 2, 1); }
+    for (int y = 3; y <= 6; y++) Rail(33, y, MAT_IRON);                                  // off the wall
+    Rail(30, 3, MAT_IRON);                                                               // alone, under the wall
+    for (int k = 0; k < 6; k++) {                                                        // zigzag
+        int x0 = 3 + k * 6, y0 = (k % 2) ? 12 : 18;
+        for (int i = 0; i <= 6; i++) Rail(x0, y0 + ((k % 2) ? i : -i), MAT_OAK);
+        for (int i = 1; i <= 5; i++) Rail(x0 + i, (k % 2) ? 18 : 12, MAT_OAK);
+    }
+    BuildEntrances(); BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    for (int i = 0; i < 6; i++) SpawnMoverAt(4 + i * 6, 10, 1);
+    currentViewZ = 1;
+    AddMessage("Railings: every rail tile (corners, T-junctions, cross, dead ends, a lone post, one against a wall)", GREEN);
+}
+
+// Movers walk round railings, never through them
+static bool RailingsCheck(char* why, int whyLen) {
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        int x = (int)(movers[i].x / CELL_SIZE), y = (int)(movers[i].y / CELL_SIZE), z = (int)movers[i].z;
+        if (GRID(x, y, z) == CELL_RAILING) { snprintf(why, (size_t)whyLen, "mover %d stands in a railing at %d,%d", i, x, y); return false; }
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -3312,6 +3357,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
+    {"railings",   "Every railing tile: a pen with a gate, a window frame (T-junctions, cross), a lone post, one off a wall, a zigzag; 6 wandering movers",
+                   NULL,        SetupRailings, NULL, NULL, RailingsCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 
