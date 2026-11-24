@@ -192,11 +192,29 @@ the drain to a pit. A good early rung before clay pipes:
 Suggested order: 0+1+2 (done), 3a (done), then open channels (3.5), then the pipe layer with
 drains and a cesspit (3b), then supply pipes (4), the pipe model shared with dreamengine's plumbing.
 
+## Decisions (user, 2026-11-24)
+
+- **Pipes are not free:** pipe items and a mover's time to lay them (blueprints, like belts).
+- **Clean and dirty water, yes:** a drain into the river dirties the water downstream (see below).
+- **The dollhouse gets real, visible pipes** once the layer exists (it moves off `toiletsPlumbed`).
+
+### Clean and dirty water (notes)
+
+- Today: drinking from natural water already gives `MOODLET_DRANK_DIRTY_WATER`; the hearth has
+  "Boil Water"; the tap is clean water without end.
+- Water cells: `WaterCell` is 16 bits with 1 spare, enough for a dirty/clean bit; levels of
+  dirtiness (a little, filthy) need a separate sparse layer like `waterFlowLayer`.
+- Rules to work out with the water sim (`world/water.md`): an outlet's drain water marks the
+  cells it flows into as dirty; dirt moves with the water and fades with distance, dilution or
+  time (a brook cleans itself downstream, a still pond doesn't); rain and springs are clean.
+- Consequences: drinking dirty water (sickness later, a worse moodlet now), boiling cleans it,
+  an intake on dirty water feeds dirty water to the hut. So: put the cesspit downstream of the
+  intake, as real settlements learned to.
+- The water sim belongs to whoever works on water: coordinate before touching `water.c`.
+
 ## Open questions
 
 - Should finding things (a toilet in a ruin, pipes in a dump) be part of survival? That needs
   found objects / ruins in world generation first; crafting covers the ladder without it.
 - Pipe material per era: hollowed logs or bamboo, clay pipes from the kiln, iron later?
-- Pollution: does a drain into the river make the water downstream undrinkable (boil it)?
-- Do pipes cost items and a mover's time (fits survival), or can the player draw them freely?
-- Does the dollhouse get real pipes, or stay on `toiletsPlumbed`?
+- How dirty is dirty: one bit, or levels that fade? And sickness, or mood only at first?
