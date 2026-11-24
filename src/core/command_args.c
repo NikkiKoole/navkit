@@ -79,8 +79,11 @@ static bool ParseFloat(const char* s, float* out) {
     return true;
 }
 
-// Item type whose name starts with `name` (case-insensitive), ITEM_NONE = none
+// Item type named `name`, else the first whose name starts with it (case-insensitive),
+// ITEM_NONE = none. Exact first: "rope" must not pick a "Rope Coil" listed before "Rope".
 static int FindItemType(const char* name) {
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++)
+        if (itemDefs[t].name && strcasecmp(itemDefs[t].name, name) == 0) return t;
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
         const char* p = itemDefs[t].name;
         const char* q = name;

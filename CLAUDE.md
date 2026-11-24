@@ -200,7 +200,8 @@ error messages made from its spec. Dev sidebar buttons that do a command run the
 the table (`CommandButton(x, y, "Clear Water", "clear water")`). **Add new commands as a row
 there**, not with `Console_RegisterCmd` + strcmp parsing. Every command, tool, setting, verb, item, scenario
 and game is also a row in the find index (`src/core/find_index.c`, filled by `src/ui/find.c`;
-console `find <text>`, `find /<path>`): new table rows show up there by themselves. Plan for the rest (tool options, verb
+console `find <text>`, `find /<path>`; in game `/` opens the find palette, `src/ui/palette.c`): new
+table rows show up there by themselves. Plan for the rest (tool options, verb
 tables, keys as data, the find palette): `docs/todo/ui/find-palette.md`.
 
 ## Descriptions (what the game says about an entity)

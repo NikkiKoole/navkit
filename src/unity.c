@@ -104,6 +104,7 @@
 #include "ui/console.c"
 #include "ui/commands.c"
 #include "ui/find.c"
+#include "ui/palette.c"
 
 // Entry point (contains global state definitions)
 #include "main.c"

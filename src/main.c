@@ -17,6 +17,7 @@
 #include "sound/sound_synth_bridge.h"
 #include "ui/cutscene.h"
 #include "ui/console.h"
+#include "ui/palette.h"
 #include "core/scenarios.h"
 #include "core/games.h"
 #include "core/describe.h"
@@ -1593,11 +1594,11 @@ int main(int argc, char** argv) {
             if (hud.width > 0) ui_add_block_rect(hud);
         }
 
-        // Developer console
-        if (IsKeyPressed(KEY_GRAVE)) Console_Toggle();
+        // Developer console; the find palette (/, src/ui/palette.c) takes the input while open
+        if (IsKeyPressed(KEY_GRAVE) && !Palette_IsOpen()) Console_Toggle();
         if (Console_IsOpen()) {
             Console_Update();
-        } else {
+        } else if (!Palette_Update()) {
             HandleInput();
         }
 
@@ -2591,6 +2592,7 @@ int main(int argc, char** argv) {
         DrawTooltip();
         }
         Console_Draw();
+        Palette_Draw();
 
         // Cutscene system (renders as overlay on top of game)
         if (IsCutsceneActive()) {

@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction; data tidying steps 1-4 done, 5 partly; find index built, palette UI next (2026-11-24)
+> Status: decided direction; data tidying steps 1-4 done, 5 partly; find index and palette v1 built (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,19 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **the palette window, v1 (`src/ui/palette.c`).** `/` opens it (the typed character,
+  so any keyboard layout; while open it takes all input, like the console). Empty: Pinned,
+  Recent, then the browse tree (Backspace goes up). Typing searches. Enter / click picks: a
+  tool arms (now or by order, and turns the dev overlay on for its bar), a command without
+  arguments runs, one with arguments takes them on the input line with its choices / names /
+  items listed and the usage in the footer (the last arguments are remembered per command), a
+  bool or choice setting flips in place, numbers step with Left / Right or the `<` `>` arrows
+  (Shift x10), an item becomes a spawn brush (L-click places, Shift 10, R-click / Esc stops),
+  a verb runs on the selection, a scenario or game starts. Shift+Enter or right-click pins.
+  Checked by driving the window with keystrokes (`/wall` arms the wall, `/clear` + `wat` clears
+  water, Recent shows both). Not yet: right-click context (C), pins and recent saved between
+  runs, mouse-wheel count on the brush, the palette hiding widgets underneath from clicks (the
+  dev sidebar sits left of it).
 - 2026-11-24: **the find index (palette step 1).** `src/core/find_index.c/.h` (pure, tested in
   `tests/test_find.c`): rows with a kind (command, tool, setting, verb, item, scenario, game), a
   tree path, label, machine name, key path ("W B H F") and extra search words (a command's
