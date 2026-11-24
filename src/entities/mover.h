@@ -133,6 +133,10 @@ typedef struct Mover {
     // Trash in hand (v104+): what the last meal/drink left behind, on its way to a bin. Not an
     // item yet: it becomes one in the bin or on the ground (ITEM_NONE = hands free)
     int heldTrash;
+    // Inventory (v106+, inventory.c): what is held and worn on the back (item indices, -1 =
+    // free). A two-handed item sits in both hands. The body slot is equippedClothing.
+    int hands[2];
+    int wornBack;
 } Mover;
 
 // Stuck detection thresholds

@@ -9,6 +9,10 @@ ContainerDef containerDefs[ITEM_TYPE_COUNT] = {
     [ITEM_CHEST]    = { .maxContents = 20, .spoilageModifier = 0.7f, .weatherProtection = true,  .acceptsLiquids = false },
     [ITEM_CLAY_POT] = { .maxContents = 5,  .spoilageModifier = 0.5f, .weatherProtection = true,  .acceptsLiquids = true  },
     [ITEM_TRASH_BIN]= { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
+    // Inventory (count of stacks for now; volume per item type is the next step)
+    [ITEM_POCKET_JACKET] = { .maxContents = 3,  .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false },
+    [ITEM_BACKPACK]      = { .maxContents = 10, .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false },
+    [ITEM_PLASTIC_BAG]   = { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
 };
 
 const ContainerDef* GetContainerDef(ItemType type) {

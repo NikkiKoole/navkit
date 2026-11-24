@@ -4,6 +4,7 @@
 #include "../world/pathfinding.h"
 #include "items.h"
 #include "item_defs.h"
+#include "containers.h"
 
 // Global toggle (default: true in survival, false in sandbox — set at game start)
 bool toolRequirementsEnabled = false;
@@ -194,6 +195,8 @@ void DropEquippedClothing(int moverIdx) {
     m->equippedClothing = -1;
     if (clothIdx < MAX_ITEMS && items[clothIdx].active) {
         SafeDropItem(clothIdx, m->x, m->y, (int)m->z);
+        // A pocket jacket: what is in the pockets lands with it
+        if (items[clothIdx].contentCount > 0) MoveContainer(clothIdx, items[clothIdx].x, items[clothIdx].y, items[clothIdx].z);
         EventLog("Mover %d dropped clothing item %d (%s)", moverIdx, clothIdx,
                  itemDefs[items[clothIdx].type].name);
     }

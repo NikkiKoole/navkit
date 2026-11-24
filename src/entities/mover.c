@@ -1,4 +1,5 @@
 #include "mover.h"
+#include "inventory.h"
 #include "trains.h"
 #include "elevators.h"
 #include "namegen.h"
@@ -977,6 +978,8 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->hypothermiaTimer = 0.0f;
     m->bladder = 1.0f;
     m->heldTrash = ITEM_NONE;
+    m->hands[0] = m->hands[1] = -1;
+    m->wornBack = -1;
     // Job system
     m->currentJobId = -1;
     // Tool system
@@ -1257,6 +1260,7 @@ static void KillMover(Mover* m, int i) {
     ReleaseFurnitureForMover(i);
     m->needTarget = -1;
     DropEquippedTool(i);
+    MoverDropAll(i);   // hands and back, contents along (inventory.c)
     DropEquippedClothing(i);
     if (m->heldTrash > ITEM_NONE && m->heldTrash < ITEM_TYPE_COUNT) SpawnItem(m->x, m->y, m->z, (ItemType)m->heldTrash);
     m->heldTrash = ITEM_NONE;
@@ -1397,6 +1401,7 @@ void NeedsTick(void) {
             items[m->equippedTool].y = m->y;
             items[m->equippedTool].z = m->z;
         }
+        MoverSyncInventory(i);   // held and worn items too
 
         // Tick search cooldown
         if (m->needSearchCooldown > 0.0f) {

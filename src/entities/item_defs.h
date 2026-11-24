@@ -17,6 +17,8 @@
 #define IF_CLOTHING       (1 << 8)  // Item is wearable clothing
 #define IF_DRINKABLE      (1 << 9)  // Item is a drinkable liquid
 #define IF_FIXED          (1 << 10) // Stays where it is placed: no job hauls it (trash bin)
+#define IF_TWO_HANDED     (1 << 11) // Held, it takes both hands (log, crate, carcass)
+#define IF_WORN_BACK      (1 << 12) // Worn on the back (backpack)
 
 typedef struct {
     const char* name;     // Display name for tooltips
@@ -50,6 +52,8 @@ extern const ItemDef itemDefs[];
 #define ItemIsClothing(t)     (itemDefs[t].flags & IF_CLOTHING)
 #define ItemIsDrinkable(t)    (itemDefs[t].flags & IF_DRINKABLE)
 #define ItemIsFixed(t)        (itemDefs[t].flags & IF_FIXED)
+#define ItemIsTwoHanded(t)    (itemDefs[t].flags & IF_TWO_HANDED)
+#define ItemIsWornOnBack(t)   (itemDefs[t].flags & IF_WORN_BACK)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
@@ -71,13 +75,15 @@ static inline float GetItemHydration(int itemType) {
 
 // Clothing cooling reduction values (0.0 = no reduction, 1.0 = full insulation)
 // Note: uses hardcoded enum values because item_defs.h cannot include items.h
-// ITEM_GRASS_TUNIC=57, ITEM_FLAX_TUNIC=58, ITEM_LEATHER_VEST=59, ITEM_LEATHER_COAT=60
+// ITEM_GRASS_TUNIC=57, ITEM_FLAX_TUNIC=58, ITEM_LEATHER_VEST=59, ITEM_LEATHER_COAT=60,
+// ITEM_POCKET_JACKET=78 (item_defs.c asserts these)
 static inline float GetClothingCoolingReduction(int itemType) {
     switch (itemType) {
         case 57: return 0.25f;  // ITEM_GRASS_TUNIC
         case 58: return 0.40f;  // ITEM_FLAX_TUNIC
         case 59: return 0.50f;  // ITEM_LEATHER_VEST
         case 60: return 0.65f;  // ITEM_LEATHER_COAT
+        case 78: return 0.45f;  // ITEM_POCKET_JACKET
         default: return 0.0f;
     }
 }

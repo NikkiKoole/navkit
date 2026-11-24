@@ -93,6 +93,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_BASKET,       FILTER_CAT_CONTAINER, "Basket",       BEIGE},
     {ITEM_CLAY_POT,     FILTER_CAT_CONTAINER, "Clay Pot",     ORANGE},
     {ITEM_CHEST,        FILTER_CAT_CONTAINER, "Chest",        BROWN},
+    {ITEM_BACKPACK,     FILTER_CAT_CONTAINER, "Backpack",     DARKGREEN},
+    {ITEM_PLASTIC_BAG,  FILTER_CAT_CONTAINER, "Plastic Bag",  LIGHTGRAY},
     // Tool
     {ITEM_DIGGING_STICK,FILTER_CAT_TOOL,      "Digging Stick",BROWN},
     {ITEM_STONE_AXE,    FILTER_CAT_TOOL,      "Stone Axe",    GRAY},
@@ -129,6 +131,7 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_FLAX_TUNIC,    FILTER_CAT_TEXTILE,   "Flax Tunic",    SKYBLUE},
     {ITEM_LEATHER_VEST,  FILTER_CAT_TEXTILE,   "Leather Vest",  BROWN},
     {ITEM_LEATHER_COAT,  FILTER_CAT_TEXTILE,   "Leather Coat",  BROWN},
+    {ITEM_POCKET_JACKET, FILTER_CAT_TEXTILE,   "Pocket Jacket", DARKBLUE},
     // Debug
     {ITEM_RED,          FILTER_CAT_DEBUG,     "Red",          RED},
     {ITEM_GREEN,        FILTER_CAT_DEBUG,     "Green",        GREEN},

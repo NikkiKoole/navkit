@@ -15,14 +15,16 @@
 // GetItemHydration (item_defs.h) can't see the enum and uses these numbers
 _Static_assert(ITEM_WATER == 61 && ITEM_HERBAL_TEA == 62 && ITEM_BERRY_JUICE == 63 && ITEM_SODA == 73,
                "update GetItemHydration in item_defs.h");
+_Static_assert(ITEM_GRASS_TUNIC == 57 && ITEM_LEATHER_COAT == 60 && ITEM_POCKET_JACKET == 78,
+               "update GetClothingCoolingReduction in item_defs.h");
 
 const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
-    [ITEM_ROCK]         = { "Raw Stone",    SPRITE_loose_rock,   IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 25.0f, 0.0f, 0.0f },
+    [ITEM_ROCK]         = { "Raw Stone",    SPRITE_loose_rock,   IF_TWO_HANDED | IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 25.0f, 0.0f, 0.0f },
     [ITEM_BLOCKS]       = { "Blocks",       SPRITE_block_stone,  IF_STACKABLE | IF_BUILDING_MAT | MN, 20, MAT_GRANITE, 20.0f, 0.0f, 0.0f },
-    [ITEM_LOG]          = { "Log",          SPRITE_block_wood,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 20.0f, 0.0f, 0.0f },
+    [ITEM_LOG]          = { "Log",          SPRITE_block_wood,   IF_TWO_HANDED | IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 20.0f, 0.0f, 0.0f },
     [ITEM_SAPLING]      = { "Sapling",      SPRITE_tree_sapling_oak, IF_STACKABLE | MN, 20, MAT_OAK, 2.0f, 0.0f, 0.0f },
     [ITEM_LEAVES]       = { "Leaves",       SPRITE_tree_leaves_oak,  IF_STACKABLE | IF_FUEL | MN, 20, MAT_OAK, 0.5f, 0.0f, 0.0f },
     [ITEM_DIRT]         = { "Dirt",         SPRITE_dirt,         IF_STACKABLE, 20, MAT_DIRT, 12.0f, 0.0f, 0.0f },
@@ -39,22 +41,22 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_CHARCOAL]     = { "Charcoal",     SPRITE_block_wood,   IF_STACKABLE | IF_FUEL, 20, MAT_NONE, 2.0f, 0.0f, 0.0f },
     [ITEM_ASH]          = { "Ash",          SPRITE_gravel,       IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_BARK]         = { "Bark",         SPRITE_tree_bark_oak, IF_STACKABLE | IF_FUEL | MN, 20, MAT_OAK, 1.5f, 0.0f, 0.0f },
-    [ITEM_STRIPPED_LOG] = { "Stripped Log",  SPRITE_tree_stripped_log_oak, IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 18.0f, 0.0f, 0.0f },
+    [ITEM_STRIPPED_LOG] = { "Stripped Log",  SPRITE_tree_stripped_log_oak, IF_TWO_HANDED | IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL | MN, 20, MAT_OAK, 18.0f, 0.0f, 0.0f },
     [ITEM_SHORT_STRING] = { "Short String", SPRITE_short_string, IF_STACKABLE, 20, MAT_NONE, 0.2f, 0.0f, 0.0f },
     [ITEM_CORDAGE]      = { "Cordage",      SPRITE_cordage,      IF_STACKABLE, 20, MAT_NONE, 0.5f, 0.0f, 0.0f },
     [ITEM_BERRIES]      = { "Berries",      SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 20, MAT_NONE, 0.3f, 0.3f, 192.0f },
     [ITEM_DRIED_BERRIES]= { "Dried Berries",SPRITE_grass_trampled,IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.25f, 0.0f },
     [ITEM_BASKET]       = { "Basket",       SPRITE_crate_green,  IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_CLAY_POT]     = { "Clay Pot",     SPRITE_crate_red,    IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 3.0f, 0.0f, 0.0f },
-    [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f, 0.0f },
-    [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   MN, 1, MAT_OAK, 15.0f, 0.0f, 0.0f },
-    [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   MN, 1, MAT_OAK, 8.0f, 0.0f, 0.0f },
+    [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_TWO_HANDED | IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f, 0.0f },
+    [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   IF_TWO_HANDED | MN, 1, MAT_OAK, 15.0f, 0.0f, 0.0f },
+    [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   IF_TWO_HANDED | MN, 1, MAT_OAK, 8.0f, 0.0f, 0.0f },
     [ITEM_SHARP_STONE]  = { "Sharp Stone", SPRITE_loose_rock,   IF_STACKABLE | IF_TOOL | MN, 20, MAT_GRANITE, 1.0f, 0.0f, 0.0f },
     [ITEM_DIGGING_STICK]= { "Digging Stick", SPRITE_tree_stick,  IF_TOOL, 1, MAT_NONE, 1.5f, 0.0f, 0.0f },
     [ITEM_STONE_AXE]    = { "Stone Axe",   SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.0f, 0.0f, 0.0f },
     [ITEM_STONE_PICK]   = { "Stone Pick",  SPRITE_loose_rock,   IF_TOOL | MN, 1, MAT_GRANITE, 3.5f, 0.0f, 0.0f },
     [ITEM_STONE_HAMMER] = { "Stone Hammer", SPRITE_loose_rock,  IF_TOOL | MN, 1, MAT_GRANITE, 2.5f, 0.0f, 0.0f },
-    [ITEM_CARCASS]      = { "Carcass",      SPRITE_loose_rock,   IF_SPOILS, 1, MAT_NONE, 25.0f, 0.0f, 24.0f },
+    [ITEM_CARCASS]      = { "Carcass",      SPRITE_loose_rock,   IF_TWO_HANDED | IF_SPOILS, 1, MAT_NONE, 25.0f, 0.0f, 24.0f },
     [ITEM_RAW_MEAT]     = { "Raw Meat",     SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 1.0f, 0.2f, 48.0f },
     [ITEM_COOKED_MEAT]  = { "Cooked Meat",  SPRITE_division,     IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 5, MAT_NONE, 0.8f, 0.5f, 120.0f },
     [ITEM_HIDE]         = { "Hide",         SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 2.0f, 0.0f, 0.0f },
@@ -102,7 +104,11 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     // Trash: stacks of 5, so a bin (4 stacks) takes about 20 pieces
     [ITEM_EMPTY_CAN]      = { "Empty Can",    SPRITE_loose_rock,     IF_STACKABLE, 5, MAT_NONE, 0.02f, 0.0f, 0.0f },
     [ITEM_WRAPPER]        = { "Wrapper",      SPRITE_grass_trampled, IF_STACKABLE, 5, MAT_NONE, 0.01f, 0.0f, 0.0f },
-    [ITEM_TRASH_BIN]      = { "Trash Bin",    SPRITE_crate_blue,     IF_CONTAINER | IF_FIXED, 1, MAT_NONE, 10.0f, 0.0f, 0.0f },
+    [ITEM_TRASH_BIN]      = { "Trash Bin",    SPRITE_crate_blue,     IF_CONTAINER | IF_FIXED | IF_TWO_HANDED, 1, MAT_NONE, 10.0f, 0.0f, 0.0f },
+    // Inventory (docs/vision/city-1999.md "Inventory"): worn on the body / on the back / held
+    [ITEM_POCKET_JACKET]  = { "Pocket Jacket", SPRITE_grass_trampled, IF_CLOTHING | IF_CONTAINER, 1, MAT_NONE, 1.5f, 0.0f, 0.0f },
+    [ITEM_BACKPACK]       = { "Backpack",     SPRITE_crate_green,    IF_CONTAINER | IF_WORN_BACK, 1, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_PLASTIC_BAG]    = { "Plastic Bag",  SPRITE_crate_red,      IF_CONTAINER, 5, MAT_NONE, 0.05f, 0.0f, 0.0f },
 };
 #undef MN
 

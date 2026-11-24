@@ -739,6 +739,9 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         (currentTick + (unsigned long)moverIdx) % TICK_RATE == 0) {
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].reservedBy == moverIdx) {
+                // Worn and held gear stays reserved by its owner (tool, clothing, backpack, hands)
+                if (i == m->equippedTool || i == m->equippedClothing || i == m->wornBack ||
+                    i == m->hands[0] || i == m->hands[1]) continue;
                 ReleaseItemReservation(i);
             }
         }

@@ -151,8 +151,9 @@ int AuditItemReservations(bool verbose) {
         }
         bool isEquippedClothing = false;
         if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
-            movers[reservedBy].equippedClothing == i) {
-            isEquippedClothing = true;
+            (movers[reservedBy].equippedClothing == i || movers[reservedBy].wornBack == i ||
+             movers[reservedBy].hands[0] == i || movers[reservedBy].hands[1] == i)) {
+            isEquippedClothing = true;   // worn or held (inventory.c)
         }
 
         // Or the item a mover is walking to / eating / drinking (needs.c reserves it)
@@ -561,6 +562,38 @@ static int AuditEquippedTools(bool verbose) {
             if (verbose) {
                 AUDIT_LOG("Mover %d equippedClothing=%d (%s) but item lacks IF_CLOTHING flag",
                           i, clothIdx, ItemName(cloth->type));
+            }
+        }
+    }
+
+    // Held and worn-on-back items (inventory.c): active, ITEM_CARRIED, reserved by the mover;
+    // a two-handed item fills both hands, a one-handed one only one
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        int slots[3] = { m->hands[0], m->hands[1], m->wornBack };
+        for (int k = 0; k < 3; k++) {
+            int it = slots[k];
+            if (it < 0) continue;
+            if (!m->active) {
+                violations++;
+                if (verbose) AUDIT_LOG("Inactive mover %d still holds/wears item %d", i, it);
+                continue;
+            }
+            if (it >= MAX_ITEMS || !items[it].active || items[it].state != ITEM_CARRIED || items[it].reservedBy != i) {
+                violations++;
+                if (verbose) AUDIT_LOG("Mover %d %s=%d but item is not carried by it", i, k < 2 ? "hand" : "wornBack", it);
+            }
+        }
+        if (m->active && m->hands[0] >= 0 && m->hands[0] == m->hands[1] && m->hands[0] < MAX_ITEMS &&
+            !ItemIsTwoHanded(items[m->hands[0]].type)) {
+            violations++;
+            if (verbose) AUDIT_LOG("Mover %d holds one-handed item %d in both hands", i, m->hands[0]);
+        }
+        for (int h = 0; h < 2 && m->active; h++) {
+            int it = m->hands[h];
+            if (it >= 0 && it < MAX_ITEMS && ItemIsTwoHanded(items[it].type) && m->hands[1 - h] != it) {
+                violations++;
+                if (verbose) AUDIT_LOG("Mover %d holds two-handed item %d in one hand", i, it);
             }
         }
     }

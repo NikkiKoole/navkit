@@ -60,6 +60,7 @@ done <<'EOF'
 260 | 0 | --scenario tide-island
 51  | 0 | --scenario trash
 57  | 0 | --scenario heat
+51  | 0 | --scenario inventory
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo

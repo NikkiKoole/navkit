@@ -54,6 +54,7 @@
 #include "entities/butchering.c"
 #include "entities/stacking.c"
 #include "entities/containers.c"
+#include "entities/inventory.c"
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
 #include "entities/furniture.c"

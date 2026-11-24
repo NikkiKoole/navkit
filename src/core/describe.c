@@ -1,5 +1,6 @@
 // describe.c - Entity descriptions as toned text lines (see describe.h)
 #include "describe.h"
+#include "../entities/containers.h"
 #include "../game_state.h"
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
@@ -260,9 +261,30 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS && items[m->equippedClothing].active) {
         DescItemName(&items[m->equippedClothing], name, sizeof(name));
         float reduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
-        DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation)", name, reduction * 100.0f);
+        if (GetContainerDef(items[m->equippedClothing].type))
+            DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation, %d in the pockets)", name, reduction * 100.0f,
+                    items[m->equippedClothing].contentCount);
+        else
+            DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation)", name, reduction * 100.0f);
     } else {
         DescAdd(d, DESC_MUTED, "Clothing: none");
+    }
+
+    // Hands and back (inventory.c): a two-handed item fills both
+    char hand[2][64];
+    for (int h = 0; h < 2; h++) {
+        int it = m->hands[h];
+        if (it < 0 || it >= MAX_ITEMS || !items[it].active) { snprintf(hand[h], sizeof(hand[h]), "free"); continue; }
+        DescItemName(&items[it], name, sizeof(name));
+        if (GetContainerDef(items[it].type)) snprintf(hand[h], sizeof(hand[h]), "%s (%d inside)", name, items[it].contentCount);
+        else snprintf(hand[h], sizeof(hand[h]), "%s", name);
+    }
+    if (m->hands[0] >= 0 && m->hands[0] == m->hands[1]) DescAdd(d, DESC_INFO, "Hands: %s (both)", hand[0]);
+    else if (m->hands[0] < 0 && m->hands[1] < 0) DescAdd(d, DESC_MUTED, "Hands: free");
+    else DescAdd(d, DESC_INFO, "Hands: %s / %s", hand[0], hand[1]);
+    if (m->wornBack >= 0 && m->wornBack < MAX_ITEMS && items[m->wornBack].active) {
+        DescItemName(&items[m->wornBack], name, sizeof(name));
+        DescAdd(d, DESC_INFO, "Back: %s (%d inside)", name, items[m->wornBack].contentCount);
     }
 }
 

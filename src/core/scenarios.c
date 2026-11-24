@@ -19,6 +19,8 @@
 #include "../core/sim_manager.h"
 #include "../simulation/needs.h"
 #include "../simulation/tide.h"
+#include "state_audit.h"
+#include "../entities/inventory.h"
 #include "../simulation/temperature.h"
 #include <string.h>
 #include <strings.h>
@@ -2857,6 +2859,68 @@ static bool HeatCheck(char* why, int whyLen) {
     return true;
 }
 
+// inventory: what movers carry (inventory.c): two hands (a log takes both), a back slot,
+// pockets on a pocket jacket. Six wandering movers, each kitted out differently; click one
+// to see "Hands / Back / Clothing" in its description. Held and worn things walk along.
+// Check: every held/worn item is still on its mover (position) and the state audit is clean.
+static void SetupInventory(void) {
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = false;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 600.0f;
+    endlessMoverMode = true;
+    BuildEntrances(); BuildGraph();
+    for (int i = 0; i < 6; i++) {
+        SpawnMoverAt(4 + i * 5, 10, 1);
+        int mi = moverCount - 1;
+        float x = movers[mi].x, y = movers[mi].y;
+        #define INV_SPAWN(t) SpawnItem(x, y, 1, (t))
+        switch (i) {
+            case 0: MoverWear(mi, INV_SPAWN(ITEM_POCKET_JACKET)); MoverStow(mi, INV_SPAWN(ITEM_SODA)); break;
+            case 1: MoverWear(mi, INV_SPAWN(ITEM_BACKPACK)); MoverStow(mi, INV_SPAWN(ITEM_SNACK)); MoverStow(mi, INV_SPAWN(ITEM_SODA)); break;
+            case 2: MoverHold(mi, INV_SPAWN(ITEM_PLASTIC_BAG)); MoverStow(mi, INV_SPAWN(ITEM_SNACK)); MoverHold(mi, INV_SPAWN(ITEM_SODA)); break;
+            case 3: MoverHold(mi, INV_SPAWN(ITEM_LOG)); break;   // both hands
+            case 4: MoverWear(mi, INV_SPAWN(ITEM_POCKET_JACKET)); MoverWear(mi, INV_SPAWN(ITEM_BACKPACK));
+                    MoverHold(mi, INV_SPAWN(ITEM_PLASTIC_BAG));
+                    for (int k = 0; k < 6; k++) MoverStow(mi, INV_SPAWN(k % 2 ? ITEM_SODA : ITEM_SNACK));
+                    break;
+            default: break;   // empty-handed
+        }
+        #undef INV_SPAWN
+    }
+    currentViewZ = 1;
+}
+
+static void InventoryPrintStats(void) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        printf("Inventory: mover %d hands %d/%d back %d clothing %d (free hands %d)\n",
+               i, m->hands[0], m->hands[1], m->wornBack, m->equippedClothing, MoverFreeHands(i));
+    }
+}
+
+static bool InventoryCheck(char* why, int whyLen) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        int slots[3] = { m->hands[0], m->hands[1], m->wornBack };
+        for (int k = 0; k < 3; k++) {
+            int it = slots[k];
+            if (it < 0) continue;
+            if ((int)(items[it].x / CELL_SIZE) != (int)(m->x / CELL_SIZE) || (int)(items[it].y / CELL_SIZE) != (int)(m->y / CELL_SIZE)) {
+                snprintf(why, (size_t)whyLen, "mover %d: item %d is not where the mover is", i, it);
+                return false;
+            }
+        }
+    }
+    if (movers[3].hands[0] < 0 || movers[3].hands[0] != movers[3].hands[1]) {
+        snprintf(why, (size_t)whyLen, "mover 3 should hold the log in both hands");
+        return false;
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -2928,6 +2992,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupTrash, TrashTickStats, TrashPrintStats, TrashCheck, 40, 24},
     {"heat",       "Winter street: a heating grate and a burning barrel (heat 1), 8 chilled movers wander and warm up at the nearest warm spot",
                    NULL,        SetupHeat, HeatTickStats, HeatPrintStats, HeatCheck, 40, 24},
+    {"inventory",  "Six wandering movers kitted out: pocket jacket, backpack, a plastic bag + a can, a log in both hands, all of it, nothing (click them)",
+                   NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

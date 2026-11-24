@@ -1017,8 +1017,13 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= V105_CONCRETE) {
+    if (version >= V106_INVENTORY) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V105_CONCRETE) {
+        // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
+        static StockpileV105 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV105), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V105_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V104_TRASH) {
         // v104: allowedMaterials was V104_MAT_COUNT (19) bools
         static StockpileV104 oldSp[MAX_STOCKPILES];
@@ -1054,9 +1059,19 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= V104_TRASH) {
-        // v104+: Mover struct with heldTrash
+    if (version >= V106_INVENTORY) {
+        // v106+: Mover struct with hands and wornBack
         fread(movers, sizeof(Mover), moverCount, f);
+        for (int i = 0; i < moverCount; i++) {
+            fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= V104_TRASH) {
+        // v104-v105: Mover records without hands/wornBack (all movers, then all paths)
+        for (int i = 0; i < moverCount; i++) {
+            unsigned char rec[MOVER_V105_RECORD];
+            fread(rec, MOVER_V105_RECORD, 1, f);
+            memcpy(&movers[i], rec, MOVER_V105_DATA);
+        }
         for (int i = 0; i < moverCount; i++) {
             fread(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
         }
@@ -1253,6 +1268,9 @@ bool LoadWorld(const char* filename) {
     // Hands free in saves from before trash (v104)
     if (version < V104_TRASH) {
         for (int i = 0; i < moverCount; i++) movers[i].heldTrash = ITEM_NONE;
+    }
+    if (version < V106_INVENTORY) {
+        for (int i = 0; i < moverCount; i++) { movers[i].hands[0] = movers[i].hands[1] = -1; movers[i].wornBack = -1; }
     }
 
     // Initialize mood fields for old saves (v90+)

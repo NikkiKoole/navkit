@@ -86,6 +86,9 @@ typedef enum {
     ITEM_EMPTY_CAN,      // Trash: what a soda leaves behind
     ITEM_WRAPPER,        // Trash: what a snack leaves behind
     ITEM_TRASH_BIN,      // Bin: a container that stays where it is placed (IF_FIXED)
+    ITEM_POCKET_JACKET,  // Clothing with pockets: worn on the body, a small container
+    ITEM_BACKPACK,       // Worn on the back (IF_WORN_BACK): a container, hands stay free
+    ITEM_PLASTIC_BAG,    // Held in one hand: a container
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

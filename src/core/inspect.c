@@ -1440,8 +1440,13 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= V105_CONCRETE) {
+    if (version >= V106_INVENTORY) {
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V105_CONCRETE) {
+        // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
+        static StockpileV105 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV105), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V105_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V104_TRASH) {
         // v104: allowedMaterials was V104_MAT_COUNT (19) bools
         static StockpileV104 oldSp[MAX_STOCKPILES];
@@ -1476,9 +1481,19 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     insp_moverPaths = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Point) * MAX_MOVER_PATH : sizeof(Point) * MAX_MOVER_PATH);
-    if (version >= V104_TRASH) {
-        // v104+: Mover struct with heldTrash
+    if (version >= V106_INVENTORY) {
+        // v106+: Mover struct with hands and wornBack
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+        for (int i = 0; i < insp_moverCount; i++) {
+            fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
+        }
+    } else if (version >= V104_TRASH) {
+        // v104-v105: Mover records without hands/wornBack (all movers, then all paths)
+        for (int i = 0; i < insp_moverCount; i++) {
+            unsigned char rec[MOVER_V105_RECORD];
+            fread(rec, MOVER_V105_RECORD, 1, f);
+            memcpy(&insp_movers[i], rec, MOVER_V105_DATA);
+        }
         for (int i = 0; i < insp_moverCount; i++) {
             fread(insp_moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
         }
@@ -1661,6 +1676,9 @@ int InspectSaveFile(int argc, char** argv) {
     // Hands free in saves from before trash (v104)
     if (version < V104_TRASH) {
         for (int i = 0; i < insp_moverCount; i++) insp_movers[i].heldTrash = ITEM_NONE;
+    }
+    if (version < V106_INVENTORY) {
+        for (int i = 0; i < insp_moverCount; i++) { insp_movers[i].hands[0] = insp_movers[i].hands[1] = -1; insp_movers[i].wornBack = -1; }
     }
 
     // Initialize mood fields for old saves (v90+)

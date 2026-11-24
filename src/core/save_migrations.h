@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 105
+#define CURRENT_SAVE_VERSION 106
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -79,6 +79,16 @@ _Static_assert(offsetof(Mover, heldTrash) == MOVER_V103_SIZE, "Mover v103 layout
 #define V104_MAT_COUNT 19
 #define V104_ITEM_TYPE_COUNT 78
 _Static_assert(MAT_CONCRETE == V104_MAT_COUNT, "v104 materials end where MAT_CONCRETE starts");
+// v106: inventory. Three item types (pocket jacket, backpack, plastic bag: stockpile
+// allowedTypes grows from V105_ITEM_TYPE_COUNT) and Mover.hands[2] + Mover.wornBack at the end
+// of the Mover. Older saves: hands free, nothing on the back.
+#define V106_INVENTORY 106
+#define V105_ITEM_TYPE_COUNT 78
+#define V105_MAT_COUNT 20
+#define MOVER_V105_RECORD 352   // sizeof(Mover) in v104-v105 (heldTrash + 4 bytes padding)
+#define MOVER_V105_DATA   348   // the part of it that holds fields (up to and with heldTrash)
+_Static_assert(offsetof(Mover, hands) == MOVER_V105_DATA, "Mover v105 layout must be a prefix of Mover");
+_Static_assert(MAT_COUNT == V105_MAT_COUNT, "v106 changes no materials: add a migration if MAT_COUNT grew");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {
@@ -346,16 +356,39 @@ typedef struct {
     bool rejectsRotten;
 } StockpileV104;
 
+// V105 Stockpile struct (v105 only: allowedTypes V105_ITEM_TYPE_COUNT, materials with concrete)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V105_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V105_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV105;
+
 // Copy an old stockpile (StockpileV90 / V103 / V104) into a Stockpile; item types the old
 // save didn't know are not allowed, materials it didn't know are
-#define MIGRATE_OLD_STOCKPILE(sp, old, oldTypeCount) do { \
+#define MIGRATE_OLD_STOCKPILE(sp, old, oldTypeCount) MIGRATE_OLD_STOCKPILE_M(sp, old, oldTypeCount, V104_MAT_COUNT)
+#define MIGRATE_OLD_STOCKPILE_M(sp, old, oldTypeCount, oldMatCount) do { \
     (sp)->x = (old)->x; (sp)->y = (old)->y; (sp)->z = (old)->z; \
     (sp)->width = (old)->width; (sp)->height = (old)->height; \
     (sp)->active = (old)->active; \
     memset((sp)->allowedTypes, 0, sizeof((sp)->allowedTypes)); \
     memcpy((sp)->allowedTypes, (old)->allowedTypes, (oldTypeCount) * sizeof(bool)); \
     for (int m_ = 0; m_ < MAT_COUNT; m_++) (sp)->allowedMaterials[m_] = true; \
-    memcpy((sp)->allowedMaterials, (old)->allowedMaterials, V104_MAT_COUNT * sizeof(bool)); \
+    memcpy((sp)->allowedMaterials, (old)->allowedMaterials, (oldMatCount) * sizeof(bool)); \
     memcpy((sp)->cells, (old)->cells, sizeof((sp)->cells)); \
     memcpy((sp)->slots, (old)->slots, sizeof((sp)->slots)); \
     memcpy((sp)->reservedBy, (old)->reservedBy, sizeof((sp)->reservedBy)); \
