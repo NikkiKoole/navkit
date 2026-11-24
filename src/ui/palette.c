@@ -7,6 +7,7 @@
 #include "../core/selection.h"
 #include "../core/scenarios.h"
 #include "../core/games.h"
+#include "../core/describe.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../../shared/ui.h"
@@ -17,7 +18,8 @@
 // State
 // ---------------------------------------------------------------------------
 
-typedef enum { PE_HEADER, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE } PalEntryKind;
+typedef enum { PE_HEADER, PE_INFO, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE } PalEntryKind;
+static bool Pickable(PalEntryKind k) { return k != PE_HEADER && k != PE_INFO; }
 typedef struct {
     PalEntryKind kind;
     int row;                  // PE_ROW: find row
@@ -46,6 +48,54 @@ static struct {
 // The item brush: an item row picked in the palette, placed with left clicks
 static int brushItem = -1;
 
+// What the mouse was over when / was pressed (or the selection): its verbs and a few describe
+// lines go on top of the palette, and its verbs run on it
+static struct {
+    SelectionKind kind;
+    int idx;
+    DescLines desc;
+} ctx;
+
+static const char* CtxKindLabel(SelectionKind k) {
+    switch (k) {
+        case SEL_MOVER:     return "Mover";
+        case SEL_ANIMAL:    return "Animal";
+        case SEL_WORKSHOP:  return "Workshop";
+        case SEL_STOCKPILE: return "Stockpile";
+        case SEL_BLUEPRINT: return "Blueprint";
+        default:            return "";
+    }
+}
+
+static void PickContext(void) {
+    ctx.kind = SEL_NONE;
+    ctx.idx = -1;
+    ctx.desc.count = 0;
+    if (hoveredMover >= 0)          { ctx.kind = SEL_MOVER;     ctx.idx = hoveredMover; }
+    else if (hoveredAnimal >= 0)    { ctx.kind = SEL_ANIMAL;    ctx.idx = hoveredAnimal; }
+    else if (hoveredWorkshop >= 0)  { ctx.kind = SEL_WORKSHOP;  ctx.idx = hoveredWorkshop; }
+    else if (hoveredStockpile >= 0) { ctx.kind = SEL_STOCKPILE; ctx.idx = hoveredStockpile; }
+    else if (SelectionValid())      { ctx.kind = selection.kind; ctx.idx = selection.idx; }
+    switch (ctx.kind) {
+        case SEL_MOVER:     DescribeMover(ctx.idx, DESC_PLAYER, &ctx.desc); break;
+        case SEL_ANIMAL:    DescribeAnimal(ctx.idx, &ctx.desc); break;
+        case SEL_WORKSHOP:  DescribeWorkshopStatus(ctx.idx, &ctx.desc); break;
+        case SEL_STOCKPILE: DescribeStockpile(ctx.idx, &ctx.desc); break;
+        case SEL_BLUEPRINT: DescribeBlueprint(ctx.idx, &ctx.desc); break;
+        default: break;
+    }
+}
+
+// A verb row that applies to the context thing
+static bool IsCtxVerb(int row) {
+    const FindRow* r = FindRowAt(row);
+    return ctx.kind != SEL_NONE && r && r->kind == FIND_VERB && SelectionVerbAt(r->ref)->kind == ctx.kind;
+}
+static const char* VerbLabel(int row) {
+    const SelectionVerb* v = SelectionVerbAt(FindRowAt(row)->ref);
+    return v->label ? v->label(ctx.idx) : v->name;
+}
+
 bool Palette_IsOpen(void) { return pal.open; }
 
 void Palette_Open(void) {
@@ -58,6 +108,7 @@ void Palette_Open(void) {
     pal.scroll = 0;
     pal.cmdRow = -1;
     brushItem = -1;
+    PickContext();
 }
 
 void Palette_Close(void) { pal.open = false; pal.cmdRow = -1; }
@@ -157,11 +208,25 @@ static void BuildEntries(void) {
     if (pal.cmdRow >= 0) {
         AddCommandChoices();
     } else if (pal.qlen > 0) {
+        // The hovered thing's verbs that match come first
+        bool any = false;
+        for (int r = 0; r < FindCount(); r++) {
+            if (!IsCtxVerb(r) || FindScore(r, pal.query) <= 0) continue;
+            if (!any) { Add(PE_HEADER, -1, TextFormat("%s: %s", CtxKindLabel(ctx.kind), ctx.desc.count ? ctx.desc.lines[0].text : "")); any = true; }
+            Add(PE_ROW, r, VerbLabel(r));
+        }
         int hits[60];
         int n = FindSearch(pal.query, hits, 60, &pal.nearMiss);
         if (pal.nearMiss) Add(PE_HEADER, -1, "Did you mean");
-        for (int i = 0; i < n; i++) Add(PE_ROW, hits[i], FindRowAt(hits[i])->label);
+        else if (any && n > 0) Add(PE_HEADER, -1, "Everything");
+        for (int i = 0; i < n; i++) if (!IsCtxVerb(hits[i])) Add(PE_ROW, hits[i], FindRowAt(hits[i])->label);
     } else {
+        if (pal.path[0] == '\0' && ctx.kind != SEL_NONE) {
+            // The hovered (or selected) thing: who it is, a few lines about it, what you can do
+            Add(PE_HEADER, -1, TextFormat("%s: %s", CtxKindLabel(ctx.kind), ctx.desc.count ? ctx.desc.lines[0].text : ""));
+            for (int i = 1; i < ctx.desc.count && i < 4; i++) Add(PE_INFO, -1, ctx.desc.lines[i].text);
+            for (int r = 0; r < FindCount(); r++) if (IsCtxVerb(r)) Add(PE_ROW, r, VerbLabel(r));
+        }
         if (pal.path[0] == '\0') {
             int rows[FIND_MAX_PINNED];
             int n = FindPinned(rows, FIND_MAX_PINNED);
@@ -181,12 +246,12 @@ static void BuildEntries(void) {
     // Keep the selection on a pickable entry
     if (pal.sel >= pal.count) pal.sel = pal.count - 1;
     if (pal.sel < 0) pal.sel = 0;
-    while (pal.sel < pal.count - 1 && pal.entries[pal.sel].kind == PE_HEADER) pal.sel++;
+    while (pal.sel < pal.count - 1 && !Pickable(pal.entries[pal.sel].kind)) pal.sel++;
 }
 
 static void MoveSel(int dir) {
     int s = pal.sel;
-    do { s += dir; } while (s >= 0 && s < pal.count && pal.entries[s].kind == PE_HEADER);
+    do { s += dir; } while (s >= 0 && s < pal.count && !Pickable(pal.entries[s].kind));
     if (s >= 0 && s < pal.count) pal.sel = s;
 }
 
@@ -250,11 +315,14 @@ static void ActivateRow(int row) {
         }
         case FIND_VERB: {
             const SelectionVerb* v = SelectionVerbAt(r->ref);
-            if (SelectionValid() && selection.kind == v->kind) {
+            if (ctx.kind == v->kind) {
+                v->run(ctx.idx);
+                Palette_Close();
+            } else if (SelectionValid() && selection.kind == v->kind) {
                 v->run(selection.idx);
                 Palette_Close();
             } else {
-                AddMessage(TextFormat("%s: select one first (%s)", r->label, r->path), YELLOW);
+                AddMessage(TextFormat("%s: hover or select one first (%s)", r->label, r->path), YELLOW);
             }
             break;
         }
@@ -421,7 +489,7 @@ bool Palette_Update(void) {
     }
     int hover = -1;
     for (int v = 0; v < PAL_VISIBLE && pal.scroll + v < pal.count; v++) {
-        if (CheckCollisionPointRec(m, RowRect(v)) && pal.entries[pal.scroll + v].kind != PE_HEADER) {
+        if (CheckCollisionPointRec(m, RowRect(v)) && Pickable(pal.entries[pal.scroll + v].kind)) {
             hover = pal.scroll + v;
             if (GetMouseDelta().x != 0 || GetMouseDelta().y != 0) pal.sel = hover;
         }
@@ -435,6 +503,8 @@ bool Palette_Update(void) {
                 if (CheckCollisionPointRec(m, ArrowRect(v, -1))) SettingStep(s, -1, shift);
                 else if (CheckCollisionPointRec(m, ArrowRect(v, 1))) SettingStep(s, 1, shift);
                 else if (s->type == SETTING_CHOICE) SettingStep(s, 1, false);
+            } else if (shift && pal.entries[hover].kind == PE_ROW) {
+                FindSetPinned(pal.entries[hover].row, !FindIsPinned(pal.entries[hover].row));   // Shift+click pins
             } else {
                 pal.sel = hover;
                 Activate(hover);
@@ -507,9 +577,10 @@ void Palette_Draw(void) {
         const PalEntry* e = &pal.entries[i];
         Rectangle r = RowRect(v);
         float ty = r.y + 3, lx = r.x + 6, right = r.x + r.width - 6;
-        if (i == pal.sel && e->kind != PE_HEADER) DrawRectangleRec(r, PAL_SEL);
+        if (i == pal.sel && Pickable(e->kind)) DrawRectangleRec(r, PAL_SEL);
         switch (e->kind) {
             case PE_HEADER: DrawTextShadow(e->text, (int)lx, (int)ty, PAL_FONT, PAL_HEADER); break;
+            case PE_INFO:   DrawTextShadow(e->text, (int)lx + 12, (int)ty, PAL_FONT, PAL_MUTED); break;
             case PE_UP:     DrawTextShadow(".. back", (int)lx, (int)ty, PAL_FONT, PAL_MUTED); break;
             case PE_BRANCH:
                 DrawTextShadow(TextFormat("%s  >", e->text), (int)lx, (int)ty, PAL_FONT, WHITE);
@@ -518,7 +589,7 @@ void Palette_Draw(void) {
             case PE_ROW: {
                 const FindRow* fr = FindRowAt(e->row);
                 bool pin = FindIsPinned(e->row);
-                const char* label = TextFormat("%s%s", pin ? "* " : "", fr->label);
+                const char* label = TextFormat("%s%s", pin ? "* " : "", e->text);
                 DrawTextShadow(label, (int)lx, (int)ty, PAL_FONT, WHITE);
                 // Search results come from all over: say where ("Enabled  Fire")
                 if (pal.qlen > 0 || pal.path[0] == '\0') {
@@ -570,6 +641,6 @@ void Palette_Draw(void) {
     }
     DrawTextShadow(about, (int)(w.x + PAL_PAD), (int)fy + 2, 14, PAL_MUTED);
     const char* keys = pal.cmdRow >= 0 ? "Enter run   Up/Down choice   Backspace/Esc back"
-                                       : "Enter pick   Left/Right change   Shift+Enter pin   Esc close";
+                                       : "Enter pick   Left/Right change   Shift+Enter/click pin   Esc close";
     DrawTextShadow(keys, (int)(w.x + PAL_PAD), (int)fy + 2 + PAL_ROW_H - 4, 14, PAL_MUTED);
 }

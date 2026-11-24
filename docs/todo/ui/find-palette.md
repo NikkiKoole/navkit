@@ -72,7 +72,10 @@ The palette works end to end (`/` in game). In order:
 
 1. **The user plays with it first.** Does `/` feel right, does search rank the right things
    first, is there something they look for and can't find? Fold that in before more features.
-2. **Right-click context (C, the second half of the decision).** Right-click a mover, workshop,
+2. **Context (C), done as hover + `/` (the user's choice: no right mouse button).** Built
+   2026-11-24, see "Done so far". Left: verbs that take a place (spawn here, clear here, tp),
+   a cell context, and more mover verbs (today only Follow and Draft). Original plan:
+   **Right-click context.** Right-click a mover, workshop,
    stockpile or cell: the same palette cut down to what applies to it: its verbs (draft, follow,
    priority, ... from the `SelectionVerb` table), the commands that take a place (spawn here,
    clear here, tp), and its describe lines on top (`describe.c`). Mostly wiring: verbs are data,
@@ -100,6 +103,10 @@ Recommended: 1, then 2 with 3 alongside.
 
 ## Done so far
 
+- 2026-11-24: **hover + `/` (context, C).** `/` with the mouse over a mover, animal, workshop or
+  stockpile (else the selection) opens the palette with that thing on top: "Mover: Anna", up
+  to three describe lines, its verbs (labels live: "Unfollow"); typing puts its matching verbs
+  first. Its verbs run on it. Shift+click on a row pins (right-click too). The user tried it.
 - 2026-11-24: **the palette window, v1 (`src/ui/palette.c`).** `/` opens it (the typed character,
   so any keyboard layout; while open it takes all input, like the console). Empty: Pinned,
   Recent, then the browse tree (Backspace goes up). Typing searches. Enter / click picks: a
