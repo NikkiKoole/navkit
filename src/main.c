@@ -1835,6 +1835,7 @@ int main(int argc, char** argv) {
         DrawHaulDestinations();
         DrawStockpileItems();
         DrawMiningDesignations();
+        DrawOneWayLadders();
         DrawBlueprints();
         DrawTerrainBrushPreview();
         DrawWorkshopPlacementPreview();

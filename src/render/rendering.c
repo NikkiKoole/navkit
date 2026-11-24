@@ -2992,6 +2992,27 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 
+// One-way ladders: a small arrow on the ladder (up-only points north = up the screen)
+static void DrawOneWayLadders(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    if (z < 0 || z >= gridDepth) return;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&oneWayLayer, x, y)) { x |= STORE_MASK; continue; }
+            uint8_t ow = ONE_WAY(x, y, z);
+            if ((ow != ONEWAY_UP && ow != ONEWAY_DOWN) || !IsLadderCell(GRID(x, y, z))) continue;
+            float cx = offset.x + (x + 0.5f) * size, cy = offset.y + (y + 0.5f) * size;
+            float r = size * 0.3f, d = ow == ONEWAY_UP ? -1.0f : 1.0f;
+            Vector2 tip = { cx, cy + d * r }, a = { cx - r, cy - d * r * 0.5f }, b = { cx + r, cy - d * r * 0.5f };
+            Color c = ow == ONEWAY_UP ? (Color){120, 230, 120, 220} : (Color){240, 170, 80, 220};
+            if (d < 0) DrawTriangle(tip, a, b, c); else DrawTriangle(tip, b, a, c);   // counter-clockwise
+        }
+    }
+}
+
 static void DrawMiningDesignations(void) {
     // Early exit if no designations
     if (activeDesignationCount == 0) return;

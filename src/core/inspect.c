@@ -1406,6 +1406,9 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= 89) {
         InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // trackConnections
     }
+    if (version >= V110_ONE_WAY) {
+        InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // oneWay
+    }
 
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);

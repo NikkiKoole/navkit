@@ -17,7 +17,8 @@ typedef struct {
     int w, h, d;
     unsigned char wall[FZ_D][FZ_H][FZ_W];
     unsigned char cost[FZ_D][FZ_H][FZ_W];    // 0 = default 10
-    unsigned char ladder[FZ_D][FZ_H][FZ_W];  // joins the same x,y above/below
+    unsigned char ladder[FZ_D][FZ_H][FZ_W];  // joins the same x,y above/below: 1 both ways,
+                                             // 2 up only, 3 down only (a step is one-way if either end is)
     unsigned char ramp[FZ_D][FZ_H][FZ_W];    // 0 none, 1..4 = high side N,E,S,W
 } FuzzMap;
 
@@ -46,10 +47,14 @@ static inline int NavMoveCost(void* host, int x, int y, int z) {
 static inline bool NavCanClimbUp(void* host, int x, int y, int z) {
     const FuzzMap* m = host;
     return NavIsWalkable(host, x, y, z) && NavIsWalkable(host, x, y, z + 1)
-        && m->ladder[z][y][x] && m->ladder[z + 1][y][x];
+        && m->ladder[z][y][x] && m->ladder[z + 1][y][x]
+        && m->ladder[z][y][x] != 3 && m->ladder[z + 1][y][x] != 3;
 }
 static inline bool NavCanClimbDown(void* host, int x, int y, int z) {
-    return z > 0 && NavCanClimbUp(host, x, y, z - 1);
+    const FuzzMap* m = host;
+    return z > 0 && NavIsWalkable(host, x, y, z) && NavIsWalkable(host, x, y, z - 1)
+        && m->ladder[z][y][x] && m->ladder[z - 1][y][x]
+        && m->ladder[z][y][x] != 2 && m->ladder[z - 1][y][x] != 2;
 }
 static inline bool NavRampHighSide(void* host, int x, int y, int z, int* dx, int* dy) {
     const FuzzMap* m = host;

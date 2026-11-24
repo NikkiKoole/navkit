@@ -221,6 +221,27 @@ static void SetupLadderChoice(void) {
                           useLadderQueueCost ? "on" : "off"), GREEN);
 }
 
+// ladder-oneway: the deck with an up-only ladder (18,16) and a down-only one (18,6),
+// 16 movers wandering between the levels: every climb up uses the first, every climb
+// down the second (--check fails on a climb against the direction).
+static void SetupLadderOneWay(void) {
+    ResetLadderStats();
+    BuildLadderDeck();
+    AddLadderAt(18, 16);
+    AddLadderAt(18, 6);
+    SetLadderOneWay(18, 16, 1, ONEWAY_UP);
+    SetLadderOneWay(18, 6, 1, ONEWAY_DOWN);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    preferDifferentZ = true;
+    if (scenarioMovers > 0) SpawnGroundCrowd(scenarioMovers);
+    else for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 8) * 2, 10 + (i / 8) * 10, 1);
+    currentViewZ = 1;
+    AddMessage("One-way ladders: up at (18,16), down at (18,6), 16 movers", GREEN);
+}
+
 // Queue stats: a mover "at" a ladder stands on a ladder cell with its next
 // waypoint straight up/down (single-file waiters are held there); a climber is
 // between two levels on a ladder cell.
@@ -233,13 +254,15 @@ static int ladderTicks;
 // Climbs started per ladder (x,y), counted when a mover goes from standing to
 // between levels on a ladder cell
 #define LADDER_STAT_LADDERS 16
-typedef struct { int x, y, climbs; } LadderUse;
+typedef struct { int x, y, climbs, up, down; } LadderUse;
 static LadderUse ladderUses[LADDER_STAT_LADDERS];
 static int ladderUseCount;
 static bool moverWasClimbing[MAX_MOVERS];
+static int ladderWrongWay;   // climbs against a one-way ladder
 
 static void ResetLadderStats(void) {
     ladderUseCount = 0;
+    ladderWrongWay = 0;
     memset(moverWasClimbing, 0, sizeof(moverWasClimbing));
     ladderLongestQueue = ladderMostClimbers = ladderSharedTicks = ladderTicks = 0;
     ladderLongestX = ladderLongestY = ladderLongestZ = -1;
@@ -275,8 +298,17 @@ static void LadderTickStats(void) {
                 int k = 0;
                 while (k < ladderUseCount && (ladderUses[k].x != x || ladderUses[k].y != y)) k++;
                 if (k == ladderUseCount && ladderUseCount < LADDER_STAT_LADDERS)
-                    ladderUses[ladderUseCount++] = (LadderUse){x, y, 0};
-                if (k < ladderUseCount) ladderUses[k].climbs++;
+                    ladderUses[ladderUseCount++] = (LadderUse){x, y, 0, 0, 0};
+                // direction: the waypoint is the cell being climbed to (z+1 going up, z going down)
+                int up = -1;
+                if (m->pathLength > 0 && m->pathIndex >= 0) up = moverPaths[i][m->pathIndex].z > z;
+                if (k < ladderUseCount) {
+                    ladderUses[k].climbs++;
+                    if (up == 1) ladderUses[k].up++;
+                    if (up == 0) ladderUses[k].down++;
+                }
+                if (up == 1 && !CanClimbUpAt(x, y, z)) ladderWrongWay++;
+                if (up == 0 && !CanClimbDownAt(x, y, z + 1)) ladderWrongWay++;
             }
             BumpCount(climbs, &climbCount, x, y, z, &n);
             if (n > ladderMostClimbers) ladderMostClimbers = n;
@@ -300,6 +332,10 @@ static void LadderTickStats(void) {
 
 // --check: single-file must hold (never two climbers on one segment)
 static bool LadderCheck(char* why, int whyLen) {
+    if (ladderWrongWay > 0) {
+        snprintf(why, (size_t)whyLen, "%d climbs against a one-way ladder", ladderWrongWay);
+        return false;
+    }
     if (useSingleFileLadders && ladderSharedTicks > 0) {
         snprintf(why, (size_t)whyLen, "two or more climbers on one ladder segment in %d ticks", ladderSharedTicks);
         return false;
@@ -311,7 +347,9 @@ static void LadderPrintStats(void) {
     printf("Single-file ladders: %s, ladder queue cost: %s\n", useSingleFileLadders ? "on" : "off",
            useLadderQueueCost ? "on" : "off");
     for (int k = 0; k < ladderUseCount; k++)
-        printf("Climbs on ladder at (%d,%d): %d\n", ladderUses[k].x, ladderUses[k].y, ladderUses[k].climbs);
+        printf("Climbs on ladder at (%d,%d): %d (up %d, down %d)\n", ladderUses[k].x, ladderUses[k].y,
+               ladderUses[k].climbs, ladderUses[k].up, ladderUses[k].down);
+    printf("Climbs against a one-way ladder: %d\n", ladderWrongWay);
     if (ladderLongestQueue > 0)
         printf("Longest queue at a ladder: %d (cell %d,%d,z%d)\n",
                ladderLongestQueue, ladderLongestX, ladderLongestY, ladderLongestZ);
@@ -3078,6 +3116,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"ladder-choice", "Deck with two ladders 6 cells apart, 16 movers: compare ladderQueueCost on/off",
                    NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"ladder-oneway", "Deck with an up-only and a down-only ladder, 16 movers: traffic goes round",
+                   NULL,        SetupLadderOneWay, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
                    "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",

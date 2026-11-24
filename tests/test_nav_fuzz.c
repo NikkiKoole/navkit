@@ -216,7 +216,9 @@ static void FzPlaceLadder(int x, int y, int z) {
     if (z + 1 >= map.d) return;
     map.wall[z][y][x] = map.wall[z + 1][y][x] = 0;
     map.ramp[z][y][x] = map.ramp[z + 1][y][x] = 0;
-    map.ladder[z][y][x] = map.ladder[z + 1][y][x] = 1;
+    // a quarter of the ladders are one-way (up only or down only)
+    unsigned char kind = Chance(25) ? (Chance(50) ? 2 : 3) : 1;
+    map.ladder[z][y][x] = map.ladder[z + 1][y][x] = kind;
 }
 
 static void FzPlaceRamp(int x, int y, int z, int dir) {

@@ -193,6 +193,9 @@ static inline bool CanClimbUpAt(int x, int y, int z) {
     bool hasLadderHere = CellIsLadder(low);
     bool hasLadderAbove = CellIsLadder(high);
     bool shaft = CellIsShaft(low) && CellIsShaft(high);   // an elevator: the car carries you
+    // One-way ladder: a down-only piece at either end forbids climbing up this step
+    if (hasLadderHere && hasLadderAbove && (ONE_WAY(x, y, z) == ONEWAY_DOWN || ONE_WAY(x, y, z + 1) == ONEWAY_DOWN))
+        return false;
     return ((hasLadderHere && hasLadderAbove) || shaft) && IsCellWalkableAt(z + 1, y, x);
 }
 
@@ -207,6 +210,8 @@ static inline bool CanClimbDownAt(int x, int y, int z) {
     bool hasLadderHere = CellIsLadder(high);
     bool hasLadderBelow = CellIsLadder(low);
     bool shaft = CellIsShaft(high) && CellIsShaft(low);
+    if (hasLadderHere && hasLadderBelow && (ONE_WAY(x, y, z) == ONEWAY_UP || ONE_WAY(x, y, z - 1) == ONEWAY_UP))
+        return false;
     return ((hasLadderHere && hasLadderBelow) || shaft) && IsCellWalkableAt(z - 1, y, x);
 }
 

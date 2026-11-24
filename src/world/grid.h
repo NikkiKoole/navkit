@@ -308,6 +308,22 @@ static inline void* SparseLayerWrite(SparseLayer* L, int x, int y, int z) {
 }
 void SparseLayerClear(SparseLayer* L);   // free every block: all cells empty
 
+// One-way passages (sparse: nearly every cell is ONEWAY_NONE = both ways). A ladder piece
+// marked UP can only be climbed up (no climbing down onto or off it), DOWN only down.
+// N/E/S/W: reserved for one-way doors (the direction you may pass through).
+typedef enum {
+    ONEWAY_NONE = 0,
+    ONEWAY_UP,
+    ONEWAY_DOWN,
+    ONEWAY_N, ONEWAY_E, ONEWAY_S, ONEWAY_W,
+} OneWay;
+extern SparseLayer oneWayLayer;
+#define ONE_WAY(x, y, z) (*(const uint8_t*)SparseLayerRead(&oneWayLayer, (x), (y), (z)))
+#define ONE_WAY_MUT(x, y, z) (*(uint8_t*)SparseLayerWrite(&oneWayLayer, (x), (y), (z)))
+// Set the direction of the whole ladder column through (x, y, z) (every connected ladder
+// piece). Returns the number of pieces set (0 = no ladder there). Tells the pathfinder.
+int SetLadderOneWay(int x, int y, int z, OneWay dir);
+
 // Row sweep over a sparse layer in plain x order: FOR_X_IN_SPARSE_ROW(layer, T, x, p, y, z) { ... }
 // visits only x whose chunk has a block, with T* p pointing at the cell (writable). Runs in
 // empty chunks are skipped entirely, so use it only where the loop body does nothing for an

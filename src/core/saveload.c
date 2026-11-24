@@ -468,6 +468,13 @@ bool SaveWorld(const char* filename) {
         }
     }
 
+    // One-way grid (v110+)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            SAVE_ROW(f, ONE_WAY, y, z);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -975,6 +982,16 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         CLEAR_GRID_LAYER(trackConnections, 0);
+    }
+
+    // One-way grid (v110+)
+    SparseLayerClear(&oneWayLayer);   // sparse: load writes only non-empty cells
+    if (version >= V110_ONE_WAY) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                LOAD_ROW_SPARSE(f, oneWayLayer, ONE_WAY_MUT, y, z);
+            }
+        }
     }
 
     if (!loadRleOk) {
