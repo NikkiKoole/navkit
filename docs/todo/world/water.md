@@ -147,6 +147,8 @@ source with no way out floods until it finds one. Every source needs an outlet.
 
 ## Open
 
+Parked ideas (spring size by catchment, soaking, showcases, rafts, flecks): `water-ideas.md`.
+
 1. ~~**Trickling springs**~~ done 2026-11-24 (see Done); **soaking** still open (only if we want brooks and ponds inside the map). A source
    today refills to 7 every visit: unlimited flow. A spring could add a little per tick instead,
    and water standing on soil could soak away slowly (ties into the wetness/mud layer), so a
