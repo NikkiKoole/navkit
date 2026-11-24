@@ -4877,6 +4877,66 @@ describe(one_way_ladders) {
 }
 
 
+// One-way doors: flat ground at z=1, a wall across x=10 with one door at (10,5) passed going E
+static void SetupOneWayDoorWorld(OneWay dir) {
+    InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            GRID(x, y, 0) = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            GRID(x, y, 1) = CELL_AIR; GRID(x, y, 2) = CELL_AIR;
+        }
+    for (int y = 0; y < gridHeight; y++) { GRID(10, y, 1) = CELL_WALL; SetWallMaterial(10, y, 1, MAT_DIRT); }
+    GRID(10, 5, 1) = CELL_DOOR;
+    SetDoorOneWay(10, 5, 1, dir);
+    BuildEntrances();
+    BuildGraph();
+}
+
+describe(one_way_doors) {
+    it("a door passed going east lets you through west to east only (A* and HPA*)") {
+        SetupOneWayDoorWorld(ONEWAY_E);
+        for (int hpa = 0; hpa < 2; hpa++) {
+            expect(OneWayPath(3, 5, 1, 15, 5, 1, hpa) > 0);
+            expect(OneWayPath(15, 5, 1, 3, 5, 1, hpa) == 0);
+        }
+    }
+
+    it("the path goes straight through the door, no diagonal step in or out") {
+        SetupOneWayDoorWorld(ONEWAY_E);
+        expect(OneWayPath(3, 2, 1, 15, 9, 1, false) > 0);
+        int doorAt = -1;
+        for (int i = 0; i < pathLength; i++) if (path[i].x == 10 && path[i].y == 5) doorAt = i;
+        expect(doorAt > 0 && doorAt < pathLength - 1);
+        if (doorAt > 0 && doorAt < pathLength - 1) {
+            // goal-first path: path[doorAt + 1] is the cell before the door, path[doorAt - 1] after
+            expect(path[doorAt + 1].x == 9 && path[doorAt + 1].y == 5);
+            expect(path[doorAt - 1].x == 11 && path[doorAt - 1].y == 5);
+        }
+    }
+
+    it("a two-way door again after both; turning it on a built graph updates paths") {
+        SetupOneWayDoorWorld(ONEWAY_E);
+        expect(OneWayPath(15, 5, 1, 3, 5, 1, true) == 0);
+        SetDoorOneWay(10, 5, 1, ONEWAY_W);
+        UpdateDirtyChunks();
+        expect(OneWayPath(15, 5, 1, 3, 5, 1, true) > 0);
+        expect(OneWayPath(3, 5, 1, 15, 5, 1, true) == 0);
+        SetDoorOneWay(10, 5, 1, ONEWAY_NONE);
+        UpdateDirtyChunks();
+        expect(OneWayPath(3, 5, 1, 15, 5, 1, true) > 0 && OneWayPath(15, 5, 1, 3, 5, 1, true) > 0);
+    }
+
+    it("only doors take n/e/s/w; line of sight refuses the wrong way through") {
+        SetupOneWayDoorWorld(ONEWAY_E);
+        expect(!SetDoorOneWay(3, 3, 1, ONEWAY_E));          // not a door
+        expect(!SetDoorOneWay(10, 5, 1, ONEWAY_UP));        // doors have no up/down
+        expect(HasLineOfSight(8, 5, 12, 5, 1));
+        expect(!HasLineOfSight(12, 5, 8, 5, 1));
+        expect(!HasLineOfSight(9, 4, 11, 6, 1));            // diagonal through the door
+    }
+}
+
 static void run_all_tests(void) {
     test(grid_initialization);
     test(entrance_building);
@@ -4902,6 +4962,7 @@ static void run_all_tests(void) {
     test(df_walkability);
     test(df_ladder_pathfinding);
     test(one_way_ladders);
+    test(one_way_doors);
     test(df_basics);
     test(pathfinding_multi_z_correctness);
     test(variable_terrain_cost);

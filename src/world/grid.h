@@ -323,6 +323,9 @@ extern SparseLayer oneWayLayer;
 // Set the direction of the whole ladder column through (x, y, z) (every connected ladder
 // piece). Returns the number of pieces set (0 = no ladder there). Tells the pathfinder.
 int SetLadderOneWay(int x, int y, int z, OneWay dir);
+// One-way door: ONEWAY_N/E/S/W = the direction you may pass through, ONEWAY_NONE = both
+// ways. False if (x, y, z) is not a door or dir is UP/DOWN. Tells the pathfinder.
+bool SetDoorOneWay(int x, int y, int z, OneWay dir);
 
 // Row sweep over a sparse layer in plain x order: FOR_X_IN_SPARSE_ROW(layer, T, x, p, y, z) { ... }
 // visits only x whose chunk has a block, with T* p pointing at the cell (writable). Runs in

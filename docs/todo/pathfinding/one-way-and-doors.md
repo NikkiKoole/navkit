@@ -1,6 +1,6 @@
 # One-way passages, doors and keys
 
-Status: partial (one-way ladders built; one-way doors next; keys parked)
+Status: partial (one-way ladders and one-way doors built; keys parked)
 
 Asked for 2026-11-24: ladders with a direction (one way), keys and doors, maybe one-way doors.
 
@@ -22,17 +22,22 @@ Asked for 2026-11-24: ladders with a direction (one way), keys and doors, maybe 
   old two-way edges back makes it fail at once).
 - Not yet: a build tool / recipe option for a one-way ladder (only the console sets it).
 
-## Next: one-way doors
+## Built: one-way doors
 
-- Store the direction you may pass in `oneWayLayer` (`ONEWAY_N/E/S/W`) on `CELL_DOOR`.
-- Rule in the host's `NavCanEnterFrom` (`nav_host.h`; today `CanStepAcrossRamps`, "both ways"):
-  you can't enter the door from its exit side or leave it on its entry side, and no diagonal
-  steps into or out of a one-way door. The library already handles directed steps (ramp side
-  exits): reverse searches, HPA* edges built from both ends when a path isn't reversible.
-- Movers cut corners with `HasLineOfSight` (`mover.c`), which only checks walkability: it must
-  refuse a line through a one-way door in the wrong direction, or movers skip the check.
-- Regions stay "either way" (a rare false "reachable", as with ramps and one-way ladders).
-- Fuzz: add one-way door cells to `nav_fuzz_host.h` like the ladders.
+- `ONEWAY_N/E/S/W` on a `CELL_DOOR` in `oneWayLayer` = the direction you may pass (N = y-1).
+  `SetDoorOneWay(x, y, z, dir)`; a newly built door starts both ways.
+- Rule `CanStepThroughDoors` (cell_defs.h), part of `CanStepAcrossRamps`, so the nav host's
+  `NavCanEnterFrom` and the game's `CanStepTo` both use it: a step into or out of a one-way
+  door must go its way; no diagonal steps into or out of it. No nav library change needed.
+- Movers: `HasLineOfSight` (path smoothing, waypoint checks) refuses a line through a door
+  the wrong way or diagonally.
+- Console `oneway n|e|s|w|both` on a door (same command as ladders), describe line, light
+  blue arrow. Scenario `door-oneway` (a building, door in at the south, door out at the north;
+  scenarios-check fails on any wrong-way step; 48 movers: 0 wrong-way). Tests `one_way_doors`;
+  the nav fuzz places one-way doors (with walls beside them) and edits them (2000 worlds clean).
+- Not yet: a build option for a one-way door (only the console); movers pushed by crowd
+  avoidance are not stopped physically (none went the wrong way in the scenario).
+- dreamengine: its turnstile becomes a door + ONEWAY_<dir>.
 
 ## Parked: keys and locked doors (user: fix later)
 

@@ -265,6 +265,16 @@ int SetLadderOneWay(int x, int y, int z, OneWay dir) {
     return hi - lo + 1;
 }
 
+bool SetDoorOneWay(int x, int y, int z, OneWay dir) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (GRID(x, y, z) != CELL_DOOR || dir == ONEWAY_UP || dir == ONEWAY_DOWN) return false;
+    if (ONE_WAY(x, y, z) != (uint8_t)dir) {
+        ONE_WAY_MUT(x, y, z) = (uint8_t)dir;
+        MarkChunkDirty(x, y, z);
+    }
+    return true;
+}
+
 void PlaceLadder(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
 

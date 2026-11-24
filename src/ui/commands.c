@@ -278,16 +278,25 @@ static void RunFind(const CmdValue* v) {
     }
 }
 
-static const char* const oneWayChoices[] = { "up", "down", "both" };
-// One-way ladder: the ladder at the mouse (or x y), on the viewed level or the one below
+static const char* const oneWayChoices[] = { "up", "down", "both", "n", "e", "s", "w" };
+// One-way ladder or door: the one at the mouse (or x y), on the viewed level (ladders: or
+// the one below). Ladders take up/down/both, doors n/e/s/w (the way through) or both.
 static void RunOneWay(const CmdValue* v) {
     int x, y;
     if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
     else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
-    OneWay dir = v[0].choice == 0 ? ONEWAY_UP : v[0].choice == 1 ? ONEWAY_DOWN : ONEWAY_NONE;
+    static const OneWay dirs[] = { ONEWAY_UP, ONEWAY_DOWN, ONEWAY_NONE, ONEWAY_N, ONEWAY_E, ONEWAY_S, ONEWAY_W };
+    OneWay dir = dirs[v[0].choice];
+    if (x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && currentViewZ >= 0 && currentViewZ < gridDepth &&
+        GRID(x, y, currentViewZ) == CELL_DOOR) {
+        if (SetDoorOneWay(x, y, currentViewZ, dir)) Say(GREEN, "Door at %d,%d: %s", x, y, oneWayChoices[v[0].choice]);
+        else Say(YELLOW, "Doors take n, e, s, w or both");
+        return;
+    }
+    if (dir != ONEWAY_UP && dir != ONEWAY_DOWN && dir != ONEWAY_NONE) { Say(YELLOW, "Ladders take up, down or both"); return; }
     int n = SetLadderOneWay(x, y, currentViewZ, dir);
     if (n == 0) n = SetLadderOneWay(x, y, currentViewZ - 1, dir);
-    if (n == 0) { Say(YELLOW, "No ladder at %d,%d (level %d or below)", x, y, currentViewZ); return; }
+    if (n == 0) { Say(YELLOW, "No ladder or door at %d,%d (level %d)", x, y, currentViewZ); return; }
     Say(GREEN, "Ladder at %d,%d: %s (%d pieces)", x, y, oneWayChoices[v[0].choice], n);
 }
 
@@ -304,7 +313,7 @@ static const CommandDef commandTable[] = {
       3, { { .name = "x", .type = CARG_INT }, { .name = "y", .type = CARG_INT },
            { .name = "z", .type = CARG_INT, .optional = true, .def = -1 } },
       RunTp, NULL },
-    { "oneway", "World/Pathfinding", "Make the ladder at the mouse (or x y) one-way: up, down or both",
+    { "oneway", "World/Pathfinding", "One-way ladder (up/down) or door (n/e/s/w: the way through) at the mouse or x y; both = two-way",
       3, { ARG_CHOICE("dir", oneWayChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunOneWay, NULL },

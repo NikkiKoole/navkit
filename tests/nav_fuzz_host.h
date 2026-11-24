@@ -20,6 +20,7 @@ typedef struct {
     unsigned char ladder[FZ_D][FZ_H][FZ_W];  // joins the same x,y above/below: 1 both ways,
                                              // 2 up only, 3 down only (a step is one-way if either end is)
     unsigned char ramp[FZ_D][FZ_H][FZ_W];    // 0 none, 1..4 = high side N,E,S,W
+    unsigned char door[FZ_D][FZ_H][FZ_W];    // one-way door: 0 none, 1..4 = passed going N,E,S,W
 } FuzzMap;
 
 #define NAV_MIN_CELL_COST 8
@@ -71,10 +72,18 @@ static inline bool NavRampUp(void* host, int x, int y, int z, int* ex, int* ey) 
     *ey = y + dy;
     return NavIsWalkable(host, *ex, *ey, z + 1);
 }
+// One-way door: a step into or out of it must go its way (game rule, cell_defs.h)
+static inline bool fz_DoorOk(const FuzzMap* m, int x, int y, int z, int mx, int my) {
+    static const int ox[5] = {0, 0, 1, 0, -1}, oy[5] = {0, -1, 0, 1, 0};
+    if (!fz_In(m, x, y, z) || !m->door[z][y][x]) return true;
+    return mx == ox[m->door[z][y][x]] && my == oy[m->door[z][y][x]];
+}
 static inline bool NavCanEnterFrom(void* host, int x, int y, int z, int fx, int fy) {
+    const FuzzMap* m = host;
     int dx, dy;
-    if (!NavRampHighSide(host, x, y, z, &dx, &dy)) return true;
     int mx = x - fx, my = y - fy;
+    if (!fz_DoorOk(m, x, y, z, mx, my) || !fz_DoorOk(m, fx, fy, z, mx, my)) return false;
+    if (!NavRampHighSide(host, x, y, z, &dx, &dy)) return true;
     return (mx == dx && my == dy) || (mx == -dx && my == -dy);
 }
 // A cell change at z can break a ramp at z-1 (its exit) or a ladder either side

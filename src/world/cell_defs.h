@@ -309,9 +309,33 @@ static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, 
 // its length (low side / high side), never sideways. Checking only the cell stepped onto
 // made a ramp a one-way door: a mover could step off it sideways but not back on, and
 // a survival settler walked into a hollow it could never leave (seed 2, died of thirst).
+// One-way door: a door marked ONEWAY_N/E/S/W is passed only in that direction (N = y-1).
+// Out-of-bounds / not a one-way door: false.
+static inline bool OneWayDoorDir(int x, int y, int z, int* dx, int* dy) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    if (GRID(x, y, z) != CELL_DOOR) return false;
+    switch (ONE_WAY(x, y, z)) {
+        case ONEWAY_N: *dx = 0;  *dy = -1; return true;
+        case ONEWAY_E: *dx = 1;  *dy = 0;  return true;
+        case ONEWAY_S: *dx = 0;  *dy = 1;  return true;
+        case ONEWAY_W: *dx = -1; *dy = 0;  return true;
+        default: return false;
+    }
+}
+
+// A same-level step into or out of a one-way door must go its way (no diagonals, no
+// stepping in from the exit side or out on the entry side)
+static inline bool CanStepThroughDoors(int fromX, int fromY, int toX, int toY, int z) {
+    int dx, dy, mx = toX - fromX, my = toY - fromY;
+    if (OneWayDoorDir(toX, toY, z, &dx, &dy) && (mx != dx || my != dy)) return false;
+    if (OneWayDoorDir(fromX, fromY, z, &dx, &dy) && (mx != dx || my != dy)) return false;
+    return true;
+}
+
 static inline bool CanStepAcrossRamps(int fromX, int fromY, int toX, int toY, int z) {
     return CanEnterRampFromSide(toX, toY, z, fromX, fromY) &&
-           CanEnterRampFromSide(fromX, fromY, z, toX, toY);
+           CanEnterRampFromSide(fromX, fromY, z, toX, toY) &&
+           CanStepThroughDoors(fromX, fromY, toX, toY, z);
 }
 
 // Find if there's a ramp adjacent to (x,y,z) that points TO this cell

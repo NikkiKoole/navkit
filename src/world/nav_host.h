@@ -78,7 +78,7 @@ static inline bool NavRampUp(void* host, int x, int y, int z, int* exitX, int* e
 
 static inline bool NavCanEnterFrom(void* host, int x, int y, int z, int fromX, int fromY) {
     (void)host;
-    return CanStepAcrossRamps(fromX, fromY, x, y, z);   // both ways, so no one-way steps
+    return CanStepAcrossRamps(fromX, fromY, x, y, z);   // ramp sides, one-way doors
 }
 
 static inline int NavAffectedZ(void* host, int z, int* outZ) {

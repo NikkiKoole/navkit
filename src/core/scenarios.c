@@ -242,6 +242,66 @@ static void SetupLadderOneWay(void) {
     AddMessage("One-way ladders: up at (18,16), down at (18,6), 16 movers", GREEN);
 }
 
+// door-oneway: a building with a door in (south wall, passed going north) and a door out
+// (north wall, also going north), 16 wandering movers: everyone goes in at the south and
+// out at the north, like a shop with turnstiles. --check fails on a pass the wrong way.
+static int doorPasses[2], doorWrongWay;
+static int doorPrevX[MAX_MOVERS], doorPrevY[MAX_MOVERS];
+static const int doorInX = 16, doorInY = 22, doorOutX = 16, doorOutY = 8;
+
+static void SetupDoorOneWay(void) {
+    for (int y = 8; y <= 22; y++)
+        for (int x = 8; x <= 24; x++) {
+            if (x != 8 && x != 24 && y != 8 && y != 22) continue;
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_OAK);
+        }
+    GRID(doorInX, doorInY, 1) = CELL_DOOR;   SetWallMaterial(doorInX, doorInY, 1, MAT_OAK);
+    GRID(doorOutX, doorOutY, 1) = CELL_DOOR; SetWallMaterial(doorOutX, doorOutY, 1, MAT_OAK);
+    SetDoorOneWay(doorInX, doorInY, 1, ONEWAY_N);
+    SetDoorOneWay(doorOutX, doorOutY, 1, ONEWAY_N);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    doorPasses[0] = doorPasses[1] = doorWrongWay = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) doorPrevX[i] = -1;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 16;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 8) * 3, i < 8 ? 3 : 27, 1);
+    currentViewZ = 1;
+    AddMessage("One-way doors: in at the south, out at the north, 16 movers", GREEN);
+}
+
+// Every change of cell into or out of a one-way door must go its way
+static void DoorTickStats(void) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        if (!m->active) { doorPrevX[i] = -1; continue; }
+        int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)floorf(m->z);
+        int px = doorPrevX[i], py = doorPrevY[i];
+        doorPrevX[i] = x; doorPrevY[i] = y;
+        if (px < 0 || (px == x && py == y) || abs(px - x) > 1 || abs(py - y) > 1) continue;
+        if (z < 0 || z >= gridDepth) continue;
+        if (x == doorInX && y == doorInY) doorPasses[0]++;
+        if (x == doorOutX && y == doorOutY) doorPasses[1]++;
+        if (!CanStepThroughDoors(px, py, x, y, z)) doorWrongWay++;
+    }
+}
+
+static bool DoorCheck(char* why, int whyLen) {
+    if (doorWrongWay > 0) {
+        snprintf(why, (size_t)whyLen, "%d steps the wrong way through a one-way door", doorWrongWay);
+        return false;
+    }
+    return true;
+}
+
+static void DoorPrintStats(void) {
+    printf("Passes through the door in: %d, the door out: %d\n", doorPasses[0], doorPasses[1]);
+    printf("Steps the wrong way through a one-way door: %d\n", doorWrongWay);
+}
+
 // Queue stats: a mover "at" a ladder stands on a ladder cell with its next
 // waypoint straight up/down (single-file waiters are held there); a climber is
 // between two levels on a ladder cell.
@@ -3118,6 +3178,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"ladder-oneway", "Deck with an up-only and a down-only ladder, 16 movers: traffic goes round",
                    NULL,        SetupLadderOneWay, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"door-oneway", "Building with a one-way door in and a one-way door out, 16 movers",
+                   NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
                    "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
