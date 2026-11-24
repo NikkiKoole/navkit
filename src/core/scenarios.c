@@ -3368,6 +3368,7 @@ static void SetupCarsCity(void) {
     for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
     for (int e = 0; e < nk; e++) RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
     RoadsBuild(carLatAccel);
+    TrafficSetupLights(carCityLights);
     RoadsCarve(1);
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
@@ -3392,13 +3393,13 @@ static void SetupCarsCity(void) {
     AddMessage(TextFormat("Cars city: %d cars on %d roads, lanes + reserved junctions", placed, rdEdgeCount), GREEN);
 }
 
-// 3000 ticks: trips get done, nobody touches anybody or a wall
+// 3000 ticks: trips get done, nobody touches anybody or a wall, nobody runs a red light
 static bool CarsCityCheck(char* why, int whyLen) {
     int trips = 0;
     for (int i = 0; i < carCount; i++) trips += cars[i].legsDone;
-    if (trips < carCount / 4 || trafficOverlapMax > 0 || trafficOffRoadMax > 0) {
-        snprintf(why, (size_t)whyLen, "cars-city: %d trips (want >= %d), %d car pairs touching, %d cars touching walls",
-                 trips, carCount / 4, trafficOverlapMax, trafficOffRoadMax);
+    if (trips < carCount / 4 || trafficOverlapMax > 0 || trafficOffRoadMax > 0 || trafficRedRuns > 0) {
+        snprintf(why, (size_t)whyLen, "cars-city: %d trips (want >= %d), %d car pairs touching, %d cars touching walls, %d red lights run",
+                 trips, carCount / 4, trafficOverlapMax, trafficOffRoadMax, trafficRedRuns);
         return false;
     }
     return true;

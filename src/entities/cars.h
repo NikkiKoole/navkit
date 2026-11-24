@@ -105,6 +105,7 @@ extern bool carFollow;
 extern int carTrafficCount;    // cars in the cars-traffic scenario
 extern int carCityCount;       // cars in the cars-city scenario
 extern int carCitySeed;        // its road layout
+extern bool carCityLights;     // traffic lights on its 4-way junctions
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance

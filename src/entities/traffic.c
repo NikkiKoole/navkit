@@ -21,6 +21,18 @@ int trafficSamples = 0;
 float trafficWaitMax = 0;
 float trafficJunctionWaitMax = 0;
 float trafficPullOutWaitMax = 0;
+int trafficLightCount = 0;
+int trafficLightEntries = 0, trafficRedRuns = 0;
+
+// Traffic lights: per junction an offset into the cycle; per arriving lane its group
+// (which pair of opposite approaches it belongs to)
+#define TL_GREEN 12.0f
+#define TL_AMBER 3.0f
+#define TL_ALLRED 1.0f
+#define TL_HALF (TL_GREEN + TL_AMBER + TL_ALLRED)
+static bool tlOn[RD_MAX_NODES];
+static float tlOffset[RD_MAX_NODES];
+static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0 / 1
 
 #define TR_MAX_HOLD 24
 #define TR_MAX_REQ 48
@@ -46,6 +58,7 @@ static short bayCar[RD_MAX_BAYS];   // the car parked in / heading for a bay, -1
 static unsigned int trRng = 1;
 
 static unsigned int TrRand(void) { trRng = trRng * 1103515245u + 12345u; return (trRng >> 16) & 0x7fff; }
+static float TrRandF(void) { return TrRand() / 32767.0f; }
 
 void TrafficReset(void) {
     memset(trHoldN, 0, sizeof(trHoldN));
@@ -56,6 +69,56 @@ void TrafficReset(void) {
     trafficOverlapSamples = 0;
     trafficWaitMax = trafficJunctionWaitMax = trafficPullOutWaitMax = 0;
     for (int b = 0; b < RD_MAX_BAYS; b++) bayCar[b] = -1;
+    memset(tlOn, 0, sizeof(tlOn));
+    trafficLightCount = 0;
+    trafficLightEntries = trafficRedRuns = 0;
+}
+
+static float TrRandF(void);
+
+void TrafficSetupLights(bool on) {
+    memset(tlOn, 0, sizeof(tlOn));
+    trafficLightCount = 0;
+    if (!on) return;
+    for (int nd = 0; nd < rdNodeCount; nd++) {
+        const RdNode* N = &rdNodes[nd];
+        if (N->nEdge != 4) continue;
+        // roads by their direction from here; opposite ones (0,2) and (1,3) after sorting
+        int idx[4]; float ang[4];
+        for (int k = 0; k < 4; k++) {
+            const RdEdge* e = &rdEdges[N->edge[k]];
+            const RdNode* o = &rdNodes[e->a == nd ? e->b : e->a];
+            idx[k] = k; ang[k] = atan2f(o->y - N->y, o->x - N->x);
+        }
+        for (int a = 0; a < 4; a++)
+            for (int b = a + 1; b < 4; b++)
+                if (ang[idx[b]] < ang[idx[a]]) { int t = idx[a]; idx[a] = idx[b]; idx[b] = t; }
+        for (int k = 0; k < 4; k++) {
+            const RdEdge* e = &rdEdges[N->edge[idx[k]]];
+            int in = e->a == nd ? e->lane[1] : e->lane[0];
+            if (in >= 0) tlGroup[in] = (signed char)(k % 2);
+        }
+        tlOn[nd] = true;
+        tlOffset[nd] = TrRandF() * 2 * TL_HALF;
+        trafficLightCount++;
+    }
+}
+
+// 2 green, 1 amber, 0 red; *left = seconds of green + amber left (green only)
+static int LightState(int nd, int group, float* left) {
+    float t = fmodf(trTime + tlOffset[nd], 2 * TL_HALF);
+    int phase = t < TL_HALF ? 0 : 1;
+    float u = t - phase * TL_HALF;
+    if (left) *left = 0;
+    if (phase != group) return 0;
+    if (u < TL_GREEN) { if (left) *left = TL_GREEN + TL_AMBER - u; return 2; }
+    if (u < TL_GREEN + TL_AMBER) return 1;
+    return 0;
+}
+
+int TrafficLightAt(int node, int lane) {
+    if (node < 0 || node >= rdNodeCount || !tlOn[node]) return -1;
+    return LightState(node, tlGroup[lane], NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +277,18 @@ static void ServeJunctions(float dt) {
         while (k < trReqN[nd]) {
             TrReq* r = &trReq[nd][k];
             int ci = rdSegs[r->seg].ci;
+            if (tlOn[nd]) {
+                float left;
+                int inLane = rdSegs[r->seg].from;
+                bool go = LightState(nd, tlGroup[inLane], &left) == 2;
+                if (go) {   // only if it reaches the line before the green + amber run out
+                    const Car* rc = &cars[r->car];
+                    float dist = rc->route[rc->routeIdx] == inLane ? StepEnd(rc, rc->routeIdx) - rc->s : 1e9f;
+                    float vv = fmaxf(rc->speed, 2.0f * CELL_SIZE);
+                    if (dist / vv > left) go = false;
+                }
+                if (!go) { r->waited += dt; k++; continue; }   // red: waits, claims nothing
+            }
             bool clash = false;
             for (int j = 0; j < N->nConn && !clash; j++) if (claimed[j] && N->conflict[ci][j]) clash = true;
             if (!clash) {
@@ -514,6 +589,10 @@ static void DriveCar(int i, float dt) {
         sGuess = sGuess - StepEnd(c, c->routeIdx) + StepStart(c, c->routeIdx + 1);
         c->routeIdx++;
         seg = c->route[c->routeIdx];
+        if (rdSegs[seg].kind == RD_CONN && tlOn[rdSegs[seg].node]) {   // entering a lit junction
+            trafficLightEntries++;
+            if (LightState(rdSegs[seg].node, tlGroup[rdSegs[seg].from], NULL) == 0) trafficRedRuns++;
+        }
     }
     c->s = ProjectOn(seg, sGuess, c->x, c->y);
     // Out of the bay we left and on the lane: it's free
@@ -666,13 +745,15 @@ void TrafficPrintStats(void) {
         if (c->requested) asked++;
     }
     if (n == 0) return;
-    printf("Roads: %d junctions, %d roads, %d lanes, %d segments\n", rdNodeCount, rdEdgeCount, RoadLaneCount(), rdSegCount);
+    printf("Roads: %d junctions (%d with lights), %d roads, %d lanes, %d segments\n", rdNodeCount, trafficLightCount, rdEdgeCount, RoadLaneCount(), rdSegCount);
     printf("Traffic: %d cars, %d trips (%.1f per car per driving minute), mean speed now %.1f cells/s, %d moving now\n",
            n, trips, drive > 0 ? trips / (drive / 60.0f) * 1.0f : 0, speedSum / n / CELL_SIZE, moving);
     printf("  junctions: %d cars hold a connector, %d waiting for one; longest wait for a grant %.1f s\n",
            held, asked, trafficJunctionWaitMax);
     int parked = 0;
     for (int i = 0; i < carCount; i++) if (cars[i].active && cars[i].onRoad && cars[i].parkTime > 0) parked++;
+    if (trafficLightCount > 0)
+        printf("  lights: %d cars entered lit junctions, %d of them on red\n", trafficLightEntries, trafficRedRuns);
     printf("  parking: %d bays, %d cars parked now; longest wait to pull out %.1f s\n", rdBayCount, parked, trafficPullOutWaitMax);
     printf("  still > 20 s now (not parked): %d; longest standstill %.1f s\n", still20, trafficWaitMax);
     printf("  silly: car pairs touching max %d per sample (avg %.3f over %d samples), cars touching walls max %d\n",

@@ -21,6 +21,10 @@ void TrafficReset(void);                          // junction state + stats (Cle
 int TrafficSpawn(int lane, float s, int z);       // a car on lane at s px; -1 if full
 int TrafficSpawnParked(int bay, float parkFor, int z);   // a car parked in a free bay; -1 if taken/full
 void TrafficTick(float dt);                       // all road cars (CarsTick calls it)
+// Traffic lights on every 4-way junction (opposite approaches green together; others
+// stay first come, first served). Call after RoadsBuild.
+void TrafficSetupLights(bool on);
+int TrafficLightAt(int node, int lane);   // for the lane arriving at node: -1 no light, 0 red, 1 amber, 2 green
 void TrafficPrintStats(void);
 
 // Stats ("not silly" measures)
@@ -31,5 +35,7 @@ extern int trafficSamples;
 extern float trafficWaitMax;        // longest a car stood still (s)
 extern float trafficJunctionWaitMax;   // longest wait for a junction grant (s)
 extern float trafficPullOutWaitMax;    // longest wait for a gap to pull out of a bay (s)
+extern int trafficLightCount;          // junctions with lights
+extern int trafficLightEntries, trafficRedRuns;   // cars entering lit junctions; of them on red
 
 #endif

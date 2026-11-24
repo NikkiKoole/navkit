@@ -86,8 +86,27 @@ static void DrawRoadsDebug(void) {
     }
 }
 
+// Traffic lights: a dot at each stop line of a lit junction (always drawn)
+static void DrawTrafficLights(void) {
+    for (int s = 0; s < rdSegCount; s++) {
+        const RdSeg* sg = &rdSegs[s];
+        if (sg->kind != RD_LANE) continue;
+        int st = TrafficLightAt(sg->to, s);
+        if (st < 0) continue;
+        int k = sg->p0 + sg->n - 1;
+        float h = atan2f(rdY[k] - rdY[k - 1], rdX[k] - rdX[k - 1]);
+        // on the kerb side of the stop line
+        Vector2 p = CarScreen(rdX[k] - sinf(h) * 1.6f * CELL_SIZE, rdY[k] + cosf(h) * 1.6f * CELL_SIZE);
+        Color c = st == 2 ? (Color){60, 220, 80, 255} : (st == 1 ? (Color){250, 190, 40, 255} : (Color){230, 40, 40, 255});
+        float r = fmaxf(2.5f, 0.35f * CELL_SIZE * zoom);
+        DrawCircleV(p, r + 1, BLACK);
+        DrawCircleV(p, r, c);
+    }
+}
+
 void DrawCars(void) {
     if (carCount == 0) return;
+    if (rdSegCount > 0) DrawTrafficLights();
     bool roads = rdSegCount > 0;
     if (carDebug && !roads) DrawCarClearance(currentViewZ);
     if (carDebug && roads) DrawRoadsDebug();

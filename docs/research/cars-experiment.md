@@ -237,6 +237,20 @@ leaving over the first 30 s.
 Results, 10 game minutes, 5 layouts x 100 / 128 cars: 755-895 trips (each a drive + a park),
 junction waits <= 26 s, pull-out waits <= 50 s, **0 touches, 0 wall contacts in every run**.
 
+## Traffic lights (2026-11-24)
+
+Every 4-way junction gets lights (setting `carCityLights`, 17 of 63 junctions in `cars-city`);
+T-junctions stay first come, first served. Opposite approaches are green together: 12 s green,
+3 s amber, 1 s all-red per half of a 32 s cycle, each junction at a random offset. Left turns
+on green still give way to oncoming traffic (the reservation's conflicts). A request is granted
+only on green and only if the car reaches the line before green + amber run out; a request on
+red waits without claiming its connector.
+
+Results, 10 game minutes, 5 layouts x 100 / 128 cars: 0 touches, 0 wall contacts; **0 red
+lights run** out of ~2000-2300 entries into lit junctions per run (counted, and the scenario
+check fails on any). Throughput drops ~27% against first-come junctions (555 vs 765 trips at
+100 cars); junction waits 27-41 s (a red phase + the queue).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
@@ -244,8 +258,8 @@ junction waits <= 26 s, pull-out waits <= 50 s, **0 touches, 0 wall contacts in 
   drive, park, get out; drive-or-walk choice next to `MaybeTakeTrain`.
 - Parking lots off the network (Hybrid A* into a space and back out, the driveway reserved
   like a junction); kerbside bays are done.
-- Traffic lights / priority roads as alternatives to first-come reservations; overtaking
-  (multi-lane roads); roundabouts.
+- Roundabouts; overtaking (multi-lane roads); actuated lights (green on demand) or a green wave;
+  priority roads.
 - **Step 4: pedestrians.** Cars brake for movers on the arc; movers step aside.
 - Parking: a goal heading (park facing the street) is a small planner change.
 - Reeds-Shepp shots, for tight spots and fewer expansions.
