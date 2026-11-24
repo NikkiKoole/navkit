@@ -4,6 +4,9 @@
 #include "../world/pathfinding.h"
 #include "../simulation/rooms.h"
 #include "../simulation/balance.h"
+#include "../simulation/temperature.h"
+#include "../simulation/fire.h"
+#include "../simulation/lighting.h"
 #include <string.h>
 
 Furniture furniture[MAX_FURNITURE];
@@ -21,6 +24,9 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     // Not blocking (a blocking cell would drop out of its room), but costly to cross
     [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE },
     [FURNITURE_TAP]        = { "Tap",        0.0f,    false, 11, CAP_WATER_SOURCE },
+    // City heat: a grate is walked on (no cost), a barrel is stood next to
+    [FURNITURE_HEAT_GRATE] = { "Heating Grate", 0.0f, false, 0,  CAP_HEAT, 1, 40 },
+    [FURNITURE_FIRE_BARREL]= { "Burning Barrel", 0.0f, true, 0,  CAP_HEAT, 1, 150 },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,
@@ -113,6 +119,8 @@ void RemoveFurniture(int index) {
         CAPABILITY(f->x, f->y, f->z) &= ~def->capabilities;
     }
 
+    if (f->type == FURNITURE_FIRE_BARREL) RemoveLightSource(f->x, f->y, f->z);
+    if (def->heatTemp > 0) DestabilizeTemperature(f->x, f->y, f->z);
     f->active = false;
     f->occupant = -1;
     furnitureCount--;
@@ -171,6 +179,82 @@ void RebuildCapabilityGrid(void) {
         if (!workshops[w].active) continue;
         uint8_t caps = workshopDefs[workshops[w].type].capabilities;
         if (caps) SetCapability(workshops[w].workTileX, workshops[w].workTileY, workshops[w].z, caps);
+        if (WorkshopHeatLevel(workshops[w].type) > 0 && workshops[w].fuelTileX >= 0)
+            SetCapability(workshops[w].fuelTileX, workshops[w].fuelTileY, workshops[w].z, CAP_HEAT);
+    }
+}
+
+// --- Heat ---
+
+int warmSpotTemp = 28;
+
+int WorkshopHeatLevel(int workshopType) {
+    switch (workshopType) {
+        case WORKSHOP_CAMPFIRE: case WORKSHOP_GROUND_FIRE: case WORKSHOP_CHARCOAL_PIT: return 1;
+        case WORKSHOP_HEARTH: case WORKSHOP_STOVE: return 2;
+        case WORKSHOP_KILN: return 3;
+        default: return 0;
+    }
+}
+
+// A workshop burns while its passive timer runs (fuel lit, recipe going)
+static bool WorkshopBurning(const Workshop* ws) {
+    return ws->active && ws->fuelTileX >= 0 && ws->passiveReady &&
+           ws->passiveProgress > 0.0f && ws->passiveProgress < 1.0f;
+}
+
+int HeatLevelAt(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return 0;
+    if (!(CAPABILITY(x, y, z) & CAP_HEAT)) return 0;
+    int level = 0;
+    int fi = GetFurnitureAt(x, y, z);
+    if (fi >= 0) level = furnitureDefs[furniture[fi].type].heatLevel;
+    // A fire workshop's fuel tile: gives heat only while it burns
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        const Workshop* ws = &workshops[w];
+        if (ws->fuelTileX != x || ws->fuelTileY != y || ws->z != z) continue;
+        if (!WorkshopBurning(ws)) continue;
+        int l = WorkshopHeatLevel(ws->type);
+        if (l > level) level = l;
+    }
+    return level;
+}
+
+bool IsWarmSpot(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (FIRE(x, y, z).level > 0) return false;
+    // On the cell: only a provider you stand on (a grate), not a workshop's fire
+    if (CAPABILITY(x, y, z) & CAP_HEAT) {
+        int fi = GetFurnitureAt(x, y, z);
+        if (fi >= 0 && furnitureDefs[furniture[fi].type].heatLevel > 0) return true;
+    }
+    static const int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
+    for (int d = 0; d < 4; d++) {
+        if (HeatLevelAt(x + dirs[d][0], y + dirs[d][1], z) > 0) return true;
+    }
+    return temperatureEnabled && GetTemperature(x, y, z) >= warmSpotTemp;
+}
+
+int FeltHeatAt(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return 0;
+    static const int dirs[5][2] = {{0,0},{0,-1},{0,1},{-1,0},{1,0}};
+    int level = 0;
+    for (int d = 0; d < 5; d++) {
+        int l = HeatLevelAt(x + dirs[d][0], y + dirs[d][1], z);
+        if (l > level) level = l;
+    }
+    return level > 0 ? 30 + 8 * level : 0;
+}
+
+void FurnitureHeatTick(void) {
+    if (!temperatureEnabled || furnitureCount == 0) return;
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active) continue;
+        int t = furnitureDefs[furniture[i].type].heatTemp;
+        if (t <= 0) continue;
+        const Furniture* f = &furniture[i];
+        // Only raises (like ApplyFireHeat): a hotter fire nearby stays
+        if (t > GetTemperature(f->x, f->y, f->z)) SetTemperature(f->x, f->y, f->z, t);
     }
 }
 

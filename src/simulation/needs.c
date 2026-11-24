@@ -242,73 +242,30 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     m->needsRepath = true;
 }
 
-// Find nearest actively burning workshop (heat source) on same z-level.
-// Returns workshop index or -1.
-static int FindNearestBurningWorkshop(float x, float y, int z) {
-    int bestIdx = -1;
-    float bestDistSq = 1e30f;
-
-    for (int i = 0; i < workshopCount; i++) {
-        Workshop* ws = &workshops[i];
-        if (!ws->active) continue;
-        if (ws->z != z) continue;
-        if (ws->fuelTileX < 0) continue;
-        // Must be actively burning (passive timer running)
-        if (ws->passiveProgress <= 0.0f || ws->passiveProgress >= 1.0f) continue;
-        if (!ws->passiveReady) continue;
-
-        float fx = ws->fuelTileX * CELL_SIZE + CELL_SIZE / 2.0f;
-        float fy = ws->fuelTileY * CELL_SIZE + CELL_SIZE / 2.0f;
-        float dx = x - fx;
-        float dy = y - fy;
-        float distSq = dx * dx + dy * dy;
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestIdx = i;
-        }
-    }
-    return bestIdx;
-}
-
-// Find a walkable cell adjacent to the workshop's fuel tile
-static bool FindWalkableNearFuel(Workshop* ws, int* outX, int* outY) {
-    int fx = ws->fuelTileX;
-    int fy = ws->fuelTileY;
-    int z = ws->z;
-    int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
-    for (int d = 0; d < 4; d++) {
-        int nx = fx + dirs[d][0];
-        int ny = fy + dirs[d][1];
-        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-            IsCellWalkableAt(z, ny, nx)) {
-            *outX = nx;
-            *outY = ny;
-            return true;
-        }
-    }
-    return false;
+// ---- Warmth: the nearest warm spot by walking ----
+// Any provider counts (IsWarmSpot): a grate or barrel (CAP_HEAT furniture), a burning
+// campfire/hearth, or the world itself warm there (a heated room). One search over what
+// the mover can reach, so a fire behind a wall or a level up is not chased.
+#define WARMTH_SEARCH_COST (48 * 10)   // ~48 cells of walking
+static bool WarmSpotTarget(void* user, int x, int y, int z) {
+    (void)user;
+    return IsWarmSpot(x, y, z);
 }
 
 static void StartWarmthSearch(Mover* m, int moverIdx) {
-    int wsIdx = FindNearestBurningWorkshop(m->x, m->y, (int)m->z);
-    if (wsIdx < 0) {
+    Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+    Point found = from;
+    if (!IsWarmSpot(from.x, from.y, from.z) &&
+        NavFindNearest(NavGame(), from, WarmSpotTarget, NULL, WARMTH_SEARCH_COST, &found, NULL, 0, NULL) < 0) {
         m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
         return;
     }
-
-    Workshop* ws = &workshops[wsIdx];
-    int goalX, goalY;
-    if (!FindWalkableNearFuel(ws, &goalX, &goalY)) {
-        m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
-        return;
-    }
-
-    EventLog("Mover %d SEEKING_WARMTH workshop=%d (%s)", moverIdx, wsIdx, workshopDefs[ws->type].name);
+    EventLog("Mover %d SEEKING_WARMTH at (%d,%d,%d), heat %d", moverIdx, found.x, found.y, found.z,
+             HeatLevelAt(found.x, found.y, found.z));
     m->freetimeState = FREETIME_SEEKING_WARMTH;
-    moverRepathFails[moverIdx] = 0;
-    m->needTarget = wsIdx;
-    m->needProgress = 0.0f;
-    m->goal = (Point){goalX, goalY, ws->z};
+    m->needTarget = -1;
+    m->goal = found;
+    StartSeekClock(m);
     m->needsRepath = true;
 }
 
@@ -1138,29 +1095,22 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         }
 
         case FREETIME_SEEKING_WARMTH: {
-            int wi = m->needTarget;
-            // Validate workshop still burning
-            if (wi < 0 || wi >= workshopCount || !workshops[wi].active ||
-                workshops[wi].passiveProgress <= 0.0f || !workshops[wi].passiveReady) {
+            // The spot went cold (barrel out, fire burnt down): look again now
+            if (!IsWarmSpot(m->goal.x, m->goal.y, m->goal.z)) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needSearchCooldown = GameHoursToGameSeconds(balance.warmthSearchCooldownGH);
                 break;
             }
-
-            // Check arrival (within 1 cell of goal)
-            int mx = (int)(m->x / CELL_SIZE);
-            int my = (int)(m->y / CELL_SIZE);
-            if ((int)m->z == m->goal.z && abs(mx - m->goal.x) <= 1 && abs(my - m->goal.y) <= 1) {
-                EventLog("Mover %d WARMING at workshop %d", moverIdx, wi);
+            // Warm where it stands (the spot, or another one on the way): warm up here
+            int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
+            if (IsWarmSpot(mx, my, mz)) {
+                EventLog("Mover %d WARMING at (%d,%d,%d)", moverIdx, mx, my, mz);
                 m->freetimeState = FREETIME_WARMING;
                 m->needProgress = 0.0f;
                 m->pathLength = 0;
                 m->pathIndex = -1;
                 break;
             }
-
-            // Timeout
             m->needProgress += gameDeltaTime;
             if (m->needProgress > GameHoursToGameSeconds(balance.warmthSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 m->freetimeState = FREETIME_NONE;
@@ -1172,16 +1122,10 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
         case FREETIME_WARMING: {
             m->timeWithoutProgress = 0.0f;
-
-            int wi = m->needTarget;
-            // Check if heat source still active
-            bool sourceGone = (wi < 0 || wi >= workshopCount || !workshops[wi].active ||
-                               workshops[wi].passiveProgress <= 0.0f || !workshops[wi].passiveReady);
-
-            // Warm enough — return to normal
-            if (m->bodyTemp >= balance.warmthSatisfiedTemp || sourceGone) {
-                if (!sourceGone) {
-                    EventLog("Mover %d warmed up (%.1f°C), leaving fire", moverIdx, m->bodyTemp);
+            bool spotGone = !IsWarmSpot((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z);
+            if (m->bodyTemp >= balance.warmthSatisfiedTemp || spotGone) {
+                if (!spotGone) {
+                    EventLog("Mover %d warmed up (%.1f°C)", moverIdx, m->bodyTemp);
                     AddMoodlet(m, MOODLET_WARM_AND_COZY);
                 }
                 m->freetimeState = FREETIME_NONE;

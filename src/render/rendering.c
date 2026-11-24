@@ -2615,10 +2615,14 @@ static void DrawFurniture(void) {
             case FURNITURE_TOILET:     sprite = SPRITE_toilet;      break;
             case FURNITURE_TABLE:      sprite = SPRITE_table;       break;
             case FURNITURE_TAP:        sprite = SPRITE_counter;     break;   // placeholder, tinted blue
+            case FURNITURE_HEAT_GRATE: sprite = SPRITE_floor;       break;   // placeholder, tinted grey
+            case FURNITURE_FIRE_BARREL:sprite = SPRITE_generic;     break;   // placeholder, tinted orange
             default:                   sprite = SPRITE_generic;     break;
         }
 
-        Color tint = (f->type == FURNITURE_TAP) ? (Color){150, 200, 255, 255} : WHITE;
+        Color tint = (f->type == FURNITURE_TAP) ? (Color){150, 200, 255, 255}
+                   : (f->type == FURNITURE_HEAT_GRATE) ? (Color){130, 130, 140, 255}
+                   : (f->type == FURNITURE_FIRE_BARREL) ? (Color){255, 140, 60, 255} : WHITE;
         Color lightTint = GetLightColor(f->x, f->y, f->z, skyColor);
         tint = MultiplyColor(tint, lightTint);
 
@@ -3564,6 +3568,8 @@ static void DrawFrontView(void) {
                 case FURNITURE_TOILET:     fSprite = SPRITE_toilet;      break;
                 case FURNITURE_TABLE:      fSprite = SPRITE_table;       break;
                 case FURNITURE_TAP:        fSprite = SPRITE_counter;     break;   // placeholder
+                case FURNITURE_HEAT_GRATE: fSprite = SPRITE_floor;       break;   // placeholder
+                case FURNITURE_FIRE_BARREL:fSprite = SPRITE_generic;     break;   // placeholder
                 default:                   fSprite = SPRITE_generic;     break;
             }
             Rectangle dest = {fScreenX, fScreenY, size, size};

@@ -12,6 +12,7 @@ typedef enum {
     CAP_NONE          = 0,
     CAP_PREP_SURFACE  = 1 << 0,  // counter, table — needed for bread, sandwich
     CAP_WATER_SOURCE  = 1 << 1,  // sink, water barrel
+    CAP_HEAT          = 1 << 2,  // a heat provider stands here; its level is on its def (HeatLevelAt)
 } CapabilityFlag;
 
 typedef enum {
@@ -23,6 +24,8 @@ typedef enum {
     FURNITURE_TOILET,
     FURNITURE_TABLE,       // append only: saves store the type number
     FURNITURE_TAP,         // clean water without end (no plumbing yet)
+    FURNITURE_HEAT_GRATE,  // city: warm air from below, walk on it (heat 1)
+    FURNITURE_FIRE_BARREL, // city: a burning oil drum, stand next to it (heat 1; no fuel yet)
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
@@ -32,6 +35,8 @@ typedef struct {
     bool blocking;        // true = CELL_FLAG_WORKSHOP_BLOCK, false = movement penalty
     int moveCost;         // GetCellMoveCost value when non-blocking (0 = no penalty)
     uint8_t capabilities; // CapabilityFlag bitmask (0 = no capabilities)
+    uint8_t heatLevel;    // CAP_HEAT level: 1 warm (grate, barrel), 2 cooking, 3 smelting
+    int16_t heatTemp;     // Celsius it keeps its cell at in temperature.c (0 = none)
 } FurnitureDef;
 
 typedef struct {
@@ -59,6 +64,21 @@ void ReleaseFurniture(int furnitureIdx, int moverIdx);
 void ReleaseFurnitureForMover(int moverIdx);
 void RebuildFurnitureMoveCostGrid(void);
 void RebuildCapabilityGrid(void);   // from furniture + workshops (after a load)
+
+// Heat (docs/todo/architecture/capability-based-tasks.md "Smallest proof"). A capability
+// with levels: the grid marks CAP_HEAT where a provider stands, the level comes from the
+// provider's def (furniture heatLevel, WorkshopHeatLevel while the workshop burns).
+int WorkshopHeatLevel(int workshopType);   // 0 = gives no heat
+int HeatLevelAt(int x, int y, int z);      // level a provider on this cell gives (0 = none)
+// A cell a cold mover can stand on to warm up: a heat provider on it or next to it, or the
+// world itself is warm there (air at warmSpotTemp or more: a heated room, warm air around a
+// grate). Not a cell that is burning.
+extern int warmSpotTemp;
+bool IsWarmSpot(int x, int y, int z);
+void FurnitureHeatTick(void);
+// Radiant heat: what a mover on or next to a heat provider feels (Celsius, 0 = none),
+// whatever the air does (snow, wind): 30 + 8 x level. Body temperature heads for it.
+int FeltHeatAt(int x, int y, int z);   // providers with heatTemp keep their cell warm (temperature.c)
 
 // Capability queries — stations/furniture provide capabilities to nearby workshops
 bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius);

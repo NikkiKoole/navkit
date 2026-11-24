@@ -19,6 +19,7 @@
 #include "../core/sim_manager.h"
 #include "../simulation/needs.h"
 #include "../simulation/tide.h"
+#include "../simulation/temperature.h"
 #include <string.h>
 #include <strings.h>
 
@@ -2779,6 +2780,83 @@ static bool TrashCheck(char* why, int whyLen) {
     return true;
 }
 
+// heat: the stations "smallest proof" (docs/todo/architecture/capability-based-tasks.md):
+// heat as a capability with levels, from providers that aren't workshops. A winter street
+// (snowing) with a heating grate (walk on it) at the west end and a burning barrel (stand
+// next to it) at the east end, both heat 1. 8 movers wander, start chilled; a cold mover
+// walks to the nearest warm spot (IsWarmSpot: by walking, any provider), warms up, wanders on.
+// Stats: warm-ups at each, coldest body temperature, how many are cold at the end.
+static Point heatGrate, heatBarrel;
+static int heatWarmUps[2], heatWarmOther;
+static int heatPrevState[MAX_MOVERS];
+static float heatColdest;
+
+static void SetupHeat(void) {
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = true; temperatureEnabled = true;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 600.0f;
+    endlessMoverMode = true;
+    InitWeather();
+    dayNumber = 3 * daysPerSeason + 1;   // winter
+    weatherState.current = weatherState.previous = WEATHER_SNOW;
+    weatherState.transitionTimer = weatherState.transitionDuration = GameHoursToGameSeconds(48.0f);
+    weatherState.intensity = 1.0f;
+    heatGrate = (Point){6, 12, 1};
+    heatBarrel = (Point){33, 12, 1};
+    SpawnFurniture(heatGrate.x, heatGrate.y, 1, FURNITURE_HEAT_GRATE, MAT_IRON);
+    SpawnFurniture(heatBarrel.x, heatBarrel.y, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    BuildEntrances(); BuildGraph();
+    for (int i = 0; i < 8; i++) {
+        SpawnMoverAt(4 + i * 4, 4 + (i % 2) * 14, 1);
+        movers[moverCount - 1].bodyTemp = 34.0f + 0.2f * i;   // chilled, a little apart
+        heatPrevState[moverCount - 1] = FREETIME_NONE;
+    }
+    heatWarmUps[0] = heatWarmUps[1] = heatWarmOther = 0;
+    heatColdest = 99.0f;
+    InvalidateLighting();
+    currentViewZ = 1;
+}
+
+static void HeatTickStats(void) {
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        if (m->bodyTemp < heatColdest) heatColdest = m->bodyTemp;
+        if (m->freetimeState == FREETIME_WARMING && heatPrevState[i] != FREETIME_WARMING) {
+            int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE);
+            if (abs(x - heatGrate.x) <= 1 && abs(y - heatGrate.y) <= 1) heatWarmUps[0]++;
+            else if (abs(x - heatBarrel.x) <= 1 && abs(y - heatBarrel.y) <= 1) heatWarmUps[1]++;
+            else heatWarmOther++;
+        }
+        heatPrevState[i] = m->freetimeState;
+    }
+}
+
+static int HeatColdNow(void) {
+    int n = 0;
+    for (int i = 0; i < moverCount; i++)
+        if (movers[i].active && movers[i].bodyTemp < balance.moderateColdThreshold) n++;
+    return n;
+}
+
+static void HeatPrintStats(void) {
+    printf("Heat: %s, air %dC; warm-ups at the grate %d, at the barrel %d, elsewhere %d; coldest body %.1fC, %d of %d cold now\n",
+           GetSeasonName(GetCurrentSeason()), GetAmbientTemperature(1), heatWarmUps[0], heatWarmUps[1],
+           heatWarmOther, heatColdest, HeatColdNow(), moverCount);
+    printf("  grate cell %dC (heat %d), barrel neighbour %dC (heat %d)\n",
+           GetTemperature(heatGrate.x, heatGrate.y, 1), HeatLevelAt(heatGrate.x, heatGrate.y, 1),
+           GetTemperature(heatBarrel.x - 1, heatBarrel.y, 1), HeatLevelAt(heatBarrel.x, heatBarrel.y, 1));
+}
+
+static bool HeatCheck(char* why, int whyLen) {
+    if (heatWarmUps[0] < 1 || heatWarmUps[1] < 1) {
+        snprintf(why, (size_t)whyLen, "warm-ups: grate %d, barrel %d (want >= 1 each)", heatWarmUps[0], heatWarmUps[1]);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -2848,6 +2926,8 @@ static const Scenario scenarios[] = {
                    "Island",    SetupTideIsland, TideTickStats, TideIslandPrintStats, TideCheck, 256, 256},
     {"trash",      "City trash loop: a snack stand, three bins at 4/14/32 cells, 10 wandering movers eat and drink, bins fill, then litter (setting trashBinWalk)",
                    NULL,        SetupTrash, TrashTickStats, TrashPrintStats, TrashCheck, 40, 24},
+    {"heat",       "Winter street: a heating grate and a burning barrel (heat 1), 8 chilled movers wander and warm up at the nearest warm spot",
+                   NULL,        SetupHeat, HeatTickStats, HeatPrintStats, HeatCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

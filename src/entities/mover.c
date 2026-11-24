@@ -1345,6 +1345,9 @@ void NeedsTick(void) {
             float cellTemp = (float)GetTemperature(cx, cy, cz);
             bool exposed = IsExposedToSky(cx, cy, cz);
             float effectiveAmbient = GetWindChillTemp(cellTemp, weatherState.windStrength, exposed);
+            // Radiant heat from a grate, barrel or fire right there beats cold air
+            float felt = (float)FeltHeatAt(cx, cy, cz);
+            if (felt > 0.0f && felt > effectiveAmbient) effectiveAmbient = felt;
             // Baseline body heat (even starving bodies generate some warmth)
             // plus hunger-scaled metabolic bonus on top
             float baseHeat = balance.baseMetabolicHeat;
@@ -2445,6 +2448,7 @@ void TickWithDt(float dt) {
     
     // Temperature simulation
     PROFILE_BEGIN(Temperature);
+    FurnitureHeatTick();
     UpdateTemperature();
     PROFILE_BEGIN(Freezing);
     UpdateWaterFreezing();

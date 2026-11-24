@@ -677,6 +677,8 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             if (workshopDefs[type].capabilities) {
                 SetCapability(ws->workTileX, ws->workTileY, z, workshopDefs[type].capabilities);
             }
+            // A fire workshop is a heat provider at its fuel tile (while it burns: HeatLevelAt)
+            if (WorkshopHeatLevel(type) > 0 && ws->fuelTileX >= 0) SetCapability(ws->fuelTileX, ws->fuelTileY, z, CAP_HEAT);
 
             workshopCount++;
             return i;
@@ -716,6 +718,7 @@ void DeleteWorkshop(int index) {
         if (workshopDefs[ws->type].capabilities) {
             ClearCapability(ws->workTileX, ws->workTileY, ws->z);
         }
+        if (WorkshopHeatLevel(ws->type) > 0 && ws->fuelTileX >= 0) CAPABILITY(ws->fuelTileX, ws->fuelTileY, ws->z) &= ~CAP_HEAT;
 
         ws->active = false;
         workshopCount--;

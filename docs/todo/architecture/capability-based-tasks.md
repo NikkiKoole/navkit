@@ -43,6 +43,28 @@ in rough order:
 (cell) and a burning barrel (station) give heat 1; a cold mover walks to the nearest one.
 Tests 2, 3 and 5 without touching workshop code.
 
+**Heat proof, built (2026-11-24, no save change):**
+- `CAP_HEAT` in the capability grid marks where a heat provider stands; the **level** lives
+  on the provider: `FurnitureDef.heatLevel` (+ `heatTemp`, the Celsius it keeps its cell at),
+  `WorkshopHeatLevel()` for fire workshops (campfire/ground fire/charcoal pit 1, hearth and
+  stove 2, kiln 3; their fuel tile, only while burning). `HeatLevelAt(x,y,z)` (furniture.c).
+- New furniture: **Heating Grate** (walk on it, heat 1, cell held at 40C) and **Burning
+  Barrel** (blocking, heat 1, 150C, light; no fuel yet).
+- **The world as provider**: `IsWarmSpot()` = a provider on the cell (one you stand on) or
+  next to it, *or the air there is warm* (`warmSpotTemp`, 28C: a heated room, warm air,
+  a fire pit's surroundings). Not a burning cell.
+- **Reachable, not near** (gap 4, for heat): the warmth need (`StartWarmthSearch`) is one
+  walking search (`NavFindNearest`, ~48 cells) for the nearest warm spot; a barrel behind
+  a wall is not chased. Replaces "nearest burning workshop on this level by straight line".
+- **Radiant heat**: next to or on a provider, a body heads for 30 + 8 x level C whatever
+  the air does (`FeltHeatAt`, mover.c). Without it a barrel in snow and wind warmed nobody
+  (its neighbour cell was 14C).
+- Scenario `heat` (winter street, grate + barrel, 8 movers): 30k ticks, 128 warm-ups at
+  the grate and 121 at the barrel, nobody stays cold. island-winter settlers now warm at
+  the fire pit (they found no "burning workshop" before). Tests: `test_hunger` "heat".
+- Gaps 2 and 3 done for heat; 5 is the warmth need using it (not a general resolver yet).
+  Next: shelter (no sky above) and sleeping levels the same way; recipes asking a heat level.
+
 The 1999 city game needs most of this: see
 [docs/vision/city-1999.md](../../vision/city-1999.md#stations-in-the-city).
 

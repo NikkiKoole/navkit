@@ -12,6 +12,8 @@
 #include "../src/simulation/needs.h"
 #include "../src/simulation/mood.h"
 #include "../src/entities/containers.h"
+#include "../src/entities/furniture.h"
+#include "../src/simulation/temperature.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/weather.h"
@@ -1610,6 +1612,108 @@ describe(trash) {
     }
 }
 
+// =============================================================================
+// Heat: a capability with levels; a cold mover walks to the nearest warm spot
+// =============================================================================
+
+static int heatSavedSeason, heatSavedDiurnal, heatSavedSurface;
+
+// 10x10 at z=0, a wall down x=3 (no way across), cold air (-10C, no day/season swing)
+static void SetupHeatTest(void) {
+    InitTestGridFromAscii(
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n"
+        "...#......\n");
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers(); ClearItems(); ClearJobs(); ClearPlants(); ClearFurniture(); ClearWorkshops();
+    InitBalance();
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = true;
+    heatSavedSeason = seasonalAmplitude; heatSavedDiurnal = diurnalAmplitude; heatSavedSurface = ambientSurfaceTemp;
+    seasonalAmplitude = 0; diurnalAmplitude = 0;
+    SetAmbientSurfaceTemp(-10);
+    currentTick = 1;
+    InitMover(&movers[0], 2.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){2, 1, 0}, MOVER_SPEED);
+    moverCount = 1;
+}
+
+static void RestoreHeatTest(void) {
+    seasonalAmplitude = heatSavedSeason; diurnalAmplitude = heatSavedDiurnal;
+    SetAmbientSurfaceTemp(heatSavedSurface);
+}
+
+describe(heat) {
+    it("grate and barrel give heat 1; the levels of fire workshops") {
+        SetupHeatTest();
+        SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        SpawnFurniture(7, 7, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        expect(HeatLevelAt(5, 5, 0) == 1);
+        expect(HeatLevelAt(7, 7, 0) == 1);
+        expect(HeatLevelAt(6, 6, 0) == 0);
+        expect(WorkshopHeatLevel(WORKSHOP_CAMPFIRE) == 1);
+        expect(WorkshopHeatLevel(WORKSHOP_HEARTH) == 2);
+        expect(WorkshopHeatLevel(WORKSHOP_KILN) == 3);
+        expect(WorkshopHeatLevel(WORKSHOP_SAWMILL) == 0);
+        RestoreHeatTest();
+    }
+
+    it("warm spots: on a grate, next to a barrel; not two cells off") {
+        SetupHeatTest();
+        SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        SpawnFurniture(7, 2, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        expect(IsWarmSpot(5, 5, 0));
+        expect(IsWarmSpot(6, 2, 0));
+        expect(!IsWarmSpot(5, 2, 0));
+        expect(FeltHeatAt(6, 2, 0) == 38);
+        expect(FeltHeatAt(5, 2, 0) == 0);
+        RemoveFurniture(GetFurnitureAt(7, 2, 0));
+        expect(!IsWarmSpot(6, 2, 0));
+        RestoreHeatTest();
+    }
+
+    it("a cold mover walks to the nearest warm spot it can reach, not the one behind a wall") {
+        SetupHeatTest();
+        SpawnFurniture(4, 1, 0, FURNITURE_FIRE_BARREL, MAT_IRON);   // 2 cells off, other side of the wall
+        SpawnFurniture(2, 8, 0, FURNITURE_HEAT_GRATE, MAT_IRON);    // 7 cells walk
+        movers[0].bodyTemp = 34.0f;   // chilly
+        ProcessFreetimeNeeds();
+        expect(movers[0].freetimeState == FREETIME_SEEKING_WARMTH);
+        expect(movers[0].goal.x <= 2 && movers[0].goal.y >= 7);
+        RestoreHeatTest();
+    }
+
+    it("no warm spot in reach: a search cooldown, no seeking") {
+        SetupHeatTest();
+        SpawnFurniture(4, 1, 0, FURNITURE_FIRE_BARREL, MAT_IRON);   // behind the wall only
+        movers[0].bodyTemp = 34.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[0].freetimeState == FREETIME_NONE);
+        expect(movers[0].needSearchCooldown > 0.0f);
+        RestoreHeatTest();
+    }
+
+    it("next to the barrel the body warms in freezing air; away from it, it cools") {
+        SetupHeatTest();
+        SpawnFurniture(1, 3, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        expect(GetTemperature(2, 1, 0) < 0);
+        movers[0].bodyTemp = 34.0f;
+        for (int t = 0; t < 600; t++) NeedsTick();
+        float away = movers[0].bodyTemp;
+        expect(away < 34.0f);   // freezing air, nothing near: cools (felt heat 0 must not count as 0C)
+        movers[0].x = 2.5f * CELL_SIZE; movers[0].y = 3.5f * CELL_SIZE;   // next to the barrel
+        for (int t = 0; t < 600; t++) NeedsTick();
+        expect(movers[0].bodyTemp > away);
+        RestoreHeatTest();
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1635,6 +1739,7 @@ int main(int argc, char* argv[]) {
     test(starvation_survival);
     test(hunger_daylength_independence);
     test(trash);
+    test(heat);
 
     dayLength = 60.0f; // restore
     return summary();

@@ -206,7 +206,7 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         } else if (m->freetimeState == FREETIME_SEEKING_WARMTH) {
             DescAdd(d, DESC_WARN, "  Seeking warmth...");
         } else if (m->freetimeState == FREETIME_WARMING) {
-            DescAdd(d, DESC_MILD, "  Warming up by fire");
+            DescAdd(d, DESC_MILD, "  Warming up");
         }
     }
 
