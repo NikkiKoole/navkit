@@ -74,7 +74,8 @@ The palette works end to end (`/` in game). In order:
    first, is there something they look for and can't find? Fold that in before more features.
 2. **Context (C), done as hover + `/` (the user's choice: no right mouse button).** Built
    2026-11-24, see "Done so far". Left: verbs that take a place (spawn here, clear here, tp),
-   a cell context, and more mover verbs (today only Follow and Draft). Original plan:
+   a cell context. Mover verbs: Follow, Draft, and (dev) Teleport, Fill needs, Cancel job,
+   Debug (b55d59f3); more later (give / drop item, rename, move-to when drafted). Original plan:
    **Right-click context.** Right-click a mover, workshop,
    stockpile or cell: the same palette cut down to what applies to it: its verbs (draft, follow,
    priority, ... from the `SelectionVerb` table), the commands that take a place (spawn here,
@@ -103,6 +104,9 @@ Recommended: 1, then 2 with 3 alongside.
 
 ## Done so far
 
+- 2026-11-25: **mover dev verbs** (b55d59f3): Teleport (then L-click a cell), Fill needs, Cancel
+  job, Debug (path in orange + inspector shows DESC_DEBUG lines). Rows in the SelectionVerb
+  table, so the palette (hover + `/`) and the inspector show them; inspector verb buttons wrap.
 - 2026-11-24: **hover + `/` (context, C).** `/` with the mouse over a mover, animal, workshop or
   stockpile (else the selection) opens the palette with that thing on top: "Mover: Anna", up
   to three describe lines, its verbs (labels live: "Unfollow"); typing puts its matching verbs
