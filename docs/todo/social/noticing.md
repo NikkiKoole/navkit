@@ -1,6 +1,6 @@
 # Noticing: agents that see each other and do something with it
 
-> Status: spec (2026-11-24). First place: the dollhouse.
+> Status: partial (2026-11-25): step 1 (noticing layer) and mover faces built. First place: the dollhouse.
 
 One loop for every agent, person or animal: **notice → judge → respond**. Social behaviour
 (talking in a circle, walking together, giving way, avoiding someone) and animal behaviour
@@ -157,7 +157,7 @@ residents, which only gives pairs, so it gets:
 
 ### Steps
 
-1. **Noticing layer** for movers: `noticed[]` per mover, staggered update, line of sight,
+1. ~~**Noticing layer**~~ **done 2026-11-25 (8b754a84)**: `src/entities/notice.c`, settings `notice`, `noticeRadius` (6), `noticeEveryTicks` (15), `wanderPause`; the face looks at the top noticed mover when standing still. Scenario `social` (10 wanderers, wanderPause 3 s, 3600 ticks): 0.98 noticed per mover, 13.4 attention switches per mover per minute (2.0 back to the one before), standing movers look at someone 68% of the time. No overlay yet (describe line only). Original plan: `noticed[]` per mover, staggered update, line of sight,
    attention budget. Show it: describe lines (DESC_DEBUG: "notices: Anna (friend, 2 s)") and a
    debug overlay of who notices whom. Scenario `social` (a plaza, ~10 movers, preset friends
    and feuds) for counting things headless.
