@@ -309,20 +309,21 @@ static void TemperatureTick(float dt) {
 
 // ---- Drifting: loose things that float go with the current ----
 bool itemsDrift = true;   // setting itemsDrift
-#define DRIFT_MIN_WATER 2        // shallower water: the item rests on the bed
 #define DRIFT_INTERVAL 0.1f      // game-seconds between drift steps
 static float driftAccum = 0.0f;
 
-// Wood and plant matter float; stone, metal, food and the rest stay where they lie
-static bool ItemFloats(const Item* it) {
-    if (IsWoodMaterial((MaterialType)it->material)) return true;
+// How deep the water must be for an item to float off (0 = it sinks or stays): light plant
+// matter goes in any water (1), logs, planks and other wood need 2
+static int ItemFloatDepth(const Item* it) {
     switch (it->type) {
-        case ITEM_LOG: case ITEM_PLANKS: case ITEM_STICKS: case ITEM_POLES: case ITEM_STRIPPED_LOG:
-        case ITEM_LEAVES: case ITEM_GRASS: case ITEM_DRIED_GRASS: case ITEM_BARK: case ITEM_REEDS:
-        case ITEM_SAPLING: case ITEM_BASKET: case ITEM_REED_MAT:
-            return true;
+        case ITEM_STICKS: case ITEM_LEAVES: case ITEM_GRASS: case ITEM_DRIED_GRASS: case ITEM_BARK:
+        case ITEM_REEDS: case ITEM_SAPLING:
+            return 1;
+        case ITEM_LOG: case ITEM_PLANKS: case ITEM_POLES: case ITEM_STRIPPED_LOG: case ITEM_BASKET:
+        case ITEM_REED_MAT:
+            return 2;
         default:
-            return false;
+            return IsWoodMaterial((MaterialType)it->material) ? 2 : 0;
     }
 }
 
@@ -331,6 +332,10 @@ static bool DriftCellOpen(int x, int y, int z) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
     CellType c = GRID(x, y, z);
     return !CellIsSolid(c) && !CellBlocksFluids(c);
+}
+
+static bool DriftEdgeCell(int x, int y) {
+    return x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1;
 }
 
 // The water a floating item at (x, y, z) rests on: this cell's water, or (in an empty cell with
@@ -352,7 +357,8 @@ static int DriftSurfaceZ(int x, int y, int z) {
 
 // Loose floating items go with the current (GetWaterFlow), 0.15-1 cell per game-second by its
 // strength. They float at the surface (a log on a full river bed comes up to the moving layer)
-// and need water at least DRIFT_MIN_WATER deep, counting a full cell below. Not carried, stored,
+// and need water ItemFloatDepth deep (light matter 1, wood 2), counting a full cell below.
+// Carried off the map edge (where water flows off, waterEdgeOutflow) they are lost. Not carried, stored,
 // contained or reserved: a job never walks to a spot its item has left. Blocked diagonally they
 // slide along the bank; with no water ahead at all (a bank, a beach) they stay where they are.
 static void ItemsDriftTick(float dt) {
@@ -366,14 +372,19 @@ static void ItemsDriftTick(float dt) {
         if (!it->active || it->state != ITEM_ON_GROUND || it->containedIn >= 0 || it->reservedBy >= 0) continue;
         int cx = (int)(it->x / CELL_SIZE), cy = (int)(it->y / CELL_SIZE), cz = (int)it->z;
         if (cx < 0 || cy < 0 || cz < 0 || cx >= gridWidth || cy >= gridHeight || cz >= gridDepth) continue;
-        if (!DriftOverWater(cx, cy, cz)) continue;   // dry: the common case, before the type check
-        if (!ItemFloats(it)) continue;
-        cz = DriftSurfaceZ(cx, cy, cz);
-        it->z = (float)cz;
-        const WaterCell* w = &WATER(cx, cy, cz);
-        if (w->isFrozen) continue;
-        int depth = w->level + (cz > 0 && WATER(cx, cy, cz - 1).level == WATER_MAX_LEVEL ? WATER_MAX_LEVEL : 0);
-        if (depth < DRIFT_MIN_WATER) continue;
+        // An open edge cell where water flows off the map: empty as fast as it fills, but moving
+        bool edgeHere = waterEdgeOutflow && cz > waterEdgeSeaZ && DriftEdgeCell(cx, cy);
+        if (!edgeHere && !DriftOverWater(cx, cy, cz)) continue;   // dry: the common case, first
+        int needDepth = ItemFloatDepth(it);
+        if (needDepth == 0) continue;
+        if (!edgeHere) {
+            cz = DriftSurfaceZ(cx, cy, cz);
+            it->z = (float)cz;
+            const WaterCell* w = &WATER(cx, cy, cz);
+            if (w->isFrozen) continue;
+            int depth = w->level + (cz > 0 && WATER(cx, cy, cz - 1).level == WATER_MAX_LEVEL ? WATER_MAX_LEVEL : 0);
+            if (depth < needDepth) continue;
+        }
         // The current of the surface layer and the one under it (a full river moves on top)
         float fx = 0.0f, fy = 0.0f, gx, gy;
         if (GetWaterFlow(cx, cy, cz, &gx, &gy)) { fx += gx; fy += gy; }
@@ -392,7 +403,17 @@ static void ItemsDriftTick(float dt) {
             int ncx = (int)(nx / CELL_SIZE), ncy = (int)(ny / CELL_SIZE);
             int nz = cz;
             if (ncx != cx || ncy != cy) {
-                if (!DriftCellOpen(ncx, ncy, cz) || !DriftOverWater(ncx, ncy, cz)) continue;
+                bool offMap = ncx < 0 || ncy < 0 || ncx >= gridWidth || ncy >= gridHeight;
+                if (offMap && waterEdgeOutflow) {   // carried off the map: lost to the sea beyond
+                    EventLog("Item %d (%s) drifted off the map at (%d,%d,z%d)", i, ItemName(it->type), cx, cy, cz);
+                    DeleteItem(i);
+                    break;
+                }
+                if (!DriftCellOpen(ncx, ncy, cz)) continue;
+                // An open edge cell where water flows off is empty as fast as it fills: the item
+                // goes in, and on, off the map
+                bool edgeOut = waterEdgeOutflow && cz > waterEdgeSeaZ && DriftEdgeCell(ncx, ncy);
+                if (!edgeOut && !DriftOverWater(ncx, ncy, cz)) continue;
                 nz = DriftSurfaceZ(ncx, ncy, cz);   // over a drop it goes down with the water
             }
             it->x = nx;

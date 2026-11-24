@@ -1557,6 +1557,31 @@ describe(water_drift) {
         waterEvaporationEnabled = true;
     }
 
+    it("sticks float in a thin stream (a log would not) and are lost off the map edge") {
+        // The channel runs out of the map on the east: water flows off there (waterEdgeOutflow)
+        InitTestGridFromAscii(
+            "##############\n"
+            "#.............\n"
+            "##############\n");
+        InitWater();
+        ClearItems();
+        waterEvaporationEnabled = false;
+        waterEdgeOutflow = true;
+        waterEdgeSeaZ = -1;
+        itemsDrift = true;
+        SetWaterSource(1, 1, 0, true);
+        RunWaterAndItems(300);
+        expect(GetWaterLevel(8, 1, 0) == 1);   // a thin stream
+        int sticks = SpawnItemWithMaterial(8.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_STICKS, MAT_OAK);
+        int log = SpawnItemWithMaterial(6.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0, ITEM_LOG, MAT_OAK);
+        float logX = items[log].x;
+        RunWaterAndItems(3000);
+        expect(!items[sticks].active);          // carried off the map
+        expect(items[log].active && items[log].x == logX);   // too shallow for a log: lies on the bed
+        waterEdgeOutflow = false;
+        waterEvaporationEnabled = true;
+    }
+
     it("a drifting log stops at the water's edge and rests there") {
         SetupDriftChannel();
         RunWaterAndItems(300);

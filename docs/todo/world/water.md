@@ -100,13 +100,18 @@ cells are processed per tick, scanning bottom to top.
   ~0.2 ms/frame on a view full of flow). **Drift** (`ItemsDriftTick` in `items.c`, setting
   `itemsDrift`): loose floating items (wood material, plant matter) go with the current, 0.15-1
   cell per game-second; they float up to the moving surface layer (a log on a full river bed sees
-  no current), need water 2 deep counting a full cell below, slide along banks when blocked
+  no current), need water deep enough (see below; a full cell below counts), slide along banks when blocked
   diagonally, and stay put with no water ahead. Not when carried, stored, contained or reserved.
-  Scenario `drift` (island, 60 oak logs in the rivers, no settlers; in scenarios-check): seed 1,
-  36k ticks: 20 drift (up to 53 cells), most wash up in the shallow lowland film, 3 reach the sea;
-  40 lie in still water (lakes, pools at river heads) and stay. Tests `test_water` water_drift.
-  Open: logs stop in strong but shallow (level 1) flow, which looks odd next to the arrows; what
-  happens at the map edge (now: a log stays at the edge cell).
+  How deep the water must be depends on the item (`ItemFloatDepth`): light plant matter (sticks,
+  leaves, grass, reeds, bark, saplings) floats in any water, wood (logs, planks, poles) needs 2.
+  Carried off the map edge where water flows off (`waterEdgeOutflow`, above `waterEdgeSeaZ`), an
+  item is lost (event log line); an open edge cell counts as moving water though it is always
+  empty. Scenario `drift` (island, a log and a bundle of sticks on 60 river spots, no settlers; in
+  scenarios-check): seed 1, 36k ticks: logs 20 of 60 drift (max 53 cells), 3 reach the sea;
+  sticks 30 (max 92 cells), 12 reach the sea. Most wash up; the rest lie in still water (lakes,
+  pools at river heads). Nothing is lost there: the full sea is still, so things that reach it
+  stay offshore. Tests `test_water` water_drift (downstream, a rock stays, a reserved log stays,
+  a log rests at the water's edge, sticks in a thin stream lost off the edge while a log stays).
 
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
