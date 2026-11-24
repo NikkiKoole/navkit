@@ -13,6 +13,7 @@
 #include "../src/entities/tool_quality.h"
 #include "../src/core/state_audit.h"
 #include "../src/simulation/needs.h"
+#include "../src/simulation/balance.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
 #include <string.h>
@@ -141,24 +142,23 @@ describe(worn) {
 describe(stow) {
     it("pockets first, then the backpack, then a bag in hand, then a free hand, then nothing") {
         int mi = Setup();
-        MoverWear(mi, Spawn(5, 5, ITEM_POCKET_JACKET));   // 3 stacks
-        MoverWear(mi, Spawn(5, 5, ITEM_BACKPACK));        // 10 stacks
-        MoverHold(mi, Spawn(5, 5, ITEM_PLASTIC_BAG));     // 4 stacks
-        // Distinct non-stacking things so each takes a slot
-        ItemType kinds[] = { ITEM_SHARP_STONE, ITEM_STICKS, ITEM_CORDAGE };
+        MoverWear(mi, Spawn(5, 5, ITEM_POCKET_JACKET));   // 2 L
+        MoverWear(mi, Spawn(5, 5, ITEM_BACKPACK));        // 25 L, at most 20 stacks
+        MoverHold(mi, Spawn(5, 5, ITEM_PLASTIC_BAG));     // 10 L, at most 10 stacks
         int placed[INV_HAND + 1] = {0};
         InvPlace last = INV_NONE;
-        for (int k = 0; k < 3 + 10 + 4 + 1 + 1; k++) {
-            int it = Spawn(5, 5, kinds[k % 3]);
-            items[it].material = (uint8_t)(k + 1);   // different materials: no merging into a stack
+        for (int k = 0; k < 5 + 20 + 10 + 1 + 1; k++) {
+            int it = Spawn(5, 5, ITEM_SODA);   // 0.4 L
+            items[it].material = (uint8_t)(k % 250 + 1);   // different materials: no merging into a stack
             last = MoverStow(mi, it);
             placed[last]++;
         }
-        expect(placed[INV_POCKETS] == 3);
-        expect(placed[INV_BACK] == 10);
-        expect(placed[INV_HELD_BAG] == 4);
+        expect(placed[INV_POCKETS] == 5);    // 5 x 0.4 = 2 L
+        expect(placed[INV_BACK] == 20);      // stack limit before the litres run out
+        expect(placed[INV_HELD_BAG] == 10);
         expect(placed[INV_HAND] == 1);
         expect(last == INV_NONE);
+        expect(RunStateAudit(test_verbose) == 0);
     }
 
     it("stowing from a stockpile frees the slot") {
@@ -216,11 +216,105 @@ describe(stow) {
     }
 }
 
+describe(volume_weight) {
+    it("a pocket takes five cans, not a sixth; a log doesn't fit in a backpack") {
+        int mi = Setup();
+        int jacket = Spawn(5, 5, ITEM_POCKET_JACKET);
+        MoverWear(mi, jacket);
+        for (int k = 0; k < 5; k++) {
+            int c = Spawn(5, 5, ITEM_EMPTY_CAN);
+            items[c].material = (uint8_t)(k + 1);
+            expect(CanPutItemInContainer(c, jacket));
+            PutItemInContainer(c, jacket);
+        }
+        int sixth = Spawn(5, 5, ITEM_EMPTY_CAN);
+        items[sixth].material = 9;
+        expect(!CanPutItemInContainer(sixth, jacket));
+        expect(ContainerContentsVolume(jacket) > 1.99f);
+        int pack = Spawn(5, 5, ITEM_BACKPACK);
+        expect(!CanPutItemInContainer(Spawn(5, 5, ITEM_LOG), pack));
+        expect(ItemVolume(ITEM_LOG) > 25.0f);
+    }
+
+    it("a full bag takes up more room than an empty one") {
+        Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        float empty = ItemTotalVolume(bag);
+        PutItemInContainer(Spawn(5, 5, ITEM_BURGER), bag);
+        expect(ItemTotalVolume(bag) > empty + 0.4f);
+    }
+
+    it("weight on the back counts half; in the hands in full") {
+        int mi = Setup();
+        int pack = Spawn(5, 5, ITEM_BACKPACK);
+        MoverWear(mi, pack);
+        int soda = Spawn(5, 5, ITEM_SODA);
+        items[soda].stackCount = 10;   // 3.5 kg
+        expect(MoverStow(mi, soda) == INV_BACK);
+        float back = MoverCarriedWeight(mi);
+        expect(back > 0.5f * (1.0f + 3.5f) - 0.01f && back < 0.5f * (1.0f + 3.5f) + 0.01f);
+        MoverDropBack(mi);
+        expect(MoverCarriedWeight(mi) < 0.01f);
+        int soda2 = Spawn(5, 5, ITEM_SODA);
+        items[soda2].stackCount = 10;
+        MoverHold(mi, soda2);
+        expect(MoverCarriedWeight(mi) > 3.49f);
+    }
+
+    it("the lifting limit: a log too heavy on top of what it carries is not picked up") {
+        int mi = Setup();
+        float saved = carryLimitKg;
+        carryLimitKg = 10.0f;
+        int log = Spawn(5, 5, ITEM_LOG);   // 20 kg
+        expect(!MoverHold(mi, log));
+        expect(items[log].state == ITEM_ON_GROUND);
+        carryLimitKg = 30.0f;
+        expect(MoverHold(mi, log));
+        carryLimitKg = saved;
+    }
+
+    it("a real load tires: more energy drain while carrying a log") {
+        int mi = Setup();
+        InitBalance();
+        movers[mi].bodyTemp = balance.bodyTempNormal;
+        float idle = MoverEnergyDrainPerGH(mi);
+        expect(idle > 0.0f);
+        MoverHold(mi, Spawn(5, 5, ITEM_LOG));
+        expect(MoverEnergyDrainPerGH(mi) > idle * 1.05f);
+    }
+
+    it("carrying slows walking") {
+        int mi = Setup();
+        float before = MoverWalkSecondsPerCell(mi);
+        MoverHold(mi, Spawn(5, 5, ITEM_LOG));
+        expect(MoverWalkSecondsPerCell(mi) > before * 1.3f);
+    }
+
+    it("contents lists follow puts, takes and deletes; a rebuild gives the same") {
+        Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        int a = Spawn(5, 5, ITEM_SODA), b = Spawn(5, 5, ITEM_SNACK), c = Spawn(5, 5, ITEM_BURGER);
+        PutItemInContainer(a, bag); PutItemInContainer(b, bag); PutItemInContainer(c, bag);
+        int n = 0;
+        for (int i = FirstInContainer(bag); i >= 0; i = NextInContainer(i)) n++;
+        expect(n == 3 && items[bag].contentCount == 3);
+        RemoveItemFromContainer(b);
+        DeleteItem(c);
+        n = 0;
+        for (int i = FirstInContainer(bag); i >= 0; i = NextInContainer(i)) { n++; expect(i == a); }
+        expect(n == 1 && items[bag].contentCount == 1);
+        RebuildContainerLists();
+        expect(FirstInContainer(bag) == a && NextInContainer(a) == -1);
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(hands);
     test(worn);
     test(stow);
+    test(volume_weight);
     return summary();
 }

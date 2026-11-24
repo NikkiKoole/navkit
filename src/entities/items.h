@@ -128,6 +128,10 @@ typedef struct {
     float spoilageTimer;      // game-seconds elapsed since spawn (0 = fresh, only used if IF_SPOILS)
     uint8_t condition;        // ItemCondition (CONDITION_FRESH/STALE/ROTTEN)
     float temperature;        // Celsius (0.0 = not tracked, >0 = hot food cooling down)
+    // Contents list (v108+, containers.c): a container's direct contents, linked. Not trusted
+    // from a save: RebuildContainerLists() rebuilds them from containedIn after a load.
+    int firstChild;           // first item directly inside this one, -1 = none
+    int nextSibling;          // next item in the same container, -1 = last
 } Item;
 
 #define MAX_ITEMS 25000

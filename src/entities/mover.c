@@ -584,6 +584,7 @@ float MoverWalkSecondsPerCell(int i) {
             }
         }
     }
+    mult *= CarriedSpeedFactor(i);   // what it holds and wears (inventory.c)
     float pxPerSec = m->speed * (60.0f / dayLength) * mult;
     return pxPerSec > 0.0f ? (float)CELL_SIZE / pxPerSec : 1.0f;
 }
@@ -986,6 +987,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->equippedTool = -1;
     // Clothing system
     m->equippedClothing = -1;
+    MoverRecalcCarried((int)(m - movers));   // hands/back/clothing empty now; the slot may have carried before
     // Identity
     m->name[0] = '\0';
     m->gender = 0;
@@ -1933,6 +1935,7 @@ void UpdateMovers(void) {
                     }
                 }
             }
+            terrainSpeedMult *= CarriedSpeedFactor(i);   // held and worn things (inventory.c)
             if (m->hunger < balance.hungerPenaltyThreshold) {
                 float t = m->hunger / balance.hungerPenaltyThreshold;
                 float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);

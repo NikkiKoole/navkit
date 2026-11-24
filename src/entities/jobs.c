@@ -3205,9 +3205,7 @@ JobRunResult RunJob_FillWaterPot(Job* job, void* moverPtr, float dt) {
                 int waterItem = SpawnItem(mover->x, mover->y, mover->z, ITEM_WATER);
                 if (waterItem >= 0) {
                     items[waterItem].state = ITEM_IN_CONTAINER;
-                    items[waterItem].containedIn = potIdx;
-                    items[potIdx].contentCount++;
-                    items[potIdx].contentTypeMask |= (1u << (ITEM_WATER & 31));
+                    ContainerLink(waterItem, potIdx);
                 }
             }
 

@@ -1420,7 +1420,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_items = malloc(insp_itemHWM > 0 ? insp_itemHWM * sizeof(Item) : sizeof(Item));
     if (insp_itemHWM > 0) {
         if (version >= 92) {
-            fread(insp_items, sizeof(Item), insp_itemHWM, f);
+            if (version >= V108_CONTENTS_LISTS) fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        else for (int i = 0; i < insp_itemHWM; i++) fread(&insp_items[i], ITEM_V107_SIZE, 1, f);   // v92-v107: no contents lists
         } else {
             for (int i = 0; i < insp_itemHWM; i++) {
                 ItemV91 old;
@@ -1935,6 +1936,7 @@ int InspectSaveFile(int argc, char** argv) {
         setup_pathfinding_globals();
         memcpy(items, insp_items, sizeof(Item) * insp_itemHWM);
         itemHighWaterMark = insp_itemHWM;
+        RebuildContainerLists();
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);

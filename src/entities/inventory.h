@@ -27,6 +27,16 @@ void MoverDropBack(int moverIdx);
 InvPlace MoverStow(int moverIdx, int itemIdx);
 void MoverDropAll(int moverIdx);                   // hands and back (death); clothing via DropEquippedClothing
 void MoverSyncInventory(int moverIdx);             // held/worn items follow the mover (each tick)
+// Carried weight (kg), weighted by where it sits: hands and pockets in full, the back at
+// INV_BACK_WEIGHT_FACTOR (a backpack carries easier). Kept up to date by the functions
+// here (and every second in MoverSyncInventory). Above carryLimitKg nothing more is taken.
+#define INV_BACK_WEIGHT_FACTOR 0.5f
+extern float carryLimitKg;
+float MoverCarriedWeight(int moverIdx);
+void  MoverRecalcCarried(int moverIdx);
+void  RecalcAllCarried(void);                     // after a load
+// Walking speed factor from carried weight (same curve as a job's load: 1 / (1 + 0.02 kg))
+static inline float CarriedSpeedFactor(int moverIdx) { return 1.0f / (1.0f + MoverCarriedWeight(moverIdx) * 0.02f); }
 bool ItemInMoverHands(int moverIdx, int itemIdx);
 int  MoverHandHolding(int moverIdx, int itemType);  // hand (0/1) holding an item of that type, -1 = none
 bool MoverPutHeldInto(int moverIdx, int hand, int containerIdx);   // from the hand into a container (if it has room)

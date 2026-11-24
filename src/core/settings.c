@@ -17,6 +17,7 @@
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/furniture.h"   // fridgeSpoilageFactor
+#include "../entities/inventory.h"   // carryLimitKg
 #include "../entities/elevators.h"
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
@@ -578,6 +579,8 @@ static const Setting settings[] = {
       "How fast food on a fridge spoils, as a share of the normal rate (0 = keeps forever, 1 = no fridge).", NULL),
     SET_INT("latrineDirt", "Latrine Dirt", "Entities/Movers/Needs", latrineDirtPerUse, 0.2f, 0, 255,
       "Floor dirt a pit latrine's cell gets each time it is used (a toilet: none). Filthy from 80, cleaners come from 30.", NULL),
+    SET_FLOAT("carryLimit", "Carry Limit (kg)", "Entities/Movers/Needs", carryLimitKg, 0.5f, 5.0f, 200.0f,
+      "Most a mover carries in hands, pockets and on the back (the back counts half). Above it nothing more is picked up.", NULL),
     SET_INT("trashBinWalk", "Bin Walk (cells)", "Entities/Movers/Needs", trashBinWalkCells, 0.2f, 0, 64,
       "How far a mover walks to put a can or wrapper in a trash bin (Tidy: twice as far, Slob: 2). No bin with room that close: litter.", NULL),
 

@@ -1,4 +1,5 @@
 #include "stacking.h"
+#include "containers.h"
 #include "item_defs.h"
 #include "../core/event_log.h"
 
@@ -60,14 +61,8 @@ int SplitStack(int itemIdx, int count) {
 
     // If inside a container, new item is also inside the same container
     if (items[itemIdx].containedIn != -1) {
-        items[newIdx].containedIn = items[itemIdx].containedIn;
+        ContainerLink(newIdx, items[itemIdx].containedIn);   // a new entry in the same container
         items[newIdx].state = ITEM_IN_CONTAINER;
-        // Increment parent's contentCount (new item entry in container)
-        int parentIdx = items[itemIdx].containedIn;
-        if (parentIdx >= 0 && parentIdx < MAX_ITEMS && items[parentIdx].active) {
-            items[parentIdx].contentCount++;
-            // contentTypeMask already has this type's bit set
-        }
     }
 
     EventLog("Stack split: item %d (%s) split off x%d as item %d, remainder x%d",

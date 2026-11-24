@@ -1,6 +1,7 @@
 // describe.c - Entity descriptions as toned text lines (see describe.h)
 #include "describe.h"
 #include "../entities/containers.h"
+#include "../entities/inventory.h"
 #include "../game_state.h"
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
@@ -263,9 +264,10 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     if (m->equippedClothing >= 0 && m->equippedClothing < MAX_ITEMS && items[m->equippedClothing].active) {
         DescItemName(&items[m->equippedClothing], name, sizeof(name));
         float reduction = GetClothingCoolingReduction(items[m->equippedClothing].type);
-        if (GetContainerDef(items[m->equippedClothing].type))
-            DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation, %d in the pockets)", name, reduction * 100.0f,
-                    items[m->equippedClothing].contentCount);
+        const ContainerDef* pockets = GetContainerDef(items[m->equippedClothing].type);
+        if (pockets)
+            DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation, pockets %.1f/%.0f L)", name, reduction * 100.0f,
+                    ContainerContentsVolume(m->equippedClothing), pockets->capacityL);
         else
             DescAdd(d, DESC_INFO, "Clothing: %s (%.0f%% insulation)", name, reduction * 100.0f);
     } else {
@@ -278,7 +280,9 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
         int it = m->hands[h];
         if (it < 0 || it >= MAX_ITEMS || !items[it].active) { snprintf(hand[h], sizeof(hand[h]), "free"); continue; }
         DescItemName(&items[it], name, sizeof(name));
-        if (GetContainerDef(items[it].type)) snprintf(hand[h], sizeof(hand[h]), "%s (%d inside)", name, items[it].contentCount);
+        const ContainerDef* cd = GetContainerDef(items[it].type);
+        if (cd && cd->capacityL > 0.0f) snprintf(hand[h], sizeof(hand[h]), "%s (%.1f/%.0f L)", name, ContainerContentsVolume(it), cd->capacityL);
+        else if (cd) snprintf(hand[h], sizeof(hand[h]), "%s (%d inside)", name, items[it].contentCount);
         else snprintf(hand[h], sizeof(hand[h]), "%s", name);
     }
     if (m->hands[0] >= 0 && m->hands[0] == m->hands[1]) DescAdd(d, DESC_INFO, "Hands: %s (both)", hand[0]);
@@ -286,7 +290,15 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     else DescAdd(d, DESC_INFO, "Hands: %s / %s", hand[0], hand[1]);
     if (m->wornBack >= 0 && m->wornBack < MAX_ITEMS && items[m->wornBack].active) {
         DescItemName(&items[m->wornBack], name, sizeof(name));
-        DescAdd(d, DESC_INFO, "Back: %s (%d inside)", name, items[m->wornBack].contentCount);
+        const ContainerDef* cd = GetContainerDef(items[m->wornBack].type);
+        DescAdd(d, DESC_INFO, "Back: %s (%.1f/%.0f L)", name, ContainerContentsVolume(m->wornBack), cd ? cd->capacityL : 0.0f);
+    }
+    // Carried weight (the back counts half) and what it does to walking
+    float kg = MoverCarriedWeight((int)(m - movers));
+    if (kg > 0.05f) {
+        float speed = CarriedSpeedFactor((int)(m - movers));
+        DescAdd(d, kg > carryLimitKg * 0.75f ? DESC_WARN : DESC_INFO, "Load: %.1f kg of %.0f (walking %.0f%%)",
+                kg, carryLimitKg, speed * 100.0f);
     }
 }
 

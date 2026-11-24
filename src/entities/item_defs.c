@@ -18,6 +18,24 @@ _Static_assert(ITEM_WATER == 61 && ITEM_HERBAL_TEA == 62 && ITEM_BERRY_JUICE == 
 _Static_assert(ITEM_GRASS_TUNIC == 57 && ITEM_LEATHER_COAT == 60 && ITEM_POCKET_JACKET == 78,
                "update GetClothingCoolingReduction in item_defs.h");
 
+// Litres per unit (0 = derive from weight: ItemVolume). Containers measure in litres
+// (ContainerDef.capacityL), so this decides what fits in a pocket.
+static const float itemVolumeL[ITEM_TYPE_COUNT] = {
+    [ITEM_SODA] = 0.4f,  [ITEM_SNACK] = 0.3f,  [ITEM_BURGER] = 0.5f,  [ITEM_LEFTOVERS] = 0.3f,
+    [ITEM_EMPTY_CAN] = 0.4f, [ITEM_WRAPPER] = 0.1f,
+    [ITEM_PLASTIC_BAG] = 0.2f, [ITEM_BACKPACK] = 3.0f, [ITEM_POCKET_JACKET] = 3.0f,
+    [ITEM_BERRIES] = 0.1f, [ITEM_DRIED_BERRIES] = 0.1f, [ITEM_WATER] = 0.5f, [ITEM_BOILED_WATER] = 0.5f,
+    [ITEM_SANDWICH] = 0.4f, [ITEM_BREAD] = 1.0f, [ITEM_SHARP_STONE] = 0.3f,
+    [ITEM_SHORT_STRING] = 0.2f, [ITEM_CORDAGE] = 0.5f, [ITEM_STICKS] = 1.5f,
+    [ITEM_LEAVES] = 3.0f, [ITEM_GRASS] = 3.0f, [ITEM_DRIED_GRASS] = 3.0f,   // light but bulky
+};
+
+float ItemVolume(int type) {
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return 0.0f;
+    if (itemVolumeL[type] > 0.0f) return itemVolumeL[type];
+    return 1.5f * itemDefs[type].weight;
+}
+
 const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },

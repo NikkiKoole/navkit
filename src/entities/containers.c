@@ -8,17 +8,71 @@ ContainerDef containerDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BASKET]   = { .maxContents = 15, .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
     [ITEM_CHEST]    = { .maxContents = 20, .spoilageModifier = 0.7f, .weatherProtection = true,  .acceptsLiquids = false },
     [ITEM_CLAY_POT] = { .maxContents = 5,  .spoilageModifier = 0.5f, .weatherProtection = true,  .acceptsLiquids = true  },
-    [ITEM_TRASH_BIN]= { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
-    // Inventory (count of stacks for now; volume per item type is the next step)
-    [ITEM_POCKET_JACKET] = { .maxContents = 3,  .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false },
-    [ITEM_BACKPACK]      = { .maxContents = 10, .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false },
-    [ITEM_PLASTIC_BAG]   = { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
+    [ITEM_TRASH_BIN]= { .maxContents = 4,  .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false, .capacityL = 12.0f },
+    // Inventory: measured in litres (capacityL); maxContents only caps the number of stacks
+    [ITEM_POCKET_JACKET] = { .maxContents = 6,  .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false, .capacityL = 2.0f },
+    [ITEM_BACKPACK]      = { .maxContents = 20, .spoilageModifier = 1.0f, .weatherProtection = true,  .acceptsLiquids = false, .capacityL = 25.0f },
+    [ITEM_PLASTIC_BAG]   = { .maxContents = 10, .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false, .capacityL = 10.0f },
 };
 
 const ContainerDef* GetContainerDef(ItemType type) {
     if (type < 0 || type >= ITEM_TYPE_COUNT) return NULL;
     if (containerDefs[type].maxContents <= 0) return NULL;
     return &containerDefs[type];
+}
+
+void ContainerLink(int itemIdx, int containerIdx) {
+    Item* it = &items[itemIdx];
+    if (it->containedIn != -1) ContainerUnlink(itemIdx);
+    it->containedIn = containerIdx;
+    it->nextSibling = items[containerIdx].firstChild;
+    items[containerIdx].firstChild = itemIdx;
+    items[containerIdx].contentCount++;
+    items[containerIdx].contentTypeMask |= (1u << (it->type % 32));
+}
+
+void ContainerUnlink(int itemIdx) {
+    Item* it = &items[itemIdx];
+    int parent = it->containedIn;
+    if (parent < 0) return;
+    if (parent < MAX_ITEMS) {
+        int* link = &items[parent].firstChild;
+        while (*link >= 0 && *link != itemIdx) link = &items[*link].nextSibling;
+        if (*link == itemIdx) *link = it->nextSibling;
+        if (items[parent].active && items[parent].contentCount > 0) items[parent].contentCount--;
+    }
+    it->containedIn = -1;
+    it->nextSibling = -1;
+}
+
+void RebuildContainerLists(void) {
+    for (int i = 0; i < itemHighWaterMark; i++) items[i].firstChild = items[i].nextSibling = -1;
+    for (int i = itemHighWaterMark - 1; i >= 0; i--) {   // backwards: lists come out in index order
+        if (!items[i].active) continue;
+        int p = items[i].containedIn;
+        if (p < 0 || p >= MAX_ITEMS) continue;
+        items[i].nextSibling = items[p].firstChild;
+        items[p].firstChild = i;
+    }
+}
+
+float ItemTotalVolume(int itemIdx) {
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return 0.0f;
+    float v = ItemVolume(items[itemIdx].type) * items[itemIdx].stackCount;
+    if (items[itemIdx].contentCount > 0) v += ContainerContentsVolume(itemIdx);   // a full bag is bigger
+    return v;
+}
+
+float ContainerContentsVolume(int containerIdx) {
+    float v = 0.0f;
+    for (int i = FirstInContainer(containerIdx); i >= 0; i = NextInContainer(i)) v += ItemTotalVolume(i);
+    return v;
+}
+
+// Room by volume for `addL` more litres (containers without a capacity: always)
+static bool FitsByVolume(int containerIdx, const ContainerDef* def, float addL) {
+    if (def->capacityL <= 0.0f) return true;
+    return ContainerContentsVolume(containerIdx) + addL <= def->capacityL + 0.001f;
 }
 
 bool CanPutItemInContainer(int itemIdx, int containerIdx) {
@@ -37,6 +91,7 @@ bool CanPutItemInContainer(int itemIdx, int containerIdx) {
         ancestor = items[ancestor].containedIn;
     }
 
+    if (!FitsByVolume(containerIdx, def, ItemTotalVolume(itemIdx))) return false;
     return ContainerHasRoomFor(containerIdx, items[itemIdx].type, items[itemIdx].material);
 }
 
@@ -44,14 +99,13 @@ bool ContainerHasRoomFor(int containerIdx, ItemType type, uint8_t material) {
     if (containerIdx < 0 || containerIdx >= MAX_ITEMS || !items[containerIdx].active) return false;
     const ContainerDef* def = GetContainerDef(items[containerIdx].type);
     if (!def) return false;
+    if (!FitsByVolume(containerIdx, def, ItemVolume(type))) return false;   // one unit of it
     // A free slot: no need to look for a stack to merge into
     if (items[containerIdx].contentCount < def->maxContents) return true;
 
     // Full: only room on a matching stack that isn't full yet
     int maxStack = ItemMaxStack(type);
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx); i >= 0; i = NextInContainer(i)) {
         if (items[i].type == type && items[i].material == material && items[i].stackCount < maxStack) return true;
     }
     return false;
@@ -63,26 +117,19 @@ void PutItemInContainer(int itemIdx, int containerIdx) {
     // Look for existing stack to merge into
     ItemType inType = items[itemIdx].type;
     uint8_t inMat = items[itemIdx].material;
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx); i >= 0; i = NextInContainer(i)) {
         if (items[i].type == inType && items[i].material == inMat) {
             int maxStack = ItemMaxStack(inType);
             if (items[i].stackCount < maxStack) {
                 // Merge — incoming item is consumed (fully or partially)
                 MergeItemIntoStack(i, itemIdx);
-                // MergeItemIntoStack handles DeleteItem on full merge
-                // which decrements contentCount via DeleteItem's containedIn check.
                 // If partial merge, incoming item still exists — put remainder in container.
                 if (items[itemIdx].active) {
-                    // Partial merge: remainder becomes a new entry in container
-                    items[itemIdx].containedIn = containerIdx;
+                    ContainerLink(itemIdx, containerIdx);
                     items[itemIdx].state = ITEM_IN_CONTAINER;
                     items[itemIdx].x = items[containerIdx].x;
                     items[itemIdx].y = items[containerIdx].y;
                     items[itemIdx].z = items[containerIdx].z;
-                    items[containerIdx].contentCount++;
-                    items[containerIdx].contentTypeMask |= (1u << (inType % 32));
                 }
                 return;
             }
@@ -90,13 +137,11 @@ void PutItemInContainer(int itemIdx, int containerIdx) {
     }
 
     // No merge target — add as new entry
-    items[itemIdx].containedIn = containerIdx;
+    ContainerLink(itemIdx, containerIdx);
     items[itemIdx].state = ITEM_IN_CONTAINER;
     items[itemIdx].x = items[containerIdx].x;
     items[itemIdx].y = items[containerIdx].y;
     items[itemIdx].z = items[containerIdx].z;
-    items[containerIdx].contentCount++;
-    items[containerIdx].contentTypeMask |= (1u << (inType % 32));
 }
 
 void RemoveItemFromContainer(int itemIdx) {
@@ -112,13 +157,8 @@ void RemoveItemFromContainer(int itemIdx) {
         outerIdx = items[outerIdx].containedIn;
     }
 
-    // Decrement direct parent's contentCount
-    if (parentIdx >= 0 && parentIdx < MAX_ITEMS && items[parentIdx].active) {
-        items[parentIdx].contentCount--;
-    }
-
-    // Remove from container
-    items[itemIdx].containedIn = -1;
+    (void)parentIdx;
+    ContainerUnlink(itemIdx);   // contentCount, list
     items[itemIdx].state = ITEM_ON_GROUND;
 
     // Position at outermost container's location via safe drop
@@ -170,9 +210,7 @@ void MoveContainer(int containerIdx, float x, float y, float z) {
     items[containerIdx].z = z;
 
     // Recursively update all direct children
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx); i >= 0; i = NextInContainer(i)) {
         // If this child is also a container, recurse
         if (items[i].contentCount > 0) {
             MoveContainer(i, x, y, z);
@@ -189,11 +227,9 @@ void SpillContainerContents(int containerIdx) {
     if (!items[containerIdx].active) return;
 
     // Spill direct children only — sub-containers keep their contents
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
-
-        items[i].containedIn = -1;
+    while (FirstInContainer(containerIdx) >= 0) {
+        int i = FirstInContainer(containerIdx);
+        ContainerUnlink(i);
         items[i].state = ITEM_ON_GROUND;
         SafeDropItem(i, items[containerIdx].x, items[containerIdx].y, (int)items[containerIdx].z);
     }
@@ -204,17 +240,15 @@ void SpillContainerContents(int containerIdx) {
 
 void ForEachContainedItem(int containerIdx, ContainerContentCallback cb, void* data) {
     if (containerIdx < 0 || containerIdx >= MAX_ITEMS) return;
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx), next; i >= 0; i = next) {
+        next = NextInContainer(i);   // cb may take i out
         cb(i, data);
     }
 }
 
 static void ForEachRecursiveHelper(int containerIdx, ContainerContentCallback cb, void* data) {
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx), next; i >= 0; i = next) {
+        next = NextInContainer(i);
         cb(i, data);
         // Recurse into sub-containers
         if (items[i].contentCount > 0) {
@@ -255,9 +289,7 @@ int GetOutermostContainer(int itemIdx) {
 static int SearchContainerForItem(int containerIdx, ItemType type, int excludeItemIdx,
                                   ContainerItemFilter extraFilter, void* filterData,
                                   int* outContainerIdx) {
-    for (int i = 0; i < itemHighWaterMark; i++) {
-        if (!items[i].active) continue;
-        if (items[i].containedIn != containerIdx) continue;
+    for (int i = FirstInContainer(containerIdx); i >= 0; i = NextInContainer(i)) {
 
         // Check sub-containers recursively
         if (items[i].contentCount > 0 && ContainerMightHaveType(i, type)) {

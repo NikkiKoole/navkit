@@ -631,6 +631,33 @@ int AuditFarmConsistency(bool verbose) {
 }
 
 // ---------------------------------------------------------------------------
+// 9. Container contents lists (Item.firstChild / nextSibling) match containedIn and
+//    contentCount: every contained item is in its container's list exactly once
+static int AuditContainerLists(bool verbose) {
+    int violations = 0;
+    for (int c = 0; c < itemHighWaterMark; c++) {
+        if (!items[c].active) continue;
+        int n = 0, guard = 0;
+        for (int i = items[c].firstChild; i >= 0 && guard < MAX_ITEMS; i = items[i].nextSibling, guard++) {
+            if (i >= MAX_ITEMS || !items[i].active || items[i].containedIn != c) {
+                violations++;
+                if (verbose) AUDIT_LOG("Item %d in the contents list of %d but containedIn=%d", i, c, i < MAX_ITEMS ? items[i].containedIn : -2);
+                break;
+            }
+            n++;
+        }
+        int expected = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].containedIn == c) expected++;
+        if (n != expected || items[c].contentCount != expected) {
+            violations++;
+            if (verbose) AUDIT_LOG("Container %d (%s): list %d, contentCount %d, actually inside %d",
+                                   c, ItemName(items[c].type), n, items[c].contentCount, expected);
+        }
+    }
+    return violations;
+}
+
+// ---------------------------------------------------------------------------
 int RunStateAudit(bool verbose) {
     int total = 0;
 
@@ -642,6 +669,7 @@ int RunStateAudit(bool verbose) {
     total += AuditStockpileFreeSlotCounts(verbose);
     total += AuditEquippedTools(verbose);
     total += AuditFarmConsistency(verbose);
+    total += AuditContainerLists(verbose);
 
     if (verbose) {
         if (auditUseStdout) {

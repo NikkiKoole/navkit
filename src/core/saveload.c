@@ -7,6 +7,7 @@ bool LoadWorld(const char* filename);
 void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
+#include "../entities/inventory.h"   // RecalcAllCarried
 #include "../entities/belts.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
@@ -625,6 +626,8 @@ void RebuildPostLoadState(void) {
     // Rebuild furniture move cost grid and clear stale occupants
     RebuildFurnitureMoveCostGrid();
     RebuildCapabilityGrid();   // not saved: prep surfaces of tables, counters, ...
+    RebuildContainerLists();   // contents lists follow containedIn (old saves have none)
+    RecalcAllCarried();        // carried weight per mover (inventory.c, not saved)
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (furniture[i].active && furniture[i].occupant >= 0) {
             if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {
@@ -991,7 +994,8 @@ bool LoadWorld(const char* filename) {
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
     if (version >= 92) {
-        fread(items, sizeof(Item), itemHighWaterMark, f);
+        if (version >= V108_CONTENTS_LISTS) fread(items, sizeof(Item), itemHighWaterMark, f);
+        else for (int i = 0; i < itemHighWaterMark; i++) fread(&items[i], ITEM_V107_SIZE, 1, f);   // v92-v107: no contents lists
     } else {
         // v91 and below: Item struct without temperature field
         for (int i = 0; i < itemHighWaterMark; i++) {

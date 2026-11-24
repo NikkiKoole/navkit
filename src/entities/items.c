@@ -28,6 +28,7 @@ void ClearItems(void) {
         items[i].natural = false;
         items[i].stackCount = 1;
         items[i].containedIn = -1;
+        items[i].firstChild = items[i].nextSibling = -1;
         items[i].contentCount = 0;
         items[i].contentTypeMask = 0;
         items[i].spoilageTimer = 0.0f;
@@ -58,6 +59,7 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].unreachableCooldown = 0.0f;
             items[i].stackCount = 1;
             items[i].containedIn = -1;
+            items[i].firstChild = items[i].nextSibling = -1;
             items[i].contentCount = 0;
             items[i].contentTypeMask = 0;
             items[i].spoilageTimer = 0.0f;
@@ -117,14 +119,8 @@ void DeleteItem(int index) {
         if (items[index].contentCount > 0) {
             SpillContainerContents(index);
         }
-        // If this item is inside a container, update parent's contentCount
-        if (items[index].containedIn != -1) {
-            int parentIdx = items[index].containedIn;
-            if (parentIdx >= 0 && parentIdx < MAX_ITEMS && items[parentIdx].active) {
-                items[parentIdx].contentCount--;
-            }
-            items[index].containedIn = -1;
-        }
+        // If this item is inside a container, take it out of the container's contents
+        if (items[index].containedIn != -1) ContainerUnlink(index);
         if (items[index].state == ITEM_IN_STOCKPILE) {
             RemoveItemFromStockpileSlot(items[index].x, items[index].y, (int)items[index].z);
         }

@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 107
+#define CURRENT_SAVE_VERSION 108
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -93,6 +93,11 @@ _Static_assert(MAT_COUNT == V105_MAT_COUNT, "v106 changes no materials: add a mi
 // V106_ITEM_TYPE_COUNT). New FreetimeState values and a trait are appended (no size change).
 #define V107_SCROUNGE 107
 #define V106_ITEM_TYPE_COUNT 81
+// v108: container contents lists (Item.firstChild / nextSibling at the end of the Item).
+// Older saves: items read as ITEM_V107_SIZE records; the lists are rebuilt after every load.
+#define V108_CONTENTS_LISTS 108
+#define ITEM_V107_SIZE 60
+_Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout must be a prefix of Item");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {

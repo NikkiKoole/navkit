@@ -10,6 +10,31 @@
 
 static bool ValidItem(int i) { return i >= 0 && i < MAX_ITEMS && items[i].active; }
 
+float carryLimitKg = 30.0f;
+static float carried[MAX_MOVERS];   // not saved: RecalcAllCarried after a load
+
+// What an item weighs with everything inside it
+static float TotalWeight(int it) { return ValidItem(it) ? GetContainerTotalWeight(it) : 0.0f; }
+
+void MoverRecalcCarried(int moverIdx) {
+    const Mover* m = &movers[moverIdx];
+    float w = TotalWeight(m->hands[0]);
+    if (m->hands[1] != m->hands[0]) w += TotalWeight(m->hands[1]);   // a two-handed item once
+    w += INV_BACK_WEIGHT_FACTOR * TotalWeight(m->wornBack);
+    if (ValidItem(m->equippedClothing))   // the clothing itself is worn, not carried: its pockets are
+        w += TotalWeight(m->equippedClothing) - ItemWeight(items[m->equippedClothing].type);
+    carried[moverIdx] = w;
+}
+
+float MoverCarriedWeight(int moverIdx) { return carried[moverIdx]; }
+
+void RecalcAllCarried(void) { for (int i = 0; i < moverCount; i++) MoverRecalcCarried(i); }
+
+// Would `addKg` more (already weighted for where it goes) stay within the limit?
+static bool CanCarryMore(int moverIdx, float addKg) {
+    return carried[moverIdx] + addKg <= carryLimitKg + 0.001f;
+}
+
 int MoverFreeHands(int moverIdx) {
     const Mover* m = &movers[moverIdx];
     return (m->hands[0] < 0) + (m->hands[1] < 0);
@@ -35,11 +60,13 @@ bool MoverHold(int moverIdx, int itemIdx) {
     Mover* m = &movers[moverIdx];
     bool both = ItemIsTwoHanded(items[itemIdx].type);
     if (MoverFreeHands(moverIdx) < (both ? 2 : 1)) return false;
+    if (!CanCarryMore(moverIdx, TotalWeight(itemIdx))) return false;   // too heavy to lift as well
     TakeOntoMover(moverIdx, itemIdx);
     if (both) { m->hands[0] = m->hands[1] = itemIdx; }
     else if (m->hands[0] < 0) m->hands[0] = itemIdx;
     else m->hands[1] = itemIdx;
     EventLog("Mover %d holds %s (item %d)%s", moverIdx, ItemName(items[itemIdx].type), itemIdx, both ? " in both hands" : "");
+    MoverRecalcCarried(moverIdx);
     return true;
 }
 
@@ -61,6 +88,7 @@ void MoverDropHand(int moverIdx, int hand) {
     if (m->hands[1] == it) m->hands[1] = -1;
     EventLog("Mover %d dropped held item %d", moverIdx, it);
     LetGo(moverIdx, it);
+    MoverRecalcCarried(moverIdx);
 }
 
 bool MoverWear(int moverIdx, int itemIdx) {
@@ -79,6 +107,7 @@ bool MoverWear(int moverIdx, int itemIdx) {
         return false;
     }
     EventLog("Mover %d wears %s (item %d)", moverIdx, ItemName(t), itemIdx);
+    MoverRecalcCarried(moverIdx);
     return true;
 }
 
@@ -88,13 +117,15 @@ void MoverDropBack(int moverIdx) {
     if (it < 0) return;
     m->wornBack = -1;
     LetGo(moverIdx, it);
+    MoverRecalcCarried(moverIdx);
 }
 
 // Into this container if it is one and has room (it is on the mover, so no access check)
-static bool TryInto(int container, int itemIdx) {
+static bool TryInto(int moverIdx, int container, int itemIdx, float weightFactor) {
     if (!ValidItem(container) || container == itemIdx) return false;
     if (!GetContainerDef(items[container].type)) return false;
     if (!CanPutItemInContainer(itemIdx, container)) return false;
+    if (!CanCarryMore(moverIdx, weightFactor * TotalWeight(itemIdx))) return false;
     // Out of a stockpile slot / other container first; PutItemInContainer sets the state
     Item* it = &items[itemIdx];
     if (it->state == ITEM_IN_STOCKPILE) RemoveItemFromStockpileSlot(it->x, it->y, (int)it->z);
@@ -113,10 +144,12 @@ InvPlace MoverStow(int moverIdx, int itemIdx) {
     Mover* m = &movers[moverIdx];
     if (ItemInMoverHands(moverIdx, itemIdx)) return INV_HAND;
     InvPlace place = INV_NONE;
-    if (TryInto(m->equippedClothing, itemIdx)) place = INV_POCKETS;
-    else if (TryInto(m->wornBack, itemIdx)) place = INV_BACK;
-    else if (TryInto(m->hands[0], itemIdx) || (m->hands[1] != m->hands[0] && TryInto(m->hands[1], itemIdx))) place = INV_HELD_BAG;
+    if (TryInto(moverIdx, m->equippedClothing, itemIdx, 1.0f)) place = INV_POCKETS;
+    else if (TryInto(moverIdx, m->wornBack, itemIdx, INV_BACK_WEIGHT_FACTOR)) place = INV_BACK;
+    else if (TryInto(moverIdx, m->hands[0], itemIdx, 1.0f) ||
+             (m->hands[1] != m->hands[0] && TryInto(moverIdx, m->hands[1], itemIdx, 1.0f))) place = INV_HELD_BAG;
     else if (MoverHold(moverIdx, itemIdx)) place = INV_HAND;
+    if (place != INV_NONE) MoverRecalcCarried(moverIdx);
     if (place != INV_NONE && place != INV_HAND)
         EventLog("Mover %d stowed %s (item %d) in %s", moverIdx, ItemName(items[itemIdx].type), itemIdx,
                  place == INV_POCKETS ? "pockets" : place == INV_BACK ? "backpack" : "held bag");
@@ -138,6 +171,8 @@ void MoverSyncInventory(int moverIdx) {
     }
     // Contents keep their old position until the container is let go (LetGo moves them):
     // moving them every tick would scan all items per mover
+    // Weight: things inside also change without us (eaten, spoiled away): once a second
+    if ((currentTick + (unsigned long)moverIdx) % 60 == 0) MoverRecalcCarried(moverIdx);
 }
 
 int MoverHandHolding(int moverIdx, int itemType) {
@@ -156,6 +191,7 @@ bool MoverPutHeldInto(int moverIdx, int hand, int containerIdx) {
     if (m->hands[1] == it) m->hands[1] = -1;
     items[it].reservedBy = -1;
     PutItemInContainer(it, containerIdx);
+    MoverRecalcCarried(moverIdx);
     return true;
 }
 
@@ -170,6 +206,7 @@ bool MoverTakeOut(int moverIdx, int itemIdx) {
     if (!ItemIsInMoverInventory(moverIdx, itemIdx) || items[itemIdx].containedIn < 0) return false;
     MoverSyncInventory(moverIdx);   // containers where the mover is: it lands at its feet
     RemoveItemFromContainer(itemIdx);
+    MoverRecalcCarried(moverIdx);
     return true;
 }
 

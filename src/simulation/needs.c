@@ -1703,7 +1703,8 @@ float MoverEnergyDrainPerGH(int moverIdx) {
     float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
     if (m->bodyTemp < balance.moderateColdThreshold) drainPerGH *= balance.coldEnergyDrainMult;
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
-    if (job && job->carryingItem >= 0) drainPerGH *= balance.carryingEnergyMult;
+    // Carrying tires: a job's load, or a real load in hands, pockets and on the back (inventory.c)
+    if ((job && job->carryingItem >= 0) || MoverCarriedWeight(moverIdx) > 5.0f) drainPerGH *= balance.carryingEnergyMult;
     return drainPerGH;
 }
 
