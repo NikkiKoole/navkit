@@ -60,13 +60,18 @@ static bool Button(const char* label, bool draw, float* bx, float y) {
 // Content per selection kind
 // ---------------------------------------------------------------------------
 
-// The selection's verbs (selection.c) of one kind as a row of buttons
+// The selection's verbs (selection.c) of one kind as rows of buttons (wrapping at the panel
+// width; measured the same way when only laying out, draw = false)
 static void VerbButtons(SelectionKind kind, int idx, bool draw, float x, float* y) {
-    float bx = x;
+    float bx = x, maxX = x + PanelWidth() - 2 * INSPECTOR_PAD;
     for (int i = 0; i < SelectionVerbCount(); i++) {
         const SelectionVerb* v = SelectionVerbAt(i);
         if (v->kind != kind || !v->button) continue;
-        if (Button(v->label ? v->label(idx) : v->name, draw, &bx, *y + 2)) v->run(idx);
+        const char* label = v->label ? v->label(idx) : v->name;
+        float w = (float)MeasureTextUI(TextFormat("[%s]", label), UI_FONT_MEDIUM) + 15;
+        if (bx > x && bx + w > maxX) { *y += INSPECTOR_BUTTON_H; bx = x; }
+        if (draw) { if (Button(label, draw, &bx, *y + 2)) v->run(idx); }
+        else bx += w;
     }
     *y += INSPECTOR_BUTTON_H;
 }
@@ -203,7 +208,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
     if (!SelectionValid()) return 0;
     DescLines d;
     switch (selection.kind) {
-        case SEL_MOVER:     DescribeMover(selection.idx, DESC_PLAYER, &d); break;
+        case SEL_MOVER:     DescribeMover(selection.idx, selection.idx == debugMoverIdx ? DESC_DEBUG : DESC_PLAYER, &d); break;
         case SEL_ANIMAL:    DescribeAnimal(selection.idx, &d); break;
         case SEL_BLUEPRINT: DescribeBlueprint(selection.idx, &d); break;
         case SEL_WORKSHOP:  DescribeWorkshopStatus(selection.idx, &d); break;

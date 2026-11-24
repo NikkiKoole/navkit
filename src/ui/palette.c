@@ -412,7 +412,20 @@ static const Setting* SettingOfEntry(int i) {
 // Input
 // ---------------------------------------------------------------------------
 
+// Teleport (mover verb, selection.c): the next click on a cell moves the mover there
+static bool UpdateTeleportPick(void) {
+    if (teleportMoverIdx < 0) return false;
+    if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { teleportMoverIdx = -1; return true; }
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ui_wants_mouse()) {
+        Vector2 g = ScreenToGrid(GetMousePosition());
+        if (MoverTeleportTo(teleportMoverIdx, (int)g.x, (int)g.y, currentViewZ)) teleportMoverIdx = -1;
+        return true;
+    }
+    return false;
+}
+
 static bool UpdateBrush(void) {
+    if (UpdateTeleportPick()) return true;
     if (brushItem < 0) return false;
     if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { brushItem = -1; return true; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ui_wants_mouse()) {
@@ -537,8 +550,13 @@ static void DrawRight(const char* text, float right, float y, Color c) {
 }
 
 static void DrawBrushLabel(void) {
-    if (brushItem < 0) return;
     Vector2 m = GetMousePosition();
+    if (teleportMoverIdx >= 0) {
+        const char* t = TextFormat("Teleport %s here?  (L-click, R-click stop)", MoverDisplayName(teleportMoverIdx));
+        DrawTextShadow(t, (int)m.x + 16, (int)m.y + 12, PAL_FONT, SKYBLUE);
+        return;
+    }
+    if (brushItem < 0) return;
     const char* t = TextFormat("%s  (L-click place, Shift 10, R-click stop)", itemDefs[brushItem].name);
     DrawTextShadow(t, (int)m.x + 16, (int)m.y + 12, PAL_FONT, SKYBLUE);
 }

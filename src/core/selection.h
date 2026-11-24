@@ -77,6 +77,14 @@ typedef struct {
     void (*run)(int idx);
 } SelectionVerb;
 
+// Dev mover actions (the mover verbs Teleport, Fill needs, Cancel job, Debug)
+extern int teleportMoverIdx;   // >= 0: the next cell click teleports this mover (src/ui/palette.c)
+extern int debugMoverIdx;      // >= 0: path always drawn, inspector shows DESC_DEBUG lines
+bool MoverTeleportTo(int moverIdx, int x, int y, int z);   // false: not walkable / bad mover
+void MoverFillNeeds(int moverIdx);
+void MoverCancelJob(int moverIdx);
+void ToggleMoverDebug(int moverIdx);
+
 int SelectionVerbCount(void);
 const SelectionVerb* SelectionVerbAt(int i);
 // Hover keys: run the verb of this kind whose key (and Shift state) was pressed. true = one ran.

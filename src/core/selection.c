@@ -9,6 +9,8 @@
 #include "../world/construction.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
+#include "../entities/elevators.h"
+#include "../world/cell_defs.h"
 #include <math.h>
 
 Selection selection = {SEL_NONE, -1};
@@ -308,12 +310,72 @@ void ToggleMoverDraft(int moverIdx) {
 }
 
 // ---------------------------------------------------------------------------
+// Dev mover actions (verbs below; docs/todo/ui/find-palette.md)
+// ---------------------------------------------------------------------------
+
+int teleportMoverIdx = -1;   // Teleport: waiting for a cell click (src/ui/palette.c)
+int debugMoverIdx = -1;      // Debug: this mover's path always drawn, inspector shows debug lines
+
+static bool MoverOk(int i) { return i >= 0 && i < moverCount && movers[i].active; }
+
+bool MoverTeleportTo(int moverIdx, int x, int y, int z) {
+    if (!MoverOk(moverIdx)) return false;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth || !IsCellWalkableAt(z, y, x)) {
+        AddMessage("Can't stand there", YELLOW);
+        return false;
+    }
+    Mover* m = &movers[moverIdx];
+    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+    ElevatorForgetMover(moverIdx);
+    m->x = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->y = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    m->z = (float)z;
+    m->goal = (Point){ x, y, z };
+    ClearMoverPath(moverIdx);
+    m->needsRepath = false;
+    m->lastX = m->x; m->lastY = m->y; m->lastZ = m->z;
+    m->timeWithoutProgress = 0;
+    AddMessage(TextFormat("%s teleported to %d,%d,%d", MoverDisplayName(moverIdx), x, y, z), SKYBLUE);
+    return true;
+}
+
+void MoverFillNeeds(int moverIdx) {
+    if (!MoverOk(moverIdx)) return;
+    Mover* m = &movers[moverIdx];
+    m->hunger = m->thirst = m->energy = m->bladder = 1.0f;
+    m->bodyTemp = 37.0f;
+    m->starvationTimer = m->dehydrationTimer = 0;
+    AddMessage(TextFormat("%s: fed, watered, rested", MoverDisplayName(moverIdx)), GREEN);
+}
+
+void MoverCancelJob(int moverIdx) {
+    if (!MoverOk(moverIdx)) return;
+    Mover* m = &movers[moverIdx];
+    if (m->currentJobId < 0) { AddMessage(TextFormat("%s has no job", MoverDisplayName(moverIdx)), GRAY); return; }
+    CancelJob(m, moverIdx);
+    AddMessage(TextFormat("%s: job cancelled", MoverDisplayName(moverIdx)), YELLOW);
+}
+
+void ToggleMoverDebug(int moverIdx) {
+    if (!MoverOk(moverIdx)) return;
+    debugMoverIdx = debugMoverIdx == moverIdx ? -1 : moverIdx;
+    if (debugMoverIdx >= 0) Select(SEL_MOVER, moverIdx);   // the inspector shows the debug lines
+}
+
+static void VerbTeleport(int i) {
+    if (!MoverOk(i)) return;
+    teleportMoverIdx = i;
+    AddMessage(TextFormat("Teleport %s: L-click a cell (R-click / Esc cancels)", MoverDisplayName(i)), SKYBLUE);
+}
+
+// ---------------------------------------------------------------------------
 // Verbs (selection.h SelectionVerb): one row per thing you can do to a selected thing
 // ---------------------------------------------------------------------------
 
 void InputMode_StartLinking(int wsIdx);   // input_mode.c: linking a workshop is an input mode
 
 static const char* FollowLabel(int i) { return followMoverIdx == i ? "Unfollow" : "Follow"; }
+static const char* DebugLabel(int i) { return debugMoverIdx == i ? "Debug off" : "Debug"; }
 static const char* DraftLabel(int i) { return (i >= 0 && i < moverCount && movers[i].isDrafted) ? "Undraft" : "Draft"; }
 static const char* DeconstructLabel(int i) {
     return (i >= 0 && i < MAX_WORKSHOPS && workshops[i].markedForDeconstruct) ? "Cancel deconstruct" : "Deconstruct";
@@ -330,6 +392,11 @@ static const SelectionVerb selectionVerbs[] = {
     // Mover. F: follow the hovered mover, else the selected one (input.c, global key)
     { SEL_MOVER, "Follow", FollowLabel, KEY_F, 0, false, false, true, ToggleMoverFollow },
     { SEL_MOVER, "Draft", DraftLabel, KEY_D, 0, false, true, true, ToggleMoverDraft },
+    // Dev: no keys (palette and inspector)
+    { SEL_MOVER, "Teleport", NULL, 0, 0, false, false, true, VerbTeleport },
+    { SEL_MOVER, "Fill needs", NULL, 0, 0, false, false, true, MoverFillNeeds },
+    { SEL_MOVER, "Cancel job", NULL, 0, 0, false, false, true, MoverCancelJob },
+    { SEL_MOVER, "Debug", DebugLabel, 0, 0, false, false, true, ToggleMoverDebug },
     // Workshop (bills: per bill in the inspector, and on the hover keys 1-9 [ ] M + - X P)
     { SEL_WORKSHOP, "Link stockpile", NULL, KEY_L, 0, false, true, true, VerbLink },
     { SEL_WORKSHOP, "Deconstruct", DeconstructLabel, KEY_D, 0, false, true, true, WorkshopToggleDeconstruct },

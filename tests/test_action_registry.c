@@ -6,6 +6,9 @@
 #include "../src/core/action_registry.c"   // not in test_unity.o (input-side data)
 #include "../src/entities/stockpiles.h"      // FILTER_CATEGORY_KEYS (data in test_unity.o)
 #include "../src/core/selection.h"          // selection verbs (data in test_unity.o)
+#include "../src/entities/mover.h"
+#include "../src/entities/jobs.h"
+#include "test_helpers.h"
 #include <ctype.h>
 #include <stdio.h>
 
@@ -118,6 +121,43 @@ describe(selection_verbs) {
     }
 }
 
+// The dev mover verbs (selection.c): teleport, fill needs, cancel job
+static void FlatWorld(void) {
+    InitTestGrid(10, 10);
+    for (int y = 0; y < 10; y++)
+        for (int x = 0; x < 10; x++) { GRID(x, y, 0) = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); GRID(x, y, 1) = CELL_AIR; }
+    GRID(8, 8, 1) = CELL_WALL;   // can't stand inside a wall
+    ClearMovers(); ClearJobs();
+    InitMover(&movers[0], 2.5f * CELL_SIZE, 2.5f * CELL_SIZE, 1.0f, (Point){2, 2, 1}, 100.0f);
+    moverCount = 1;
+}
+
+describe(mover_dev_verbs) {
+    it("teleport puts the mover on the cell and stops it there") {
+        FlatWorld();
+        expect(MoverTeleportTo(0, 6, 4, 1));
+        expect((int)(movers[0].x / CELL_SIZE) == 6 && (int)(movers[0].y / CELL_SIZE) == 4 && (int)movers[0].z == 1);
+        expect(movers[0].goal.x == 6 && movers[0].goal.y == 4 && movers[0].pathLength == 0);
+    }
+    it("teleport refuses a wall or a cell off the map") {
+        FlatWorld();
+        expect(!MoverTeleportTo(0, 8, 8, 1));
+        expect(!MoverTeleportTo(0, 20, 2, 1));
+        expect((int)(movers[0].x / CELL_SIZE) == 2);
+    }
+    it("fill needs tops everything up") {
+        FlatWorld();
+        movers[0].hunger = 0.1f; movers[0].thirst = 0.0f; movers[0].energy = 0.2f; movers[0].bladder = 0.3f;
+        MoverFillNeeds(0);
+        expect(movers[0].hunger == 1.0f && movers[0].thirst == 1.0f && movers[0].energy == 1.0f && movers[0].bladder == 1.0f);
+    }
+    it("cancel job without a job does nothing") {
+        FlatWorld();
+        MoverCancelJob(0);
+        expect(movers[0].currentJobId == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -125,5 +165,6 @@ int main(int argc, char* argv[]) {
     test(stockpile_filter_keys);
     test(action_twins);
     test(selection_verbs);
+    test(mover_dev_verbs);
     return summary();
 }
