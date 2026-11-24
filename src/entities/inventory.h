@@ -17,7 +17,16 @@ typedef enum {
     INV_HAND,         // loose in a free hand
 } InvPlace;
 
-int  MoverFreeHands(int moverIdx);                 // 0, 1 or 2
+int  MoverFreeHands(int moverIdx);                 // 0, 1 or 2 (a job's load in hand counts)
+// Jobs and hands: what a job carries sits in the hands (a log in both). Before a job picks
+// something up, MoverMakeHandsFor puts down what is in the way (a bag) at the mover's feet,
+// reserved for the mover; afterwards the mover goes back for it (needs.c, FREETIME_FETCHING_OWN).
+// The set-aside list is not saved: after a load the things just lie there.
+int  MoverJobCarry(int moverIdx);                  // item a job carries now (load or fuel), -1 = none
+void MoverMakeHandsFor(int moverIdx, int itemIdx);
+int  MoverSetAsideItem(int moverIdx);              // something put down for a job, still there; -1 = none
+void MoverForgetSetAside(int moverIdx, int itemIdx);   // gave up on it: free for anyone
+bool ItemIsMoverGear(int moverIdx, int itemIdx);   // tool, clothing, back, hands, set aside: its own
 bool MoverHold(int moverIdx, int itemIdx);         // into a free hand (both for a two-handed item)
 void MoverDropHand(int moverIdx, int hand);        // drop what that hand holds (with its contents)
 bool MoverWear(int moverIdx, int itemIdx);         // backpack on the back, clothing on the body (old one dropped)
@@ -35,6 +44,7 @@ extern float carryLimitKg;
 float MoverCarriedWeight(int moverIdx);
 void  MoverRecalcCarried(int moverIdx);
 void  RecalcAllCarried(void);                     // after a load
+void  MoverResetInventoryCache(int moverIdx);      // a new mover in this slot
 // Walking speed factor from carried weight (same curve as a job's load: 1 / (1 + 0.02 kg))
 static inline float CarriedSpeedFactor(int moverIdx) { return 1.0f / (1.0f + MoverCarriedWeight(moverIdx) * 0.02f); }
 bool ItemInMoverHands(int moverIdx, int itemIdx);

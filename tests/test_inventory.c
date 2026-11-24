@@ -309,6 +309,94 @@ describe(volume_weight) {
     }
 }
 
+describe(jobs_and_hands) {
+    it("a log to haul: the bag in hand goes down at the mover's feet, still its own") {
+        int mi = Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        int can = Spawn(5, 5, ITEM_EMPTY_CAN);
+        MoverHold(mi, bag);
+        MoverStow(mi, can);
+        int log = Spawn(5, 5, ITEM_LOG);
+        MoverMakeHandsFor(mi, log);
+        expect(!ItemInMoverHands(mi, bag));
+        expect(items[bag].state == ITEM_ON_GROUND && items[bag].reservedBy == mi);
+        expect(items[can].containedIn == bag);
+        expect(MoverSetAsideItem(mi) == bag);
+        expect(ItemIsMoverGear(mi, bag));
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
+    it("berries fit beside the bag: nothing goes down") {
+        int mi = Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        MoverHold(mi, bag);
+        MoverMakeHandsFor(mi, Spawn(5, 5, ITEM_BERRIES));
+        expect(ItemInMoverHands(mi, bag));
+        expect(MoverSetAsideItem(mi) == -1);
+    }
+
+    it("a job's load counts in the hands and in the weight") {
+        int mi = Setup();
+        InitJobPool();
+        int log = Spawn(5, 5, ITEM_LOG);
+        int j = CreateJob(JOBTYPE_HAUL);
+        expect(j >= 0);
+        jobs[j].assignedMover = mi;
+        jobs[j].carryingItem = log;
+        items[log].state = ITEM_CARRIED;
+        movers[mi].currentJobId = j;
+        expect(MoverJobCarry(mi) == log);
+        expect(MoverFreeHands(mi) == 0);
+        expect(MoverCarriedWeight(mi) > 19.9f);
+        expect(!MoverHold(mi, Spawn(5, 5, ITEM_SODA)));   // no hand free while hauling a log
+    }
+
+    it("idle a while with nothing to do: it goes back for its bag and holds it again") {
+        int mi = Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        MoverHold(mi, bag);
+        MoverMakeHandsFor(mi, Spawn(5, 5, ITEM_LOG));
+        movers[mi].x = 2.5f * CELL_SIZE;   // walked off with the log
+        hungerEnabled = false; thirstEnabled = false; energyEnabled = false;
+        bodyTempEnabled = false; bladderEnabled = false;
+        InitBalance();
+        bool fetching = false;
+        for (int t = 0; t < 4000 && !fetching; t++) {
+            ProcessFreetimeNeeds();
+            fetching = movers[mi].freetimeState == FREETIME_FETCHING_OWN;
+        }
+        expect(fetching);
+        expect(movers[mi].needTarget == bag);
+        movers[mi].x = items[bag].x; movers[mi].y = items[bag].y;   // arrive
+        ProcessFreetimeNeeds();
+        expect(ItemInMoverHands(mi, bag));
+        expect(MoverSetAsideItem(mi) == -1);
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
+    it("the stale-reservation sweep leaves a set-aside bag reserved") {
+        int mi = Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        MoverHold(mi, bag);
+        MoverMakeHandsFor(mi, Spawn(5, 5, ITEM_LOG));
+        hungerEnabled = false; thirstEnabled = false; energyEnabled = false;
+        bodyTempEnabled = false; bladderEnabled = false;
+        currentTick = TICK_RATE;
+        ProcessFreetimeNeeds();
+        expect(items[bag].reservedBy == mi);
+    }
+
+    it("death: set-aside things become free for anyone") {
+        int mi = Setup();
+        int bag = Spawn(5, 5, ITEM_PLASTIC_BAG);
+        MoverHold(mi, bag);
+        MoverMakeHandsFor(mi, Spawn(5, 5, ITEM_LOG));
+        MoverDropAll(mi);
+        expect(items[bag].reservedBy == -1);
+        expect(MoverSetAsideItem(mi) == -1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -316,5 +404,6 @@ int main(int argc, char* argv[]) {
     test(worn);
     test(stow);
     test(volume_weight);
+    test(jobs_and_hands);
     return summary();
 }

@@ -867,6 +867,10 @@ static void FinishScrounging(Mover* m, int moverIdx, int bin) {
     m->needTarget = best;
 }
 
+// A mover that put its bag down for a job goes back for it once no other job comes: while
+// there is work, it keeps working (and doesn't fetch the bag between two logs)
+#define FETCH_OWN_AFTER_IDLE_GH 0.15f
+
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FORAGE || m->freetimeState == FREETIME_FORAGING)) {
@@ -927,9 +931,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         (currentTick + (unsigned long)moverIdx) % TICK_RATE == 0) {
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].reservedBy == moverIdx) {
-                // Worn and held gear stays reserved by its owner (tool, clothing, backpack, hands)
-                if (i == m->equippedTool || i == m->equippedClothing || i == m->wornBack ||
-                    i == m->hands[0] || i == m->hands[1]) continue;
+                // Its own gear stays reserved (tool, clothing, backpack, hands, a bag put down for a job)
+                if (ItemIsMoverGear(moverIdx, i)) continue;
                 ReleaseItemReservation(i);
             }
         }
@@ -1001,6 +1004,16 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             } else if (bodyTempEnabled && m->bodyTemp < balance.mildColdThreshold && m->currentJobId < 0) {
                 // CHILLY — seek warmth (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartWarmthSearch(m, moverIdx);
+            } else if (m->currentJobId < 0 && idleTime[moverIdx] >= GameHoursToGameSeconds(FETCH_OWN_AFTER_IDLE_GH) &&
+                       MoverSetAsideItem(moverIdx) >= 0) {
+                // NOTHING ELSE TO DO (idle a while: no job came) — go back for what it put down for a job
+                int it = MoverSetAsideItem(moverIdx);
+                EventLog("Mover %d goes back for its %s (item %d)", moverIdx, ItemName(items[it].type), it);
+                m->freetimeState = FREETIME_FETCHING_OWN;
+                m->needTarget = it;
+                m->goal = (Point){(int)(items[it].x / CELL_SIZE), (int)(items[it].y / CELL_SIZE), (int)items[it].z};
+                StartSeekClock(m);
+                m->needsRepath = true;
             } else if (sleepRhythmEnabled && energyEnabled && m->currentJobId < 0 &&
                        m->energy < balance.idleBedEnergy && IsSkyDark() &&
                        idleTime[moverIdx] >= GameHoursToGameSeconds(balance.idleBedDelayGH)) {
@@ -1437,6 +1450,37 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
                 if (NoWayThere(moverIdx)) MarkNeedItemUnreachable(bin, NO_WAY_ITEM_HOURS);
                 LetGoOfTrash(m, moverIdx, -1);   // gave up: drops it where it stands
+                m->freetimeState = FREETIME_NONE;
+                m->needTarget = -1;
+            }
+            break;
+        }
+
+        case FREETIME_FETCHING_OWN: {
+            int it = m->needTarget;
+            if (it < 0 || it >= MAX_ITEMS || MoverSetAsideItem(moverIdx) != it) {
+                EventLog("Mover %d: its item %d is gone or taken (fetch ends)", moverIdx, it);
+                m->freetimeState = FREETIME_NONE;   // gone or taken meanwhile
+                m->needTarget = -1;
+                break;
+            }
+            float dx = m->x - items[it].x, dy = m->y - items[it].y;
+            float reach = CELL_SIZE * 0.75f;
+            bool sameCell = (int)(m->x / CELL_SIZE) == (int)(items[it].x / CELL_SIZE) &&
+                            (int)(m->y / CELL_SIZE) == (int)(items[it].y / CELL_SIZE);
+            if ((int)m->z == (int)items[it].z && (sameCell || dx * dx + dy * dy < reach * reach)) {
+                MoverForgetSetAside(moverIdx, it);   // off the list (reservation freed)...
+                if (MoverHold(moverIdx, it)) EventLog("Mover %d picked its %s up again", moverIdx, ItemName(items[it].type));
+                m->freetimeState = FREETIME_NONE;    // ...and held again, or left for anyone
+                m->needTarget = -1;
+                m->pathLength = 0;
+                m->pathIndex = -1;
+                break;
+            }
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH) || NoWayThere(moverIdx)) {
+                EventLog("Mover %d gives up fetching item %d (%s)", moverIdx, it, NoWayThere(moverIdx) ? "no way" : "timeout");
+                MoverForgetSetAside(moverIdx, it);   // can't get there: leave it
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
             }

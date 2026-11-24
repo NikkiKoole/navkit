@@ -572,19 +572,7 @@ static void MaybeTakeTrain(int i);
 // at the current day length, slowed by what it carries (same factor as movement)
 float MoverWalkSecondsPerCell(int i) {
     const Mover* m = &movers[i];
-    float mult = 1.0f;
-    if (m->currentJobId >= 0) {
-        Job* job = GetJob(m->currentJobId);
-        if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
-            Item* item = &items[job->carryingItem];
-            if (item->active && item->state == ITEM_CARRIED) {
-                float w = (item->contentCount > 0) ? GetContainerTotalWeight(job->carryingItem)
-                                                   : ItemWeight(item->type) * item->stackCount;
-                mult *= 1.0f / (1.0f + w * 0.02f);
-            }
-        }
-    }
-    mult *= CarriedSpeedFactor(i);   // what it holds and wears (inventory.c)
+    float mult = CarriedSpeedFactor(i);   // a job's load + what it holds and wears (inventory.c)
     float pxPerSec = m->speed * (60.0f / dayLength) * mult;
     return pxPerSec > 0.0f ? (float)CELL_SIZE / pxPerSec : 1.0f;
 }
@@ -987,7 +975,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->equippedTool = -1;
     // Clothing system
     m->equippedClothing = -1;
-    MoverRecalcCarried((int)(m - movers));   // hands/back/clothing empty now; the slot may have carried before
+    MoverResetInventoryCache((int)(m - movers));   // the slot may have carried / set things aside before
     // Identity
     m->name[0] = '\0';
     m->gender = 0;
@@ -1923,19 +1911,7 @@ void UpdateMovers(void) {
             // Wading: the current helps downstream and holds you back upstream
             terrainSpeedMult *= WaterCurrentSpeedFactor(currentX, currentY, currentZ, dxf, dyf);
 
-            if (m->currentJobId >= 0) {
-                Job* job = GetJob(m->currentJobId);
-                if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
-                    Item* item = &items[job->carryingItem];
-                    if (item->active && item->state == ITEM_CARRIED) {
-                        float w = (item->contentCount > 0)
-                            ? GetContainerTotalWeight(job->carryingItem)
-                            : ItemWeight(item->type) * item->stackCount;
-                        terrainSpeedMult *= 1.0f / (1.0f + w * 0.02f);
-                    }
-                }
-            }
-            terrainSpeedMult *= CarriedSpeedFactor(i);   // held and worn things (inventory.c)
+            terrainSpeedMult *= CarriedSpeedFactor(i);   // a job's load + held and worn things (inventory.c)
             if (m->hunger < balance.hungerPenaltyThreshold) {
                 float t = m->hunger / balance.hungerPenaltyThreshold;
                 float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);

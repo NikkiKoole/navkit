@@ -6,12 +6,32 @@
 #include "containers.h"
 #include "stockpiles.h"
 #include "tool_quality.h"
+#include "jobs.h"
 #include "../core/event_log.h"
 
 static bool ValidItem(int i) { return i >= 0 && i < MAX_ITEMS && items[i].active; }
 
 float carryLimitKg = 30.0f;
 static float carried[MAX_MOVERS];   // not saved: RecalcAllCarried after a load
+static int setAside[MAX_MOVERS][2]; // put down for a job (not saved); valid while reservedBy the mover
+static bool setAsideInit = false;
+
+static void InitSetAside(void) {
+    if (setAsideInit) return;
+    for (int i = 0; i < MAX_MOVERS; i++) setAside[i][0] = setAside[i][1] = -1;
+    setAsideInit = true;
+}
+
+int MoverJobCarry(int moverIdx) {
+    const Mover* m = &movers[moverIdx];
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job) return -1;
+    int it = job->carryingItem;
+    if (it < 0 && job->step == CRAFT_STEP_CARRYING_FUEL) it = job->fuelItem;
+    if (it < 0 || it >= MAX_ITEMS || !items[it].active || items[it].state != ITEM_CARRIED) return -1;
+    return it;
+}
 
 // What an item weighs with everything inside it
 static float TotalWeight(int it) { return ValidItem(it) ? GetContainerTotalWeight(it) : 0.0f; }
@@ -26,18 +46,88 @@ void MoverRecalcCarried(int moverIdx) {
     carried[moverIdx] = w;
 }
 
-float MoverCarriedWeight(int moverIdx) { return carried[moverIdx]; }
+// The cached inventory weight plus a job's load (looked up live: it changes in jobs.c)
+float MoverCarriedWeight(int moverIdx) {
+    int job = MoverJobCarry(moverIdx);
+    return carried[moverIdx] + (job >= 0 ? TotalWeight(job) : 0.0f);
+}
 
 void RecalcAllCarried(void) { for (int i = 0; i < moverCount; i++) MoverRecalcCarried(i); }
 
 // Would `addKg` more (already weighted for where it goes) stay within the limit?
 static bool CanCarryMore(int moverIdx, float addKg) {
-    return carried[moverIdx] + addKg <= carryLimitKg + 0.001f;
+    return MoverCarriedWeight(moverIdx) + addKg <= carryLimitKg + 0.001f;
+}
+
+static int HandsEmpty(int moverIdx) {
+    const Mover* m = &movers[moverIdx];
+    return (m->hands[0] < 0) + (m->hands[1] < 0);
 }
 
 int MoverFreeHands(int moverIdx) {
+    int free = HandsEmpty(moverIdx);
+    int job = MoverJobCarry(moverIdx);
+    if (job >= 0) free -= ItemIsTwoHanded(items[job].type) ? 2 : 1;
+    return free < 0 ? 0 : free;
+}
+
+void MoverMakeHandsFor(int moverIdx, int itemIdx) {
+    if (!ValidItem(itemIdx)) return;
+    InitSetAside();
+    Mover* m = &movers[moverIdx];
+    int need = ItemIsTwoHanded(items[itemIdx].type) ? 2 : 1;
+    for (int h = 1; h >= 0 && HandsEmpty(moverIdx) < need; h--) {
+        int it = m->hands[h];
+        if (it < 0) continue;
+        if (m->hands[0] == it) m->hands[0] = -1;
+        if (m->hands[1] == it) m->hands[1] = -1;
+        SafeDropItem(it, m->x, m->y, (int)m->z);
+        if (items[it].contentCount > 0) MoveContainer(it, items[it].x, items[it].y, items[it].z);
+        items[it].reservedBy = moverIdx;   // still its own: nobody hauls it off
+        int slot = setAside[moverIdx][0] < 0 ? 0 : 1;
+        if (setAside[moverIdx][slot] >= 0) MoverForgetSetAside(moverIdx, setAside[moverIdx][slot]);
+        setAside[moverIdx][slot] = it;
+        EventLog("Mover %d puts down %s (item %d) to carry %s", moverIdx, ItemName(items[it].type), it, ItemName(items[itemIdx].type));
+    }
+    MoverRecalcCarried(moverIdx);
+}
+
+int MoverSetAsideItem(int moverIdx) {
+    InitSetAside();
+    for (int k = 0; k < 2; k++) {
+        int it = setAside[moverIdx][k];
+        if (it < 0) continue;
+        if (!ValidItem(it) || items[it].reservedBy != moverIdx || items[it].state != ITEM_ON_GROUND) {
+            setAside[moverIdx][k] = -1;   // gone, or someone else's now
+            continue;
+        }
+        return it;
+    }
+    return -1;
+}
+
+void MoverForgetSetAside(int moverIdx, int itemIdx) {
+    InitSetAside();
+    for (int k = 0; k < 2; k++) {
+        if (setAside[moverIdx][k] != itemIdx) continue;
+        setAside[moverIdx][k] = -1;
+        if (ValidItem(itemIdx) && items[itemIdx].reservedBy == moverIdx) items[itemIdx].reservedBy = -1;
+    }
+}
+
+bool ItemIsMoverGear(int moverIdx, int itemIdx) {
     const Mover* m = &movers[moverIdx];
-    return (m->hands[0] < 0) + (m->hands[1] < 0);
+    if (itemIdx < 0) return false;
+    if (itemIdx == m->equippedTool || itemIdx == m->equippedClothing || itemIdx == m->wornBack ||
+        itemIdx == m->hands[0] || itemIdx == m->hands[1]) return true;
+    InitSetAside();
+    return setAside[moverIdx][0] == itemIdx || setAside[moverIdx][1] == itemIdx;
+}
+
+void MoverResetInventoryCache(int moverIdx) {
+    InitSetAside();
+    setAside[moverIdx][0] = setAside[moverIdx][1] = -1;
+    carried[moverIdx] = 0.0f;
 }
 
 // Out of wherever it is (stockpile slot, a container) and onto the mover, reserved by it
@@ -160,6 +250,8 @@ void MoverDropAll(int moverIdx) {
     MoverDropHand(moverIdx, 0);
     MoverDropHand(moverIdx, 1);
     MoverDropBack(moverIdx);
+    InitSetAside();
+    for (int k = 0; k < 2; k++) if (setAside[moverIdx][k] >= 0) MoverForgetSetAside(moverIdx, setAside[moverIdx][k]);
 }
 
 void MoverSyncInventory(int moverIdx) {

@@ -1,4 +1,5 @@
 #include "state_audit.h"
+#include "../entities/inventory.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../entities/stockpiles.h"
@@ -151,9 +152,8 @@ int AuditItemReservations(bool verbose) {
         }
         bool isEquippedClothing = false;
         if (reservedBy >= 0 && reservedBy < MAX_MOVERS && movers[reservedBy].active &&
-            (movers[reservedBy].equippedClothing == i || movers[reservedBy].wornBack == i ||
-             movers[reservedBy].hands[0] == i || movers[reservedBy].hands[1] == i)) {
-            isEquippedClothing = true;   // worn or held (inventory.c)
+            ItemIsMoverGear(reservedBy, i)) {
+            isEquippedClothing = true;   // worn, held or put down for a job (inventory.c)
         }
 
         // Or the item a mover is walking to / eating / drinking (needs.c reserves it)

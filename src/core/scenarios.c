@@ -3003,6 +3003,75 @@ static bool ScroungeCheck(char* why, int whyLen) {
     return true;
 }
 
+// hands-jobs: jobs carry in the hands (inventory.c MoverMakeHandsFor). Two haulers hold a
+// plastic bag with a can in it; there are logs (two-handed) and berries (one hand) to haul
+// to a stockpile. For a log the bag goes down at the pickup spot (reserved: nobody takes
+// it); berries fit in the free hand. With no work left, they go back for their bags.
+// Check: everything hauled, both bags held again (or still its own, being fetched), audit clean.
+static int hjBag[2], hjSetDowns, hjPrev[2];
+
+static void SetupHandsJobs(void) {
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = false;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 600.0f;
+    CreateStockpile(30, 10, 1, 4, 4);
+    for (int k = 0; k < 3; k++) SpawnItem((6 + k * 3) * CELL_SIZE + 4, 6 * CELL_SIZE + 4, 1, ITEM_LOG);
+    for (int k = 0; k < 3; k++) {
+        int b = SpawnItem((6 + k * 3) * CELL_SIZE + 4, 16 * CELL_SIZE + 4, 1, ITEM_BERRIES);
+        if (b >= 0) items[b].stackCount = 5;
+    }
+    BuildEntrances(); BuildGraph();
+    for (int i = 0; i < 2; i++) {
+        SpawnMoverAt(4, 10 + i * 2, 1);
+        int mi = moverCount - 1;
+        movers[mi].traits[0] = movers[mi].traits[1] = TRAIT_NONE;
+        hjBag[i] = SpawnItem(movers[mi].x, movers[mi].y, 1, ITEM_PLASTIC_BAG);
+        MoverHold(mi, hjBag[i]);
+        MoverStow(mi, SpawnItem(movers[mi].x, movers[mi].y, 1, ITEM_EMPTY_CAN));
+        hjPrev[i] = -1;
+    }
+    hjSetDowns = 0;
+    currentViewZ = 1;
+}
+
+static void HandsJobsTick(void) {
+    for (int i = 0; i < 2; i++) {
+        int now = MoverSetAsideItem(i);
+        if (now >= 0 && hjPrev[i] < 0) hjSetDowns++;
+        hjPrev[i] = now;
+    }
+}
+
+static int HandsJobsLeft(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].state != ITEM_IN_STOCKPILE && (items[i].type == ITEM_LOG || items[i].type == ITEM_BERRIES)) n++;
+    return n;
+}
+
+static void HandsJobsPrintStats(void) {
+    printf("Hands/jobs: %d bag set-downs, %d loads not in the stockpile; bags held: %s, %s\n", hjSetDowns, HandsJobsLeft(),
+           ItemInMoverHands(0, hjBag[0]) ? "yes" : "no", ItemInMoverHands(1, hjBag[1]) ? "yes" : "no");
+}
+
+static bool HandsJobsCheck(char* why, int whyLen) {
+    if (HandsJobsLeft() > 0) { snprintf(why, (size_t)whyLen, "%d loads not hauled", HandsJobsLeft()); return false; }
+    if (hjSetDowns < 1) { snprintf(why, (size_t)whyLen, "no bag was put down for a log"); return false; }
+    for (int i = 0; i < 2; i++) {
+        // held again, or still its own (set aside, reserved) and on the way back for it
+        bool held = ItemInMoverHands(i, hjBag[i]);
+        bool own = MoverSetAsideItem(i) == hjBag[i];
+        if ((!held && !own) || items[hjBag[i]].contentCount != 1) {
+            snprintf(why, (size_t)whyLen, "mover %d lost its bag (or the can in it)", i);
+            return false;
+        }
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -3078,6 +3147,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
+    {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
+                   NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

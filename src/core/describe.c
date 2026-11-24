@@ -131,6 +131,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         else if (m->freetimeState == FREETIME_FORAGING) DescAdd(d, DESC_GOOD, "  Picking berries");
         else if (m->freetimeState == FREETIME_SEEKING_SCROUNGE) DescAdd(d, DESC_WARN, "  Going to search a bin...");
         else if (m->freetimeState == FREETIME_SCROUNGING) DescAdd(d, DESC_MILD, "  Searching a bin");
+        if (m->freetimeState == FREETIME_FETCHING_OWN && m->needTarget >= 0 && m->needTarget < MAX_ITEMS)
+            DescAdd(d, DESC_INFO, "  Going back for its %s", ItemName(items[m->needTarget].type));
         else if (m->freetimeState == FREETIME_EATING)
             DescAdd(d, DESC_GOOD, "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
     }
@@ -285,7 +287,15 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
         else if (cd) snprintf(hand[h], sizeof(hand[h]), "%s (%d inside)", name, items[it].contentCount);
         else snprintf(hand[h], sizeof(hand[h]), "%s", name);
     }
-    if (m->hands[0] >= 0 && m->hands[0] == m->hands[1]) DescAdd(d, DESC_INFO, "Hands: %s (both)", hand[0]);
+    int jobCarry = MoverJobCarry((int)(m - movers));
+    if (jobCarry >= 0) {   // a job's load sits in the hands too
+        DescItemName(&items[jobCarry], name, sizeof(name));
+        bool both = ItemIsTwoHanded(items[jobCarry].type);
+        if (both) snprintf(hand[0], sizeof(hand[0]), "%s, hauling", name);
+        else for (int h = 0; h < 2; h++) if (m->hands[h] < 0) { snprintf(hand[h], sizeof(hand[h]), "%s, hauling", name); break; }
+        if (both) DescAdd(d, DESC_INFO, "Hands: %s (both)", hand[0]);
+        else DescAdd(d, DESC_INFO, "Hands: %s / %s", hand[0], hand[1]);
+    } else if (m->hands[0] >= 0 && m->hands[0] == m->hands[1]) DescAdd(d, DESC_INFO, "Hands: %s (both)", hand[0]);
     else if (m->hands[0] < 0 && m->hands[1] < 0) DescAdd(d, DESC_MUTED, "Hands: free");
     else DescAdd(d, DESC_INFO, "Hands: %s / %s", hand[0], hand[1]);
     if (m->wornBack >= 0 && m->wornBack < MAX_ITEMS && items[m->wornBack].active) {

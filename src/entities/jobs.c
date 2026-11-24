@@ -1,4 +1,5 @@
 #include "jobs.h"
+#include "inventory.h"
 #include "items.h"
 #include "item_defs.h"
 #include "stacking.h"
@@ -862,6 +863,7 @@ static JobRunResult RunPickupStep(Job* job, Mover* mover, Point nextGoal) {
         EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
                  itemIdx, ItemName(item->type), item->stackCount,
                  (int)(mover - movers), (int)(job - jobs));
+        MoverMakeHandsFor((int)(mover - movers), itemIdx);   // a bag in the way goes down (inventory.c)
         job->carryingItem = itemIdx;
         job->targetItem = -1;
         job->step = STEP_CARRYING;
@@ -1090,6 +1092,7 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
             item->state = ITEM_CARRIED;
             EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
                      itemIdx, ItemName(item->type), item->stackCount, (int)(mover - movers), (int)(job - jobs));
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -1615,6 +1618,7 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
                 ClearSourceStockpileSlot(item);
             }
             item->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -1874,6 +1878,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             item->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = CRAFT_STEP_MOVING_TO_WORKSHOP;
@@ -1998,6 +2003,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             item2->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), item2Idx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = item2Idx;
             job->targetItem2 = -1;  // Clear target now that we're carrying
             job->step = CRAFT_STEP_CARRYING_INPUT2;
@@ -2115,6 +2121,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             item3->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), item3Idx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = item3Idx;
             job->targetItem3 = -1;  // Clear target now that we're carrying
             job->step = CRAFT_STEP_CARRYING_INPUT3;
@@ -2228,6 +2235,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 ExtractItemFromContainer(fuelIdx);
             }
 
+            MoverMakeHandsFor((int)(mover - movers), fuelIdx);   // a bag in the way goes down
             fuelItem->state = ITEM_CARRIED;
             job->step = CRAFT_STEP_CARRYING_FUEL;
             break;
@@ -2456,6 +2464,7 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
             }
 
             item->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);   // a bag in the way goes down (inventory.c)
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;

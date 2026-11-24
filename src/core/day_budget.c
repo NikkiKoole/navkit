@@ -68,6 +68,7 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
         case FREETIME_SEEKING_BUSH:
         case FREETIME_SEEKING_FORAGE:
         case FREETIME_SEEKING_SCROUNGE:
+        case FREETIME_FETCHING_OWN:
         case FREETIME_SEEKING_BIN:           return DB_TO_NEED;
         default: break;
     }
