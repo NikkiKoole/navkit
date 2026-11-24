@@ -214,13 +214,36 @@ What it took (each measured):
 
 Diagnostics: `TR_TRACE=<car>`, `TR_WALLS=1`, `TR_TOUCH=1`, `TR_LONG=1`, `TR_JDUMP=1` (env, headless).
 
+## Parking bays (2026-11-24)
+
+Lay-bys along the lanes: a lane of 18+ cells gets one bay, 32+ two (~160 bays in `cars-city`).
+A bay is an in-curve from the lane (at s0) to a spot 2.5 cells to the right and an out-curve
+back into the lane 12 cells further on. Cars drive to a free bay (reserved when the trip is
+planned), stop exactly in the spot, park 10-40 s, then plan the next trip. They start parked,
+leaving over the first 30 s.
+
+- Route steps join lanes part-way (the step before a bay ends at its s0, the step after one
+  starts at its s1): `StepStart` / `StepEnd` in traffic.c.
+- **Pulling out** waits for the lane to be clear from beside the spot to 3 cells past the exit,
+  and for moving cars behind (8 cells + 2 s at their speed). Stopped cars behind (a queue)
+  don't block: they see the car from its first move and give way.
+- **Being let in:** a car waiting 3 s to pull out makes approaching lane cars stop a car length
+  short of its spot (bays near a lane's end sit in the junction queue, which crept past the
+  exit forever: waits of 140 s before, 15-50 s after).
+- Lane cars see a car pulling in for most of its curve and a car pulling out from its first
+  move; a car pulling in or out sees the lane cars ahead of it (two touches found and fixed:
+  each side was blind to the other half-way through the curve).
+
+Results, 10 game minutes, 5 layouts x 100 / 128 cars: 755-895 trips (each a drive + a park),
+junction waits <= 26 s, pull-out waits <= 50 s, **0 touches, 0 wall contacts in every run**.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
 - **Step 2: a mover drives.** Walk to the parked car, get in (the train ride state),
   drive, park, get out; drive-or-walk choice next to `MaybeTakeTrain`.
-- **Parking (next):** lots and kerbside spaces off the network; Hybrid A* from the lane into a
-  space and back out, with the driveway reserved like a junction.
+- Parking lots off the network (Hybrid A* into a space and back out, the driveway reserved
+  like a junction); kerbside bays are done.
 - Traffic lights / priority roads as alternatives to first-come reservations; overtaking
   (multi-lane roads); roundabouts.
 - **Step 4: pedestrians.** Cars brake for movers on the arc; movers step aside.

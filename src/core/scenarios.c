@@ -3372,8 +3372,10 @@ static void SetupCarsCity(void) {
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
 
-    // Cars on random lanes, at least 4 cells apart on a lane
+    // Cars parked in random bays, leaving over the first 30 s; any left over on lanes
     int placed = 0;
+    for (int tries = 0; tries < carCityCount * 20 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
+        if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
     for (int tries = 0; tries < carCityCount * 50 && placed < carCityCount; tries++) {
         int lane = RoadLaneAt(CityRand(RoadLaneCount()));
         float len = rdSegs[lane].len / CELL_SIZE;

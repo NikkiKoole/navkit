@@ -30,7 +30,15 @@
 #define RD_LANE_OFF 1.5f     // cells: lane centre from the road's centre line
 #define RD_SETBACK 7.0f      // cells: lanes stop this far from a junction's centre (room for the turns)
 
-typedef enum { RD_LANE, RD_CONN } RdSegKind;
+typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
+
+// Parking bays (lay-bys): from lane s0, a curve into a spot RD_BAY_OFF cells to the right
+// (the bay's IN segment ends at the spot), and from the spot a curve back into the lane
+// at s1 = s0 + RD_BAY_LEN (OUT segment).
+#define RD_MAX_BAYS 2048
+#define RD_BAY_OFF 2.5f      // cells: the spot's centre from the lane's centre
+#define RD_BAY_LEN 12.0f     // cells of lane a bay takes
+typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
 
 typedef struct {
     float x, y;                         // pixels
@@ -54,12 +62,17 @@ typedef struct {
     float len;         // pixels
     float vmax;        // cells/s: bend speed limit (from the tightest curve on it)
     int out[RD_MAX_OUT], nOut;   // lane: connectors leaving its end
+    int bay;           // bay segments: their bay; lanes: -1
+    float bayS;        // bay in: lane s where it leaves the lane; bay out: lane s where it joins (px)
+    int bays[4], nBays;          // lane: its bays
 } RdSeg;
 
 extern RdNode rdNodes[RD_MAX_NODES];
 extern RdEdge rdEdges[RD_MAX_EDGES];
 extern RdSeg rdSegs[RD_MAX_SEGS];
 extern int rdNodeCount, rdEdgeCount, rdSegCount;
+extern RdBay rdBays[RD_MAX_BAYS];
+extern int rdBayCount;
 extern float rdX[RD_MAX_PTS], rdY[RD_MAX_PTS], rdS[RD_MAX_PTS];
 extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traffic: queues)   // pixels; rdS = arc length from the segment start
 

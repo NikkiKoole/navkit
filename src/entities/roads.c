@@ -14,6 +14,8 @@ RdSeg rdSegs[RD_MAX_SEGS];
 int rdNodeCount = 0, rdEdgeCount = 0, rdSegCount = 0;
 float rdX[RD_MAX_PTS], rdY[RD_MAX_PTS], rdS[RD_MAX_PTS];
 static int rdPtCount = 0;
+RdBay rdBays[RD_MAX_BAYS];
+int rdBayCount = 0;
 float rdSegExtra[RD_MAX_SEGS];
 static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 
@@ -22,7 +24,7 @@ static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 #define RD_ROUTE_TMP 4096
 
 void RoadsClear(void) {
-    rdNodeCount = rdEdgeCount = rdSegCount = rdPtCount = rdLaneCount = 0;
+    rdNodeCount = rdEdgeCount = rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     memset(rdSegExtra, 0, sizeof(rdSegExtra));
 }
 
@@ -58,6 +60,7 @@ static int SegFromTmp(int n, RdSegKind kind) {
     RdSeg* sg = &rdSegs[rdSegCount];
     memset(sg, 0, sizeof(*sg));
     sg->kind = kind;
+    sg->bay = -1;
     sg->p0 = rdPtCount;
     float acc = 0;            // arc length at tmp[i]
     float next = 0;           // next sample's arc length
@@ -193,6 +196,41 @@ static int BuildConnector(int node, int in, int out) {
     return seg;
 }
 
+// A cubic from (x0,y0) heading h0 to (x3,y3) heading h3, into tmp; returns the count
+static int Cubic(float x0, float y0, float h0, float x3, float y3, float h3, float kf) {
+    float d = sqrtf((x3 - x0) * (x3 - x0) + (y3 - y0) * (y3 - y0)), k = d * kf;
+    float x1 = x0 + cosf(h0) * k, y1 = y0 + sinf(h0) * k;
+    float x2 = x3 - cosf(h3) * k, y2 = y3 - sinf(h3) * k;
+    int n = 64;
+    for (int i = 0; i <= n; i++) {
+        float t = (float)i / n, u = 1 - t;
+        tmpX[i] = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+        tmpY[i] = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+    }
+    return n + 1;
+}
+
+// A bay on `lane` starting at s0 px: in-curve to the spot, out-curve back to the lane
+static void BuildBay(int lane, float s0) {
+    if (rdBayCount >= RD_MAX_BAYS || rdSegs[lane].nBays >= 4) return;
+    float CS = CELL_SIZE, s1 = s0 + RD_BAY_LEN * CS, sm = (s0 + s1) * 0.5f;
+    float ax, ay, ah, mx, my, mh, bx, by, bh;
+    RoadPointAt(lane, s0, &ax, &ay, &ah);
+    RoadPointAt(lane, sm, &mx, &my, &mh);
+    RoadPointAt(lane, s1, &bx, &by, &bh);
+    float px = mx - sinf(mh) * RD_BAY_OFF * CS, py = my + cosf(mh) * RD_BAY_OFF * CS;   // right of travel
+    int in = SegFromTmp(Cubic(ax, ay, ah, px, py, mh, 0.45f), RD_BAYIN);
+    if (in < 0) return;
+    int out = SegFromTmp(Cubic(px, py, mh, bx, by, bh, 0.45f), RD_BAYOUT);
+    if (out < 0) { rdSegCount--; return; }
+    RdBay* b = &rdBays[rdBayCount];
+    b->lane = lane; b->s0 = s0; b->s1 = s1; b->in = in; b->out = out;
+    rdSegs[in].from = rdSegs[in].to = lane;  rdSegs[in].bay = rdBayCount;  rdSegs[in].bayS = s0;  rdSegs[in].node = -1;
+    rdSegs[out].from = rdSegs[out].to = lane; rdSegs[out].bay = rdBayCount; rdSegs[out].bayS = s1; rdSegs[out].node = -1;
+    rdSegs[lane].bays[rdSegs[lane].nBays++] = rdBayCount;
+    rdBayCount++;
+}
+
 static bool ConnectorsConflict(int s1, int s2) {
     const RdSeg* a = &rdSegs[s1];
     const RdSeg* b = &rdSegs[s2];
@@ -208,7 +246,7 @@ static bool ConnectorsConflict(int s1, int s2) {
 }
 
 void RoadsBuild(float latAccel) {
-    rdSegCount = rdPtCount = rdLaneCount = 0;
+    rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     for (int i = 0; i < rdNodeCount; i++) rdNodes[i].nConn = 0;
     for (int e = 0; e < rdEdgeCount; e++) {
         rdEdges[e].lane[0] = BuildLane(e, 0);
@@ -231,6 +269,16 @@ void RoadsBuild(float latAccel) {
         for (int i = 0; i < nd->nConn; i++)
             for (int j = 0; j < nd->nConn; j++)
                 nd->conflict[i][j] = (i != j) && ConnectorsConflict(nd->conn[i], nd->conn[j]);
+    }
+    // Parking bays: one on a lane of 18+ cells, two on 32+ (between the lane's ends)
+    for (int i = 0; i < rdLaneCount; i++) {
+        int l = rdLanes[i];
+        float len = rdSegs[l].len / CELL_SIZE;
+        int nb = len >= 32 ? 2 : (len >= 18 ? 1 : 0);
+        for (int b = 0; b < nb; b++) {
+            float mid = len * (b + 1) / (nb + 1);
+            BuildBay(l, (mid - RD_BAY_LEN * 0.5f) * CELL_SIZE);
+        }
     }
     for (int s = 0; s < rdSegCount; s++) rdSegs[s].vmax = SegVmax(s, latAccel);
 }

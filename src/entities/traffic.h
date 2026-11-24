@@ -19,6 +19,7 @@ typedef enum { WHY_FREE, WHY_FOLLOW, WHY_JUNCTION, WHY_BEND } TrafficWhy;
 
 void TrafficReset(void);                          // junction state + stats (ClearCars calls it)
 int TrafficSpawn(int lane, float s, int z);       // a car on lane at s px; -1 if full
+int TrafficSpawnParked(int bay, float parkFor, int z);   // a car parked in a free bay; -1 if taken/full
 void TrafficTick(float dt);                       // all road cars (CarsTick calls it)
 void TrafficPrintStats(void);
 
@@ -29,5 +30,6 @@ extern int trafficOffRoadMax;       // most cars touching a wall at one sample
 extern int trafficSamples;
 extern float trafficWaitMax;        // longest a car stood still (s)
 extern float trafficJunctionWaitMax;   // longest wait for a junction grant (s)
+extern float trafficPullOutWaitMax;    // longest wait for a gap to pull out of a bay (s)
 
 #endif

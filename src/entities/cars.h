@@ -74,6 +74,10 @@ typedef struct {
     bool requested;        // asked the next junction for its connector
     float stillTime;       // seconds at (nearly) zero speed, this time
     float gap;             // pixels to what we follow (debug)
+    int bay;               // the bay we're parked in or driving to (-1: none)
+    int bayFrom;           // the bay we're pulling out of (freed once we're on the lane)
+    float parkTime;        // seconds left parked (> 0: parked)
+    float pullWait;        // seconds waiting for a gap to pull out
     int why;               // TrafficWhy: why we brake (debug)
 
     // Stats (this leg, and totals)
