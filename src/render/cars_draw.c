@@ -4,6 +4,7 @@
 #include "../entities/traffic.h"
 #include "../entities/mover.h"
 #include "../game_state.h"
+#include "../../assets/atlas.h"
 #include <math.h>
 
 static const Color carColors[] = {
@@ -112,13 +113,45 @@ static void DrawTrafficLights(void) {
     }
 }
 
+// One atlas tile of a car: u forward / v to the right of travel (px from the car's
+// centre, in the car's frame), size lu x lv px, rotated with the car
+static void CarTile(const Car* c, int sprite, float u, float v, float lu, float lv, Color tint) {
+    float ch = cosf(c->heading), sh = sinf(c->heading);
+    float wx = c->x + ch * u - sh * v, wy = c->y + sh * u + ch * v;
+    Vector2 p = CarScreen(wx, wy);
+    Rectangle src = SpriteGetRect(sprite);
+    Rectangle dst = {p.x, p.y, lu * zoom, lv * zoom};
+    DrawTexturePro(atlas, src, dst, (Vector2){lu * zoom * 0.5f, lv * zoom * 0.5f}, c->heading * RAD2DEG, tint);
+}
+
+// The car from its atlas tiles (worksheet8x8.ase: car-frame-*, car-seat), drawn facing
+// right (east) at heading 0: a narrow car (<= 1.25 cells) from the 1x2 frame (back + front
+// tile, one seat), a wider one from the 2x2 frame (four tiles, two seats). Frames take the
+// car's colour; seats don't.
+static void DrawCarSprite(const Car* c, Color col) {
+    float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE;
+    float hu = L * 0.25f;   // tile centres a quarter of the length from the middle
+    if (carWidth <= 1.25f) {
+        CarTile(c, SPRITE_car_frame_1x1_back, -hu, 0, L * 0.5f, W, col);
+        CarTile(c, SPRITE_car_frame_1x1_front, hu, 0, L * 0.5f, W, col);
+        CarTile(c, SPRITE_car_seat, -hu, 0, L * 0.5f, W, WHITE);
+    } else {
+        float hv = W * 0.25f;   // left = -v (north at heading 0: the sprite's top row)
+        CarTile(c, SPRITE_car_frame_2x2_back_left, -hu, -hv, L * 0.5f, W * 0.5f, col);
+        CarTile(c, SPRITE_car_frame_2x2_front_left, hu, -hv, L * 0.5f, W * 0.5f, col);
+        CarTile(c, SPRITE_car_frame_2x2_back_right, -hu, hv, L * 0.5f, W * 0.5f, col);
+        CarTile(c, SPRITE_car_frame_2x2_front_right, hu, hv, L * 0.5f, W * 0.5f, col);
+        CarTile(c, SPRITE_car_seat, -hu, -hv, L * 0.5f, W * 0.5f, WHITE);
+        CarTile(c, SPRITE_car_seat, -hu, hv, L * 0.5f, W * 0.5f, WHITE);
+    }
+}
+
 void DrawCars(void) {
     if (carCount == 0) return;
     PROFILE_BEGIN(DrawCars);
     if (rdSegCount > 0) DrawTrafficLights();
     bool roads = rdSegCount > 0;
     float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE;
-    float wb = L * 0.6f;
     float carPx = L * zoom;   // a car's length on screen: picks the level of detail
     if (carDebug && !roads) DrawCarClearance(currentViewZ);
     if (carDebug && roads && carPx >= 6) DrawRoadsDebug();
@@ -145,17 +178,7 @@ void DrawCars(void) {
             DrawLineEx(a, b, 2.0f, RED);
             if (c->waitNow >= CAR_DEADLOCK_S) DrawCircleLinesV(a, CELL_SIZE * 1.6f * zoom, RED);
         }
-        // Wheels (front ones turned by the steering angle)
-        float wl = L * 0.2f, ww = W * 0.14f, side = W * 0.5f - ww * 0.3f;
-        Color tyre = {25, 25, 25, 255};
-        CarPart(c, -wb * 0.5f, -side, wl, ww, 0, tyre);
-        CarPart(c, -wb * 0.5f, side, wl, ww, 0, tyre);
-        CarPart(c, wb * 0.5f, -side, wl, ww, c->steer, tyre);
-        CarPart(c, wb * 0.5f, side, wl, ww, c->steer, tyre);
-        // Body, roof, windscreen
-        CarPart(c, 0, 0, L - 2, W - 4, 0, col);
-        CarPart(c, -L * 0.05f, 0, L * 0.45f, W * 0.62f, 0, ColorBrightness(col, -0.25f));
-        CarPart(c, L * 0.2f, 0, L * 0.08f, W * 0.6f, 0, (Color){170, 210, 230, 255});
+        DrawCarSprite(c, col);
         // Reversing lights
         if (c->speed < -1.0f) {
             CarPart(c, -L * 0.5f + 2, -W * 0.3f, 3, 4, 0, WHITE);

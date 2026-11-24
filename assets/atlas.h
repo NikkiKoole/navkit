@@ -32,6 +32,7 @@
     #define SPRITE_head_up_close SPRITE8X8_head_up_close
     #define SPRITE_tree_trunk_willow SPRITE8X8_tree_trunk_willow
     #define SPRITE_sandstone SPRITE8X8_sandstone
+    #define SPRITE_car_frame_2x2_back_left SPRITE8X8_car_frame_2x2_back_left
     #define SPRITE_head_front_flat SPRITE8X8_head_front_flat
     #define SPRITE_bedrock SPRITE8X8_bedrock
     #define SPRITE_tree_bark_willow SPRITE8X8_tree_bark_willow
@@ -44,6 +45,7 @@
     #define SPRITE_head_right_small SPRITE8X8_head_right_small
     #define SPRITE_track_sew SPRITE8X8_track_sew
     #define SPRITE_head_right_smile SPRITE8X8_head_right_smile
+    #define SPRITE_car_frame_2x2_back_right SPRITE8X8_car_frame_2x2_back_right
     #define SPRITE_grass_trampled SPRITE8X8_grass_trampled
     #define SPRITE_head_right_close SPRITE8X8_head_right_close
     #define SPRITE_tree_bark_birch SPRITE8X8_tree_bark_birch
@@ -51,9 +53,9 @@
     #define SPRITE_track_ew SPRITE8X8_track_ew
     #define SPRITE_tree_branch_pine SPRITE8X8_tree_branch_pine
     #define SPRITE_tree_planks_pine SPRITE8X8_tree_planks_pine
-    #define SPRITE_Slice_2 SPRITE8X8_Slice_2
     #define SPRITE_dirt SPRITE8X8_dirt
     #define SPRITE_head_left_small SPRITE8X8_head_left_small
+    #define SPRITE_car_frame_1x1_front SPRITE8X8_car_frame_1x1_front
     #define SPRITE_head_left_smile SPRITE8X8_head_left_smile
     #define SPRITE_head_left_close SPRITE8X8_head_left_close
     #define SPRITE_head_right_open SPRITE8X8_head_right_open
@@ -87,6 +89,7 @@
     #define SPRITE_ramp_w SPRITE8X8_ramp_w
     #define SPRITE_head_left_flat SPRITE8X8_head_left_flat
     #define SPRITE_tree_planks_willow SPRITE8X8_tree_planks_willow
+    #define SPRITE_car_frame_2x2_front_left SPRITE8X8_car_frame_2x2_front_left
     #define SPRITE_middle_dot SPRITE8X8_middle_dot
     #define SPRITE_track_nsew SPRITE8X8_track_nsew
     #define SPRITE_tree_planks_oak SPRITE8X8_tree_planks_oak
@@ -132,6 +135,7 @@
     #define SPRITE_head_down_sad SPRITE8X8_head_down_sad
     #define SPRITE_wall SPRITE8X8_wall
     #define SPRITE_generic SPRITE8X8_generic
+    #define SPRITE_car_frame_1x1_back SPRITE8X8_car_frame_1x1_back
     #define SPRITE_short_string SPRITE8X8_short_string
     #define SPRITE_stockpile SPRITE8X8_stockpile
     #define SPRITE_cordage SPRITE8X8_cordage
@@ -142,7 +146,9 @@
     #define SPRITE_floor_wood SPRITE8X8_floor_wood
     #define SPRITE_ladder_down SPRITE8X8_ladder_down
     #define SPRITE_track_isolated SPRITE8X8_track_isolated
+    #define SPRITE_car_seat SPRITE8X8_car_seat
     #define SPRITE_track_nse SPRITE8X8_track_nse
+    #define SPRITE_car_frame_2x2_front_right SPRITE8X8_car_frame_2x2_front_right
     #define SPRITE_track_sw SPRITE8X8_track_sw
     #define SPRITE_toilet SPRITE8X8_toilet
     #define SPRITE_head_right_sad SPRITE8X8_head_right_sad
@@ -197,6 +203,7 @@
     #define SPRITE_head_up_close SPRITE16X16_head_up_close
     #define SPRITE_tree_trunk_willow SPRITE16X16_tree_trunk_willow
     #define SPRITE_sandstone SPRITE16X16_sandstone
+    #define SPRITE_car_frame_2x2_back_left SPRITE16X16_car_frame_2x2_back_left
     #define SPRITE_head_front_flat SPRITE16X16_head_front_flat
     #define SPRITE_bedrock SPRITE16X16_bedrock
     #define SPRITE_tree_bark_willow SPRITE16X16_tree_bark_willow
@@ -209,6 +216,7 @@
     #define SPRITE_head_right_small SPRITE16X16_head_right_small
     #define SPRITE_track_sew SPRITE16X16_track_sew
     #define SPRITE_head_right_smile SPRITE16X16_head_right_smile
+    #define SPRITE_car_frame_2x2_back_right SPRITE16X16_car_frame_2x2_back_right
     #define SPRITE_grass_trampled SPRITE16X16_grass_trampled
     #define SPRITE_head_right_close SPRITE16X16_head_right_close
     #define SPRITE_tree_bark_birch SPRITE16X16_tree_bark_birch
@@ -216,9 +224,9 @@
     #define SPRITE_track_ew SPRITE16X16_track_ew
     #define SPRITE_tree_branch_pine SPRITE16X16_tree_branch_pine
     #define SPRITE_tree_planks_pine SPRITE16X16_tree_planks_pine
-    #define SPRITE_Slice_2 SPRITE16X16_Slice_2
     #define SPRITE_dirt SPRITE16X16_dirt
     #define SPRITE_head_left_small SPRITE16X16_head_left_small
+    #define SPRITE_car_frame_1x1_front SPRITE16X16_car_frame_1x1_front
     #define SPRITE_head_left_smile SPRITE16X16_head_left_smile
     #define SPRITE_head_left_close SPRITE16X16_head_left_close
     #define SPRITE_head_right_open SPRITE16X16_head_right_open
@@ -252,6 +260,7 @@
     #define SPRITE_ramp_w SPRITE16X16_ramp_w
     #define SPRITE_head_left_flat SPRITE16X16_head_left_flat
     #define SPRITE_tree_planks_willow SPRITE16X16_tree_planks_willow
+    #define SPRITE_car_frame_2x2_front_left SPRITE16X16_car_frame_2x2_front_left
     #define SPRITE_middle_dot SPRITE16X16_middle_dot
     #define SPRITE_track_nsew SPRITE16X16_track_nsew
     #define SPRITE_tree_planks_oak SPRITE16X16_tree_planks_oak
@@ -297,6 +306,7 @@
     #define SPRITE_head_down_sad SPRITE16X16_head_down_sad
     #define SPRITE_wall SPRITE16X16_wall
     #define SPRITE_generic SPRITE16X16_generic
+    #define SPRITE_car_frame_1x1_back SPRITE16X16_car_frame_1x1_back
     #define SPRITE_short_string SPRITE16X16_short_string
     #define SPRITE_stockpile SPRITE16X16_stockpile
     #define SPRITE_cordage SPRITE16X16_cordage
@@ -307,7 +317,9 @@
     #define SPRITE_floor_wood SPRITE16X16_floor_wood
     #define SPRITE_ladder_down SPRITE16X16_ladder_down
     #define SPRITE_track_isolated SPRITE16X16_track_isolated
+    #define SPRITE_car_seat SPRITE16X16_car_seat
     #define SPRITE_track_nse SPRITE16X16_track_nse
+    #define SPRITE_car_frame_2x2_front_right SPRITE16X16_car_frame_2x2_front_right
     #define SPRITE_track_sw SPRITE16X16_track_sw
     #define SPRITE_toilet SPRITE16X16_toilet
     #define SPRITE_head_right_sad SPRITE16X16_head_right_sad
