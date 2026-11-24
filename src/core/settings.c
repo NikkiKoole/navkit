@@ -255,6 +255,8 @@ static const Setting settings[] = {
       "Water ticks for the remembered current (water flow overlay) to fade to half. Longer = steadier arrows, slower to show a change.", NULL),
     SET_BOOL("itemsDrift", "Items drift", "Simulation/Water", itemsDrift,
       "Loose things that float go with the current until they wash up: light plant matter (sticks, leaves, grass, reeds) in any water, wood (logs, planks) in water 2 deep. Carried off the map edge they are lost. Not when carried, stored or reserved for a job."),
+    SET_FLOAT("waterCurrentPush", "Current push", "Simulation/Water", waterCurrentPush, 0.05f, 0.0f, 0.9f,
+      "How much a current changes the speed of someone wading: at full strength walking with it is this much faster, against it this much slower (0 = off).", NULL),
     SET_BOOL("springTrickle", "Springs trickle", "Simulation/Water", springTrickle,
       "Source cells inside the map are springs that add Spring Rate water per game-second instead of refilling to full every tick (an endless tap). Sources on the map edge stay taps. The island turns it on."),
     SET_FLOAT("springRate", "Spring rate (/s)", "Simulation/Water", springRate, 0.1f, 0.0f, 60.0f,

@@ -135,6 +135,10 @@ extern float waterFlowHalfLife;   // water ticks for the current to fade to half
 extern uint32_t waterFlowTick;    // counts UpdateWater calls
 // Current at a cell in units moved per half-life (decayed to now). false = no current there.
 bool GetWaterFlow(int x, int y, int z, float* fx, float* fy);
+// Walking speed factor from the current for someone wading in (x, y, z) towards (dirX, dirY):
+// > 1 downstream, < 1 upstream, 1 across, still water or dry. Strength as drift (GetWaterFlow).
+extern float waterCurrentPush;    // effect at full strength (0.5: +-50%)
+float WaterCurrentSpeedFactor(int x, int y, int z, float dirX, float dirY);
 void ClearWaterFlow(void);
 
 // Displace water from a cell (push to neighbors/up, then clear)

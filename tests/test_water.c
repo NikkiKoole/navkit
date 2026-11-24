@@ -1531,6 +1531,39 @@ static void RunWaterAndItems(int n) {
     }
 }
 
+// A thin stream (level 1, wadeable) running east off the open map edge; a settler walks 8 cells
+// from x0 to x1 along it. Returns the ticks it took (or -1)
+static int WadeTicks(int x0, int x1) {
+    InitTestGridFromAscii(
+        "##############\n"
+        "#.............\n"
+        "##############\n");
+    InitWater();
+    ClearItems();
+    ClearMovers();
+    waterEvaporationEnabled = false;
+    waterEdgeOutflow = true;
+    waterEdgeSeaZ = -1;
+    SetWaterSource(1, 1, 0, true);
+    BuildEntrances();
+    BuildGraph();
+    for (int i = 0; i < 300; i++) Tick();   // the current builds up
+    Mover* m = &movers[0];
+    Point start = {x0, 1, 0}, goal = {x1, 1, 0};
+    Point path[] = {goal, start};   // paths run goal first, start last
+    InitMoverWithPath(m, (x0 + 0.5f) * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, goal, 100.0f, path, 2);
+    moverCount = 1;
+    int ticks = -1;
+    for (int t = 0; t < 3000; t++) {
+        Tick();
+        if ((int)(m->x / CELL_SIZE) == x1 && m->pathIndex < 0) { ticks = t + 1; break; }
+    }
+    ClearMovers();
+    waterEdgeOutflow = false;
+    waterEvaporationEnabled = true;
+    return ticks;
+}
+
 describe(water_drift) {
     it("a log in flowing water drifts downstream; a rock stays") {
         SetupDriftChannel();
@@ -1583,6 +1616,37 @@ describe(water_drift) {
         expect(items[log].active && items[log].x == logX);   // too shallow for a log: lies on the bed
         waterEdgeOutflow = false;
         waterEvaporationEnabled = true;
+    }
+
+    it("wading: faster with the current, slower against it, the same across") {
+        SetupDriftChannel();
+        RunWaterAndItems(300);
+        float down = WaterCurrentSpeedFactor(5, 1, 0, 1.0f, 0.0f);
+        float up = WaterCurrentSpeedFactor(5, 1, 0, -1.0f, 0.0f);
+        float across = WaterCurrentSpeedFactor(5, 1, 0, 0.0f, 1.0f);
+        if (test_verbose) printf("current factor: down %.2f up %.2f across %.2f\n", down, up, across);
+        expect(down > 1.1f);
+        expect(up < 0.9f);
+        expect(fabsf(across - 1.0f) < 0.01f);
+        expect(WaterCurrentSpeedFactor(5, 0, 0, 1.0f, 0.0f) == 1.0f);   // a wall: no water
+        float saved = waterCurrentPush;
+        waterCurrentPush = 0.0f;
+        expect(WaterCurrentSpeedFactor(5, 1, 0, 1.0f, 0.0f) == 1.0f);   // off
+        waterCurrentPush = saved;
+        waterEvaporationEnabled = true;
+    }
+
+    it("a settler wading downstream arrives sooner than one wading upstream") {
+        float saved = waterCurrentPush;
+        int down = WadeTicks(3, 11), up = WadeTicks(11, 3);
+        waterCurrentPush = 0.0f;
+        int downOff = WadeTicks(3, 11), upOff = WadeTicks(11, 3);
+        waterCurrentPush = saved;
+        if (test_verbose) printf("wade ticks: down %d up %d | push off: down %d up %d\n", down, up, downOff, upOff);
+        expect(down > 0 && up > 0 && downOff > 0 && upOff > 0);
+        expect(down < downOff);          // the current helps
+        expect(up > upOff);              // and holds back
+        expect(abs(downOff - upOff) <= 2);   // without it the same both ways
     }
 
     it("a drifting log stops at the water's edge and rests there") {

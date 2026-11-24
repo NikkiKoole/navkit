@@ -134,6 +134,25 @@ bool GetWaterFlow(int x, int y, int z, float* fx, float* fy) {
     return *fx != 0.0f || *fy != 0.0f;
 }
 
+float waterCurrentPush = 0.5f;
+
+float WaterCurrentSpeedFactor(int x, int y, int z, float dirX, float dirY) {
+    if (waterCurrentPush <= 0.0f) return 1.0f;
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return 1.0f;
+    if (WATER(x, y, z).level == 0) return 1.0f;
+    float fx, fy;
+    if (!GetWaterFlow(x, y, z, &fx, &fy)) return 1.0f;
+    float m = sqrtf(fx * fx + fy * fy), d = sqrtf(dirX * dirX + dirY * dirY);
+    if (m < 0.5f || d < 0.0001f) return 1.0f;
+    float strength = log2f(1.0f + m) / 5.0f;   // as drift: ~31 units per half-life = full
+    if (strength > 1.0f) strength = 1.0f;
+    float along = (fx * dirX + fy * dirY) / (m * d);   // +1 with the current, -1 against it
+    float f = 1.0f + waterCurrentPush * strength * along;
+    if (f < 0.3f) f = 0.3f;
+    if (f > 1.8f) f = 1.8f;
+    return f;
+}
+
 void ClearWaterFlow(void) {
     SparseLayerClear(&waterFlowLayer);
     waterFlowTick = 0;

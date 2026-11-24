@@ -1906,6 +1906,8 @@ void UpdateMovers(void) {
             // Built stairs (a built ramp) are walked up and down slowly
             if (CellIsDirectionalRamp(GRID(currentX, currentY, currentZ)))
                 terrainSpeedMult *= StairsSpeedFactor(currentX, currentY, currentZ, target.z >= currentZ ? 1 : -1);
+            // Wading: the current helps downstream and holds you back upstream
+            terrainSpeedMult *= WaterCurrentSpeedFactor(currentX, currentY, currentZ, dxf, dyf);
 
             if (m->currentJobId >= 0) {
                 Job* job = GetJob(m->currentJobId);

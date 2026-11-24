@@ -134,6 +134,13 @@ cells are processed per tick, scanning bottom to top.
   catchment (the island has flow accumulation), a higher rate, or brooks as they are. Tests
   `test_water` water_springs.
 
+- **Wading with the current** (2026-11-24): a settler's walking speed in water is multiplied by
+  `WaterCurrentSpeedFactor` (water.c): 1 + `waterCurrentPush` (setting, default 0.5) x strength x
+  how well the walking direction lines up with the current, clamped 0.3-1.8. Faster downstream,
+  slower upstream, the same across; no sideways push (that would steer settlers off their path
+  into deep water). Test: 8 cells in a thin stream take 118 ticks downstream, 348 upstream, 175
+  both ways with the push off. scenarios-check: survival 18 -> 17 arrivals, tide 14 -> 11.
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.
