@@ -1062,6 +1062,23 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             printf("\nNo active mover %s (%d movers)\n", argv[i + 1], moverCount);
     }
 
+    // --describe-cell X,Y,Z: the cell as the game describes it (room, materials, ...), after
+    // the run. Repeatable.
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--describe-cell") != 0) continue;
+        int cx, cy, cz;
+        if (sscanf(argv[i + 1], "%d,%d,%d", &cx, &cy, &cz) != 3 ||
+            cx < 0 || cy < 0 || cz < 0 || cx >= gridWidth || cy >= gridHeight || cz >= gridDepth) {
+            printf("\n--describe-cell %s: want X,Y,Z inside the %dx%dx%d map\n", argv[i + 1], gridWidth, gridHeight, gridDepth);
+            continue;
+        }
+        UpdateRooms();
+        DescLines d;
+        DescribeCell(cx, cy, cz, &d);
+        printf("\n");
+        for (int l = 0; l < d.count; l++) printf("%s\n", d.lines[l].text);
+    }
+
     printf("\n=== HEADLESS RESULTS ===\n");
     printf("Ticks: %d (%.2f ms, %.2f ms/tick)\n", ticks, elapsed * 1000.0, ticks > 0 ? (elapsed * 1000.0) / ticks : 0.0);
     printf("Movers: %d (%d active)\n", moverCount, activeMovers);

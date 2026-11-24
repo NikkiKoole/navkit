@@ -354,16 +354,16 @@ static void StartIsland(void) {
 static void StartDollhouse(void) {
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
-    // Small grid — apartment is ~12x12, tight margin
-    InitGridWithSizeAndChunkSize(16, 16, 8, 8);
+    // A city flat (concrete) on a small plot: 14x10 under a roof, a railed balcony, a pond
+    InitGridWithSizeAndChunkSize(20, 18, 10, 9);
     ClearAnimals();
     ClearFurniture();
     InitPlants();
     ClearFarming();
 
     // Flat terrain: solid ground at z=0, air + grass at z=1+
-    for (int y = 0; y < 16; y++) {
-        for (int x = 0; x < 16; x++) {
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
             GRID(x, y, 0) = CELL_WALL;
             WALL_MAT(x, y, 0) = MAT_DIRT;
             SetWallNatural(x, y, 0);
@@ -374,40 +374,69 @@ static void StartDollhouse(void) {
         }
     }
 
-    // Build apartment at z=1 (on top of ground)
-    // Layout (10x8):
-    //   Walls around perimeter, internal walls for rooms
-    //   Room 1 (left): Kitchen/Dining — stove, counter, table area, chairs
-    //   Room 2 (right-top): Bathroom — toilet
-    //   Room 3 (right-bottom): Bedroom — beds
-    int ox = 3, oy = 3; // offset from grid edge
+    // Layout at z=1, local (dx, dy), 14x10. # wall, D door, w window, = railing:
+    //
+    //      0 1 2 3 4 5 6 7 8 9 0 1 2 3
+    //   0  # # w # w # # # # # # w # #
+    //   1  # h T h . . #   # S . . t #     kitchen: table + chairs, stove, counter, sink, tap,
+    //   2  # . . . . . D   D . . . . #              food stockpile with the fridge in it
+    //   3  # s c k p . #   # . . . . #     hall (1 wide) between everything, front door below
+    //   4  # . F F F f #   # # # # # #     bathroom: sink, toilet
+    //   5  # # # # # # #   # . . . d #     bedroom: double bed, desk + chair, bookshelf
+    //   6  # . o o . . #   D . . . h #     living room: sofa (2 seats), bookshelf
+    //   7  w . . . . . D   # . . B . w
+    //   8  # l . . . . #   # l . . . #
+    //   9  # # # D # # # D # # # # # #
+    //  10  = . . . . . =                   balcony: no roof, railing round it (outdoors)
+    //  11  = . . . . . =     pond
+    //  12  = = = = = = =
+    int ox = 3, oy = 2; // offset from grid edge
     int z = 1;
 
-    // Floor for entire apartment (10x8)
-    for (int dy = 0; dy < 8; dy++) {
-        for (int dx = 0; dx < 10; dx++) {
+    // Floor, and a roof over the flat (the balcony has none: it reads as outdoors)
+    for (int dy = 0; dy < 10; dy++) {
+        for (int dx = 0; dx < 14; dx++) {
             SET_FLOOR(ox + dx, oy + dy, z);
             FLOOR_MAT(ox + dx, oy + dy, z) = MAT_OAK;
+            SET_FLOOR(ox + dx, oy + dy, z + 1);
+            FLOOR_MAT(ox + dx, oy + dy, z + 1) = MAT_CONCRETE;
         }
     }
 
-    // Outer walls
-    for (int dx = 0; dx < 10; dx++) {
-        PlaceCellFull(ox + dx, oy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-        PlaceCellFull(ox + dx, oy + 7, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-    for (int dy = 1; dy < 7; dy++) {
-        PlaceCellFull(ox, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-        PlaceCellFull(ox + 9, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
+    #define DH_WALL(dx, dy) PlaceCellFull(ox + (dx), oy + (dy), z, NaturalTerrainSpec(CELL_WALL, MAT_CONCRETE, 0, true, false))
+    #define DH_DOOR(dx, dy) (GRID(ox + (dx), oy + (dy), z) = CELL_DOOR)
+    #define DH_WINDOW(dx, dy) do { GRID(ox + (dx), oy + (dy), z) = CELL_WINDOW; SetWallMaterial(ox + (dx), oy + (dy), z, MAT_GLASS); ClearWallNatural(ox + (dx), oy + (dy), z); } while (0)
+    for (int dx = 0; dx < 14; dx++) { DH_WALL(dx, 0); DH_WALL(dx, 9); }
+    for (int dy = 1; dy < 9; dy++)  { DH_WALL(0, dy); DH_WALL(13, dy); }
+    for (int dy = 1; dy < 9; dy++)  { DH_WALL(6, dy); DH_WALL(8, dy); }   // hall walls
+    for (int dx = 1; dx < 6; dx++)  DH_WALL(dx, 5);                         // kitchen | living
+    for (int dx = 9; dx < 13; dx++) DH_WALL(dx, 4);                         // bathroom | bedroom
+    DH_DOOR(7, 9);                  // front door
+    DH_DOOR(3, 9);                  // living room -> balcony
+    DH_DOOR(6, 2); DH_DOOR(6, 7);   // hall -> kitchen, living room
+    DH_DOOR(8, 2); DH_DOOR(8, 6);   // hall -> bathroom, bedroom
+    DH_WINDOW(2, 0); DH_WINDOW(4, 0); DH_WINDOW(11, 0); DH_WINDOW(0, 7); DH_WINDOW(13, 7);
+    #undef DH_WALL
+    #undef DH_DOOR
+    #undef DH_WINDOW
+
+    // Balcony: concrete floor, a railing round it (stops walking, not light or the view)
+    for (int dy = 10; dy <= 12; dy++) {
+        for (int dx = 0; dx <= 6; dx++) {
+            int x = ox + dx, y = oy + dy;
+            bool edge = dx == 0 || dx == 6 || dy == 12;
+            SET_FLOOR(x, y, z);
+            FLOOR_MAT(x, y, z) = MAT_CONCRETE;
+            ClearFloorNatural(x, y, z);
+            SetVegetation(x, y, 0, VEG_NONE);   // a concrete slab, no grass
+            if (edge) { GRID(x, y, z) = CELL_RAILING; SetWallMaterial(x, y, z, MAT_IRON); ClearWallNatural(x, y, z); }
+        }
     }
 
-    // Front door (bottom wall, kitchen side)
-    GRID(ox + 3, oy + 7, z) = CELL_DOOR;
-
-    // Pond outside the door — dug into z=0, filled with water
+    // Pond outside the front door — dug into z=0, filled with water
     for (int dy = 0; dy < 3; dy++) {
         for (int dx = 0; dx < 3; dx++) {
-            int px = ox + 2 + dx, py = oy + 9 + dy;
+            int px = ox + 9 + dx, py = oy + 11 + dy;
             if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
                 GRID(px, py, 0) = CELL_AIR;  // dig out the ground
                 SetVegetation(px, py, 0, VEG_NONE);
@@ -415,19 +444,6 @@ static void StartDollhouse(void) {
             }
         }
     }
-
-    // Internal wall: kitchen (left 6 cols) | bathroom+bedroom (right 3 cols)
-    for (int dy = 1; dy < 7; dy++) {
-        if (dy == 3 || dy == 4) continue; // door gap
-        PlaceCellFull(ox + 6, oy + dy, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-
-    // Internal wall: bathroom (top-right) | bedroom (bottom-right)
-    for (int dx = 7; dx < 9; dx++) {
-        PlaceCellFull(ox + dx, oy + 4, z, NaturalTerrainSpec(CELL_WALL, MAT_GRANITE, 0, true, false));
-    }
-    // Door gap in bathroom/bedroom divider at x+8
-    GRID(ox + 8, oy + 4, z) = CELL_AIR;
 
     // Init all systems
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
@@ -446,47 +462,52 @@ static void StartDollhouse(void) {
     BuildEntrances();
     BuildGraph();
 
-    // Place furniture — Kitchen
-    SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);   // chair, table, chair
-    SpawnFurniture(ox + 4, oy + 1, z, FURNITURE_TABLE, MAT_OAK);
-    SpawnFurniture(ox + 5, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);
+    #define DH_FURN(dx, dy, type, mat) SpawnFurniture(ox + (dx), oy + (dy), z, (type), (mat))
+    // Kitchen
+    DH_FURN(1, 1, FURNITURE_CHAIR, MAT_OAK);    // chair, table, chair
+    DH_FURN(2, 1, FURNITURE_TABLE, MAT_OAK);
+    DH_FURN(3, 1, FURNITURE_CHAIR, MAT_OAK);
+    DH_FURN(3, 3, FURNITURE_SINK, MAT_GRANITE);
+    DH_FURN(4, 3, FURNITURE_TAP, MAT_GRANITE);  // clean water that doesn't run out
+    DH_FURN(5, 4, FURNITURE_FRIDGE, MAT_IRON);  // food kept on it spoils slower
+    CreateWorkshop(ox + 1, oy + 3, z, WORKSHOP_STOVE);
+    CreateWorkshop(ox + 2, oy + 3, z, WORKSHOP_COUNTER);  // provides CAP_PREP_SURFACE
+    // Bathroom
+    DH_FURN(9, 1, FURNITURE_SINK, MAT_GRANITE);
+    DH_FURN(12, 1, FURNITURE_TOILET, MAT_GRANITE);
+    // Bedroom
+    DH_FURN(11, 7, FURNITURE_DOUBLE_BED, MAT_OAK);   // both sleep in it
+    DH_FURN(12, 5, FURNITURE_DESK, MAT_OAK);
+    DH_FURN(12, 6, FURNITURE_CHAIR, MAT_OAK);
+    DH_FURN(9, 8, FURNITURE_SHELF, MAT_OAK);         // bookshelf
+    // Living room
+    DH_FURN(2, 6, FURNITURE_SOFA, MAT_OAK);
+    DH_FURN(3, 6, FURNITURE_SOFA, MAT_OAK);
+    DH_FURN(1, 8, FURNITURE_SHELF, MAT_OAK);
+    #undef DH_FURN
 
-    // Place furniture — Bathroom
-    SpawnFurniture(ox + 8, oy + 1, z, FURNITURE_TOILET, MAT_GRANITE);
+    // Food stockpile along the kitchen's south wall, the fridge at its end
+    CreateStockpile(ox + 2, oy + 4, z, 4, 1);
 
-    // Tap in the kitchen, next to the counter: clean water that doesn't run out
-    SpawnFurniture(ox + 4, oy + 3, z, FURNITURE_TAP, MAT_GRANITE);
-
-    // Place furniture — Bedroom
-    SpawnFurniture(ox + 7, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
-    SpawnFurniture(ox + 8, oy + 5, z, FURNITURE_PLANK_BED, MAT_OAK);
-
-    // Place workshops — Kitchen
-    CreateWorkshop(ox + 1, oy + 3, z, WORKSHOP_STOVE);    // stove
-    CreateWorkshop(ox + 3, oy + 3, z, WORKSHOP_COUNTER);  // counter (provides CAP_PREP_SURFACE)
-
-    // Create stockpile (2x2 in kitchen for food)
-    CreateStockpile(ox + 1, oy + 5, z, 2, 2);
-
-    // Spawn 2 movers inside the apartment
+    // Spawn 2 movers in the kitchen
     ClearMovers();
     SpawnMoverAt(ox + 3, oy + 2, z);
     SpawnMoverAt(ox + 4, oy + 2, z);
 
-    // Spawn food supplies in stockpile area
-    float sx = (ox + 1) * CELL_SIZE + CELL_SIZE * 0.5f;
-    float sy = (oy + 5) * CELL_SIZE + CELL_SIZE * 0.5f;
+    // Food supplies: meat on the fridge, bread and water pots next to it
+    float sx = (ox + 2) * CELL_SIZE + CELL_SIZE * 0.5f;
+    float sy = (oy + 4) * CELL_SIZE + CELL_SIZE * 0.5f;
     {
-        int idx = SpawnItem(sx, sy, (float)z, ITEM_COOKED_MEAT);
+        int idx = SpawnItem(sx + 3 * CELL_SIZE, sy, (float)z, ITEM_COOKED_MEAT);   // on the fridge
         if (idx >= 0) items[idx].stackCount = 5;
     }
     {
-        int idx = SpawnItem(sx + CELL_SIZE, sy, (float)z, ITEM_BREAD);
+        int idx = SpawnItem(sx + 2 * CELL_SIZE, sy, (float)z, ITEM_BREAD);
         if (idx >= 0) items[idx].stackCount = 5;
     }
     // Water pots (two so both movers can drink)
     for (int p = 0; p < 2; p++) {
-        int potIdx = SpawnItem(sx + p * CELL_SIZE, sy + CELL_SIZE, (float)z, ITEM_CLAY_POT);
+        int potIdx = SpawnItem(sx + p * CELL_SIZE, sy, (float)z, ITEM_CLAY_POT);
         if (potIdx >= 0) {
             for (int i = 0; i < 5; i++) {
                 int waterIdx = SpawnItem(sx, sy, (float)z, ITEM_WATER);

@@ -82,6 +82,11 @@ static Color FireLevelColor(int level) {
     return (Color){r, g, b, alpha};
 }
 
+// A full-height wall for the cutaway fill: blocks walking, but a railing is waist high
+static bool IsCutawayWall(CellType c) {
+    return CellBlocksMovement(c) && c != CELL_RAILING;
+}
+
 static Color FloorDarkenTint(Color base) {
     base.r = (unsigned char)((base.r * 75) / 100);
     base.g = (unsigned char)((base.g * 75) / 100);
@@ -97,6 +102,46 @@ static Color MaterialTint(MaterialType mat) {
         case MAT_WILLOW: return (Color){160, 140, 100, 255};
         case MAT_CONCRETE: return (Color){170, 170, 165, 255};   // placeholder grey until it has a sprite
         default: return WHITE;
+    }
+}
+
+// Sprite and tint per furniture type (top-down and side views). New types without art yet
+// get an existing sprite and a tint, so each still reads as itself.
+static int FurnitureSprite(FurnitureType type) {
+    switch (type) {
+        case FURNITURE_LEAF_PILE:   return SPRITE_grass_tall;
+        case FURNITURE_GRASS_PILE:  return SPRITE_grass_tall;
+        case FURNITURE_PLANK_BED:   return SPRITE_bed;
+        case FURNITURE_CHAIR:       return SPRITE_chair;
+        case FURNITURE_TOILET:      return SPRITE_toilet;
+        case FURNITURE_TABLE:       return SPRITE_table;
+        case FURNITURE_TAP:         return SPRITE_counter;      // placeholder, tinted blue
+        case FURNITURE_HEAT_GRATE:  return SPRITE_floor;        // placeholder, tinted grey
+        case FURNITURE_FIRE_BARREL: return SPRITE_generic;      // placeholder, tinted orange
+        case FURNITURE_SINK:        return SPRITE_counter;      // placeholder, tinted white-blue
+        case FURNITURE_DOUBLE_BED:  return SPRITE_bed;          // placeholder, tinted rose
+        case FURNITURE_FRIDGE:      return SPRITE_full_block;   // placeholder, tinted pale
+        case FURNITURE_DESK:        return SPRITE_table;        // placeholder, tinted dark wood
+        case FURNITURE_SHELF:       return SPRITE_upper_half;   // placeholder, tinted brown
+        case FURNITURE_SOFA:        return SPRITE_chair;        // placeholder, tinted red
+        case FURNITURE_TILL:        return SPRITE_counter;      // placeholder, tinted yellow
+        default:                    return SPRITE_generic;
+    }
+}
+
+static Color FurnitureTint(FurnitureType type) {
+    switch (type) {
+        case FURNITURE_TAP:         return (Color){150, 200, 255, 255};
+        case FURNITURE_HEAT_GRATE:  return (Color){130, 130, 140, 255};
+        case FURNITURE_FIRE_BARREL: return (Color){255, 140, 60, 255};
+        case FURNITURE_SINK:        return (Color){215, 235, 255, 255};
+        case FURNITURE_DOUBLE_BED:  return (Color){240, 170, 190, 255};
+        case FURNITURE_FRIDGE:      return (Color){225, 240, 240, 255};
+        case FURNITURE_DESK:        return (Color){150, 105, 70, 255};
+        case FURNITURE_SHELF:       return (Color){170, 120, 70, 255};
+        case FURNITURE_SOFA:        return (Color){200, 70, 70, 255};
+        case FURNITURE_TILL:        return (Color){240, 210, 90, 255};
+        default:                    return WHITE;
     }
 }
 
@@ -658,16 +703,16 @@ static void DrawCellGrid(void) {
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 CellType cell = GRID(x, y, z);
-                if (!CellBlocksMovement(cell)) continue;  // Only walls
+                if (!IsCutawayWall(cell)) continue;  // Only walls
 
                 float px = offset.x + x * size;
                 float py = offset.y + y * size;
 
                 // Check which sides border non-walls (those show the wall edge)
-                bool wallNorth = (y > 0) && CellBlocksMovement(GRID(x, y-1, z));
-                bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(GRID(x, y+1, z));
-                bool wallWest = (x > 0) && CellBlocksMovement(GRID(x-1, y, z));
-                bool wallEast = (x < gridWidth-1) && CellBlocksMovement(GRID(x+1, y, z));
+                bool wallNorth = (y > 0) && IsCutawayWall(GRID(x, y-1, z));
+                bool wallSouth = (y < gridHeight-1) && IsCutawayWall(GRID(x, y+1, z));
+                bool wallWest = (x > 0) && IsCutawayWall(GRID(x-1, y, z));
+                bool wallEast = (x < gridWidth-1) && IsCutawayWall(GRID(x+1, y, z));
 
                 // Calculate inset for dark fill - leave edge visible where no adjacent wall
                 float insetN = wallNorth ? 0 : edgeWidth;
@@ -2606,24 +2651,8 @@ static void DrawFurniture(void) {
         float sx = offset.x + f->x * size;
         float sy = offset.y + f->y * size;
 
-        // Sprite per furniture type
-        int sprite;
-        switch (f->type) {
-            case FURNITURE_LEAF_PILE:  sprite = SPRITE_grass_tall;  break;
-            case FURNITURE_GRASS_PILE: sprite = SPRITE_grass_tall;  break;
-            case FURNITURE_PLANK_BED:  sprite = SPRITE_bed;         break;
-            case FURNITURE_CHAIR:      sprite = SPRITE_chair;       break;
-            case FURNITURE_TOILET:     sprite = SPRITE_toilet;      break;
-            case FURNITURE_TABLE:      sprite = SPRITE_table;       break;
-            case FURNITURE_TAP:        sprite = SPRITE_counter;     break;   // placeholder, tinted blue
-            case FURNITURE_HEAT_GRATE: sprite = SPRITE_floor;       break;   // placeholder, tinted grey
-            case FURNITURE_FIRE_BARREL:sprite = SPRITE_generic;     break;   // placeholder, tinted orange
-            default:                   sprite = SPRITE_generic;     break;
-        }
-
-        Color tint = (f->type == FURNITURE_TAP) ? (Color){150, 200, 255, 255}
-                   : (f->type == FURNITURE_HEAT_GRATE) ? (Color){130, 130, 140, 255}
-                   : (f->type == FURNITURE_FIRE_BARREL) ? (Color){255, 140, 60, 255} : WHITE;
+        int sprite = FurnitureSprite(f->type);
+        Color tint = FurnitureTint(f->type);
         Color lightTint = GetLightColor(f->x, f->y, f->z, skyColor);
         tint = MultiplyColor(tint, lightTint);
 
@@ -3560,21 +3589,9 @@ static void DrawFrontView(void) {
             if (f->x < minX || f->x >= maxX) continue;
             float fScreenX = offset.x + f->x * size;
             float fScreenY = offset.y + (gridDepth - 1 - f->z) * size - layerOffsetY;
-            int fSprite;
-            switch (f->type) {
-                case FURNITURE_LEAF_PILE:  fSprite = SPRITE_grass_tall;  break;
-                case FURNITURE_GRASS_PILE: fSprite = SPRITE_grass_tall;  break;
-                case FURNITURE_PLANK_BED:  fSprite = SPRITE_bed;         break;
-                case FURNITURE_CHAIR:      fSprite = SPRITE_chair;       break;
-                case FURNITURE_TOILET:     fSprite = SPRITE_toilet;      break;
-                case FURNITURE_TABLE:      fSprite = SPRITE_table;       break;
-                case FURNITURE_TAP:        fSprite = SPRITE_counter;     break;   // placeholder
-                case FURNITURE_HEAT_GRATE: fSprite = SPRITE_floor;       break;   // placeholder
-                case FURNITURE_FIRE_BARREL:fSprite = SPRITE_generic;     break;   // placeholder
-                default:                   fSprite = SPRITE_generic;     break;
-            }
+            int fSprite = FurnitureSprite(f->type);
             Rectangle dest = {fScreenX, fScreenY, size, size};
-            FastSprite(atlas, SpriteGetRect(fSprite), dest, layerTint);
+            FastSprite(atlas, SpriteGetRect(fSprite), dest, MultiplyColor(layerTint, FurnitureTint(f->type)));
         }
 
         // Draw fire for this layer

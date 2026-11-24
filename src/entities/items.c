@@ -7,6 +7,7 @@
 #include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include "containers.h"  // for ContainerDef, GetContainerDef, GetOutermostContainer
+#include "furniture.h"   // CAPABILITY, CAP_COLD_STORAGE, fridgeSpoilageFactor
 #include "../simulation/temperature.h"  // for temperatureGrid
 #include "../simulation/balance.h"  // GameHoursToGameSeconds
 #include "../simulation/water.h"    // GetWaterFlow (drifting)
@@ -274,6 +275,11 @@ static void SpoilageTick(float dt) {
             const ContainerDef* cdef = GetContainerDef(items[outermost].type);
             if (cdef) rate = dt * cdef->spoilageModifier;
         }
+
+        // Kept on a fridge (cold storage on its cell): spoils slower
+        int sx = (int)(items[i].x / CELL_SIZE), sy = (int)(items[i].y / CELL_SIZE), sz = (int)items[i].z;
+        if (sx >= 0 && sx < gridWidth && sy >= 0 && sy < gridHeight && sz >= 0 && sz < gridDepth &&
+            (CAPABILITY(sx, sy, sz) & CAP_COLD_STORAGE)) rate *= fridgeSpoilageFactor;
 
         items[i].spoilageTimer += rate;
 

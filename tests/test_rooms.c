@@ -60,6 +60,7 @@ static void BuildWalledRoom(int x1, int y1, int x2, int y2) {
                 SetWallMaterial(x, y, 1, MAT_GRANITE);
                 ClearWallNatural(x, y, 1);
             }
+            SET_FLOOR(x, y, 2);   // a roof: unroofed rooms read as outdoors
         }
     }
 }
@@ -618,6 +619,138 @@ describe(railing) {
         expect(pen == GetRoomAt(9, 9, 1));
         expect(GetRoomAt(6, 4, 1) == pen);   // the railing itself is in the room
     }
+
+    it("a railing that comes before its room in scan order still joins it") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(2, 2, 12, 12);
+        for (int x = 3; x <= 11; x++) GRID(x, 3, 1) = CELL_RAILING;   // first interior row
+        UpdateRooms();
+        uint16_t rid = GetRoomAt(5, 6, 1);
+        expect(rid != ROOM_NONE);
+        expect(GetRoomAt(5, 3, 1) == rid);
+    }
+}
+
+// Room names dreamengine's buildings need (HALL, WC, BATHROOM, STAIRS, LOBBY, LIVING),
+// outdoors, and the furniture/capabilities behind them
+static DetectedRoom* RoomAt(int x, int y) { return GetRoom(GetRoomAt(x, y, 1)); }
+
+describe(building_rooms) {
+    it("a stove makes a kitchen") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        CreateWorkshop(5, 5, 1, WORKSHOP_STOVE);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_KITCHEN);
+    }
+
+    it("a fridge alone makes a kitchen") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        SpawnFurniture(5, 5, 1, FURNITURE_FRIDGE, MAT_IRON);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_KITCHEN);
+    }
+
+    it("a double bed makes a bedroom") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        SpawnFurniture(5, 5, 1, FURNITURE_DOUBLE_BED, MAT_OAK);
+        SpawnFurniture(4, 5, 1, FURNITURE_DESK, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_BEDROOM);
+    }
+
+    it("a sofa makes a living room, even with a dining set") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 9, 9);
+        SpawnFurniture(5, 5, 1, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(6, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(5, 7, 1, FURNITURE_SOFA, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_LIVING);
+    }
+
+    it("chairs without a table make a living room") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        SpawnFurniture(5, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        UpdateRooms();
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_LIVING);
+    }
+
+    it("a toilet alone is a WC, toilet and sink in a bigger room a bathroom") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(2, 2, 4, 5);       // 1x2 inside
+        SpawnFurniture(3, 3, 1, FURNITURE_TOILET, MAT_GRANITE);
+        BuildWalledRoom(6, 2, 10, 6);      // 3x3 inside
+        SpawnFurniture(7, 3, 1, FURNITURE_TOILET, MAT_GRANITE);
+        SpawnFurniture(9, 3, 1, FURNITURE_SINK, MAT_GRANITE);
+        UpdateRooms();
+        expect(RoomAt(3, 4)->type == ROOM_TYPE_WC);
+        expect(RoomAt(8, 5)->type == ROOM_TYPE_BATHROOM);
+    }
+
+    it("an empty room between two doors is a hall; with one door it stays a room") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(2, 2, 6, 6);
+        BuildWalledRoom(6, 2, 10, 6);      // shares the wall x=6
+        BuildWalledRoom(10, 2, 14, 6);
+        PlaceDoor(6, 4);
+        PlaceDoor(10, 4);
+        UpdateRooms();
+        expect(RoomAt(8, 4)->type == ROOM_TYPE_HALL);
+        expect(RoomAt(8, 4)->doorCount == 2);
+        expect(RoomAt(4, 4)->type == ROOM_TYPE_GENERIC);
+    }
+
+    it("a big empty hall with a door outside is a lobby") {
+        SetupFlatGround(20, 16);
+        BuildWalledRoom(3, 3, 9, 9);       // 5x5 inside
+        PlaceDoor(6, 9);
+        UpdateRooms();
+        expect(RoomAt(6, 6)->exteriorDoorCount == 1);
+        expect(RoomAt(6, 6)->type == ROOM_TYPE_LOBBY);
+    }
+
+    it("an empty room with a ladder is stairs") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 6, 6);
+        GRID(4, 4, 1) = CELL_LADDER_UP;
+        UpdateRooms();
+        expect(RoomAt(5, 5)->type == ROOM_TYPE_STAIRS);
+    }
+
+    it("walls without a roof are outdoors, whatever is in them") {
+        SetupFlatGround(16, 16);
+        BuildWalledRoom(3, 3, 8, 8);
+        for (int y = 3; y <= 8; y++) for (int x = 3; x <= 8; x++) CLEAR_FLOOR(x, y, 2);
+        SpawnFurniture(5, 5, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        UpdateRooms();
+        DetectedRoom* r = RoomAt(4, 4);
+        expect(r != NULL);
+        expect(r->outdoors);
+        expect(r->type == ROOM_TYPE_OUTDOORS);
+        expect(strcmp(RoomTypeName(ROOM_TYPE_OUTDOORS), "Outdoors") == 0);
+    }
+
+    it("furniture writes its capabilities, high bits included") {
+        SetupFlatGround(16, 16);
+        SpawnFurniture(2, 2, 1, FURNITURE_TOILET, MAT_GRANITE);
+        SpawnFurniture(3, 2, 1, FURNITURE_SINK, MAT_GRANITE);
+        int till = SpawnFurniture(4, 2, 1, FURNITURE_TILL, MAT_OAK);
+        SpawnFurniture(5, 2, 1, FURNITURE_SHELF, MAT_OAK);
+        expect(CAPABILITY(2, 2, 1) & CAP_TOILET);
+        expect(CAPABILITY(3, 2, 1) & CAP_WASHING);
+        expect(CAPABILITY(3, 2, 1) & CAP_WATER_SOURCE);
+        expect(CAPABILITY(4, 2, 1) == CAP_SELLING);
+        expect(HasNearbyCapability(5, 5, 1, CAP_SELLING | 0, 3));
+        expect(HasNearbyCapability(8, 2, 1, CAP_DISPLAY, 3));
+        RemoveFurniture(till);
+        expect(CAPABILITY(4, 2, 1) == 0);
+        RebuildCapabilityGrid();
+        expect(CAPABILITY(5, 2, 1) == CAP_DISPLAY);
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -627,5 +760,6 @@ int main(int argc, char *argv[]) {
     test(test_rooms);
     test(dining_table);
     test(railing);
+    test(building_rooms);
     return summary();
 }

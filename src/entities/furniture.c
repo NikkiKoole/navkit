@@ -12,21 +12,29 @@
 Furniture furniture[MAX_FURNITURE];
 int furnitureCount = 0;
 uint8_t* furnitureMoveCostGrid = NULL;   // allocated in grid_layers.c
-uint8_t* capabilityGrid = NULL;   // allocated in grid_layers.c
+CapabilityBits* capabilityGrid = NULL;   // allocated in grid_layers.c
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_NONE]       = { "None",       0.0f,    false, 0,  CAP_NONE },
-    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.7f,   false, 12, CAP_NONE },
-    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.7f,   false, 12, CAP_NONE },
-    [FURNITURE_PLANK_BED]  = { "Plank Bed",  1.0f,   false, 12, CAP_NONE },
-    [FURNITURE_CHAIR]      = { "Chair",      0.375f, false, 11, CAP_NONE },
-    [FURNITURE_TOILET]     = { "Toilet",     0.0f,    false, 11, CAP_NONE },
+    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.7f,   false, 12, CAP_SLEEPING },
+    [FURNITURE_GRASS_PILE] = { "Grass Pile", 0.7f,   false, 12, CAP_SLEEPING },
+    [FURNITURE_PLANK_BED]  = { "Plank Bed",  1.0f,   false, 12, CAP_SLEEPING },
+    [FURNITURE_CHAIR]      = { "Chair",      0.375f, false, 11, CAP_SEATING },
+    [FURNITURE_TOILET]     = { "Toilet",     0.0f,    false, 11, CAP_TOILET },
     // Not blocking (a blocking cell would drop out of its room), but costly to cross
-    [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE },
+    [FURNITURE_TABLE]      = { "Table",      0.0f,    false, 16, CAP_PREP_SURFACE | CAP_FLAT_SURFACE },
     [FURNITURE_TAP]        = { "Tap",        0.0f,    false, 11, CAP_WATER_SOURCE },
     // City heat: a grate is walked on (no cost), a barrel is stood next to
     [FURNITURE_HEAT_GRATE] = { "Heating Grate", 0.0f, false, 0,  CAP_HEAT, 1, 40 },
     [FURNITURE_FIRE_BARREL]= { "Burning Barrel", 0.0f, true, 0,  CAP_HEAT, 1, 150 },
+    // dreamengine's buildings. Not blocking for the same reason as the table.
+    [FURNITURE_SINK]       = { "Sink",       0.0f,    false, 16, CAP_WASHING | CAP_WATER_SOURCE },
+    [FURNITURE_DOUBLE_BED] = { "Double Bed", 1.0f,    false, 12, CAP_SLEEPING, 0, 0, 2 },
+    [FURNITURE_FRIDGE]     = { "Fridge",     0.0f,    false, 20, CAP_COLD_STORAGE },
+    [FURNITURE_DESK]       = { "Desk",       0.0f,    false, 16, CAP_FLAT_SURFACE },
+    [FURNITURE_SHELF]      = { "Shelf",      0.0f,    false, 20, CAP_DISPLAY },
+    [FURNITURE_SOFA]       = { "Sofa",       0.5f,    false, 11, CAP_SEATING },
+    [FURNITURE_TILL]       = { "Till",       0.0f,    false, 16, CAP_SELLING },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,
@@ -137,10 +145,46 @@ int GetFurnitureAt(int x, int y, int z) {
     return -1;
 }
 
+static int FurnitureCapacity(int fi) {
+    int n = furnitureDefs[furniture[fi].type].sleepers;
+    return n > 1 ? n : 1;
+}
+
+static bool RestingOn(int moverIdx, int fi) {
+    const Mover* m = &movers[moverIdx];
+    return m->active && m->needTarget == fi &&
+           (m->freetimeState == FREETIME_SEEKING_REST || m->freetimeState == FREETIME_RESTING);
+}
+
+bool FurnitureHasRoom(int fi) {
+    if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active) return false;
+    if (furniture[fi].occupant < 0) return true;
+    int cap = FurnitureCapacity(fi);
+    if (cap < 2) return false;
+    int n = 0;
+    for (int i = 0; i < moverCount; i++) if (RestingOn(i, fi)) n++;
+    return n < cap;
+}
+
+void ReserveFurniture(int fi, int moverIdx) {
+    if (fi < 0 || fi >= MAX_FURNITURE) return;
+    if (furniture[fi].occupant < 0) furniture[fi].occupant = moverIdx;
+}
+
+bool FurnitureReservedBy(int fi, int moverIdx) {
+    if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active) return false;
+    if (furniture[fi].occupant == moverIdx) return true;
+    return furniture[fi].occupant >= 0 && FurnitureCapacity(fi) > 1 && movers[moverIdx].needTarget == fi;
+}
+
 void ReleaseFurniture(int furnitureIdx, int moverIdx) {
     if (furnitureIdx >= 0 && furnitureIdx < MAX_FURNITURE &&
         furniture[furnitureIdx].occupant == moverIdx) {
         furniture[furnitureIdx].occupant = -1;
+        // A double bed: whoever else is in it holds it now
+        if (FurnitureCapacity(furnitureIdx) > 1)
+            for (int i = 0; i < moverCount; i++)
+                if (i != moverIdx && RestingOn(i, furnitureIdx)) { furniture[furnitureIdx].occupant = i; break; }
     }
 }
 
@@ -172,12 +216,12 @@ void RebuildCapabilityGrid(void) {
     CLEAR_GRID_LAYER(capabilityGrid, 0);
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active) continue;
-        uint8_t caps = furnitureDefs[furniture[i].type].capabilities;
+        CapabilityBits caps = furnitureDefs[furniture[i].type].capabilities;
         if (caps) SetCapability(furniture[i].x, furniture[i].y, furniture[i].z, caps);
     }
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         if (!workshops[w].active) continue;
-        uint8_t caps = workshopDefs[workshops[w].type].capabilities;
+        CapabilityBits caps = workshopDefs[workshops[w].type].capabilities;
         if (caps) SetCapability(workshops[w].workTileX, workshops[w].workTileY, workshops[w].z, caps);
         if (WorkshopHeatLevel(workshops[w].type) > 0 && workshops[w].fuelTileX >= 0)
             SetCapability(workshops[w].fuelTileX, workshops[w].fuelTileY, workshops[w].z, CAP_HEAT);
@@ -187,6 +231,7 @@ void RebuildCapabilityGrid(void) {
 // --- Heat ---
 
 int warmSpotTemp = 28;
+float fridgeSpoilageFactor = 0.25f;   // setting fridgeSpoil
 
 int WorkshopHeatLevel(int workshopType) {
     switch (workshopType) {
@@ -258,7 +303,7 @@ void FurnitureHeatTick(void) {
     }
 }
 
-void SetCapability(int x, int y, int z, uint8_t capBits) {
+void SetCapability(int x, int y, int z, CapabilityBits capBits) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     CAPABILITY(x, y, z) |= capBits;
 }
@@ -268,7 +313,7 @@ void ClearCapability(int x, int y, int z) {
     CAPABILITY(x, y, z) = 0;
 }
 
-bool HasNearbyCapability(int x, int y, int z, uint8_t capBits, int radius) {
+bool HasNearbyCapability(int x, int y, int z, CapabilityBits capBits, int radius) {
     if (!capBits) return true;  // no requirement = always satisfied
     int x0 = x - radius, x1 = x + radius;
     int y0 = y - radius, y1 = y + radius;

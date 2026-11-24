@@ -544,7 +544,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
 
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active) continue;
-        if (furniture[i].occupant >= 0) continue;  // Already occupied
+        if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only
 
         const FurnitureDef* def = GetFurnitureDef(furniture[i].type);
@@ -567,7 +567,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
     if (bestIdx >= 0) {
         // Reserve furniture and path to it
         EventLog("Mover %d SEEKING_REST furniture=%d (%s)", moverIdx, bestIdx, GetFurnitureDef(furniture[bestIdx].type)->name);
-        furniture[bestIdx].occupant = moverIdx;
+        ReserveFurniture(bestIdx, moverIdx);
         m->freetimeState = FREETIME_SEEKING_REST;
         moverRepathFails[moverIdx] = 0;
         m->needTarget = bestIdx;
@@ -982,7 +982,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             int fi = m->needTarget;
             if (fi >= 0) {
                 // Validate furniture still exists and is reserved by us
-                if (fi >= MAX_FURNITURE || !furniture[fi].active || furniture[fi].occupant != moverIdx) {
+                if (fi >= MAX_FURNITURE || !FurnitureReservedBy(fi, moverIdx)) {
                     // Lost reservation — reset
                     if (fi >= 0 && fi < MAX_FURNITURE) ReleaseFurniture(fi, moverIdx);
                     m->freetimeState = FREETIME_NONE;
@@ -1048,7 +1048,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     AddMoodlet(m, MOODLET_SLEPT_ON_GROUND);
                 } else if (m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
                     FurnitureType ft = furniture[m->needTarget].type;
-                    if (ft == FURNITURE_PLANK_BED)
+                    if (GetFurnitureDef(ft)->restRate >= 1.0f)   // a real bed (plank, double)
                         AddMoodlet(m, MOODLET_SLEPT_WELL);
                     else
                         AddMoodlet(m, MOODLET_SLEPT_POORLY);

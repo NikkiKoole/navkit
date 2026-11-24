@@ -589,6 +589,34 @@ describe(furniture_rest_seeking) {
         }
     }
 
+    it("a double bed takes two movers, a third falls back to the ground") {
+        SetupClean();
+        int mi1 = SetupMover(5, 5);
+        int mi2 = SetupMover(6, 5);
+        int mi3 = SetupMover(7, 5);
+        for (int k = 0; k < 3; k++) { movers[k].hunger = 1.0f; movers[k].energy = 0.19f; }
+        int bed = SpawnFurniture(8, 5, 1, FURNITURE_DOUBLE_BED, 0);
+        expect(bed >= 0);
+
+        SimNeedsTick();
+
+        int inBed = (movers[mi1].needTarget == bed) + (movers[mi2].needTarget == bed) + (movers[mi3].needTarget == bed);
+        expect(inBed == 2);
+        expect(!FurnitureHasRoom(bed));
+        // Both keep their place while walking there; the first leaving hands it to the other
+        int first = furniture[bed].occupant;
+        int second = -1;
+        for (int k = 0; k < 3; k++) if (k != first && movers[k].needTarget == bed) second = k;
+        expect(first >= 0 && second >= 0);
+        expect(FurnitureReservedBy(bed, first));
+        expect(FurnitureReservedBy(bed, second));
+        ReleaseFurniture(bed, first);
+        movers[first].needTarget = -1;
+        movers[first].freetimeState = FREETIME_NONE;
+        expect(furniture[bed].occupant == second);
+        expect(FurnitureHasRoom(bed));
+    }
+
     it("a mover resting in a bed recovers faster than on the ground") {
         SetupClean();
         int mi_bed = SetupMover(5, 5);

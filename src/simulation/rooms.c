@@ -12,6 +12,7 @@
 #include "../entities/stockpiles.h"
 #include "lighting.h"
 #include "floordirt.h"
+#include "weather.h"   // IsExposedToSky
 
 uint16_t* roomGrid = NULL;   // allocated in grid_layers.c
 DetectedRoom rooms[MAX_DETECTED_ROOMS];
@@ -33,7 +34,9 @@ static bool visited[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 static bool IsCookingWorkshop(WorkshopType type) {
     return type == WORKSHOP_CAMPFIRE ||
            type == WORKSHOP_GROUND_FIRE ||
-           type == WORKSHOP_HEARTH;
+           type == WORKSHOP_HEARTH ||
+           type == WORKSHOP_STOVE ||      // the dollhouse / city kitchen
+           type == WORKSHOP_COUNTER;
 }
 
 static bool IsCraftingWorkshop(WorkshopType type) {
@@ -52,9 +55,7 @@ static bool IsCraftingWorkshop(WorkshopType type) {
 }
 
 static bool IsBedFurniture(FurnitureType type) {
-    return type == FURNITURE_PLANK_BED ||
-           type == FURNITURE_LEAF_PILE ||
-           type == FURNITURE_GRASS_PILE;
+    return (GetFurnitureDef(type)->capabilities & CAP_SLEEPING) != 0;
 }
 
 static float ComputeLightLevel(int x, int y, int z) {
@@ -136,8 +137,12 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
 // --- Room classification ---
 
 static void ClassifyRoom(DetectedRoom *room) {
-    // Priority order: kitchen > workshop > barracks > bedroom > dining > storage > generic
-    if (room->cookingWorkshopCount > 0) {
+    // Open air first: a walled garden with a bench is a garden, not a living room
+    bool empty = room->furnCount == 0 && room->cookingWorkshopCount == 0 &&
+                 room->craftingWorkshopCount == 0 && room->stockpileCellCount == 0;
+    if (room->outdoors) {
+        room->type = ROOM_TYPE_OUTDOORS;
+    } else if (room->cookingWorkshopCount > 0 || room->coldStorageCount > 0) {
         room->type = ROOM_TYPE_KITCHEN;
     } else if (room->craftingWorkshopCount > 0) {
         room->type = ROOM_TYPE_WORKSHOP;
@@ -145,10 +150,24 @@ static void ClassifyRoom(DetectedRoom *room) {
         room->type = ROOM_TYPE_BARRACKS;
     } else if (room->bedCount == 1) {
         room->type = ROOM_TYPE_BEDROOM;
+    } else if (room->toiletCount > 0 && (room->washingCount == 0 || room->cellCount <= 3)) {
+        room->type = ROOM_TYPE_WC;             // a toilet, at most a hand basin squeezed in
+    } else if (room->washingCount > 0) {
+        room->type = ROOM_TYPE_BATHROOM;
+    } else if (room->sofaCount > 0) {
+        room->type = ROOM_TYPE_LIVING;         // a sofa makes a living room, table or not
     } else if (room->diningSetCount > 0) {
         room->type = ROOM_TYPE_DINING;
+    } else if (room->seatCount > 0) {
+        room->type = ROOM_TYPE_LIVING;         // seats without a table
     } else if (room->stockpileCellCount > 0) {
         room->type = ROOM_TYPE_STORAGE;
+    } else if (empty && room->exteriorDoorCount > 0 && room->cellCount >= 12) {
+        room->type = ROOM_TYPE_LOBBY;
+    } else if (empty && room->verticalCount > 0) {
+        room->type = ROOM_TYPE_STAIRS;
+    } else if (empty && room->doorCount >= 2) {
+        room->type = ROOM_TYPE_HALL;
     } else {
         room->type = ROOM_TYPE_GENERIC;
     }
@@ -256,6 +275,10 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             constructedFloors++;
         }
 
+        if (!IsExposedToSky(cx, cy, z)) room->roofedCellCount++;
+        CellType here = GRID(cx, cy, z);
+        if (CellIsLadder(here) || CellIsRamp(here) || here == CELL_ELEVATOR) room->verticalCount++;
+
         // Furniture at this cell
         int furnIdx = GetFurnitureAt(cx, cy, z);
         if (furnIdx >= 0) {
@@ -265,7 +288,13 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
                 furnTypesSeen[ft] = true;
                 room->furnVariety++;
             }
+            CapabilityBits caps = GetFurnitureDef(ft)->capabilities;
             if (IsBedFurniture(ft)) room->bedCount++;
+            if (caps & CAP_SEATING) room->seatCount++;
+            if (caps & CAP_TOILET) room->toiletCount++;
+            if (caps & CAP_WASHING) room->washingCount++;
+            if (caps & CAP_COLD_STORAGE) room->coldStorageCount++;
+            if (ft == FURNITURE_SOFA) room->sofaCount++;
             if (ft == FURNITURE_CHAIR) room->chairCount++;
             if (ft == FURNITURE_TABLE) {
                 room->tableCount++;
@@ -337,8 +366,9 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
         }
     }
 
-    ClassifyRoom(room);
+    room->outdoors = room->roofedCellCount * 2 < cellCount;
     room->quality = ComputeQuality(room);
+    // Classified once the whole level is done: its doors need the rooms on their other side
 }
 
 // --- Main recompute ---
@@ -350,12 +380,17 @@ static void RecomputeRooms(void) {
 
     for (int z = 0; z < gridDepth; z++) {
         CLEAR_GRID_PLANE(visited, 0);
+        int firstRoomOnZ = roomCount + 1;
 
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (visited[y][x]) continue;
 
                 CellType cell = GRID(x, y, z);
+
+                // Railings are no seed but stay unvisited: a room's flood takes them in (a
+                // railing row before the room in row-major order must not be marked here)
+                if (cell == CELL_RAILING) continue;
 
                 // Skip walls/windows/doors — walls and windows aren't rooms,
                 // doors are assigned in a post-pass
@@ -395,7 +430,36 @@ static void RecomputeRooms(void) {
             }
         }
 
-        // Post-pass: assign door cells to an adjacent room
+        // Post-pass: doors per room (and which lead outside), then assign door cells to an
+        // adjacent room
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (GRID(x, y, z) != CELL_DOOR) continue;
+                if (ROOM(x, y, z) != ROOM_NONE) continue;
+                uint16_t sides[4];
+                int nSides = 0;
+                bool outside = false;
+                static const int ddx[] = {1, -1, 0, 0};
+                static const int ddy[] = {0, 0, 1, -1};
+                for (int d = 0; d < 4; d++) {
+                    int nx = x + ddx[d], ny = y + ddy[d];
+                    if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) { outside = true; continue; }
+                    uint16_t adj = ROOM(nx, ny, z);
+                    if (adj == ROOM_NONE) {
+                        if (IsCellWalkableAt(z, ny, nx)) outside = true;
+                        continue;
+                    }
+                    if (rooms[adj].outdoors) outside = true;
+                    bool seen = false;
+                    for (int k = 0; k < nSides; k++) if (sides[k] == adj) seen = true;
+                    if (!seen) sides[nSides++] = adj;
+                }
+                for (int k = 0; k < nSides; k++) {
+                    rooms[sides[k]].doorCount++;
+                    if (outside) rooms[sides[k]].exteriorDoorCount++;
+                }
+            }
+        }
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (GRID(x, y, z) != CELL_DOOR) continue;
@@ -417,6 +481,8 @@ static void RecomputeRooms(void) {
                 }
             }
         }
+
+        for (int r = firstRoomOnZ; r <= roomCount; r++) ClassifyRoom(&rooms[r]);
     }
 }
 
@@ -455,7 +521,8 @@ DetectedRoom* GetRoom(uint16_t roomId) {
 const char* RoomTypeName(RoomType type) {
     static const char* names[] = {
         "Room", "Kitchen", "Workshop", "Barracks",
-        "Bedroom", "Dining Room", "Storage"
+        "Bedroom", "Dining Room", "Storage",
+        "Living Room", "Hall", "WC", "Bathroom", "Stairs", "Lobby", "Outdoors"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == ROOM_TYPE_COUNT,
                    "RoomTypeName out of sync with RoomType enum");

@@ -87,7 +87,7 @@ typedef struct {
     ItemMatchType inputItemMatch; // how to match input (ITEM_MATCH_EXACT or ITEM_MATCH_ANY_FUEL)
     int requiredQuality;         // QualityType enum value, or QUALITY_COUNT (5) = no requirement
     int requiredQualityLevel;    // minimum quality level needed (0 = no requirement)
-    uint8_t requiredNearbyCapability; // CapabilityFlag bitmask — 0 = no requirement
+    uint16_t requiredNearbyCapability; // CapabilityBits (CapabilityFlag bitmask) — 0 = no requirement
     uint8_t proximityRadius;         // how close capability must be (tiles) — 0 defaults to 2
 } Recipe;
 
@@ -102,7 +102,7 @@ typedef struct {
     const Recipe* recipes;
     int recipeCount;
     bool passive;           // Auto-converts items without crafter (timer-based)
-    uint8_t capabilities;   // CapabilityFlag bitmask — written to capabilityGrid on create
+    uint16_t capabilities;  // CapabilityBits (CapabilityFlag bitmask) — written to capabilityGrid on create
 } WorkshopDef;
 
 // Bill modes

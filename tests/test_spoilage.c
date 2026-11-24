@@ -11,6 +11,8 @@
 #include "../src/simulation/balance.h"
 #include "../src/core/time.h"
 #include "../src/simulation/temperature.h"
+#include "../src/entities/furniture.h"
+#include "../src/entities/mover.h"   // CELL_SIZE
 #include "test_helpers.h"
 #include <string.h>
 #include <math.h>
@@ -502,6 +504,22 @@ describe(spoilage_e2e) {
     }
 }
 
+// A fridge (CAP_COLD_STORAGE on its cell): food on it spoils at fridgeSpoilageFactor
+describe(spoilage_fridge) {
+    it("food on a fridge spoils slower, next to it at the normal rate") {
+        InitTestGridFromAscii("....\n....\n");
+        ClearItems();
+        ClearFurniture();
+        expect(SpawnFurniture(1, 0, 1, FURNITURE_FRIDGE, MAT_IRON) >= 0);
+        int cold = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 1, ITEM_BERRIES);
+        int warm = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 1, ITEM_BERRIES);
+        TickSpoilage(100.0f);
+        expect(items[warm].spoilageTimer >= 99.0f);
+        expect(fabsf(items[cold].spoilageTimer - 100.0f * fridgeSpoilageFactor) < 1.0f);
+        ClearFurniture();
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
 
@@ -513,6 +531,7 @@ int main(int argc, char* argv[]) {
     test(spoilage_rotten_fuel);
     test(spoilage_stockpile);
     test(spoilage_e2e);
+    test(spoilage_fridge);
 
     return summary();
 }

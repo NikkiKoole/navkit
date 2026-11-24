@@ -28,6 +28,14 @@ typedef enum {
     ROOM_TYPE_BEDROOM,     // 1 bed
     ROOM_TYPE_DINING,      // has a dining set (table with a chair next to it)
     ROOM_TYPE_STORAGE,     // has stockpile
+    // append only (dreamengine's room names map 1:1); see ClassifyRoom for the rules
+    ROOM_TYPE_LIVING,      // a sofa, or seats without a table
+    ROOM_TYPE_HALL,        // empty, connects 2+ doors
+    ROOM_TYPE_WC,          // a toilet, at most a hand basin in a tiny room
+    ROOM_TYPE_BATHROOM,    // washing (sink, bath, shower), maybe a toilet
+    ROOM_TYPE_STAIRS,      // empty but for ladders/ramps/a shaft
+    ROOM_TYPE_LOBBY,       // a big empty hall with a door to the outside
+    ROOM_TYPE_OUTDOORS,    // enclosed but mostly open to the sky: garden, yard, balcony, terrace
     ROOM_TYPE_COUNT
 } RoomType;
 
@@ -46,6 +54,16 @@ typedef struct {
     int cookingWorkshopCount;
     int craftingWorkshopCount;
     int stockpileCellCount;
+    int sofaCount;
+    int seatCount;               // furniture with CAP_SEATING (chairs, sofas)
+    int toiletCount;             // CAP_TOILET
+    int washingCount;            // CAP_WASHING (sinks)
+    int coldStorageCount;        // CAP_COLD_STORAGE (fridges)
+    int verticalCount;           // ladder, ramp and shaft cells
+    int doorCount;               // doors on its edge
+    int exteriorDoorCount;       // ... of which lead outside (no room, or an outdoors one)
+    int roofedCellCount;         // cells with something above (not IsExposedToSky)
+    bool outdoors;               // less than half its cells roofed
 
     // Quality inputs (computed during scan)
     float avgLight;              // 0-15 scale

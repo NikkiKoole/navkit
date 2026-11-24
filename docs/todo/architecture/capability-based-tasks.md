@@ -22,6 +22,13 @@ Unified system for workshop crafting AND daily life activities. Extends [worksho
 counter) and furniture write it; a recipe's `requiredNearbyCapability` is checked in
 `ShouldBillRun()` with `HasNearbyCapability()` over a square of radius 8.
 
+**Building capabilities (2026-11-24, for dreamengine's 46 building kinds):** the grid is
+16 bits now (`CapabilityBits`); furniture marks CAP_WASHING (sink), CAP_TOILET, CAP_SEATING
+(chair, sofa), CAP_FLAT_SURFACE (table, desk), CAP_SLEEPING (beds, piles), CAP_COLD_STORAGE
+(fridge: food on its cell spoils at `fridgeSpoil`), CAP_DISPLAY (shelf), CAP_SELLING (till,
+no money yet). On/off flags like heat; levels stay on the def (`restRate`). Rooms count them
+(`rooms.c`: washing + toilet -> WC/bathroom, cold storage -> kitchen, seating -> living room).
+
 **Not built yet:** everything below that makes it general. The recipe still belongs to a
 workshop (the bill hangs on the stove); the capability is only an extra condition. Gaps,
 in rough order:
