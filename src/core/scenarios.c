@@ -3395,11 +3395,12 @@ static void SetupCarsCity(void) {
 
 // 3000 ticks: trips get done, nobody touches anybody or a wall, nobody runs a red light
 static bool CarsCityCheck(char* why, int whyLen) {
-    int trips = 0;
-    for (int i = 0; i < carCount; i++) trips += cars[i].legsDone;
-    if (trips < carCount / 4 || trafficOverlapMax > 0 || trafficOffRoadMax > 0 || trafficRedRuns > 0) {
-        snprintf(why, (size_t)whyLen, "cars-city: %d trips (want >= %d), %d car pairs touching, %d cars touching walls, %d red lights run",
-                 trips, carCount / 4, trafficOverlapMax, trafficOffRoadMax, trafficRedRuns);
+    // (cars start parked and a trip counts when they park again: few trips in 3000 ticks)
+    int trips = 0, drove = 0;
+    for (int i = 0; i < carCount; i++) { trips += cars[i].legsDone; if (cars[i].driveTime > 0) drove++; }
+    if (trips < 3 || drove < carCount / 2 || trafficOverlapMax > 0 || trafficOffRoadMax > 0 || trafficRedRuns > 0) {
+        snprintf(why, (size_t)whyLen, "cars-city: %d trips (want >= 3), %d cars drove (want >= %d), %d car pairs touching, %d cars touching walls, %d red lights run",
+                 trips, drove, carCount / 2, trafficOverlapMax, trafficOffRoadMax, trafficRedRuns);
         return false;
     }
     return true;
