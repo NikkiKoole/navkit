@@ -206,6 +206,17 @@ int GetSeasonalSurfaceTemp(void) {
     // When both amplitudes are 0, use ambientSurfaceTemp (backward compatible)
     if (seasonalAmplitude == 0 && diurnalAmplitude == 0) return ambientSurfaceTemp;
 
+    // Every GetTemperature call lands here (the freezing sweep alone: ~20k cells a tick on the
+    // island), and the answer only changes with the clock: two sinf per call cost ~0.4 ms a tick.
+    // Remember the last answer and its inputs.
+    static int lastSeasonal = -1, lastDiurnal = -1, lastBase = 0, lastDaysPerSeason = -1, lastDay = -1;
+    static float lastTimeOfDay = -1.0f;
+    static int lastTemp = 0;
+    if (seasonalAmplitude == lastSeasonal && diurnalAmplitude == lastDiurnal && baseSurfaceTemp == lastBase &&
+        daysPerSeason == lastDaysPerSeason && dayNumber == lastDay && timeOfDay == lastTimeOfDay) {
+        return lastTemp;
+    }
+
     int temp = baseSurfaceTemp;
 
     // Seasonal cycle: sine over the year (peak summer, trough winter)
@@ -222,6 +233,9 @@ int GetSeasonalSurfaceTemp(void) {
         temp += (int)diurnalOffset;
     }
 
+    lastSeasonal = seasonalAmplitude; lastDiurnal = diurnalAmplitude; lastBase = baseSurfaceTemp;
+    lastDaysPerSeason = daysPerSeason; lastDay = dayNumber; lastTimeOfDay = timeOfDay;
+    lastTemp = temp;
     return temp;
 }
 

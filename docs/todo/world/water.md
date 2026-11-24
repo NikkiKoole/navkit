@@ -92,8 +92,12 @@ cells are processed per tick, scanning bottom to top.
   cell's turn every ~1.4 ticks instead of ~6), tick 1.20 -> 1.33 ms, water 0.39 -> 0.48; survival
   tick 0.92 -> 1.01 ms, water back to 2.3-3.6k cells (fair alone: 3.9-4.9k). Flow overlay: stronger,
   cleaner currents. Open: island lowland water still grows slowly (z4 22.6k -> 31k cells over
-  36k ticks, slowing) and freezing costs ~0.6 ms with that much water (`GetTemperature` calls
-  `sinf` per cell).
+  36k ticks, slowing). Freezing with that much water: fixed 2026-11-24 (next item).
+- **Freezing sweep cheaper** (2026-11-24): `GetSeasonalSurfaceTemp` remembers its last answer
+  (two `sinf` per call, and every `GetTemperature` lands there), and the freezing sweep takes the
+  ambient once per level and reads only the cell's offset. Island: Freezing 0.45 -> 0.16 ms/tick,
+  tick 1.18 -> 0.87 ms; survival 0.086 -> 0.053 ms. Same temperatures (island-winter output
+  identical).
 
 - **The current is used** (2026-11-24): flowing water draws light flecks sliding downstream
   (`DrawWaterFlecks` in `rendering.c`, setting `waterFlecks`; still water unchanged, byte-identical;

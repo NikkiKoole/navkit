@@ -1101,6 +1101,8 @@ void UpdateWaterFreezing(void) {
     int yEnd = (int)((long)gridHeight * (band + 1) / bands);
     
     for (int z = 0; z < gridDepth; z++) {
+        // GetTemperature is ambient(z) + the cell's offset, clamped: ambient once per level
+        int ambient = GetAmbientTemperature(z);
         for (int y = yStart; y < yEnd; y++) {
             FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
                 // Most of the map is dry: at the start of each 16-cell run, skip the whole run
@@ -1116,7 +1118,9 @@ void UpdateWaterFreezing(void) {
                 // Skip empty cells
                 if (cell->level == 0) continue;
                 
-                int temp = GetTemperature(x, y, z);  // Celsius
+                int temp = ambient + TEMPERATURE(x, y, z).offset;   // = GetTemperature (Celsius)
+                if (temp < TEMP_MIN) temp = TEMP_MIN;
+                if (temp > TEMP_MAX) temp = TEMP_MAX;
                 // The sea doesn't freeze (salt, waves): the tide's sea, or water at or below the
                 // sea beyond the map edge (the island's sea; lakes and rivers lie above it)
                 bool sea = cell->isSea || z <= waterEdgeSeaZ;
