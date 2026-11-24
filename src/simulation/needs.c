@@ -311,6 +311,32 @@ static int ToiletComfort(int fi) {
 // The free toilet (anything with CAP_TOILET) on this z that scores best: comfort, then
 // distance (comfort / (1 + cells away), as rest picks a bed)
 int latrineDirtPerUse = 40;   // setting latrineDirt
+int toiletDryDirtPerUse = 15; // setting toiletDryDirt: a toilet nobody could flush
+#define TOILET_FLUSH_REACH 3  // cells: a tap or sink, or a pot of water this close flushes it
+
+// Flush a toilet after use: a water source next to it (tap, sink: plumbing for now) costs
+// nothing, else one free water item close by (a pot kept full by the fill-water-pot job) is
+// used up. False = nothing to flush with: a dry toilet.
+static bool FlushToilet(int fi) {
+    const Furniture* f = &furniture[fi];
+    if (HasNearbyCapability(f->x, f->y, f->z, CAP_WATER_SOURCE, TOILET_FLUSH_REACH)) return true;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active || items[i].type != ITEM_WATER || items[i].reservedBy != -1) continue;
+        if ((int)items[i].z != f->z) continue;
+        if (items[i].state == ITEM_IN_CONTAINER) {
+            if (!IsItemAccessible(i)) continue;
+        } else if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) {
+            continue;
+        }
+        int ix = (int)(items[i].x / CELL_SIZE), iy = (int)(items[i].y / CELL_SIZE);
+        if (abs(ix - f->x) > TOILET_FLUSH_REACH || abs(iy - f->y) > TOILET_FLUSH_REACH) continue;
+        if (items[i].stackCount > 1) items[i].stackCount--;
+        else DeleteItem(i);
+        EventLog("Toilet %d flushed with a water item at (%d,%d,%d)", fi, ix, iy, f->z);
+        return true;
+    }
+    return false;
+}
 
 static int FindBestFreeToilet(float x, float y, int z) {
     int bestIdx = -1;
@@ -1667,12 +1693,16 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->needProgress >= GameHoursToGameSeconds(balance.toiletUseDurationGH)) {
                 m->bladder = 1.0f;
                 int fi = m->needTarget;
-                // A pit latrine smells: each use dirties its floor (cleaning, room quality,
-                // the filthy moodlet already follow from floor dirt)
-                if (fi >= 0 && fi < MAX_FURNITURE && furniture[fi].active && ToiletComfort(fi) <= 1) {
-                    int lx = furniture[fi].x, ly = furniture[fi].y, lz = furniture[fi].z;
-                    int d = GetFloorDirt(lx, ly, lz) + latrineDirtPerUse;
-                    SetFloorDirt(lx, ly, lz, d);   // clamps at DIRT_MAX
+                // A pit latrine smells, and so does a toilet nobody can flush: each use
+                // dirties its floor (cleaning, room quality, the filthy moodlet follow from
+                // floor dirt). Water close by flushes a toilet clean.
+                if (fi >= 0 && fi < MAX_FURNITURE && furniture[fi].active) {
+                    int dirt = ToiletComfort(fi) <= 1 ? latrineDirtPerUse
+                             : FlushToilet(fi)        ? 0 : toiletDryDirtPerUse;
+                    if (dirt > 0) {
+                        int lx = furniture[fi].x, ly = furniture[fi].y, lz = furniture[fi].z;
+                        SetFloorDirt(lx, ly, lz, GetFloorDirt(lx, ly, lz) + dirt);   // clamps at DIRT_MAX
+                    }
                 }
                 if (fi >= 0 && fi < MAX_FURNITURE) furniture[fi].occupant = -1;
                 m->freetimeState = FREETIME_NONE;

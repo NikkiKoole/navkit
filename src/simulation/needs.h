@@ -38,6 +38,7 @@ int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
 // right there), else onto the ground as litter. It becomes a real item only then.
 extern int trashBinWalkCells;
 extern int latrineDirtPerUse;   // floor dirt a pit latrine gets per use (setting latrineDirt)
+extern int toiletDryDirtPerUse; // ... a toilet without water to flush it (setting toiletDryDirt)
 int FindTrashBinFor(int moverIdx, ItemType trash);   // bin item index with room, or -1
 
 #endif

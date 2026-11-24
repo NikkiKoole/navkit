@@ -14,6 +14,7 @@ static bool test_verbose = false;
 #include "../src/entities/items.h"
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
+#include "../src/entities/containers.h"
 #include "../src/entities/workshops.h"
 #include "../src/entities/furniture.h"
 #include "../src/simulation/needs.h"
@@ -77,6 +78,17 @@ static void FillStage(int bpIdx) {
         }
 }
 
+static int WaterUnits(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_WATER) n += items[i].stackCount;
+    return n;
+}
+
+static void UseToiletUntilDone(int mi) {
+    for (int i = 0; i < 2000 && movers[mi].bladder < 1.0f; i++) ProcessFreetimeNeeds();
+}
+
 describe(survival_toilet) {
     it("a pit latrine blueprint (sticks) and a toilet blueprint (planks) become furniture") {
         SetupGround();
@@ -129,11 +141,11 @@ describe(survival_toilet) {
         expect(movers[mi].needTarget == latrine);
     }
 
-    it("using a pit latrine dirties its floor, a toilet does not") {
+    it("using a pit latrine dirties its floor most, a dry toilet a little") {
         SetupGround();
         int latrine = SpawnFurniture(6, 5, 1, FURNITURE_PIT_LATRINE, MAT_OAK);
         int mi = SetupNeedyMover(5, 5);
-        for (int i = 0; i < 2000 && (movers[mi].bladder < 1.0f); i++) ProcessFreetimeNeeds();
+        UseToiletUntilDone(mi);
         expect(movers[mi].bladder >= 1.0f);
         expect(GetFloorDirt(6, 5, 1) == latrineDirtPerUse);
         expect(furniture[latrine].occupant == -1);
@@ -141,9 +153,43 @@ describe(survival_toilet) {
         SetupGround();
         SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
         mi = SetupNeedyMover(5, 5);
-        for (int i = 0; i < 2000 && (movers[mi].bladder < 1.0f); i++) ProcessFreetimeNeeds();
+        UseToiletUntilDone(mi);
         expect(movers[mi].bladder >= 1.0f);
+        expect(GetFloorDirt(6, 5, 1) == toiletDryDirtPerUse);
+        expect(toiletDryDirtPerUse < latrineDirtPerUse);
+    }
+
+    it("a tap or sink within 3 cells flushes a toilet clean") {
+        SetupGround();
+        SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
+        SpawnFurniture(9, 5, 1, FURNITURE_SINK, MAT_GRANITE);
+        int mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
         expect(GetFloorDirt(6, 5, 1) == 0);
+    }
+
+    it("a pot of water by the toilet flushes it, one water at a time") {
+        SetupGround();
+        SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
+        int pot = SpawnItem(7 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_CLAY_POT);
+        expect(pot >= 0);
+        for (int i = 0; i < 2; i++) {
+            int w = SpawnItem(items[pot].x, items[pot].y, 1.0f, ITEM_WATER);
+            PutItemInContainer(w, pot);
+        }
+        expect(WaterUnits() == 2);
+        int mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
+        expect(GetFloorDirt(6, 5, 1) == 0);
+        expect(WaterUnits() == 1);
+
+        // far away water doesn't count
+        SetupGround();
+        SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
+        SpawnItem(12 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_WATER);
+        mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
+        expect(GetFloorDirt(6, 5, 1) == toiletDryDirtPerUse);
     }
 
     it("a room with a pit latrine reads as a WC") {

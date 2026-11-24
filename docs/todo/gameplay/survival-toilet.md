@@ -1,7 +1,7 @@
 # Survival toilet: from the bush to a flushing toilet
 
-> Status: partial (2026-11-24). Levels 0-2 built (bush in survival, pit latrine, toilet);
-> 3-4 (bucket flush, pipes) are plans. Pipes share their model with dreamengine's
+> Status: partial (2026-11-24). Levels 0-2 built (bush in survival, pit latrine, toilet) and
+> 3a (bucket flush); 3b (cesspit + drain pipes) and 4 (supply pipes) are plans. Pipes share their model with dreamengine's
 > plumbing proposal (`~/Projects/dreamengine/docs/design/nk-plumbing.md`): one `pipeGrid` layer,
 > stacks as wall cells, a fixture only works when connected.
 
@@ -42,6 +42,12 @@ no fall", "cistern empty"), so the answer to "why not?" is something on the map.
 - Each use of a latrine adds `latrineDirt` (40) floor dirt to its cell: the filthy moodlet,
   cleaning and room quality follow from floor dirt. A toilet stays clean.
 - A room with a latrine reads as a WC. Tests: `tests/test_toilet.c`.
+- **3a, bucket flush:** after each use a toilet flushes if there is water within 3 cells: a tap
+  or sink (CAP_WATER_SOURCE, plumbing for now: costs nothing) or a free water item (a pot kept
+  full by the existing fill-water-pot job, one water used per flush). Unflushed it is a dry
+  toilet: `toiletDryDirt` (15) per use. So: latrine 40, dry toilet 15, flushed 0. The
+  dollhouse toilet flushes from its bathroom sink. Keep a stockpile with water pots next to a
+  survival toilet and it stays clean.
 - No new items, no save bump. Not yet: the pit filling up (needs a counter per furniture).
 
 ## The ladder
@@ -82,7 +88,7 @@ Levels 1-2 need no new systems. 3 brings the first pipes (drain only), 4 the sec
   over a pit by a construction recipe, like the plank bed. Comfort level 2.
 - Rooms already read a room with a toilet as a WC.
 
-### 3. Bucket flush and a cesspit
+### 3. Bucket flush and a cesspit (3a, the flush, is built: see above; 3b is the rest)
 
 - A water barrel next to the toilet: a fixed container (like the trash bin) that holds water;
   a haul job keeps it filled from the brook (movers already carry water in pots).
