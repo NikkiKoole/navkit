@@ -61,4 +61,33 @@ void StockpileToggleMaterial(int spIdx, int materialFilterIdx);   // STOCKPILE_M
 // Items enabled / total in a filter category
 void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total);
 
+// Verbs: what can be done to a selected / hovered thing, as data (docs/todo/ui/find-palette.md
+// step 4). The inspector's buttons and the hover keys read this table, and a pie menu or a
+// right-click palette can too. Per-bill and per-filter rows (they need a bill / a filter) stay
+// in the inspector and input.c.
+typedef struct {
+    SelectionKind kind;
+    const char* name;                // "Follow", "Priority +": a fixed name (help, palette, tests)
+    const char* (*label)(int idx);   // the button text now ("Unfollow"), NULL = name
+    int key, altKey;                 // keys (raylib), 0 = none
+    bool shift;                      // the key needs Shift held
+    bool hoverKey;                   // RunSelectionVerbKeys reads the key (false: handled elsewhere,
+                                     // e.g. F follows the hovered OR the selected mover)
+    bool button;                     // the inspector draws it as a button (steppers draw their own)
+    void (*run)(int idx);
+} SelectionVerb;
+
+// Dev mover actions (the mover verbs Teleport, Fill needs, Cancel job, Debug)
+extern int teleportMoverIdx;   // >= 0: the next cell click teleports this mover (src/ui/palette.c)
+extern int debugMoverIdx;      // >= 0: path always drawn, inspector shows DESC_DEBUG lines
+bool MoverTeleportTo(int moverIdx, int x, int y, int z);   // false: not walkable / bad mover
+void MoverFillNeeds(int moverIdx);
+void MoverCancelJob(int moverIdx);
+void ToggleMoverDebug(int moverIdx);
+
+int SelectionVerbCount(void);
+const SelectionVerb* SelectionVerbAt(int i);
+// Hover keys: run the verb of this kind whose key (and Shift state) was pressed. true = one ran.
+bool RunSelectionVerbKeys(SelectionKind kind, int idx);
+
 #endif

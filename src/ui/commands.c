@@ -2,6 +2,7 @@
 // Moved here from console.c's Cmd_* functions (behaviour kept) and from the dev sidebar's
 // hand-written buttons (ui_panels.c), which now run these rows.
 #include "commands.h"
+#include "find.h"
 #include "console.h"
 #include "../game_state.h"
 #include "../../shared/ui.h"
@@ -245,6 +246,60 @@ static void RunSpawnMovers(const CmdValue* v) {
     else SpawnMoversDemo(v[0].i);
 }
 
+// find: search every table row (src/ui/find.c), or browse its tree with a leading '/'
+static void FindSay(const char* line) { Say(WHITE, "%s", line); printf("%s\n", line); }
+static void RunFind(const CmdValue* v) {
+    FindBuildIndex();
+    const char* text = v[0].given ? v[0].s : "";
+    char line[200];
+    if (text[0] == '\0' || text[0] == '/') {
+        const char* path = text[0] == '/' ? text + 1 : "";
+        FindChild kids[256];
+        int n = FindTreeChildren(path, kids, 256);
+        snprintf(line, sizeof(line), "find /%s: %d entries (%d rows in all)", path, n, FindCount());
+        FindSay(line);
+        for (int i = 0; i < n; i++) {
+            if (kids[i].isBranch) snprintf(line, sizeof(line), "  %s/", kids[i].name);
+            else { char row[160]; FindRowLine(kids[i].row, row, sizeof(row)); snprintf(line, sizeof(line), "  %s", row); }
+            FindSay(line);
+        }
+        return;
+    }
+    int hits[12];
+    bool near = false;
+    int n = FindSearch(text, hits, 12, &near);
+    snprintf(line, sizeof(line), n == 0 ? "find %s: nothing" : near ? "find %s: did you mean" : "find %s:", text);
+    FindSay(line);
+    for (int i = 0; i < n; i++) {
+        char row[160];
+        FindRowLine(hits[i], row, sizeof(row));
+        snprintf(line, sizeof(line), "  %s", row);
+        FindSay(line);
+    }
+}
+
+static const char* const oneWayChoices[] = { "up", "down", "both", "n", "e", "s", "w" };
+// One-way ladder or door: the one at the mouse (or x y), on the viewed level (ladders: or
+// the one below). Ladders take up/down/both, doors n/e/s/w (the way through) or both.
+static void RunOneWay(const CmdValue* v) {
+    int x, y;
+    if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
+    static const OneWay dirs[] = { ONEWAY_UP, ONEWAY_DOWN, ONEWAY_NONE, ONEWAY_N, ONEWAY_E, ONEWAY_S, ONEWAY_W };
+    OneWay dir = dirs[v[0].choice];
+    if (x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && currentViewZ >= 0 && currentViewZ < gridDepth &&
+        GRID(x, y, currentViewZ) == CELL_DOOR) {
+        if (SetDoorOneWay(x, y, currentViewZ, dir)) Say(GREEN, "Door at %d,%d: %s", x, y, oneWayChoices[v[0].choice]);
+        else Say(YELLOW, "Doors take n, e, s, w or both");
+        return;
+    }
+    if (dir != ONEWAY_UP && dir != ONEWAY_DOWN && dir != ONEWAY_NONE) { Say(YELLOW, "Ladders take up, down or both"); return; }
+    int n = SetLadderOneWay(x, y, currentViewZ, dir);
+    if (n == 0) n = SetLadderOneWay(x, y, currentViewZ - 1, dir);
+    if (n == 0) { Say(YELLOW, "No ladder or door at %d,%d (level %d)", x, y, currentViewZ); return; }
+    Say(GREEN, "Ladder at %d,%d: %s (%d pieces)", x, y, oneWayChoices[v[0].choice], n);
+}
+
 #define ARG_CHOICE(n, arr) { .name = (n), .type = CARG_CHOICE, .choices = (arr), .choiceCount = (int)(sizeof(arr) / sizeof((arr)[0])) }
 #define ARG_NAME(n, cnt, at) { .name = (n), .type = CARG_NAME, .nameCount = (cnt), .nameAt = (at) }
 
@@ -258,6 +313,10 @@ static const CommandDef commandTable[] = {
       3, { { .name = "x", .type = CARG_INT }, { .name = "y", .type = CARG_INT },
            { .name = "z", .type = CARG_INT, .optional = true, .def = -1 } },
       RunTp, NULL },
+    { "oneway", "World/Pathfinding", "One-way ladder (up/down) or door (n/e/s/w: the way through) at the mouse or x y; both = two-way",
+      3, { ARG_CHOICE("dir", oneWayChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
+      RunOneWay, NULL },
     { "rain", "Simulation/Water", "Start or stop rain (coverage in %)",
       1, { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainChoices, .choiceCount = 4, .lo = 1, .hi = 100 } },
       RunRain, NULL },
@@ -275,6 +334,8 @@ static const CommandDef commandTable[] = {
       1, { ARG_NAME("scenario", ScenarioNameCount, ScenarioNameAt) }, RunScenarioCmd, ScenarioList },
     { "game", "Games", "Start a game",
       1, { ARG_NAME("game", GameNameCount, GameNameAt) }, RunGameCmd, GameList },
+    { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
+      1, { { .name = "text", .type = CARG_TEXT, .optional = true } }, RunFind, NULL },
     { "spawnmovers", "Entities/Movers", "Replace all movers with N wandering ones (add: keep the current ones)",
       2, { { .name = "n", .type = CARG_INT, .lo = 1, .hi = 100000 }, { .name = "mode", .type = CARG_CHOICE, .optional = true,
            .choices = addChoices, .choiceCount = 1 } },

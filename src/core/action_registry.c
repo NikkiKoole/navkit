@@ -27,6 +27,8 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_DRAW_WALL,
+        .twin = ACTION_WORK_CONSTRUCT,
+        .hints = { "L-drag place", "R-drag erase" },
         .name = "WALL",
         .barDisplayText = "Wall",
         .barKey = 'w',
@@ -39,6 +41,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_FLOOR,
+        .twin = ACTION_WORK_FLOOR,
+        .hints = { "L-drag place" },
         .name = "FLOOR",
         .barDisplayText = "Floor",
         .barKey = 'f',
@@ -51,6 +55,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_LADDER,
+        .twin = ACTION_WORK_LADDER,
+        .hints = { "L-drag place" },
         .name = "LADDER",
         .barDisplayText = "Ladder",
         .barKey = 'l',
@@ -63,6 +69,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_RAMP,
+        .twin = ACTION_WORK_RAMP,
+        .hints = { "L-drag place", "R-drag erase" },
         .name = "RAMP",
         .barDisplayText = "Ramp",
         .barKey = 'r',
@@ -75,6 +83,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_STOCKPILE,
+        .hints = { "L-drag create", "R-drag erase" },
         .name = "STOCKPILE",
         .barDisplayText = "Stockpile",
         .barKey = 's',
@@ -87,6 +96,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_REFUSE_PILE,
+        .hints = { "L-drag create", "R-drag erase" },
         .name = "REFUSE_PILE",
         .barDisplayText = "Refuse pile",
         .barKey = 'e',
@@ -129,6 +139,7 @@ const ActionDef ACTION_REGISTRY[] = {
     // DRAW > WORKSHOP (category)
     {
         .action = ACTION_DRAW_WORKSHOP,
+        .twin = ACTION_WORK_WORKSHOP,
         .name = "WORKSHOP",
         .barDisplayText = "workshop(T)",
         .barKey = 't',
@@ -146,6 +157,7 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_DRAW_SOIL_DIRT,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "DIRT",
         .barDisplayText = "Dirt",
         .barKey = 'd',
@@ -158,6 +170,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_SOIL_CLAY,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "CLAY",
         .barDisplayText = "Clay",
         .barKey = 'c',
@@ -170,6 +183,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_SOIL_GRAVEL,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "GRAVEL",
         .barDisplayText = "Gravel",
         .barKey = 'g',
@@ -182,6 +196,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_SOIL_SAND,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "SAND",
         .barDisplayText = "Sand",
         .barKey = 's',
@@ -194,6 +209,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_SOIL_PEAT,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "PEAT",
         .barDisplayText = "Peat",
         .barKey = 'p',
@@ -206,6 +222,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_SOIL_ROCK,
+        .hints = { "L-drag place", "+Shift=pile mode" },
         .name = "ROCK",
         .barDisplayText = "rocK",
         .barKey = 'k',
@@ -223,6 +240,8 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_DRAW_WORKSHOP_STONECUTTER,
+        .twin = ACTION_WORK_WORKSHOP_STONECUTTER,
+        .hints = { "L-click place" },
         .name = "STONECUTTER",
         .barDisplayText = "Stonecutter",
         .barKey = 's',
@@ -235,6 +254,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_SAWMILL,
+        .twin = ACTION_WORK_WORKSHOP_SAWMILL,
+        .hints = { "L-click place" },
         .name = "SAWMILL",
         .barDisplayText = "sAwmill",
         .barKey = 'a',
@@ -247,6 +268,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_KILN,
+        .twin = ACTION_WORK_WORKSHOP_KILN,
+        .hints = { "L-click place" },
         .name = "KILN",
         .barDisplayText = "Kiln",
         .barKey = 'k',
@@ -259,6 +282,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT,
+        .twin = ACTION_WORK_WORKSHOP_CHARCOAL_PIT,
+        .hints = { "L-click place" },
         .name = "CHARCOAL PIT",
         .barDisplayText = "Charcoal pit",
         .barKey = 'c',
@@ -271,6 +296,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_HEARTH,
+        .twin = ACTION_WORK_WORKSHOP_HEARTH,
+        .hints = { "L-click place" },
         .name = "HEARTH",
         .barDisplayText = "Hearth",
         .barKey = 'h',
@@ -283,6 +310,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_DRYING_RACK,
+        .twin = ACTION_WORK_WORKSHOP_DRYING_RACK,
+        .hints = { "L-click place" },
         .name = "DRYING RACK",
         .barDisplayText = "Drying rack",
         .barKey = 'd',
@@ -295,6 +324,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_ROPE_MAKER,
+        .twin = ACTION_WORK_WORKSHOP_ROPE_MAKER,
+        .hints = { "L-click place" },
         .name = "ROPE MAKER",
         .barDisplayText = "Rope maker",
         .barKey = 'r',
@@ -307,6 +338,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_CARPENTER,
+        .twin = ACTION_WORK_WORKSHOP_CARPENTER,
+        .hints = { "L-click place" },
         .name = "CARPENTER",
         .barDisplayText = "Carpenter",
         .barKey = 'p',
@@ -319,6 +352,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_CAMPFIRE,
+        .twin = ACTION_WORK_WORKSHOP_CAMPFIRE,
         .name = "FIRE PIT",
         .barDisplayText = "Fire pit",
         .barKey = 'f',
@@ -331,6 +365,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_GROUND_FIRE,
+        .twin = ACTION_WORK_WORKSHOP_GROUND_FIRE,
         .name = "GROUND FIRE",
         .barDisplayText = "Ground fire",
         .barKey = 'g',
@@ -343,6 +378,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_BUTCHER,
+        .twin = ACTION_WORK_WORKSHOP_BUTCHER,
         .name = "BUTCHER",
         .barDisplayText = "Butcher",
         .barKey = 'b',
@@ -355,6 +391,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_COMPOST_PILE,
+        .twin = ACTION_WORK_WORKSHOP_COMPOST_PILE,
         .name = "COMPOST_PILE",
         .barDisplayText = "Compost Pile",
         .barKey = 'o',
@@ -367,6 +404,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_QUERN,
+        .twin = ACTION_WORK_WORKSHOP_QUERN,
         .name = "QUERN",
         .barDisplayText = "Quern",
         .barKey = 'q',
@@ -379,6 +417,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_LOOM,
+        .twin = ACTION_WORK_WORKSHOP_LOOM,
         .name = "LOOM",
         .barDisplayText = "Loom",
         .barKey = 'l',
@@ -391,6 +430,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_TANNING_RACK,
+        .twin = ACTION_WORK_WORKSHOP_TANNING_RACK,
         .name = "TANNING_RACK",
         .barDisplayText = "Tanning Rack",
         .barKey = 'n',
@@ -403,6 +443,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_TAILOR,
+        .twin = ACTION_WORK_WORKSHOP_TAILOR,
         .name = "TAILOR",
         .barDisplayText = "Tailor",
         .barKey = 't',
@@ -415,6 +456,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_MUD_MIXER,
+        .twin = ACTION_WORK_WORKSHOP_MUD_MIXER,
         .name = "MUD MIXER",
         .barDisplayText = "Mud mixer",
         .barKey = 'm',
@@ -427,6 +469,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_STOVE,
+        .twin = ACTION_WORK_WORKSHOP_STOVE,
         .name = "STOVE",
         .barDisplayText = "Stove",
         .barKey = 'v',
@@ -439,6 +482,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_DRAW_WORKSHOP_COUNTER,
+        .twin = ACTION_WORK_WORKSHOP_COUNTER,
         .name = "COUNTER",
         .barDisplayText = "coUnter",
         .barKey = 'u',
@@ -598,6 +642,8 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_WORK_CONSTRUCT,
+        .twin = ACTION_DRAW_WALL,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "WALL",
         .barDisplayText = "Wall",
         .barKey = 'w',
@@ -610,6 +656,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_FLOOR,
+        .twin = ACTION_DRAW_FLOOR,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "FLOOR",
         .barDisplayText = "Floor",
         .barKey = 'f',
@@ -622,6 +670,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_LADDER,
+        .twin = ACTION_DRAW_LADDER,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "LADDER",
         .barDisplayText = "Ladder",
         .barKey = 'l',
@@ -634,6 +684,8 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_RAMP,
+        .twin = ACTION_DRAW_RAMP,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "RAMP",
         .barDisplayText = "Ramp",
         .barKey = 'r',
@@ -646,6 +698,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_FURNITURE,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "FURNITURE",
         .barDisplayText = "Furniture",
         .barKey = 'u',
@@ -659,6 +712,7 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_WORK_DOOR,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "DOOR",
         .barDisplayText = "Door",
         .barKey = 'd',
@@ -671,6 +725,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_BELT,
+        .hints = { "L-drag designate", "R-drag remove" },
         .name = "BELT",
         .barDisplayText = "Belt",
         .barKey = 'b',
@@ -683,6 +738,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_SHAFT,
+        .hints = { "Shaft: from here up one level", "On a shaft top: one more level", "L-drag designate", "R-drag take down" },
         .name = "ELEVATOR",
         .barDisplayText = "Elevator",
         .barKey = 'e',
@@ -696,6 +752,7 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_WORK_WORKSHOP,
+        .twin = ACTION_DRAW_WORKSHOP,
         .name = "WORKSHOP",
         .barDisplayText = "worksHop",
         .barKey = 'h',
@@ -708,6 +765,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_CAMPFIRE,
+        .twin = ACTION_DRAW_WORKSHOP_CAMPFIRE,
         .name = "FIRE PIT",
         .barDisplayText = "Fire pit",
         .barKey = 'f',
@@ -720,6 +778,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_GROUND_FIRE,
+        .twin = ACTION_DRAW_WORKSHOP_GROUND_FIRE,
         .name = "GROUND FIRE",
         .barDisplayText = "Ground fire",
         .barKey = 'g',
@@ -732,6 +791,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_BUTCHER,
+        .twin = ACTION_DRAW_WORKSHOP_BUTCHER,
         .name = "BUTCHER",
         .barDisplayText = "Butcher",
         .barKey = 'b',
@@ -744,6 +804,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_COMPOST_PILE,
+        .twin = ACTION_DRAW_WORKSHOP_COMPOST_PILE,
         .name = "COMPOST PILE",
         .barDisplayText = "Compost Pile",
         .barKey = 'o',
@@ -756,6 +817,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_QUERN,
+        .twin = ACTION_DRAW_WORKSHOP_QUERN,
         .name = "QUERN",
         .barDisplayText = "Quern",
         .barKey = 'q',
@@ -768,6 +830,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_LOOM,
+        .twin = ACTION_DRAW_WORKSHOP_LOOM,
         .name = "LOOM",
         .barDisplayText = "Loom",
         .barKey = 'l',
@@ -780,6 +843,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_TANNING_RACK,
+        .twin = ACTION_DRAW_WORKSHOP_TANNING_RACK,
         .name = "TANNING_RACK",
         .barDisplayText = "Tanning Rack",
         .barKey = 'n',
@@ -792,6 +856,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_TAILOR,
+        .twin = ACTION_DRAW_WORKSHOP_TAILOR,
         .name = "TAILOR",
         .barDisplayText = "Tailor",
         .barKey = 't',
@@ -804,6 +869,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_DRYING_RACK,
+        .twin = ACTION_DRAW_WORKSHOP_DRYING_RACK,
         .name = "DRYING RACK",
         .barDisplayText = "Drying Rack",
         .barKey = 'd',
@@ -816,6 +882,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_ROPE_MAKER,
+        .twin = ACTION_DRAW_WORKSHOP_ROPE_MAKER,
         .name = "ROPE MAKER",
         .barDisplayText = "Rope Maker",
         .barKey = 'm',
@@ -828,6 +895,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_CHARCOAL_PIT,
+        .twin = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT,
         .name = "CHARCOAL PIT",
         .barDisplayText = "Charcoal Pit",
         .barKey = 'c',
@@ -840,6 +908,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_HEARTH,
+        .twin = ACTION_DRAW_WORKSHOP_HEARTH,
         .name = "HEARTH",
         .barDisplayText = "Hearth",
         .barKey = 'h',
@@ -852,6 +921,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_STONECUTTER,
+        .twin = ACTION_DRAW_WORKSHOP_STONECUTTER,
         .name = "STONECUTTER",
         .barDisplayText = "Stonecutter",
         .barKey = 's',
@@ -864,6 +934,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_SAWMILL,
+        .twin = ACTION_DRAW_WORKSHOP_SAWMILL,
         .name = "SAWMILL",
         .barDisplayText = "Sawmill",
         .barKey = 'w',
@@ -876,6 +947,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_KILN,
+        .twin = ACTION_DRAW_WORKSHOP_KILN,
         .name = "KILN",
         .barDisplayText = "Kiln",
         .barKey = 'k',
@@ -888,6 +960,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_CARPENTER,
+        .twin = ACTION_DRAW_WORKSHOP_CARPENTER,
         .name = "CARPENTER",
         .barDisplayText = "Carpenter",
         .barKey = 'p',
@@ -900,6 +973,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_MUD_MIXER,
+        .twin = ACTION_DRAW_WORKSHOP_MUD_MIXER,
         .name = "MUD MIXER",
         .barDisplayText = "Mud mixer",
         .barKey = 'x',
@@ -912,6 +986,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_STOVE,
+        .twin = ACTION_DRAW_WORKSHOP_STOVE,
         .name = "STOVE",
         .barDisplayText = "stoVe",
         .barKey = 'v',
@@ -924,6 +999,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_WORKSHOP_COUNTER,
+        .twin = ACTION_DRAW_WORKSHOP_COUNTER,
         .name = "COUNTER",
         .barDisplayText = "coUnter",
         .barKey = 'u',
@@ -1078,6 +1154,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_WORK_FARM,
+        .hints = { "L-drag designate", "R-drag cancel" },
         .name = "FARM",
         .barDisplayText = "Farm",
         .barKey = 'f',
@@ -1095,6 +1172,7 @@ const ActionDef ACTION_REGISTRY[] = {
     
     {
         .action = ACTION_SANDBOX_WATER,
+        .hints = { "L-drag add", "R-drag remove", "+Shift=source/drain" },
         .name = "WATER",
         .barDisplayText = "Water",
         .barKey = 'w',
@@ -1107,6 +1185,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_SANDBOX_FIRE,
+        .hints = { "L-drag ignite", "R-drag extinguish", "+Shift=source" },
         .name = "FIRE",
         .barDisplayText = "Fire",
         .barKey = 'f',
@@ -1179,6 +1258,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_SANDBOX_TREE,
+        .hints = { "L-click place", "R-drag remove" },
         .name = "TREE",
         .barDisplayText = "tRee",
         .barKey = 'r',
@@ -1191,6 +1271,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_SANDBOX_SCULPT,
+        .hints = { "L-drag raise", "R-drag lower" },
         .name = "SCULPT",
         .barDisplayText = "sCulpt",
         .barKey = 'c',
@@ -1203,6 +1284,7 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     {
         .action = ACTION_SANDBOX_LIGHT,
+        .hints = { "L-drag place", "R-drag remove" },
         .name = "LIGHT",
         .barDisplayText = "Light",
         .barKey = 'l',
@@ -1257,6 +1339,9 @@ int GetActionsForContext(InputMode mode, WorkSubMode subMode, InputAction parent
     int count = 0;
     for (int i = 0; i < ACTION_REGISTRY_COUNT && count < maxOut; i++) {
         const ActionDef* def = &ACTION_REGISTRY[i];
+        // The Draw bar leaves out the tools that have a Work twin: they are picked in the Work
+        // bar and done now or by order (buildNow, I flips it)
+        if (mode == MODE_DRAW && parent == ACTION_NONE && def->twin != ACTION_NONE) continue;
         if (def->requiredMode == mode &&
             def->requiredSubMode == subMode &&
             def->parentAction == parent &&

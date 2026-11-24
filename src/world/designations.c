@@ -2835,6 +2835,7 @@ void CompleteBlueprint(int blueprintIdx) {
         ClearCellCleanup(x, y, z);
         DisplaceWater(x, y, z);
         GRID(x, y, z) = CELL_DOOR;
+        if (ONE_WAY(x, y, z) != ONEWAY_NONE) ONE_WAY_MUT(x, y, z) = ONEWAY_NONE;   // a new door: both ways
         SetWallMaterial(x, y, z, finalMat);
         SetWallSourceItem(x, y, z, finalSource);
         ClearWallNatural(x, y, z);

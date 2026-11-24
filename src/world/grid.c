@@ -122,6 +122,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     CLEAR_GRID_LAYER(cellFlags, 0);
     CLEAR_GRID_LAYER(vegetationGrid, 0);
     CLEAR_GRID_LAYER(unexploredGrid, 0);  // Default: all explored (sandbox)
+    SparseLayerClear(&oneWayLayer);
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
@@ -241,11 +242,45 @@ void RecalculateLadderColumn(int x, int y) {
     }
 }
 
+// A non-ladder cell keeps no one-way direction: a ladder built later starts both ways
+// (pieces added to a one-way ladder still follow it: a step is one-way if either end is)
+static void ClearStaleOneWay(int x, int y) {
+    if (!SparseLayerHasBlock(&oneWayLayer, x, y)) return;
+    for (int z = 0; z < gridDepth; z++)
+        if (ONE_WAY(x, y, z) != ONEWAY_NONE && !IsLadderCell(GRID(x, y, z)) && GRID(x, y, z) != CELL_DOOR)
+            ONE_WAY_MUT(x, y, z) = ONEWAY_NONE;
+}
+
+int SetLadderOneWay(int x, int y, int z, OneWay dir) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return 0;
+    if (!IsLadderCell(GRID(x, y, z))) return 0;
+    int lo = z, hi = z;
+    while (lo > 0 && IsLadderCell(GRID(x, y, lo - 1))) lo--;
+    while (hi + 1 < gridDepth && IsLadderCell(GRID(x, y, hi + 1))) hi++;
+    for (int k = lo; k <= hi; k++) {
+        if (ONE_WAY(x, y, k) == (uint8_t)dir) continue;
+        ONE_WAY_MUT(x, y, k) = (uint8_t)dir;
+        MarkChunkDirty(x, y, k);
+    }
+    return hi - lo + 1;
+}
+
+bool SetDoorOneWay(int x, int y, int z, OneWay dir) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (GRID(x, y, z) != CELL_DOOR || dir == ONEWAY_UP || dir == ONEWAY_DOWN) return false;
+    if (ONE_WAY(x, y, z) != (uint8_t)dir) {
+        ONE_WAY_MUT(x, y, z) = (uint8_t)dir;
+        MarkChunkDirty(x, y, z);
+    }
+    return true;
+}
+
 void PlaceLadder(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    
+
     CellType current = GRID(x, y, z);
     if (IsWallCell(current) && !IsWallNatural(x, y, z)) return;
+    ClearStaleOneWay(x, y);
     
     // If there's a ramp here, erase it first
     if (CellIsDirectionalRamp(current)) {

@@ -26,6 +26,8 @@ static const CommandDef cmdRain = { "rain", "Simulation/Water", "rain", 1,
     { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainCh, .choiceCount = 4, .lo = 1, .hi = 100 } }, Run, NULL };
 static const CommandDef cmdScenario = { "scenario", "Games", "start", 1,
     { { .name = "scenario", .type = CARG_NAME, .nameCount = NameCount, .nameAt = NameAt } }, Run, NULL };
+static const CommandDef cmdFind = { "find", "Dev", "search", 1,
+    { { .name = "text", .type = CARG_TEXT, .optional = true } }, Run, NULL };
 static const CommandDef cmdSpeed = { "speed", "Time", "game speed", 1,
     { { .name = "x", .type = CARG_FLOAT, .lo = 0, .hi = 50 } }, Run, NULL };
 
@@ -84,6 +86,11 @@ describe(command_parse) {
         PARSE(cmdScenario, "scenario", "Trash"); expect(ok && v[0].i == 1);
         PARSE(cmdScenario, "scenario", "list");  expect(ok && v[0].i == -1);
         PARSE(cmdScenario, "scenario", "nope");  expect(!ok && strstr(err, "scenario list") != NULL);
+        PARSE(cmdFind, "find", "fire", "pit");   expect(ok && v[0].given && strcmp(v[0].s, "fire pit") == 0);
+        PARSE(cmdFind, "find");                  expect(ok && !v[0].given);
+        char usage[64];
+        CommandUsage(&cmdFind, usage, sizeof(usage));
+        expect(strcmp(usage, "find [text...]") == 0);
     }
 }
 

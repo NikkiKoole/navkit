@@ -171,6 +171,8 @@ mouth), **dollhouse**, **sandbox**. Started from the play HUD, the dev UI "Games
   (`gameMode`, `hungerEnabled`, ...): it may not assume what the previous game left.
 - `gameMode` (`GAME_MODE_SANDBOX` / `GAME_MODE_SURVIVAL`) is the rules switch for death and
   fog of war; dollhouse runs on `GAME_MODE_SANDBOX` rules.
+- `GameDef.buildNow`: whether the dev build tools (Work bar: wall, floor, workshop, ...) work
+  instantly or as orders the workers carry out (I flips it in game). Player toolbars always order.
 - **The dev UI (TAB) is an overlay over any game**: toggling it does not change the game
   or its rules. Use it to inspect/cheat inside survival without leaving survival.
 - Scenarios (below) are dev/test setups; games are player-facing.
@@ -196,7 +198,10 @@ from `src/core/command_args.h`: int / float range, choice, item by name, name fr
 table; plus a run function). One row gives you a console command with parsing, usage text and
 error messages made from its spec. Dev sidebar buttons that do a command run the line through
 the table (`CommandButton(x, y, "Clear Water", "clear water")`). **Add new commands as a row
-there**, not with `Console_RegisterCmd` + strcmp parsing. Plan for the rest (tool options, verb
+there**, not with `Console_RegisterCmd` + strcmp parsing. Every command, tool, setting, verb, item, scenario
+and game is also a row in the find index (`src/core/find_index.c`, filled by `src/ui/find.c`;
+console `find <text>`, `find /<path>`; in game `/` opens the find palette, `src/ui/palette.c`): new
+table rows show up there by themselves. Plan for the rest (tool options, verb
 tables, keys as data, the find palette): `docs/todo/ui/find-palette.md`.
 
 ## Descriptions (what the game says about an entity)
@@ -214,7 +219,8 @@ Left-click in normal mode selects a mover, animal, workshop, stockpile or bluepr
 `src/render/inspector.c` outlines it and shows a fixed panel bottom-right: the describe lines
 plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
 ...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
-New per-entity actions go there too.
+New per-entity actions go there too; object-level ones as a row in the `SelectionVerb` table
+(name, label, key, run): the hover keys, the inspector's button row and the `?` help panel read it.
 
 With the dev UI off, the play HUD's tab bar (`src/render/play_hud.c`, bottom left) has
 Huisje (build) / Boompje (nature) / Beestje (movers + animals roster). A game's tools pick

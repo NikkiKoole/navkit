@@ -314,8 +314,33 @@ static int PlankSpriteForMaterial(MaterialType mat) {
     }
 }
 
+// A railing joins its railing neighbours: one rail-* tile per N/E/S/W mask (corners,
+// T-junctions, cross). With no railing neighbour it joins the walls it butts against.
+// A dead end draws straight; a lone railing draws east-west.
+static bool RailingLinksTo(int x, int y, int z, bool walls) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    CellType c = GRID(x, y, z);
+    return walls ? CellBlocksMovement(c) && c != CELL_RAILING : c == CELL_RAILING;
+}
+
+static int RailingSpriteAt(int x, int y, int z) {
+    static const int railSprites[16] = {   // bit 1 N, 2 E, 4 S, 8 W
+        [0]  = SPRITE_rail_ew,   [1]  = SPRITE_rail_ns,   [2]  = SPRITE_rail_ew,   [3]  = SPRITE_rail_ne,
+        [4]  = SPRITE_rail_ns,   [5]  = SPRITE_rail_ns,   [6]  = SPRITE_rail_es,   [7]  = SPRITE_rail_nes,
+        [8]  = SPRITE_rail_ew,   [9]  = SPRITE_rail_nw,   [10] = SPRITE_rail_ew,   [11] = SPRITE_rail_new,
+        [12] = SPRITE_rail_sw,   [13] = SPRITE_rail_nsw,  [14] = SPRITE_rail_esw,  [15] = SPRITE_rail_nesw,
+    };
+    int mask = 0;
+    for (int walls = 0; walls < 2 && mask == 0; walls++) {
+        mask = (RailingLinksTo(x, y - 1, z, walls) ? 1 : 0) | (RailingLinksTo(x + 1, y, z, walls) ? 2 : 0)
+             | (RailingLinksTo(x, y + 1, z, walls) ? 4 : 0) | (RailingLinksTo(x - 1, y, z, walls) ? 8 : 0);
+    }
+    return railSprites[mask];
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_PLATFORM) return SPRITE_dark_shade;
+    if (cell == CELL_RAILING) return RailingSpriteAt(x, y, z);   // never a material's wall sprite
     if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
     if (cell == CELL_WALL && GetWallSourceItem(x, y, z) == ITEM_PLANKS) {
@@ -1679,6 +1704,50 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
     }
 }
 
+// --- Mover faces --------------------------------------------------------------
+// Which head sprite a mover shows: a view (where it looks) x a mouth (head_<view>_<mouth>
+// slices in worksheet8x8.ase). Facing is render-only for now: toward the next waypoint
+// (where it is heading, steady under avoidance pushes, also while paused), front with no
+// path. Later the noticing layer sets it apart from walking (docs/todo/social/noticing.md).
+enum { FACE_FRONT, FACE_LEFT, FACE_RIGHT, FACE_UP, FACE_DOWN, FACE_VIEW_COUNT };
+enum { MOUTH_GRIN, MOUTH_FLAT, MOUTH_SMALL, MOUTH_SMILE, MOUTH_SAD, MOUTH_OPEN, MOUTH_CLOSE, MOUTH_COUNT };
+static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
+    {SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
+     SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close},
+    {SPRITE_head_left_grin, SPRITE_head_left_flat, SPRITE_head_left_small, SPRITE_head_left_smile,
+     SPRITE_head_left_sad, SPRITE_head_left_open, SPRITE_head_left_close},
+    {SPRITE_head_right_grin, SPRITE_head_right_flat, SPRITE_head_right_small, SPRITE_head_right_smile,
+     SPRITE_head_right_sad, SPRITE_head_right_open, SPRITE_head_right_close},
+    {SPRITE_head_up_grin, SPRITE_head_up_flat, SPRITE_head_up_small, SPRITE_head_up_smile,
+     SPRITE_head_up_sad, SPRITE_head_up_open, SPRITE_head_up_close},
+    {SPRITE_head_down_grin, SPRITE_head_down_flat, SPRITE_head_down_small, SPRITE_head_down_smile,
+     SPRITE_head_down_sad, SPRITE_head_down_open, SPRITE_head_down_close},
+};
+static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
+
+static int MoverFaceView(int i, const Mover* m) {
+    if (m->pathLength <= 0 || m->pathIndex < 0) return moverFaceView[i] = FACE_FRONT;
+    Point wp = moverPaths[i][m->pathIndex];
+    float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+    float dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    float ax = fabsf(dx), ay = fabsf(dy);
+    if (ax + ay < 1.0f) return moverFaceView[i];   // on the waypoint: keep looking the same way
+    int last = moverFaceView[i];
+    bool wasSide = (last == FACE_LEFT || last == FACE_RIGHT);
+    bool wasVert = (last == FACE_UP || last == FACE_DOWN);
+    const float bias = 1.3f;
+    bool side = wasSide ? (ax * bias > ay) : wasVert ? (ax > ay * bias) : (ax >= ay);
+    return moverFaceView[i] = side ? (dx < 0 ? FACE_LEFT : FACE_RIGHT) : (dy < 0 ? FACE_UP : FACE_DOWN);
+}
+
+static int MoverMouth(const Mover* m) {
+    if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
+    if (m->mood > 0.4f) return MOUTH_SMILE;
+    if (m->mood < -0.45f) return MOUTH_SAD;
+    if (m->mood < -0.15f) return MOUTH_FLAT;
+    return MOUTH_GRIN;
+}
+
 static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -1796,7 +1865,8 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
-        Rectangle src = SpriteGetRect(SPRITE_head);
+        Rectangle src = SpriteGetRect(moverFaces ? faceSprites[MoverFaceView(i, m)][MoverMouth(m)]
+                                                 : SPRITE_head);
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 
         // Draw clothing outline behind mover (larger tinted sprite)
@@ -1842,6 +1912,12 @@ static void DrawMovers(void) {
         PROFILE_END(MoverPaths);
     }
     
+    // The debugged mover's path (mover verb Debug, selection.c), always
+    if (debugMoverIdx >= 0 && debugMoverIdx < moverCount && debugMoverIdx != hoveredMover && !showMoverPaths) {
+        Mover* m = &movers[debugMoverIdx];
+        if (m->active && m->pathIndex >= 0 && (int)m->z == viewZ)
+            DrawMoverPath(debugMoverIdx, m, offset.x + m->x * zoom, offset.y + m->y * zoom, viewZ, ORANGE, 2.0f, 2.0f, 0.6f);
+    }
     // Draw hovered mover's path (always, even if showMoverPaths is off)
     if (hoveredMover >= 0 && !showMoverPaths) {
         Mover* m = &movers[hoveredMover];
@@ -2991,6 +3067,46 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_REMOVE_BELT]    = {230, 120, 60, 180},
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
+
+// One-way ladders and doors: a small arrow on the cell. Ladders: up-only points north (up
+// the screen), green; down-only south, orange. Doors: the way through, light blue.
+// Seen from above through open air: the first non-empty cell at most 4 levels down, dimmer
+// the deeper it is.
+static void DrawOneWayLadders(void) {
+    float size = CELL_SIZE * zoom;
+    if (currentViewZ < 0 || currentViewZ >= gridDepth) return;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(&oneWayLayer, x, y)) { x |= STORE_MASK; continue; }
+            int z = currentViewZ, depth = 0;
+            while (z > 0 && depth < 4 && GRID(x, y, z) == CELL_AIR && !HAS_FLOOR(x, y, z)) { z--; depth++; }
+            uint8_t ow = ONE_WAY(x, y, z);
+            if (ow == ONEWAY_NONE) continue;
+            CellType ct = GRID(x, y, z);
+            float fx, fy;   // arrow direction on screen
+            Color c;
+            if (IsLadderCell(ct) && (ow == ONEWAY_UP || ow == ONEWAY_DOWN)) {
+                fx = 0.0f; fy = ow == ONEWAY_UP ? -1.0f : 1.0f;
+                c = ow == ONEWAY_UP ? (Color){120, 230, 120, 220} : (Color){240, 170, 80, 220};
+            } else if (ct == CELL_DOOR && ow >= ONEWAY_N && ow <= ONEWAY_W) {
+                static const float ax[4] = {0, 1, 0, -1}, ay[4] = {-1, 0, 1, 0};
+                fx = ax[ow - ONEWAY_N]; fy = ay[ow - ONEWAY_N];
+                c = (Color){130, 200, 255, 230};
+            } else continue;
+            c.a = (unsigned char)(c.a * (1.0f - 0.18f * depth));
+            float cx = offset.x + (x + 0.5f) * size, cy = offset.y + (y + 0.5f) * size, r = size * 0.3f;
+            // tip ahead, base corners behind on either side (px,py = perpendicular)
+            float px = -fy, py = fx;
+            Vector2 tip = { cx + fx * r, cy + fy * r };
+            Vector2 a = { cx - fx * r * 0.5f + px * r, cy - fy * r * 0.5f + py * r };
+            Vector2 b = { cx - fx * r * 0.5f - px * r, cy - fy * r * 0.5f - py * r };
+            DrawTriangle(tip, a, b, c);
+            DrawTriangle(tip, b, a, c);   // one of the two windings is skipped (back face)
+        }
+    }
+}
 
 static void DrawMiningDesignations(void) {
     // Early exit if no designations

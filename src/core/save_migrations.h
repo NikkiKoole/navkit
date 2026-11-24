@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 109
+#define CURRENT_SAVE_VERSION 110
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -101,6 +101,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v109: Mover.setAside[2] at the end of the Mover (things put down for a job, see inventory.c).
 // Older saves: none set aside.
 #define V109_SET_ASIDE 109
+// v110: one-way layer (grid.h oneWayLayer, one byte per cell: one-way ladders) after the
+// track connections grid. Older saves: every cell both ways.
+#define V110_ONE_WAY 110
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)
 _Static_assert(offsetof(Mover, setAside) == MOVER_V108_SIZE, "Mover v108 layout must be a prefix of Mover");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {

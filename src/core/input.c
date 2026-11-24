@@ -116,19 +116,33 @@ static void GetDragRectFrontView(int* x1, int* y1, int* x2, int* y2, int* z1, in
 // Action Handlers - Execute the actual operations
 // ============================================================================
 
+// Draw materials, keys 1-9 (selectedMaterial is 1-based): one table for the build tools, the
+// option bar and the ghost preview (main.c)
+static const struct { const char* label; MaterialType mat; ItemType source; const char* name; } drawMaterials[] = {
+    { "Stone",        MAT_GRANITE,   ITEM_BLOCKS, "granite" },
+    { "Wood",         MAT_OAK,       ITEM_LOG,    "oak log" },
+    { "Dirt",         MAT_DIRT,      ITEM_DIRT,   "dirt" },
+    { "Oak plank",    MAT_OAK,       ITEM_PLANKS, "oak planks" },
+    { "Pine plank",   MAT_PINE,      ITEM_PLANKS, "pine planks" },
+    { "Birch plank",  MAT_BIRCH,     ITEM_PLANKS, "birch planks" },
+    { "Willow plank", MAT_WILLOW,    ITEM_PLANKS, "willow planks" },
+    { "Sandstone",    MAT_SANDSTONE, ITEM_BLOCKS, "sandstone" },
+    { "Slate",        MAT_SLATE,     ITEM_BLOCKS, "slate" },
+};
+#define DRAW_MATERIAL_COUNT ((int)(sizeof(drawMaterials) / sizeof(drawMaterials[0])))
+
+void DrawMaterialFor(int selected, MaterialType* outMat, ItemType* outSource) {
+    int k = (selected >= 1 && selected <= DRAW_MATERIAL_COUNT) ? selected - 1 : 0;
+    *outMat = drawMaterials[k].mat;
+    *outSource = drawMaterials[k].source;
+}
+
 // Map selectedMaterial to MaterialType and source ItemType
 static void GetDrawMaterial(MaterialType* outMat, ItemType* outSource, const char** outName) {
-    switch (selectedMaterial) {
-        case 2: *outMat = MAT_OAK;    *outSource = ITEM_LOG;    *outName = "oak log";      break;
-        case 3: *outMat = MAT_DIRT;    *outSource = ITEM_DIRT;   *outName = "dirt";          break;
-        case 4: *outMat = MAT_OAK;    *outSource = ITEM_PLANKS; *outName = "oak planks";    break;
-        case 5: *outMat = MAT_PINE;   *outSource = ITEM_PLANKS; *outName = "pine planks";   break;
-        case 6: *outMat = MAT_BIRCH;  *outSource = ITEM_PLANKS; *outName = "birch planks";  break;
-        case 7: *outMat = MAT_WILLOW; *outSource = ITEM_PLANKS; *outName = "willow planks"; break;
-        case 8: *outMat = MAT_SANDSTONE; *outSource = ITEM_BLOCKS; *outName = "sandstone";  break;
-        case 9: *outMat = MAT_SLATE;     *outSource = ITEM_BLOCKS; *outName = "slate";      break;
-        default: *outMat = MAT_GRANITE; *outSource = ITEM_BLOCKS; *outName = "granite";     break;
-    }
+    int k = (selectedMaterial >= 1 && selectedMaterial <= DRAW_MATERIAL_COUNT) ? selectedMaterial - 1 : 0;
+    *outMat = drawMaterials[k].mat;
+    *outSource = drawMaterials[k].source;
+    *outName = drawMaterials[k].name;
 }
 
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
@@ -1862,16 +1876,6 @@ static void ExecutePlaceTree(int x, int y, int z) {
     AddMessage(TextFormat("Planted %s tree at (%d, %d)", TreeTypeName(currentTreeType), x, y), GREEN);
 }
 
-static void CycleSandboxTreeType(void) {
-    // Cycle through wood materials
-    if (currentTreeType == MAT_OAK) currentTreeType = MAT_PINE;
-    else if (currentTreeType == MAT_PINE) currentTreeType = MAT_BIRCH;
-    else if (currentTreeType == MAT_BIRCH) currentTreeType = MAT_WILLOW;
-    else currentTreeType = MAT_OAK;
-    
-    AddMessage(TextFormat("Tree type: %s", TreeTypeName(currentTreeType)), GREEN);
-}
-
 static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2255,6 +2259,195 @@ static const ToolHandler* GetToolHandler(InputAction action) {
     return (h->apply || h->erase || h->shiftDrag) ? h : NULL;
 }
 
+// ============================================================================
+// Tool options (action_registry.h ActionOption): one spec per tool makes both the option bar
+// (input_mode.c) and the keys that change it (HandleToolOptionKeys below)
+// ============================================================================
+
+// Draw material, keys 1-9
+static int OptMaterialCount(int ctx) { (void)ctx; return DRAW_MATERIAL_COUNT; }
+static const char* OptMaterialName(int ctx, int i) { (void)ctx; return drawMaterials[i].label; }
+static int OptMaterialGet(int ctx) { (void)ctx; return selectedMaterial - 1; }
+static void OptMaterialSet(int ctx, int i) { (void)ctx; selectedMaterial = i + 1; }
+static const ActionOption optMaterial = { .label = "Material", .style = OPT_NUMBERED,
+    .count = OptMaterialCount, .nameAt = OptMaterialName, .get = OptMaterialGet, .set = OptMaterialSet };
+
+// Farm crop, keys 1-3 (selectedMaterial: 1 wheat, 2 lentils, 3 flax)
+static const char* const cropNames[] = { "Wheat", "Lentils", "Flax" };
+static int OptCropCount(int ctx) { (void)ctx; return 3; }
+static const char* OptCropName(int ctx, int i) { (void)ctx; return cropNames[i]; }
+static const ActionOption optCrop = { .label = "Crop", .style = OPT_NUMBERED,
+    .count = OptCropCount, .nameAt = OptCropName, .get = OptMaterialGet, .set = OptMaterialSet };
+
+// Sculpt brush size, keys 1-4
+static const char* const brushNames[] = { "1x1", "3x3", "5x5", "7x7" };
+static int OptBrushCount(int ctx) { (void)ctx; return 4; }
+static const char* OptBrushName(int ctx, int i) { (void)ctx; return brushNames[i]; }
+static int OptBrushGet(int ctx) { (void)ctx; return terrainBrushRadius; }
+static void OptBrushSet(int ctx, int i) { (void)ctx; terrainBrushRadius = i; AddMessage(TextFormat("Brush: %s", brushNames[i]), GREEN); }
+static const ActionOption optBrush = { .label = "Brush", .style = OPT_NUMBERED,
+    .count = OptBrushCount, .nameAt = OptBrushName, .get = OptBrushGet, .set = OptBrushSet };
+
+// Torch colour, keys 1-5 (TorchPreset order)
+static const char* const torchNames[] = { "Warm", "Cool", "Fire", "Green", "White" };
+static int OptTorchCount(int ctx) { (void)ctx; return 5; }
+static const char* OptTorchName(int ctx, int i) { (void)ctx; return torchNames[i]; }
+static int OptTorchGet(int ctx) { (void)ctx; return currentTorchPreset; }
+static void OptTorchSet(int ctx, int i) {
+    (void)ctx;
+    static const char* const said[] = { "Torch: Warm (orange)", "Torch: Cool (blue)", "Torch: Fire (red)", "Torch: Green", "Torch: White" };
+    const Color colors[] = { ORANGE, BLUE, RED, GREEN, WHITE };
+    SetTorchPreset((TorchPreset)i);
+    AddMessage(said[i], colors[i]);
+}
+static const ActionOption optTorch = { .label = "Torch", .style = OPT_NUMBERED,
+    .count = OptTorchCount, .nameAt = OptTorchName, .get = OptTorchGet, .set = OptTorchSet };
+
+// Ramp direction: A auto, arrows / HJKL a fixed direction
+static const char* const rampNames[] = { "Auto", "N", "E", "S", "W" };
+static const CellType rampDirs[] = { CELL_AIR, CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W };
+static int OptRampCount(int ctx) { (void)ctx; return 5; }
+static const char* OptRampName(int ctx, int i) { (void)ctx; return rampNames[i]; }
+static int OptRampGet(int ctx) { (void)ctx; for (int i = 0; i < 5; i++) if (rampDirs[i] == selectedRampDirection) return i; return 0; }
+static void OptRampSet(int ctx, int i) {
+    (void)ctx;
+    static const char* const said[] = { "Ramp direction: Auto-detect", "Ramp direction: North (manual)",
+        "Ramp direction: East (manual)", "Ramp direction: South (manual)", "Ramp direction: West (manual)" };
+    selectedRampDirection = rampDirs[i];
+    AddMessage(said[i], WHITE);
+}
+static const ActionOption optRamp = { .label = "Dir", .style = OPT_KEYED,
+    .count = OptRampCount, .nameAt = OptRampName, .get = OptRampGet, .set = OptRampSet,
+    .keys = { KEY_A, KEY_UP, KEY_RIGHT, KEY_DOWN, KEY_LEFT }, .altKeys = { 0, KEY_K, KEY_L, KEY_J, KEY_H } };
+
+// Belt direction: arrows / HJKL, PageUp lift, PageDown chute
+static const int beltDirs[] = { BELT_N, BELT_E, BELT_S, BELT_W, BELT_UP, BELT_DOWN };
+static int OptBeltCount(int ctx) { (void)ctx; return 6; }
+static const char* OptBeltName(int ctx, int i) { (void)ctx; return BeltDirName(beltDirs[i]); }
+static int OptBeltGet(int ctx) { (void)ctx; for (int i = 0; i < 6; i++) if (beltDirs[i] == selectedBeltDirection) return i; return 0; }
+static void OptBeltSet(int ctx, int i) {
+    (void)ctx;
+    selectedBeltDirection = beltDirs[i];
+    AddMessage(TextFormat("Belt direction: %s", BeltDirName(beltDirs[i])), WHITE);
+}
+static const ActionOption optBelt = { .label = "Dir", .style = OPT_KEYED,
+    .count = OptBeltCount, .nameAt = OptBeltName, .get = OptBeltGet, .set = OptBeltSet,
+    .keys = { KEY_UP, KEY_RIGHT, KEY_DOWN, KEY_LEFT, KEY_PAGE_UP, KEY_PAGE_DOWN },
+    .altKeys = { KEY_K, KEY_L, KEY_J, KEY_H, 0, 0 },
+    .keysHint = "Arrows / PgUp lift / PgDn chute" };
+
+// Build recipe per category, R cycles (ctx = BuildCategory)
+static int* OptRecipeVar(int category) {
+    switch (category) {
+        case BUILD_WALL: return &selectedWallRecipe;
+        case BUILD_FLOOR: return &selectedFloorRecipe;
+        case BUILD_LADDER: return &selectedLadderRecipe;
+        case BUILD_FURNITURE: return &selectedFurnitureRecipe;
+        case BUILD_DOOR: return &selectedDoorRecipe;
+        default: return NULL;
+    }
+}
+static const char* OptRecipeCategoryLabel(int category) {
+    switch (category) {
+        case BUILD_WALL: return "Wall";
+        case BUILD_FLOOR: return "Floor";
+        case BUILD_LADDER: return "Ladder";
+        case BUILD_FURNITURE: return "Furniture";
+        case BUILD_DOOR: return "Door";
+        default: return "?";
+    }
+}
+static int OptRecipeCount(int category) { int idx[16]; return GetConstructionRecipeIndicesForCategory((BuildCategory)category, idx, 16); }
+static const char* OptRecipeName(int category, int i) {
+    int idx[16];
+    int n = GetConstructionRecipeIndicesForCategory((BuildCategory)category, idx, 16);
+    const ConstructionRecipe* r = (i >= 0 && i < n) ? GetConstructionRecipe(idx[i]) : NULL;
+    return r ? r->name : "?";
+}
+static int OptRecipeGet(int category) {
+    int idx[16];
+    int n = GetConstructionRecipeIndicesForCategory((BuildCategory)category, idx, 16);
+    int* sel = OptRecipeVar(category);
+    for (int i = 0; i < n && sel; i++) if (idx[i] == *sel) return i;
+    return -1;
+}
+static void OptRecipeSet(int category, int i) {
+    int idx[16];
+    int n = GetConstructionRecipeIndicesForCategory((BuildCategory)category, idx, 16);
+    int* sel = OptRecipeVar(category);
+    if (!sel || i < 0 || i >= n) return;
+    *sel = idx[i];
+    const ConstructionRecipe* recipe = GetConstructionRecipe(*sel);
+    AddMessage(TextFormat("%s recipe: %s", OptRecipeCategoryLabel(category), recipe ? recipe->name : "?"), BLUE);
+}
+#define RECIPE_OPTION(cat) { .label = "Recipe", .style = OPT_CYCLE, .ctx = (cat), \
+    .count = OptRecipeCount, .nameAt = OptRecipeName, .get = OptRecipeGet, .set = OptRecipeSet, .cycleKey = KEY_R }
+static const ActionOption optRecipeWall = RECIPE_OPTION(BUILD_WALL);
+static const ActionOption optRecipeFloor = RECIPE_OPTION(BUILD_FLOOR);
+static const ActionOption optRecipeLadder = RECIPE_OPTION(BUILD_LADDER);
+static const ActionOption optRecipeFurniture = RECIPE_OPTION(BUILD_FURNITURE);
+static const ActionOption optRecipeDoor = RECIPE_OPTION(BUILD_DOOR);
+
+// Sandbox tree species, T cycles
+static const MaterialType treeTypes[] = { MAT_OAK, MAT_PINE, MAT_BIRCH, MAT_WILLOW };
+static int OptTreeCount(int ctx) { (void)ctx; return 4; }
+static const char* OptTreeName(int ctx, int i) { (void)ctx; return TreeTypeName(treeTypes[i]); }
+static int OptTreeGet(int ctx) { (void)ctx; for (int i = 0; i < 4; i++) if (treeTypes[i] == currentTreeType) return i; return 0; }
+static void OptTreeSet(int ctx, int i) {
+    (void)ctx;
+    currentTreeType = treeTypes[i];
+    AddMessage(TextFormat("Tree type: %s", TreeTypeName(currentTreeType)), GREEN);
+}
+static const ActionOption optTree = { .label = "Tree", .style = OPT_CYCLE,
+    .count = OptTreeCount, .nameAt = OptTreeName, .get = OptTreeGet, .set = OptTreeSet, .cycleKey = KEY_T };
+
+static const ActionOption* const actionOptions[] = {
+    [ACTION_DRAW_WALL]       = &optMaterial,
+    [ACTION_DRAW_FLOOR]      = &optMaterial,
+    [ACTION_DRAW_RAMP]       = &optRamp,
+    [ACTION_WORK_CONSTRUCT]  = &optRecipeWall,
+    [ACTION_WORK_FLOOR]      = &optRecipeFloor,
+    [ACTION_WORK_LADDER]     = &optRecipeLadder,
+    [ACTION_WORK_FURNITURE]  = &optRecipeFurniture,
+    [ACTION_WORK_DOOR]       = &optRecipeDoor,
+    [ACTION_WORK_BELT]       = &optBelt,
+    [ACTION_WORK_FARM]       = &optCrop,
+    [ACTION_SANDBOX_SCULPT]  = &optBrush,
+    [ACTION_SANDBOX_LIGHT]   = &optTorch,
+    [ACTION_SANDBOX_TREE]    = &optTree,
+};
+
+const ActionOption* GetActionOption(InputAction action) {
+    if (action <= ACTION_NONE || (int)action >= (int)(sizeof(actionOptions) / sizeof(actionOptions[0]))) return NULL;
+    return actionOptions[action];
+}
+
+static bool CheckKey(int key);   // below: a key press, or the bar's pending key
+
+// The current tool's option keys; true = a key was used
+static bool HandleToolOptionKeys(void) {
+    const ActionOption* o = GetActionOption(inputAction);
+    if (!o) return false;
+    int n = o->count(o->ctx);
+    switch (o->style) {
+        case OPT_NUMBERED:
+            for (int i = 0; i < n && i < 9; i++)
+                if (CheckKey(KEY_ONE + i)) { o->set(o->ctx, i); return true; }
+            break;
+        case OPT_CYCLE:
+            if (n > 0 && CheckKey(o->cycleKey)) { int cur = o->get(o->ctx); o->set(o->ctx, (cur + 1 + n) % n); return true; }
+            break;
+        case OPT_KEYED:
+            for (int i = 0; i < n && i < ACTION_OPTION_MAX_KEYED; i++)
+                if ((o->keys[i] && CheckKey(o->keys[i])) || (o->altKeys[i] && CheckKey(o->altKeys[i]))) {
+                    o->set(o->ctx, i);
+                    return true;
+                }
+            break;
+    }
+    return false;
+}
+
 
 // ============================================================================
 // Main Input Handler
@@ -2389,20 +2582,8 @@ void HandleInput(void) {
     // ========================================================================
     if (hoveredStockpile >= 0) {
         // Actions are shared with the inspector panel (src/core/selection.c)
-        bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) StockpileAdjustPriority(hoveredStockpile, 1);
-        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) StockpileAdjustPriority(hoveredStockpile, -1);
-        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-            // ] = stack size up, Shift+] = more containers
-            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, 1);
-            else StockpileAdjustStackSize(hoveredStockpile, 1);
-            return;
-        }
-        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
-            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, -1);
-            else StockpileAdjustStackSize(hoveredStockpile, -1);
-            return;
-        }
+        // Priority = -, stack size ] [, Shift+] [ containers: the stockpile verbs (selection.c)
+        if (RunSelectionVerbKeys(SEL_STOCKPILE, hoveredStockpile)) return;
         // Filter toggles - only in normal mode (two-level keyboard navigation)
         if (inputMode == MODE_NORMAL) {
             // Material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
@@ -2532,15 +2713,8 @@ void HandleInput(void) {
             return;
         }
 
-        // L = Link stockpiles (enter linking mode)
-        if (IsKeyPressed(KEY_L)) {
-            InputMode_StartLinking(hoveredWorkshop);
-            return;
-        }
-
-        // D = Mark/unmark workshop for deconstruction
-        if (IsKeyPressed(KEY_D)) {
-            WorkshopToggleDeconstruct(hoveredWorkshop);
+        // L link stockpiles, D deconstruct: the workshop verbs (selection.c)
+        if (RunSelectionVerbKeys(SEL_WORKSHOP, hoveredWorkshop)) {
             hoveredWorkshop = -1;
             return;
         }
@@ -2764,11 +2938,8 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
-        // Draft toggle: D while hovering a mover drafts/undrafts (consumes D before draw mode)
-        if (hoveredMover >= 0 && hoveredMover < moverCount && CheckKey(KEY_D)) {
-            ToggleMoverDraft(hoveredMover);
-            return;
-        }
+        // D while hovering a mover drafts/undrafts (before D = draw mode): the mover verbs (selection.c)
+        if (hoveredMover >= 0 && hoveredMover < moverCount && RunSelectionVerbKeys(SEL_MOVER, hoveredMover)) return;
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
         if (devUI && CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
         if (devUI && CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
@@ -2860,6 +3031,8 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputAction == ACTION_NONE) {
+        // I in the Work bar flips how builds are done (now / order)
+        if (inputMode == MODE_WORK && CheckKey(KEY_I)) { InputMode_FlipHow(); return; }
         // Re-tap submode key to go back (e.g. WORK > DIG -> press D -> WORK)
         if (inputMode == MODE_WORK && workSubMode != SUBMODE_NONE) {
             bool backFromSubmode = false;
@@ -2887,7 +3060,7 @@ void HandleInput(void) {
         int count = GetActionsForContext(inputMode, workSubMode, ACTION_NONE, defs, MAX_BAR_ITEMS);
         for (int i = 0; i < count; i++) {
             if (CheckKey(KeyFromChar(defs[i]->barKey))) {
-                inputAction = defs[i]->action;
+                InputMode_SelectAction(InputMode_HowOf(defs[i]->action));   // now or order
                 // Reset material for draw actions that need it
                 if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR ||
                     inputAction == ACTION_DRAW_LADDER) {
@@ -2900,16 +3073,30 @@ void HandleInput(void) {
     }
     
     // ========================================================================
-    // Category child selection — data-driven from registry
+    // I flips the tool between now (Draw: instant) and order (Work: the workers build it)
+    // when it has a twin in the registry (docs/todo/ui/find-palette.md step 3)
     // ========================================================================
     {
         const ActionDef* curDef = GetActionDef(inputAction);
+        if (curDef->twin != ACTION_NONE && CheckKey(KEY_I)) {
+            InputMode_FlipHow();   // also flips how the next picked tool builds
+            return;
+        }
+    }
+
+    // ========================================================================
+    // Category child selection — data-driven from registry
+    // ========================================================================
+    {
+        // A now category (Draw with a Work twin) picks from its twin's kinds, like its bar shows
+        const ActionDef* curDef = GetActionDef(inputAction);
+        if (curDef->requiredMode == MODE_DRAW && curDef->twin != ACTION_NONE) curDef = GetActionDef(curDef->twin);
         const ActionDef* children[MAX_BAR_ITEMS];
-        int childCount = GetActionsForContext(curDef->requiredMode, curDef->requiredSubMode, inputAction, children, MAX_BAR_ITEMS);
+        int childCount = GetActionsForContext(curDef->requiredMode, curDef->requiredSubMode, curDef->action, children, MAX_BAR_ITEMS);
         if (childCount > 0) {
             for (int i = 0; i < childCount; i++) {
                 if (CheckKey(KeyFromChar(children[i]->barKey))) {
-                    inputAction = children[i]->action;
+                    InputMode_SelectAction(InputMode_HowOf(children[i]->action));   // now or order
                     return;
                 }
             }
@@ -2945,131 +3132,10 @@ void HandleInput(void) {
     }
 
     // ========================================================================
-    // Material selection (when action is selected)
+    // The tool's option: material 1-9, recipe (R), ramp / belt direction, brush size, torch
+    // colour, crop, tree type. All from the tool's ActionOption (see "Tool options" above).
     // ========================================================================
-    
-    if (CheckKey(KEY_ONE)) selectedMaterial = 1;
-    if (CheckKey(KEY_TWO)) selectedMaterial = 2;
-    if (CheckKey(KEY_THREE)) selectedMaterial = 3;
-    if (CheckKey(KEY_FOUR)) selectedMaterial = 4;
-    if (CheckKey(KEY_FIVE)) selectedMaterial = 5;
-    if (CheckKey(KEY_SIX)) selectedMaterial = 6;
-    if (CheckKey(KEY_SEVEN)) selectedMaterial = 7;
-    if (CheckKey(KEY_EIGHT)) selectedMaterial = 8;
-    if (CheckKey(KEY_NINE)) selectedMaterial = 9;
-
-    // ========================================================================
-    // Terrain brush size selection (when sculpt action is selected)
-    // ========================================================================
-
-    if (inputAction == ACTION_SANDBOX_SCULPT) {
-        if (CheckKey(KEY_ONE))   { terrainBrushRadius = 0; AddMessage("Brush: 1x1", GREEN); }
-        if (CheckKey(KEY_TWO))   { terrainBrushRadius = 1; AddMessage("Brush: 3x3", GREEN); }
-        if (CheckKey(KEY_THREE)) { terrainBrushRadius = 2; AddMessage("Brush: 5x5", GREEN); }
-        if (CheckKey(KEY_FOUR))  { terrainBrushRadius = 3; AddMessage("Brush: 7x7", GREEN); }
-    }
-
-    // ========================================================================
-    // Torch color preset selection (when light action is selected)
-    // ========================================================================
-
-    if (inputAction == ACTION_SANDBOX_LIGHT) {
-        if (CheckKey(KEY_ONE))   { SetTorchPreset(TORCH_PRESET_WARM);  AddMessage("Torch: Warm (orange)", ORANGE); }
-        if (CheckKey(KEY_TWO))   { SetTorchPreset(TORCH_PRESET_COOL);  AddMessage("Torch: Cool (blue)", BLUE); }
-        if (CheckKey(KEY_THREE)) { SetTorchPreset(TORCH_PRESET_FIRE);  AddMessage("Torch: Fire (red)", RED); }
-        if (CheckKey(KEY_FOUR))  { SetTorchPreset(TORCH_PRESET_GREEN); AddMessage("Torch: Green", GREEN); }
-        if (CheckKey(KEY_FIVE))  { SetTorchPreset(TORCH_PRESET_WHITE); AddMessage("Torch: White", WHITE); }
-    }
-
-    // ========================================================================
-    // Ramp direction selection (when ramp action is selected)
-    // Arrow keys override auto-detect, 'A' resets to auto-detect
-    // ========================================================================
-    
-    if (inputAction == ACTION_DRAW_RAMP) {
-        // Arrow keys or HJKL to manually select direction
-        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) {
-            selectedRampDirection = CELL_RAMP_N;
-            AddMessage("Ramp direction: North (manual)", WHITE);
-        }
-        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_L)) {
-            selectedRampDirection = CELL_RAMP_E;
-            AddMessage("Ramp direction: East (manual)", WHITE);
-        }
-        if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_J)) {
-            selectedRampDirection = CELL_RAMP_S;
-            AddMessage("Ramp direction: South (manual)", WHITE);
-        }
-        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_H)) {
-            selectedRampDirection = CELL_RAMP_W;
-            AddMessage("Ramp direction: West (manual)", WHITE);
-        }
-        // 'A' to reset to auto-detect
-        if (IsKeyPressed(KEY_A)) {
-            selectedRampDirection = CELL_AIR;
-            AddMessage("Ramp direction: Auto-detect", WHITE);
-        }
-    }
-
-    // ========================================================================
-    // Belt direction (belt tool): arrows/HJKL = N/E/S/W, PageUp = up (lift), PageDown = down (chute)
-    // ========================================================================
-    if (inputAction == ACTION_WORK_BELT) {
-        int d = -1;
-        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) d = BELT_N;
-        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_L)) d = BELT_E;
-        if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_J)) d = BELT_S;
-        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_H)) d = BELT_W;
-        if (IsKeyPressed(KEY_PAGE_UP)) d = BELT_UP;
-        if (IsKeyPressed(KEY_PAGE_DOWN)) d = BELT_DOWN;
-        if (d >= 0) {
-            selectedBeltDirection = d;
-            AddMessage(TextFormat("Belt direction: %s", BeltDirName(d)), WHITE);
-            return;
-        }
-    }
-
-    // ========================================================================
-    // Build recipe cycling (R key when in build actions)
-    // ========================================================================
-    {
-        // One row per build tool: R cycles that tool's recipe category
-        static const struct {
-            InputAction action;
-            BuildCategory category; // recipe category
-            int* selected;         // the tool's current recipe
-            const char* label;
-        } recipeCyclers[] = {
-            {ACTION_WORK_CONSTRUCT, BUILD_WALL,      &selectedWallRecipe,      "Wall"},
-            {ACTION_WORK_FLOOR,     BUILD_FLOOR,     &selectedFloorRecipe,     "Floor"},
-            {ACTION_WORK_LADDER,    BUILD_LADDER,    &selectedLadderRecipe,    "Ladder"},
-            {ACTION_WORK_FURNITURE, BUILD_FURNITURE, &selectedFurnitureRecipe, "Furniture"},
-            {ACTION_WORK_DOOR,      BUILD_DOOR,      &selectedDoorRecipe,      "Door"},
-        };
-        for (int r = 0; r < (int)(sizeof(recipeCyclers) / sizeof(recipeCyclers[0])); r++) {
-            if (inputAction != recipeCyclers[r].action || !IsKeyPressed(KEY_R)) continue;
-            int indices[16];
-            int count = GetConstructionRecipeIndicesForCategory(recipeCyclers[r].category, indices, 16);
-            if (count > 0) {
-                int* selected = recipeCyclers[r].selected;
-                int cur = -1;
-                for (int i = 0; i < count; i++) {
-                    if (indices[i] == *selected) { cur = i; break; }
-                }
-                *selected = indices[(cur + 1) % count];
-                const ConstructionRecipe* recipe = GetConstructionRecipe(*selected);
-                AddMessage(TextFormat("%s recipe: %s", recipeCyclers[r].label, recipe ? recipe->name : "?"), BLUE);
-            }
-            return;
-        }
-    }
-
-    // ========================================================================
-    // Sandbox tree type cycling
-    // ========================================================================
-    if (inputAction == ACTION_SANDBOX_TREE && CheckKey(KEY_T)) {
-        CycleSandboxTreeType();
-    }
+    if (HandleToolOptionKeys()) return;
 
     // ========================================================================
     // Action execution (drag handling)
@@ -3207,4 +3273,66 @@ void HandleInput(void) {
         }
         done_execute:;
     }
+}
+
+// ============================================================================
+// Keys as data for the help panel (docs/todo/ui/find-palette.md step 5): the global keys
+// (handled in HandleInput / main.c) as a table, plus the selection verbs' keys (selection.c).
+// The tools' keys show in the bar (registry + tool options), commands in the console's help.
+// ============================================================================
+
+static const struct { const char* keys; const char* help; } globalKeyHelp[] = {
+    { NULL,          "--- View ---" },
+    { "Esc",         "Back / exit menu" },
+    { ", / .",       "Level down / up" },
+    { "Scroll",      "Zoom in / out" },
+    { "Middle-drag", "Pan view" },
+    { "Space",       "Pause / resume" },
+    { "F",           "Follow the hovered (or selected) mover" },
+    { NULL,          "--- General ---" },
+    { "L-click",     "Select a mover, animal, workshop, stockpile" },
+    { "Tab",         "Dev overlay (tools, settings)" },
+    { "`",           "Console (type help)" },
+    { "I",           "Build tools: instant / by order (Work bar)" },
+    { "F5 / F6",     "Quick save / quick load" },
+    { "F7",          "State audit" },
+    { "F8",          "Dump the event log" },
+};
+
+static const char* HelpKeyName(int key) {
+    if (key >= KEY_A && key <= KEY_Z) { static char b[2][2]; static int k; k ^= 1; b[k][0] = (char)('A' + (key - KEY_A)); b[k][1] = 0; return b[k]; }
+    switch (key) {
+        case KEY_EQUAL: return "=";
+        case KEY_MINUS: return "-";
+        case KEY_KP_ADD: return "KP+";
+        case KEY_KP_SUBTRACT: return "KP-";
+        case KEY_LEFT_BRACKET: return "[";
+        case KEY_RIGHT_BRACKET: return "]";
+        default: return "?";
+    }
+}
+
+int InputHelpLines(char lines[][64], int max) {
+    int n = 0;
+    for (int i = 0; i < (int)(sizeof(globalKeyHelp) / sizeof(globalKeyHelp[0])) && n < max; i++) {
+        if (globalKeyHelp[i].keys) snprintf(lines[n++], 64, "%-13s %s", globalKeyHelp[i].keys, globalKeyHelp[i].help);
+        else snprintf(lines[n++], 64, "%s", globalKeyHelp[i].help);
+    }
+    static const struct { SelectionKind kind; const char* title; } kinds[] = {
+        { SEL_MOVER, "--- Hovering a mover ---" },
+        { SEL_WORKSHOP, "--- Hovering a workshop ---" },
+        { SEL_STOCKPILE, "--- Hovering a stockpile ---" },
+    };
+    for (int k = 0; k < 3 && n < max; k++) {
+        snprintf(lines[n++], 64, "%s", kinds[k].title);
+        for (int i = 0; i < SelectionVerbCount() && n < max; i++) {
+            const SelectionVerb* v = SelectionVerbAt(i);
+            if (v->kind != kinds[k].kind || !v->key) continue;
+            char keys[24];
+            snprintf(keys, sizeof(keys), "%s%s%s%s", v->shift ? "Shift+" : "", HelpKeyName(v->key),
+                     v->altKey ? " / " : "", v->altKey ? HelpKeyName(v->altKey) : "");
+            snprintf(lines[n++], 64, "%-13s %s", keys, v->name);
+        }
+    }
+    return n;
 }

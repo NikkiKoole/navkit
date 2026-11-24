@@ -511,6 +511,12 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
     } else {
         DescAdd(out, typeTone, "Type: %s%s", CellName(ct), burnedTag);
     }
+    if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_UP) DescAdd(out, DESC_INFO, "One-way: up only");
+    if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_DOWN) DescAdd(out, DESC_INFO, "One-way: down only");
+    if (ct == CELL_DOOR && ONE_WAY(x, y, z) >= ONEWAY_N && ONE_WAY(x, y, z) <= ONEWAY_W) {
+        static const char* const ways[] = { "north", "east", "south", "west" };
+        DescAdd(out, DESC_INFO, "One-way: pass %s only", ways[ONE_WAY(x, y, z) - ONEWAY_N]);
+    }
 
     // Wall and floor material
     MaterialType wallMat = GetWallMaterial(x, y, z);

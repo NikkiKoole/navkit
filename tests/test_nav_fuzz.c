@@ -216,7 +216,23 @@ static void FzPlaceLadder(int x, int y, int z) {
     if (z + 1 >= map.d) return;
     map.wall[z][y][x] = map.wall[z + 1][y][x] = 0;
     map.ramp[z][y][x] = map.ramp[z + 1][y][x] = 0;
-    map.ladder[z][y][x] = map.ladder[z + 1][y][x] = 1;
+    // a quarter of the ladders are one-way (up only or down only)
+    unsigned char kind = Chance(25) ? (Chance(50) ? 2 : 3) : 1;
+    map.ladder[z][y][x] = map.ladder[z + 1][y][x] = kind;
+}
+
+// One-way door passed going dir (1..4 = N,E,S,W), usually in a wall across its way
+static void FzPlaceDoor(int x, int y, int z, int dir) {
+    static const int ox[5] = {0, 0, 1, 0, -1}, oy[5] = {0, -1, 0, 1, 0};
+    map.wall[z][y][x] = 0;
+    map.door[z][y][x] = (unsigned char)dir;
+    if (Chance(70)) {
+        int px = oy[dir], py = ox[dir];   // perpendicular
+        for (int s = -1; s <= 1; s += 2) {
+            int wx = x + px * s, wy = y + py * s;
+            if (wx >= 0 && wy >= 0 && wx < map.w && wy < map.h) map.wall[z][wy][wx] = 1;
+        }
+    }
 }
 
 static void FzPlaceRamp(int x, int y, int z, int dir) {
@@ -388,6 +404,9 @@ static void GenerateWorld(int* outGen) {
         for (int i = 0; i < ladders; i++) { int x, y; BiasedCell(&x, &y); FzPlaceLadder(x, y, RndRange(0, map.d - 2)); }
         for (int i = 0; i < ramps; i++) { int x, y; BiasedCell(&x, &y); FzPlaceRamp(x, y, RndRange(0, map.d - 2), RndRange(1, 4)); }
     }
+    // one-way doors, often on borders/corners
+    int doors = RndRange(0, 8);
+    for (int i = 0; i < doors; i++) { int x, y; BiasedCell(&x, &y); FzPlaceDoor(x, y, RndRange(0, map.d - 1), RndRange(1, 4)); }
 }
 
 // ---------------------------------------------------------------------------
@@ -840,7 +859,7 @@ static void EditWorld(NavWorld* w) {
         if (getenv("FZ_EDITS")) printf("    edit kind %d at (%d,%d,%d)\n", kind, x, y, z);   // 0-4 wall, 5-6 ladder, 7-8 ramp, 9 cost
         if (kind < 5) {
             map.wall[z][y][x] = !map.wall[z][y][x];
-            if (map.wall[z][y][x]) { map.ladder[z][y][x] = 0; map.ramp[z][y][x] = 0; }
+            if (map.wall[z][y][x]) { map.ladder[z][y][x] = 0; map.ramp[z][y][x] = 0; map.door[z][y][x] = 0; }
             NavMarkCellChanged(w, x, y, z);
         } else if (kind < 7 && map.d > 1) {
             int lz = z < map.d - 1 ? z : z - 1;
@@ -856,9 +875,15 @@ static void EditWorld(NavWorld* w) {
             int ex = x + ox[dir], ey = y + oy[dir], lx = x - ox[dir], ly = y - oy[dir];
             if (ex >= 0 && ey >= 0 && ex < map.w && ey < map.h) NavMarkCellChanged(w, ex, ey, rz + 1);
             if (lx >= 0 && ly >= 0 && lx < map.w && ly < map.h) NavMarkCellChanged(w, lx, ly, rz);
-        } else {
+        } else if (Chance(50)) {
             map.cost[z][y][x] = Chance(50) ? 0 : (unsigned char)RndRange(12, 200);
             NavMarkCellChanged(w, x, y, z);
+        } else {   // one-way door: placed (with walls beside it), turned or removed
+            if (map.door[z][y][x] && Chance(40)) map.door[z][y][x] = 0;
+            else FzPlaceDoor(x, y, z, RndRange(1, 4));
+            for (int ny = y - 1; ny <= y + 1; ny++)
+                for (int nx = x - 1; nx <= x + 1; nx++)
+                    if (nx >= 0 && ny >= 0 && nx < map.w && ny < map.h) NavMarkCellChanged(w, nx, ny, z);
         }
     }
     if (getenv("FZ_FULL")) { NavBuildEntrances(w); NavBuildGraph(w); }

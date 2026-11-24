@@ -1043,6 +1043,13 @@ static void nav_BuildBorderEntrances(NavWorld* w, int z, bool onlyAffected) {
     #undef NAV_COL
 }
 
+// A ladder link between z and z+1 at (x,y): climbable at least one way (one-way ladders
+// keep their entrances; the edges follow the allowed directions)
+static inline bool nav_LadderLinked(NavWorld* w, int x, int y, int z) {
+    (void)w;
+    return NavCanClimbUp(NAV_HOSTP, x, y, z) || NavCanClimbDown(NAV_HOSTP, x, y, z + 1);
+}
+
 void NavBuildEntrances(NavWorld* w) {
     w->entranceNum = 0;
     w->ladderNum = 0;
@@ -1056,7 +1063,7 @@ void NavBuildEntrances(NavWorld* w) {
         for (int y = 0; y < w->height; y++) {
             for (int x = 0; x < w->width; x++) {
                 // ladders stay graph links (their queue cost changes at query time)
-                if (NavCanClimbUp(NAV_HOSTP, x, y, z) && nav_EnsureLadderCap(w, w->ladderNum + 1)) {
+                if (nav_LadderLinked(w, x, y, z) && nav_EnsureLadderCap(w, w->ladderNum + 1)) {
                     int entLow = nav_AddPointEntrance(w, x, y, z);
                     int entHigh = nav_AddPointEntrance(w, x, y, z + 1);
                     if (entLow >= 0 && entHigh >= 0)
@@ -1168,8 +1175,11 @@ static void nav_AddVerticalLinkEdges(NavWorld* w, bool onlyAffected) {
     for (int i = 0; i < w->ladderNum; i++) {
         const NavLadderLink* l = &w->ladderList[i];
         if (onlyAffected && !nav_EntranceTouchesAffected(w, l->entranceLow) && !nav_EntranceTouchesAffected(w, l->entranceHigh)) continue;
-        nav_AddEdge(w, l->entranceLow, l->entranceHigh, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zHigh), -1);
-        nav_AddEdge(w, l->entranceHigh, l->entranceLow, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zLow), -1);
+        // one-way ladders: each direction only if the host allows it
+        if (NavCanClimbUp(NAV_HOSTP, l->x, l->y, l->zLow))
+            nav_AddEdge(w, l->entranceLow, l->entranceHigh, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zHigh), -1);
+        if (NavCanClimbDown(NAV_HOSTP, l->x, l->y, l->zHigh))
+            nav_AddEdge(w, l->entranceHigh, l->entranceLow, NavMoveCost(NAV_HOSTP, l->x, l->y, l->zLow), -1);
     }
     for (int i = 0; i < w->rampNum; i++) {
         const NavRampLink* r = &w->rampList[i];
@@ -1755,7 +1765,7 @@ static void nav_RebuildAffectedEntrances(NavWorld* w) {
         for (int z = 0; z < w->depth; z++)
             for (int y = y0; y < y1; y++)
                 for (int x = x0; x < x1; x++) {
-                    if (z + 1 < w->depth && NavCanClimbUp(NAV_HOSTP, x, y, z) && nav_EnsureLadderCap(w, w->ladderNum + 1)) {
+                    if (z + 1 < w->depth && nav_LadderLinked(w, x, y, z) && nav_EnsureLadderCap(w, w->ladderNum + 1)) {
                         int entLow = nav_AddPointEntrance(w, x, y, z), entHigh = nav_AddPointEntrance(w, x, y, z + 1);
                         if (entLow >= 0 && entHigh >= 0)
                             w->ladderList[w->ladderNum++] = (NavLadderLink){
@@ -2828,7 +2838,7 @@ static void nav_RegLabelChunk(NavWorld* w, int chunk, int* queue) {
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++) {
             int c = nav_Cell3(w, x, y, z), ex, ey;
-            if (z + 1 < w->depth && NavCanClimbUp(NAV_HOSTP, x, y, z)) nav_RegAddLink(L, c, nav_Cell3(w, x, y, z + 1));
+            if (z + 1 < w->depth && nav_LadderLinked(w, x, y, z)) nav_RegAddLink(L, c, nav_Cell3(w, x, y, z + 1));   // either way (one-way ladders)
             if (z + 1 < w->depth && NavRampUp(NAV_HOSTP, x, y, z, &ex, &ey) &&
                 ex >= 0 && ey >= 0 && ex < w->width && ey < w->height)
                 nav_RegAddLink(L, c, nav_Cell3(w, ex, ey, z + 1));

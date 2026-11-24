@@ -5,7 +5,7 @@
 # Minimums are ~80% of the measured baseline at 3000 ticks (runs are deterministic),
 # so tuning has room but a collapse (deadlock, everyone queuing forever) fails.
 # Always checked: nobody stuck > 2 s, nobody newly inside a wall, the scenario's own
-# check (ladders: never two climbers on one segment). Exit code 1 if any run fails.
+# check (ladders: never two climbers on one segment, never against a one-way ladder or door). Exit code 1 if any run fails.
 #
 # Games (src/core/games.c) run here too. Headless runs use a fixed seed (0 unless
 # --seed), so survival and dollhouse are deterministic like the scenarios.
@@ -38,6 +38,9 @@ done <<'EOF'
 49  | 0 | --scenario ladders
 82  | 0 | --scenario ladder-choice
 107 | 0 | --set scenarioMovers 48 --scenario ladder-choice
+77  | 0 | --scenario ladder-oneway
+175 | 0 | --scenario door-oneway
+98  | 0 | --scenario oneway-tiers
 85  | 1 | --scenario mood
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train

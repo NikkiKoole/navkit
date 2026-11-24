@@ -97,6 +97,7 @@ extern bool showGraph;
 extern bool showEntrances;
 extern bool showChunkBoundaries;
 extern bool showMovers;
+extern bool moverFaces;   // faces turn with the walking direction, mouth shows mood
 extern bool usePixelPerfectMovers;
 extern bool showMoverPaths;
 extern bool showJobLines;

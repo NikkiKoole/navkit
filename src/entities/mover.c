@@ -799,6 +799,7 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1, int z) {
             }
         }
 
+        int px = x, py = y;
         if (e2 > -dy) {
             err -= dy;
             x += sx;
@@ -807,6 +808,8 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1, int z) {
             err += dx;
             y += sy;
         }
+        // One-way doors: the line may only pass through one its way (cardinal, right side)
+        if (!CanStepThroughDoors(px, py, x, y, z)) return false;
     }
 }
 

@@ -19,6 +19,7 @@ typedef enum {
     CARG_CHOICE,    // one of choices[]; when hi > lo a number in lo..hi is accepted too (rain 1-100)
     CARG_ITEM,      // an item type by name (case-insensitive prefix, "stone hammer"): takes the rest of the line
     CARG_NAME,      // a name from another table (terrains, scenarios, games): nameCount / nameAt
+    CARG_TEXT,      // free text: takes the rest of the line ("find fire pit"), v.s
 } CmdArgType;
 
 typedef struct {

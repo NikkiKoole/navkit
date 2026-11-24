@@ -34,7 +34,7 @@
 // needs + speed) don't leak into the next.
 // ---------------------------------------------------------------------------
 typedef struct {
-    bool hunger, thirst, energy, endless, preferDiffZ;
+    bool hunger, thirst, energy, endless, preferDiffZ, mood;
     float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
 } ScenarioSettings;
 
@@ -58,7 +58,7 @@ static void SpawnGroundCrowd(int n) {
 static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
-                                           endlessMoverMode, preferDifferentZ,
+                                           endlessMoverMode, preferDifferentZ, moodEnabled,
                                            dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed};
         haveSavedSettings = true;
@@ -69,6 +69,7 @@ static void SnapshotOrRestoreSettings(void) {
     energyEnabled = savedSettings.energy;
     endlessMoverMode = savedSettings.endless;
     preferDifferentZ = savedSettings.preferDiffZ;
+    moodEnabled = savedSettings.mood;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
@@ -103,6 +104,7 @@ static int FindTerrainIndex(const char* name) {
 
 void ScenarioResetWorld(const char* terrain) {
     springTrickle = false;   // sources are taps unless the terrain says otherwise (island)
+    buildNow = true;         // dev setups: the build tools work instantly (I flips to order)
     SnapshotOrRestoreSettings();
     moverGoalPicker = NULL;
     // Entities first (ClearMovers also drops jobs and reservations)
@@ -184,6 +186,23 @@ static void AddLadderAt(int x, int y) {
     GRID(x, y, 2) = CELL_LADDER_BOTH;
 }
 
+// faces: 16 movers wandering a flat field with fixed moods (mood system off), so every
+// head sprite shows: the view follows the walking direction (front when standing), the
+// mouth the mood (sad, flat, grin, smile). Setting moverFaces turns it off.
+static void SetupFaces(void) {
+    endlessMoverMode = true;
+    moodEnabled = false;
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    static const float moods[4] = { -0.8f, -0.3f, 0.0f, 0.8f };
+    for (int i = 0; i < 16; i++) {
+        int before = moverCount;
+        SpawnMoverAt(6 + (i % 4) * 6, 6 + (i / 4) * 6, 1);
+        if (moverCount > before) movers[moverCount - 1].mood = moods[i % 4];
+    }
+    currentViewZ = 1;
+    AddMessage("Faces: columns are sad, flat, grin, smile; they look where they walk", GREEN);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -224,6 +243,125 @@ static void SetupLadderChoice(void) {
                           useLadderQueueCost ? "on" : "off"), GREEN);
 }
 
+// ladder-oneway: the deck with an up-only ladder (18,16) and a down-only one (18,6),
+// 16 movers wandering between the levels: every climb up uses the first, every climb
+// down the second (--check fails on a climb against the direction).
+static void SetupLadderOneWay(void) {
+    ResetLadderStats();
+    BuildLadderDeck();
+    AddLadderAt(18, 16);
+    AddLadderAt(18, 6);
+    SetLadderOneWay(18, 16, 1, ONEWAY_UP);
+    SetLadderOneWay(18, 6, 1, ONEWAY_DOWN);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    preferDifferentZ = true;
+    if (scenarioMovers > 0) SpawnGroundCrowd(scenarioMovers);
+    else for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 8) * 2, 10 + (i / 8) * 10, 1);
+    currentViewZ = 1;
+    AddMessage("One-way ladders: up at (18,16), down at (18,6), 16 movers", GREEN);
+}
+
+// oneway-tiers: a stepped tower of plank decks east of the ground (z=2 from x=10, z=3 from
+// x=16, z=4 from x=22). Each tier joins the next by an up-only ladder on the north side and
+// a down-only ladder on the south side, and a down-only "fire pole" drops from the top deck
+// to the ground (28,16). Movers wander between levels: up the north ladders tier by tier,
+// down the south ladders or the pole. --check fails on a climb against a ladder.
+static void SetupOneWayTiers(void) {
+    ResetLadderStats();
+    static const int tierX[3] = {10, 16, 22};
+    for (int t = 0; t < 3; t++) {
+        int z = 2 + t;
+        for (int y = 4; y < 28; y++)
+            for (int x = tierX[t]; x < 30; x++) {
+                SET_FLOOR(x, y, z);
+                SetFloorMaterial(x, y, z, t == 0 ? MAT_OAK : t == 1 ? MAT_PINE : MAT_BIRCH);
+            }
+        // ladders at the deck's west edge, from the level below (z-1) up onto it (z)
+        GRID(tierX[t], 6, z - 1) = CELL_LADDER_BOTH;  GRID(tierX[t], 6, z) = CELL_LADDER_BOTH;
+        GRID(tierX[t], 25, z - 1) = CELL_LADDER_BOTH; GRID(tierX[t], 25, z) = CELL_LADDER_BOTH;
+        RecalculateLadderColumn(tierX[t], 6);
+        RecalculateLadderColumn(tierX[t], 25);
+        SetLadderOneWay(tierX[t], 6, z, ONEWAY_UP);
+        SetLadderOneWay(tierX[t], 25, z, ONEWAY_DOWN);
+    }
+    // the fire pole: one ladder through every deck, top to ground, down only
+    for (int z = 1; z <= 4; z++) GRID(28, 16, z) = CELL_LADDER_BOTH;
+    RecalculateLadderColumn(28, 16);
+    SetLadderOneWay(28, 16, 4, ONEWAY_DOWN);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    preferDifferentZ = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 24;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 6), 6 + (i / 6) * 5, 1);
+    currentViewZ = 4;
+    AddMessage("One-way tiers: up the north ladders, down the south ladders or the fire pole", GREEN);
+}
+
+// door-oneway: a building with a door in (south wall, passed going north) and a door out
+// (north wall, also going north), 16 wandering movers: everyone goes in at the south and
+// out at the north, like a shop with turnstiles. --check fails on a pass the wrong way.
+static int doorPasses[2], doorWrongWay;
+static int doorPrevX[MAX_MOVERS], doorPrevY[MAX_MOVERS];
+static const int doorInX = 16, doorInY = 22, doorOutX = 16, doorOutY = 8;
+
+static void SetupDoorOneWay(void) {
+    for (int y = 8; y <= 22; y++)
+        for (int x = 8; x <= 24; x++) {
+            if (x != 8 && x != 24 && y != 8 && y != 22) continue;
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_OAK);
+        }
+    GRID(doorInX, doorInY, 1) = CELL_DOOR;   SetWallMaterial(doorInX, doorInY, 1, MAT_OAK);
+    GRID(doorOutX, doorOutY, 1) = CELL_DOOR; SetWallMaterial(doorOutX, doorOutY, 1, MAT_OAK);
+    SetDoorOneWay(doorInX, doorInY, 1, ONEWAY_N);
+    SetDoorOneWay(doorOutX, doorOutY, 1, ONEWAY_N);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    doorPasses[0] = doorPasses[1] = doorWrongWay = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) doorPrevX[i] = -1;
+    endlessMoverMode = true;
+    preferDifferentZ = false;
+    int n = scenarioMovers > 0 ? scenarioMovers : 16;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 8) * 3, i < 8 ? 3 : 27, 1);
+    currentViewZ = 1;
+    AddMessage("One-way doors: in at the south, out at the north, 16 movers", GREEN);
+}
+
+// Every change of cell into or out of a one-way door must go its way
+static void DoorTickStats(void) {
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        if (!m->active) { doorPrevX[i] = -1; continue; }
+        int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)floorf(m->z);
+        int px = doorPrevX[i], py = doorPrevY[i];
+        doorPrevX[i] = x; doorPrevY[i] = y;
+        if (px < 0 || (px == x && py == y) || abs(px - x) > 1 || abs(py - y) > 1) continue;
+        if (z < 0 || z >= gridDepth) continue;
+        if (x == doorInX && y == doorInY) doorPasses[0]++;
+        if (x == doorOutX && y == doorOutY) doorPasses[1]++;
+        if (!CanStepThroughDoors(px, py, x, y, z)) doorWrongWay++;
+    }
+}
+
+static bool DoorCheck(char* why, int whyLen) {
+    if (doorWrongWay > 0) {
+        snprintf(why, (size_t)whyLen, "%d steps the wrong way through a one-way door", doorWrongWay);
+        return false;
+    }
+    return true;
+}
+
+static void DoorPrintStats(void) {
+    printf("Passes through the door in: %d, the door out: %d\n", doorPasses[0], doorPasses[1]);
+    printf("Steps the wrong way through a one-way door: %d\n", doorWrongWay);
+}
+
 // Queue stats: a mover "at" a ladder stands on a ladder cell with its next
 // waypoint straight up/down (single-file waiters are held there); a climber is
 // between two levels on a ladder cell.
@@ -236,13 +374,15 @@ static int ladderTicks;
 // Climbs started per ladder (x,y), counted when a mover goes from standing to
 // between levels on a ladder cell
 #define LADDER_STAT_LADDERS 16
-typedef struct { int x, y, climbs; } LadderUse;
+typedef struct { int x, y, climbs, up, down; } LadderUse;
 static LadderUse ladderUses[LADDER_STAT_LADDERS];
 static int ladderUseCount;
 static bool moverWasClimbing[MAX_MOVERS];
+static int ladderWrongWay;   // climbs against a one-way ladder
 
 static void ResetLadderStats(void) {
     ladderUseCount = 0;
+    ladderWrongWay = 0;
     memset(moverWasClimbing, 0, sizeof(moverWasClimbing));
     ladderLongestQueue = ladderMostClimbers = ladderSharedTicks = ladderTicks = 0;
     ladderLongestX = ladderLongestY = ladderLongestZ = -1;
@@ -278,8 +418,17 @@ static void LadderTickStats(void) {
                 int k = 0;
                 while (k < ladderUseCount && (ladderUses[k].x != x || ladderUses[k].y != y)) k++;
                 if (k == ladderUseCount && ladderUseCount < LADDER_STAT_LADDERS)
-                    ladderUses[ladderUseCount++] = (LadderUse){x, y, 0};
-                if (k < ladderUseCount) ladderUses[k].climbs++;
+                    ladderUses[ladderUseCount++] = (LadderUse){x, y, 0, 0, 0};
+                // direction: the waypoint is the cell being climbed to (z+1 going up, z going down)
+                int up = -1;
+                if (m->pathLength > 0 && m->pathIndex >= 0) up = moverPaths[i][m->pathIndex].z > z;
+                if (k < ladderUseCount) {
+                    ladderUses[k].climbs++;
+                    if (up == 1) ladderUses[k].up++;
+                    if (up == 0) ladderUses[k].down++;
+                }
+                if (up == 1 && !CanClimbUpAt(x, y, z)) ladderWrongWay++;
+                if (up == 0 && !CanClimbDownAt(x, y, z + 1)) ladderWrongWay++;
             }
             BumpCount(climbs, &climbCount, x, y, z, &n);
             if (n > ladderMostClimbers) ladderMostClimbers = n;
@@ -303,6 +452,10 @@ static void LadderTickStats(void) {
 
 // --check: single-file must hold (never two climbers on one segment)
 static bool LadderCheck(char* why, int whyLen) {
+    if (ladderWrongWay > 0) {
+        snprintf(why, (size_t)whyLen, "%d climbs against a one-way ladder", ladderWrongWay);
+        return false;
+    }
     if (useSingleFileLadders && ladderSharedTicks > 0) {
         snprintf(why, (size_t)whyLen, "two or more climbers on one ladder segment in %d ticks", ladderSharedTicks);
         return false;
@@ -314,7 +467,9 @@ static void LadderPrintStats(void) {
     printf("Single-file ladders: %s, ladder queue cost: %s\n", useSingleFileLadders ? "on" : "off",
            useLadderQueueCost ? "on" : "off");
     for (int k = 0; k < ladderUseCount; k++)
-        printf("Climbs on ladder at (%d,%d): %d\n", ladderUses[k].x, ladderUses[k].y, ladderUses[k].climbs);
+        printf("Climbs on ladder at (%d,%d): %d (up %d, down %d)\n", ladderUses[k].x, ladderUses[k].y,
+               ladderUses[k].climbs, ladderUses[k].up, ladderUses[k].down);
+    printf("Climbs against a one-way ladder: %d\n", ladderWrongWay);
     if (ladderLongestQueue > 0)
         printf("Longest queue at a ladder: %d (cell %d,%d,z%d)\n",
                ladderLongestQueue, ladderLongestX, ladderLongestY, ladderLongestZ);
@@ -3446,11 +3601,64 @@ static bool CarsTownCheck(char* why, int whyLen) {
     return true;
 }
 
+// railings: every rail-* tile on show (RailingSpriteAt picks one per N/E/S/W mask),
+// with 6 movers wandering round them. West to east: a pen with a gate gap (corners,
+// dead ends), a 3x3 window frame (T-junctions, the cross), a lone post and a stub, a
+// railing butting a wall, and a zigzag along the bottom (corners both ways).
+static void Rail(int x, int y, MaterialType mat) {
+    GRID(x, y, 1) = CELL_RAILING;
+    SetWallMaterial(x, y, 1, mat);
+    ClearWallNatural(x, y, 1);
+}
+
+static void SetupRailings(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = bladderEnabled = false;
+    for (int x = 2; x <= 10; x++) { Rail(x, 2, MAT_IRON); if (x != 6) Rail(x, 8, MAT_IRON); }   // the pen
+    for (int y = 3; y <= 7; y++) { Rail(2, y, MAT_IRON); Rail(10, y, MAT_IRON); }
+    for (int y = 2; y <= 8; y++)                                                         // window frame
+        for (int x = 13; x <= 21; x++)
+            if (x == 13 || x == 17 || x == 21 || y == 2 || y == 5 || y == 8) Rail(x, y, MAT_OAK);
+    Rail(25, 3, MAT_GRANITE);                                                            // lone post
+    for (int x = 24; x <= 27; x++) Rail(x, 7, MAT_GRANITE);                              // a stub
+    for (int x = 30; x <= 36; x++) { GRID(x, 2, 1) = CELL_WALL; SetWallMaterial(x, 2, 1, MAT_BRICK); ClearWallNatural(x, 2, 1); }
+    for (int y = 3; y <= 6; y++) Rail(33, y, MAT_IRON);                                  // off the wall
+    Rail(30, 3, MAT_IRON);                                                               // alone, under the wall
+    for (int k = 0; k < 6; k++) {                                                        // zigzag
+        int x0 = 3 + k * 6, y0 = (k % 2) ? 12 : 18;
+        for (int i = 0; i <= 6; i++) Rail(x0, y0 + ((k % 2) ? i : -i), MAT_OAK);
+        for (int i = 1; i <= 5; i++) Rail(x0 + i, (k % 2) ? 18 : 12, MAT_OAK);
+    }
+    BuildEntrances(); BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    for (int i = 0; i < 6; i++) SpawnMoverAt(4 + i * 6, 10, 1);
+    currentViewZ = 1;
+    AddMessage("Railings: every rail tile (corners, T-junctions, cross, dead ends, a lone post, one against a wall)", GREEN);
+}
+
+// Movers walk round railings, never through them
+static bool RailingsCheck(char* why, int whyLen) {
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        int x = (int)(movers[i].x / CELL_SIZE), y = (int)(movers[i].y / CELL_SIZE), z = (int)movers[i].z;
+        if (GRID(x, y, z) == CELL_RAILING) { snprintf(why, (size_t)whyLen, "mover %d stands in a railing at %d,%d", i, x, y); return false; }
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
     {"ladder-choice", "Deck with two ladders 6 cells apart, 16 movers: compare ladderQueueCost on/off",
                    NULL,        SetupLadderChoice, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"ladder-oneway", "Deck with an up-only and a down-only ladder, 16 movers: traffic goes round",
+                   NULL,        SetupLadderOneWay, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"oneway-tiers", "Stepped tower: up-only ladders north, down-only south, a fire pole down; 24 movers",
+                   NULL,        SetupOneWayTiers, LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
+    {"door-oneway", "Building with a one-way door in and a one-way door out, 16 movers",
+                   NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
+    {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
+                   NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
                    "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
@@ -3531,6 +3739,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupCars, NULL, CarsScenarioPrintStats, CarsCheck, 64, 40},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
+    {"railings",   "Every railing tile: a pen with a gate, a window frame (T-junctions, cross), a lone post, one off a wall, a zigzag; 6 wandering movers",
+                   NULL,        SetupRailings, NULL, NULL, RailingsCheck, 40, 24},
 };
 #define SCENARIO_COUNT ((int)(sizeof(scenarios) / sizeof(scenarios[0])))
 

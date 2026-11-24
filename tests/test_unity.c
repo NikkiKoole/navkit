@@ -36,6 +36,7 @@ float zoom = 1.0f;
 Vector2 offset = {0};
 int currentViewZ = 0;
 int followMoverIdx = -1;   // camera follow (selection.c's follow toggle)
+void InputMode_StartLinking(int wsIdx) { (void)wsIdx; }   // selection.c's Link verb (input_mode.c)
 
 // Global variables needed by terrain generators
 #include <stdint.h>
@@ -136,4 +137,5 @@ bool bladderEnabled = false;
 #include "../src/world/grid_layers.c"
 #include "../src/core/describe.c"
 #include "../src/core/command_args.c"
+#include "../src/core/find_index.c"
 #include "../src/core/selection.c"

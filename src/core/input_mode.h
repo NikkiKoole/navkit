@@ -3,6 +3,8 @@
 #define INPUT_MODE_H
 
 #include <stdbool.h>
+#include "../world/material.h"   // MaterialType (DrawMaterialFor)
+#include "../entities/items.h"   // ItemType (DrawMaterialFor)
 
 // Top-level input modes
 typedef enum {
@@ -140,6 +142,10 @@ extern InputMode inputMode;
 extern WorkSubMode workSubMode;  // Sub-mode within WORK
 extern InputAction inputAction;
 extern int selectedMaterial;  // 1-based material index
+// Draw material for a selectedMaterial value (input.c drawMaterials: also the ghost preview)
+void DrawMaterialFor(int selected, MaterialType* outMat, ItemType* outSource);
+// The help panel's lines (input.c): global keys + what keys do on a hovered thing
+int InputHelpLines(char lines[][64], int max);
 
 // Soil pile mode settings
 extern float soilPileRadius;  // How far soil spreads in pile mode (shift+draw)
@@ -175,6 +181,15 @@ void InputMode_Back(void);           // Go back one level (ESC / right-click)
 void InputMode_ExitToNormal(void);   // Go directly to normal (re-tap mode key)
 // Select an action the way its menu would: mode and submode come from the action registry.
 void InputMode_SelectAction(InputAction action);
+
+// How a build tool with a Draw/Work twin is done (docs/todo/ui/find-palette.md step 3):
+// true = now (the Draw tool: instant, the developer's cheat), false = order (the Work tool: a
+// designation or blueprint the workers carry out). The Draw bar no longer lists the twinned
+// tools; picking one in the Work bar gives the tool in this how, and I flips it. Each game sets
+// it (GameDef.buildNow: sandbox / dollhouse now, survival / island order); scenarios: now.
+extern bool buildNow;
+InputAction InputMode_HowOf(InputAction action);   // the action or its twin, per buildNow
+void InputMode_FlipHow(void);                      // I: flip buildNow and the current tool
 
 // Link stockpiles to workshop `wsIdx`: the next stockpile click links it (ESC/L ends).
 void InputMode_StartLinking(int wsIdx);
