@@ -1,7 +1,8 @@
 # Cars experiment (2026-11-24)
 
-> Status: step 1 done (one car, real steering); long roads + speed done; jam test with 30 cars done
-> (2026-11-24). Next: lanes on a road network. Branch `cars-experiment`.
+> Status (2026-11-24): one car with real steering; long roads + speed; 30-car jam test; **a road
+> network with lanes and reserved junctions: 100 cars drive without touching each other or walls
+> (`cars-city`)**. Next: parking (lots, Hybrid A*), pedestrians. Branch `cars-experiment`.
 > Builds on [vehicles.md](vehicles.md) ("cars are parked for now"). Target game: City 1999.
 
 ## Goal
@@ -161,14 +162,67 @@ to the leader in its lane, overtakes into a clear lane; junction right of way is
 **reservation** (gap acceptance could never guarantee no crash); a debug overlay shows why each
 car brakes. No free-space planner. `trafficjam.c` there has 1-D per-lane car-following.
 
+## Road network: `cars-city` (2026-11-24)
+
+`src/entities/roads.c/.h` (the network), `src/entities/traffic.c/.h` (driving it). 330x260
+cells, a jittered 9x7 grid of junctions ~36 cells apart, ~30% of the roads bend, ~12% left
+out (T-junctions, never a dead end, all connected). Roads 6 wide: one 3-wide lane each way,
+right-hand traffic. Settings `carCityCount` (100), `carCitySeed` (layout).
+
+- **Network:** a road is a centre line between two junctions; a lane is it offset 1.5 cells
+  to the right, ending 7 cells before each junction. Through a junction, cubic curves
+  ("connectors") join each incoming lane to each outgoing lane of another road (no U-turns).
+  Two connectors conflict when they come within 2.6 cells or merge into one lane;
+  connectors from the same lane don't (cars follow each other).
+- **Driving** (trackgen's brain): IDM car-following (1 s time gap, 1 cell standstill gap)
+  to the car ahead on the route, bend limits per segment, Stanley steering at the front axle
+  with curvature feedforward on the same bicycle model as the free car.
+- **Junctions are reserved.** A car asks when within braking distance + 6 cells and stops at
+  the line until granted. Requests are served in arrival order; one blocked by a crossing
+  path claims its connector (no starving), one only waiting for room past the junction
+  doesn't (it isn't in anyone's way). A connector is granted only if its exit lane has room
+  for the car: nobody stops inside a junction.
+- **Routes** are shortest paths over lanes; a slow car on a lane adds 8 cells to its cost,
+  so new trips go round queues. Each car drives trip after trip to random lane spots.
+
+Results, 10 game minutes per run:
+
+| layout seed | 100 cars: trips, mean speed, longest junction wait | 128 cars |
+|---|---|---|
+| 1 | 907, 4.1 cells/s, 32 s | 931, 2.9, 57 s |
+| 2 | 945, 4.4, 32 s | 975, 2.8, 39 s |
+| 3 | 939, 3.3, 43 s | 1049, 3.1, 38 s |
+| 4 | 1021, 4.2, 20 s | 1046, 2.8, 34 s |
+| 5 | 987, 4.3, 24 s | 1055, 3.4, 31 s |
+
+**0 car pairs touching and 0 cars touching a wall in every run** (sampled every half second,
+2 px tolerance). 0.04 ms per tick for 100 cars.
+
+What it took (each measured):
+1. Pure pursuit cut the inside of junction curves by more than the lane's slack (wall
+   touches on every tight turn): **Stanley + curvature feedforward** fixed it.
+2. Slanted roads carved in whole cells left the edge 2.5 cells from the centre line in
+   places: carve half a cell wider, plus 2.5 cells round every lane and connector.
+3. Lanes ending 5.5 cells from the junction made sharp turns too tight: **7 cells**.
+4. A car waiting for room past a junction blocked every crossing path behind it (60 s
+   waits with free exits): such a request no longer claims its connector.
+5. Two cars from one lane splitting onto two curves: the follower lost sight of the leader
+   on the sibling curve and hit it: cars on sibling curves count as ahead until the curves
+   part by a car width.
+6. Junctions 30 cells apart left lanes of 8-11 cells (2-3 cars): queues spilled back
+   fast. 36 apart. Then **traffic-aware routes** halved the worst waits (100 s -> 26 s).
+
+Diagnostics: `TR_TRACE=<car>`, `TR_WALLS=1`, `TR_TOUCH=1`, `TR_LONG=1`, `TR_JDUMP=1` (env, headless).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
 - **Step 2: a mover drives.** Walk to the parked car, get in (the train ride state),
   drive, park, get out; drive-or-walk choice next to `MaybeTakeTrain`.
-- **Step 3: traffic (next).** A road network with lanes on 6-wide roads (two 3-wide lanes for
-  2x2 cars), trackgen's brain (lane following + IDM + junction/driveway reservations); Hybrid A*
-  only from a parking space to the road and back.
+- **Parking (next):** lots and kerbside spaces off the network; Hybrid A* from the lane into a
+  space and back out, with the driveway reserved like a junction.
+- Traffic lights / priority roads as alternatives to first-come reservations; overtaking
+  (multi-lane roads); roundabouts.
 - **Step 4: pedestrians.** Cars brake for movers on the arc; movers step aside.
 - Parking: a goal heading (park facing the street) is a small planner change.
 - Reeds-Shepp shots, for tight spots and fewer expansions.

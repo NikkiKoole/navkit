@@ -66,6 +66,7 @@ done <<'EOF'
 0   | 0 | --scenario cars
 0   | 0 | --scenario cars-town
 0   | 0 | --scenario cars-traffic
+0   | 0 | --scenario cars-city
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo

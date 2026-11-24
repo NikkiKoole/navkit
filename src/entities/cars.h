@@ -18,14 +18,16 @@
 
 #include <stdbool.h>
 
-#define MAX_CARS 64
+#define MAX_CARS 128
 #define CAR_MAX_PATH 4096   // 4 px per point: routes up to ~500 cells
 #define CAR_MAX_STOPS 16
+#define CAR_MAX_ROUTE 256   // road segments in a road route
 
 typedef enum {
     DRIVE_PARKED,     // waiting at a stop (or no stops)
     DRIVE_FOLLOW,     // following the route (forward or reverse stretch)
     DRIVE_STUCK,      // no route from here; plans again after a while
+    DRIVE_ROAD,       // driving the road network (traffic.c)
 } DriveState;
 
 typedef struct {
@@ -38,11 +40,12 @@ typedef struct {
     int state;             // DriveState
     float stateTime;       // seconds in this state
 
-    // Route: car-centre points (pixels, ~8 px apart) with the gear for each step
-    float pathX[CAR_MAX_PATH], pathY[CAR_MAX_PATH];
-    signed char pathDir[CAR_MAX_PATH];   // +1 forward, -1 reverse (to reach the next point)
-    float pathH[CAR_MAX_PATH];           // planned heading at each point
-    float pathSteer[CAR_MAX_PATH];       // planned wheel angle to reach the next point
+    // Route: car-centre points (pixels, 4 px apart) with the gear for each step.
+    // CAR_MAX_PATH each, allocated on the first plan (road cars never plan).
+    float *pathX, *pathY;
+    signed char* pathDir;   // +1 forward, -1 reverse (to reach the next point)
+    float* pathH;           // planned heading at each point
+    float* pathSteer;       // planned wheel angle to reach the next point
     int pathLen, pathIdx;  // pathIdx: start of the segment the car is on
     int goalCellX, goalCellY;
     float lookX, lookY;    // pursuit target this tick (debug draw)
@@ -59,6 +62,19 @@ typedef struct {
     int stopX[CAR_MAX_STOPS], stopY[CAR_MAX_STOPS];
     char stopName[CAR_MAX_STOPS];   // one letter, for the debug draw
     int stopCount, stopIdx;
+
+    // Road driving (src/entities/traffic.c): a route of road segments (lanes and the
+    // connectors through junctions), the position along the current one
+    bool onRoad;
+    short route[CAR_MAX_ROUTE];
+    int routeLen, routeIdx;
+    float s;               // pixels along route[routeIdx] (car centre)
+    float destS;           // trip ends at destS on the last segment
+    int holdNode;          // the connector segment we hold (-1: none)
+    bool requested;        // asked the next junction for its connector
+    float stillTime;       // seconds at (nearly) zero speed, this time
+    float gap;             // pixels to what we follow (debug)
+    int why;               // TrafficWhy: why we brake (debug)
 
     // Stats (this leg, and totals)
     float legTime;
@@ -83,8 +99,10 @@ extern float carStopWait;      // seconds parked at each stop
 extern float carPlanMargin;    // pixels: the planner keeps the body this far from walls
 extern bool carFollow;
 extern int carTrafficCount;    // cars in the cars-traffic scenario
-#define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock         // GUI camera follows car 0
-void CarsFollowCamera(float frameTime);
+extern int carCityCount;       // cars in the cars-city scenario
+extern int carCitySeed;        // its road layout
+#define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
+void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance
 
 void ClearCars(void);
@@ -102,6 +120,13 @@ bool CarPoseBlocked(float x, float y, int z, float heading);   // body vs cells,
 // Planner stats (headless output)
 extern int carPlanCount, carPlanExpansionsMax;
 extern double carPlanMsTotal, carPlanMsMax;
+
+// Shared with traffic.c (road driving): the car model and its collision tests
+float CarAngleWrap(float a);
+void CarAdvancePose(float x, float y, float h, float dist, float steer, float* ox, float* oy, float* oh);
+void CarSteerToward(Car* c, float want, float dt);   // turn the wheel toward want at carSteerRate
+bool CarPoseBlockedMargin(float x, float y, int z, float heading, float margin);   // body (+margin px) vs walls
+bool CarBodiesOverlap(float x1, float y1, float h1, float x2, float y2, float h2, float margin);
 
 const char* DriveStateName(int state);
 void CarsPrintStats(void);

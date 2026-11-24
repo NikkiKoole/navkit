@@ -1,0 +1,336 @@
+// roads.c - Road network for the cars experiment (see roads.h)
+#include "roads.h"
+#include "mover.h"            // CELL_SIZE
+#include "../world/grid.h"
+#include "../world/cell_defs.h"
+#include "../world/material.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+RdNode rdNodes[RD_MAX_NODES];
+RdEdge rdEdges[RD_MAX_EDGES];
+RdSeg rdSegs[RD_MAX_SEGS];
+int rdNodeCount = 0, rdEdgeCount = 0, rdSegCount = 0;
+float rdX[RD_MAX_PTS], rdY[RD_MAX_PTS], rdS[RD_MAX_PTS];
+static int rdPtCount = 0;
+float rdSegExtra[RD_MAX_SEGS];
+static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
+
+#define RD_STEP 8.0f            // px between points
+#define RD_CONFLICT 2.6f        // cells: connectors closer than this conflict
+#define RD_ROUTE_TMP 4096
+
+void RoadsClear(void) {
+    rdNodeCount = rdEdgeCount = rdSegCount = rdPtCount = rdLaneCount = 0;
+    memset(rdSegExtra, 0, sizeof(rdSegExtra));
+}
+
+int RoadAddNode(float cellX, float cellY) {
+    if (rdNodeCount >= RD_MAX_NODES) return -1;
+    RdNode* n = &rdNodes[rdNodeCount];
+    memset(n, 0, sizeof(*n));
+    n->x = cellX * CELL_SIZE;
+    n->y = cellY * CELL_SIZE;
+    return rdNodeCount++;
+}
+
+int RoadAddEdge(int a, int b, float bendCells) {
+    if (rdEdgeCount >= RD_MAX_EDGES) return -1;
+    if (rdNodes[a].nEdge >= RD_MAX_NODE_EDGES || rdNodes[b].nEdge >= RD_MAX_NODE_EDGES) return -1;
+    RdEdge* e = &rdEdges[rdEdgeCount];
+    e->a = a; e->b = b; e->bend = bendCells;
+    e->lane[0] = e->lane[1] = -1;
+    rdNodes[a].edge[rdNodes[a].nEdge++] = rdEdgeCount;
+    rdNodes[b].edge[rdNodes[b].nEdge++] = rdEdgeCount;
+    return rdEdgeCount++;
+}
+
+// ---------------------------------------------------------------------------
+// Polylines: a dense curve resampled to RD_STEP px into the point pool
+// ---------------------------------------------------------------------------
+#define RD_TMP 8192
+static float tmpX[RD_TMP], tmpY[RD_TMP];
+
+// Resample tmp[0..n) at RD_STEP into a new segment's points; returns the segment
+static int SegFromTmp(int n, RdSegKind kind) {
+    if (rdSegCount >= RD_MAX_SEGS || n < 2) return -1;
+    RdSeg* sg = &rdSegs[rdSegCount];
+    memset(sg, 0, sizeof(*sg));
+    sg->kind = kind;
+    sg->p0 = rdPtCount;
+    float acc = 0;            // arc length at tmp[i]
+    float next = 0;           // next sample's arc length
+    for (int i = 0; i + 1 < n && rdPtCount < RD_MAX_PTS - 2; i++) {
+        float dx = tmpX[i + 1] - tmpX[i], dy = tmpY[i + 1] - tmpY[i];
+        float L = sqrtf(dx * dx + dy * dy);
+        while (next <= acc + L && rdPtCount < RD_MAX_PTS - 2) {
+            float t = L > 1e-6f ? (next - acc) / L : 0;
+            rdX[rdPtCount] = tmpX[i] + dx * t;
+            rdY[rdPtCount] = tmpY[i] + dy * t;
+            rdS[rdPtCount] = next;
+            rdPtCount++;
+            next += RD_STEP;
+        }
+        acc += L;
+    }
+    if (acc - rdS[rdPtCount - 1] > 0.5f) {   // the exact end
+        rdX[rdPtCount] = tmpX[n - 1];
+        rdY[rdPtCount] = tmpY[n - 1];
+        rdS[rdPtCount] = acc;
+        rdPtCount++;
+    }
+    sg->n = rdPtCount - sg->p0;
+    sg->len = rdS[rdPtCount - 1];
+    return rdSegCount++;
+}
+
+static float SegHeading(int seg, int i) {   // direction at point i (index within the segment)
+    const RdSeg* sg = &rdSegs[seg];
+    int a = i > 0 ? i - 1 : 0, b = i + 1 < sg->n ? i + 1 : sg->n - 1;
+    return atan2f(rdY[sg->p0 + b] - rdY[sg->p0 + a], rdX[sg->p0 + b] - rdX[sg->p0 + a]);
+}
+
+static float AngleDiff(float a) {
+    while (a > 3.14159265f) a -= 6.2831853f;
+    while (a < -3.14159265f) a += 6.2831853f;
+    return a;
+}
+
+// Bend speed limit: the tightest curvature, measured over ~3 points
+static float SegVmax(int seg, float latAccel) {
+    const RdSeg* sg = &rdSegs[seg];
+    float worst = 0;
+    for (int i = 0; i + 3 < sg->n; i++) {
+        float d = fabsf(AngleDiff(SegHeading(seg, i + 3) - SegHeading(seg, i)));
+        float L = rdS[sg->p0 + i + 3] - rdS[sg->p0 + i];
+        if (L > 1) worst = fmaxf(worst, d / L);
+    }
+    if (worst < 1e-5f) return 1e9f;
+    return sqrtf(latAccel * CELL_SIZE / worst) / CELL_SIZE;   // cells/s
+}
+
+// The centre line of an edge, dense, into tmp; returns the count
+static int EdgeCentre(const RdEdge* e) {
+    float ax = rdNodes[e->a].x, ay = rdNodes[e->a].y, bx = rdNodes[e->b].x, by = rdNodes[e->b].y;
+    float mx = (ax + bx) * 0.5f, my = (ay + by) * 0.5f;
+    float dx = bx - ax, dy = by - ay, L = sqrtf(dx * dx + dy * dy);
+    float cx = mx + (-dy / L) * 2.0f * e->bend * CELL_SIZE, cy = my + (dx / L) * 2.0f * e->bend * CELL_SIZE;
+    int n = 400;
+    for (int i = 0; i <= n; i++) {
+        float t = (float)i / n, u = 1 - t;
+        tmpX[i] = u * u * ax + 2 * u * t * cx + t * t * bx;
+        tmpY[i] = u * u * ay + 2 * u * t * cy + t * t * by;
+    }
+    return n + 1;
+}
+
+// One lane of an edge: the centre line offset to the right of travel, without the
+// RD_SETBACK at each end. dir 0: a -> b, 1: b -> a.
+static int BuildLane(int ei, int dir) {
+    const RdEdge* e = &rdEdges[ei];
+    int n = EdgeCentre(e);
+    static float cx[RD_TMP], cy[RD_TMP], cs[RD_TMP];
+    float acc = 0;
+    for (int i = 0; i < n; i++) {
+        int k = dir == 0 ? i : n - 1 - i;
+        cx[i] = tmpX[k]; cy[i] = tmpY[k];
+        if (i > 0) acc += sqrtf((cx[i] - cx[i - 1]) * (cx[i] - cx[i - 1]) + (cy[i] - cy[i - 1]) * (cy[i] - cy[i - 1]));
+        cs[i] = acc;
+    }
+    float sb = RD_SETBACK * CELL_SIZE, off = RD_LANE_OFF * CELL_SIZE;
+    int m = 0;
+    for (int i = 0; i < n; i++) {
+        if (cs[i] < sb || cs[i] > acc - sb) continue;
+        int a = i > 0 ? i - 1 : 0, b = i + 1 < n ? i + 1 : n - 1;
+        float tx = cx[b] - cx[a], ty = cy[b] - cy[a], tl = sqrtf(tx * tx + ty * ty);
+        tx /= tl; ty /= tl;
+        tmpX[m] = cx[i] - ty * off;     // right of travel (y is down)
+        tmpY[m] = cy[i] + tx * off;
+        m++;
+    }
+    int seg = SegFromTmp(m, RD_LANE);
+    if (seg < 0) return -1;
+    RdSeg* sg = &rdSegs[seg];
+    sg->from = dir == 0 ? e->a : e->b;
+    sg->to = dir == 0 ? e->b : e->a;
+    sg->node = sg->to;
+    rdLanes[rdLaneCount++] = seg;
+    return seg;
+}
+
+// A connector through `node` from the end of lane `in` to the start of lane `out`
+static int BuildConnector(int node, int in, int out) {
+    const RdSeg* a = &rdSegs[in];
+    const RdSeg* b = &rdSegs[out];
+    float x0 = rdX[a->p0 + a->n - 1], y0 = rdY[a->p0 + a->n - 1];
+    float x3 = rdX[b->p0], y3 = rdY[b->p0];
+    float h0 = SegHeading(in, a->n - 1), h3 = SegHeading(out, 0);
+    float turn = fabsf(AngleDiff(h3 - h0));
+    if (turn > 2.6f) return -1;                       // ~150 degrees: a U-turn, not offered
+    float d = sqrtf((x3 - x0) * (x3 - x0) + (y3 - y0) * (y3 - y0));
+    float k = d * (turn < 0.3f ? 0.33f : 0.42f);
+    float x1 = x0 + cosf(h0) * k, y1 = y0 + sinf(h0) * k;
+    float x2 = x3 - cosf(h3) * k, y2 = y3 - sinf(h3) * k;
+    int n = 128;
+    for (int i = 0; i <= n; i++) {
+        float t = (float)i / n, u = 1 - t;
+        tmpX[i] = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+        tmpY[i] = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+    }
+    int seg = SegFromTmp(n + 1, RD_CONN);
+    if (seg < 0) return -1;
+    RdSeg* sg = &rdSegs[seg];
+    sg->node = node;
+    sg->from = in;
+    sg->to = out;
+    RdNode* nd = &rdNodes[node];
+    if (nd->nConn >= RD_MAX_CONN) { rdSegCount--; return -1; }
+    sg->ci = nd->nConn;
+    nd->conn[nd->nConn++] = seg;
+    RdSeg* L = &rdSegs[in];
+    if (L->nOut < RD_MAX_OUT) L->out[L->nOut++] = seg;
+    return seg;
+}
+
+static bool ConnectorsConflict(int s1, int s2) {
+    const RdSeg* a = &rdSegs[s1];
+    const RdSeg* b = &rdSegs[s2];
+    if (a->from == b->from) return false;   // one lane: cars follow each other
+    if (a->to == b->to) return true;        // merging into one lane
+    float lim = RD_CONFLICT * CELL_SIZE;
+    for (int i = 0; i < a->n; i++)
+        for (int j = 0; j < b->n; j++) {
+            float dx = rdX[a->p0 + i] - rdX[b->p0 + j], dy = rdY[a->p0 + i] - rdY[b->p0 + j];
+            if (dx * dx + dy * dy < lim * lim) return true;
+        }
+    return false;
+}
+
+void RoadsBuild(float latAccel) {
+    rdSegCount = rdPtCount = rdLaneCount = 0;
+    for (int i = 0; i < rdNodeCount; i++) rdNodes[i].nConn = 0;
+    for (int e = 0; e < rdEdgeCount; e++) {
+        rdEdges[e].lane[0] = BuildLane(e, 0);
+        rdEdges[e].lane[1] = BuildLane(e, 1);
+    }
+    // Connectors: every lane ending at a node to every lane leaving it on another road
+    for (int ni = 0; ni < rdNodeCount; ni++) {
+        RdNode* nd = &rdNodes[ni];
+        for (int i = 0; i < nd->nEdge; i++) {
+            const RdEdge* ei = &rdEdges[nd->edge[i]];
+            int in = ei->a == ni ? ei->lane[1] : ei->lane[0];    // the lane arriving here
+            if (in < 0) continue;
+            for (int j = 0; j < nd->nEdge; j++) {
+                if (j == i) continue;
+                const RdEdge* ej = &rdEdges[nd->edge[j]];
+                int out = ej->a == ni ? ej->lane[0] : ej->lane[1];   // the lane leaving here
+                if (out >= 0) BuildConnector(ni, in, out);
+            }
+        }
+        for (int i = 0; i < nd->nConn; i++)
+            for (int j = 0; j < nd->nConn; j++)
+                nd->conflict[i][j] = (i != j) && ConnectorsConflict(nd->conn[i], nd->conn[j]);
+    }
+    for (int s = 0; s < rdSegCount; s++) rdSegs[s].vmax = SegVmax(s, latAccel);
+}
+
+void RoadPointAt(int seg, float s, float* x, float* y, float* h) {
+    const RdSeg* sg = &rdSegs[seg];
+    if (s <= 0) { *x = rdX[sg->p0]; *y = rdY[sg->p0]; *h = SegHeading(seg, 0); return; }
+    if (s >= sg->len) { int k = sg->p0 + sg->n - 1; *x = rdX[k]; *y = rdY[k]; *h = SegHeading(seg, sg->n - 1); return; }
+    int i = (int)(s / RD_STEP);          // points are RD_STEP apart (the last one closer)
+    if (i > sg->n - 2) i = sg->n - 2;
+    while (i > 0 && rdS[sg->p0 + i] > s) i--;
+    while (i < sg->n - 2 && rdS[sg->p0 + i + 1] < s) i++;
+    int k = sg->p0 + i;
+    float L = rdS[k + 1] - rdS[k], t = L > 1e-6f ? (s - rdS[k]) / L : 0;
+    *x = rdX[k] + (rdX[k + 1] - rdX[k]) * t;
+    *y = rdY[k] + (rdY[k + 1] - rdY[k]) * t;
+    *h = atan2f(rdY[k + 1] - rdY[k], rdX[k + 1] - rdX[k]);
+}
+
+// ---------------------------------------------------------------------------
+// Routing: Dijkstra over lanes (a lane's cost = its length + the connector into it)
+// ---------------------------------------------------------------------------
+int RoadRoute(int fromLane, int toLane, short* out, int max) {
+    static float dist[RD_MAX_SEGS];
+    static int prevLane[RD_MAX_SEGS], prevConn[RD_MAX_SEGS];
+    static unsigned char done[RD_MAX_SEGS];
+    for (int i = 0; i < rdLaneCount; i++) {
+        int l = rdLanes[i];
+        dist[l] = 1e30f; prevLane[l] = -1; prevConn[l] = -1; done[l] = 0;
+    }
+    // Start: the lanes reachable from fromLane's end (fromLane itself only by a loop)
+    const RdSeg* f = &rdSegs[fromLane];
+    for (int k = 0; k < f->nOut; k++) {
+        int c = f->out[k], l = rdSegs[c].to;
+        float d = rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
+        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; }
+    }
+    for (;;) {
+        int best = -1;
+        for (int i = 0; i < rdLaneCount; i++) {
+            int l = rdLanes[i];
+            if (!done[l] && dist[l] < 1e29f && (best < 0 || dist[l] < dist[best])) best = l;
+        }
+        if (best < 0) return 0;
+        if (best == toLane) break;
+        done[best] = 1;
+        const RdSeg* b = &rdSegs[best];
+        for (int k = 0; k < b->nOut; k++) {
+            int c = b->out[k], l = rdSegs[c].to;
+            float d = dist[best] + rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
+            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; }
+        }
+    }
+    // Walk back: toLane, conn, lane, ..., fromLane (stop when we reach fromLane the first time
+    // we walk off the start's successors; fromLane == toLane loops round once)
+    static short rev[RD_ROUTE_TMP];
+    int n = 0, l = toLane;
+    rev[n++] = (short)l;
+    for (;;) {
+        int c = prevConn[l], p = prevLane[l];
+        if (c < 0 || n + 2 >= RD_ROUTE_TMP) return 0;
+        rev[n++] = (short)c;
+        rev[n++] = (short)p;
+        if (p == fromLane) break;
+        l = p;
+    }
+    if (n > max) return 0;
+    for (int i = 0; i < n; i++) out[i] = rev[n - 1 - i];
+    return n;
+}
+
+int RoadLaneCount(void) { return rdLaneCount; }
+int RoadLaneAt(int i) { return rdLanes[i]; }
+
+// ---------------------------------------------------------------------------
+// Carving: every road a RD_ROAD_WIDTH band along its centre line, junctions a disc
+// ---------------------------------------------------------------------------
+static void CarveDisc(float cx, float cy, float r, int z) {
+    for (int y = (int)floorf(cy - r); y <= (int)ceilf(cy + r); y++)
+        for (int x = (int)floorf(cx - r); x <= (int)ceilf(cx + r); x++) {
+            if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+            float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            if (dx * dx + dy * dy > r * r) continue;
+            GRID(x, y, z) = CELL_AIR;
+            SetWallMaterial(x, y, z, MAT_NONE);
+            if (z > 0) SetVegetation(x, y, z - 1, VEG_NONE);
+        }
+}
+
+void RoadsCarve(int z) {
+    for (int e = 0; e < rdEdgeCount; e++) {
+        int n = EdgeCentre(&rdEdges[e]);
+        for (int i = 0; i < n; i += 2)
+            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RD_ROAD_WIDTH * 0.5f + 0.5f, z);   // + half a cell: slanted roads are carved in whole cells
+    }
+    for (int i = 0; i < rdNodeCount; i++)
+        CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, RD_SETBACK + 1.0f, z);
+    // Room round every route a car can drive (lanes and junction curves): the body
+    // (half-diagonal ~1.4 cells) always has ~0.5 cell to spare, whatever the angles
+    for (int s = 0; s < rdSegCount; s++)
+        for (int i = 0; i < rdSegs[s].n; i++)
+            CarveDisc(rdX[rdSegs[s].p0 + i] / CELL_SIZE, rdY[rdSegs[s].p0 + i] / CELL_SIZE, 2.5f, z);
+}

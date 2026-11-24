@@ -1,5 +1,7 @@
 // cars.c - Cars experiment (see cars.h, docs/research/cars-experiment.md)
 #include "cars.h"
+#include "roads.h"
+#include "traffic.h"
 #include "mover.h"            // CELL_SIZE
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -26,6 +28,8 @@ float carPlanMargin = 3.0f;
 bool carDebug = true;
 bool carFollow = false;
 int carTrafficCount = 30;
+int carCityCount = 100;
+int carCitySeed = 7;
 
 int carPlanCount = 0, carPlanExpansionsMax = 0;
 double carPlanMsTotal = 0, carPlanMsMax = 0;
@@ -40,7 +44,7 @@ double carPlanMsTotal = 0, carPlanMsMax = 0;
 static float WheelBase(void) { return carLength * CELL_SIZE * 0.6f; }
 static float MaxSteer(void) { return carMaxSteerDeg * CAR_DEG; }
 
-static float AngleWrap(float a) {
+float CarAngleWrap(float a) {
     while (a > CAR_PI) a -= 2 * CAR_PI;
     while (a < -CAR_PI) a += 2 * CAR_PI;
     return a;
@@ -51,6 +55,7 @@ const char* DriveStateName(int s) {
         case DRIVE_PARKED: return "parked";
         case DRIVE_FOLLOW: return "driving";
         case DRIVE_STUCK: return "stuck";
+        case DRIVE_ROAD: return "road";
     }
     return "?";
 }
@@ -69,7 +74,7 @@ bool CarCellDrivable(int x, int y, int z) {
 // The car body (a rotated rectangle, grown by `margin` px on every side) against
 // every non-drivable cell it might touch: exact separating-axis test (cell axes
 // x/y, car axes u/v).
-static bool PoseBlockedMargin(float x, float y, int z, float heading, float margin) {
+bool CarPoseBlockedMargin(float x, float y, int z, float heading, float margin) {
     float hl = carLength * CELL_SIZE * 0.5f - CAR_BODY_INSET + margin;
     float hw = carWidth * CELL_SIZE * 0.5f - CAR_BODY_INSET + margin;
     float c = cosf(heading), s = sinf(heading);
@@ -92,12 +97,10 @@ static bool PoseBlockedMargin(float x, float y, int z, float heading, float marg
 }
 
 // ---------------------------------------------------------------------------
-static void AdvancePose(float x, float y, float h, float dist, float steer, float* ox, float* oy, float* oh);
-
 // Other cars: two bodies (rotated rectangles) overlap? Separating axes: each
 // body's length and width directions. `margin` px grows both bodies.
 // ---------------------------------------------------------------------------
-static bool BodiesOverlap(float x1, float y1, float h1, float x2, float y2, float h2, float margin) {
+bool CarBodiesOverlap(float x1, float y1, float h1, float x2, float y2, float h2, float margin) {
     float hl = carLength * CELL_SIZE * 0.5f - CAR_BODY_INSET + margin * 0.5f;
     float hw = carWidth * CELL_SIZE * 0.5f - CAR_BODY_INSET + margin * 0.5f;
     float ax[4][2] = {{cosf(h1), sinf(h1)}, {-sinf(h1), cosf(h1)}, {cosf(h2), sinf(h2)}, {-sinf(h2), cosf(h2)}};
@@ -119,7 +122,7 @@ static int CarInWay(const Car* self, float x, float y, float h) {
         if (o == self || !o->active || o->z != self->z) continue;
         float dx = o->x - x, dy = o->y - y;
         if (dx * dx + dy * dy > reach * reach) continue;
-        if (BodiesOverlap(x, y, h, o->x, o->y, o->heading, 2.0f)) return i;
+        if (CarBodiesOverlap(x, y, h, o->x, o->y, o->heading, 2.0f)) return i;
     }
     return -1;
 }
@@ -128,7 +131,7 @@ static int CarInWay(const Car* self, float x, float y, float h) {
 static float ArcCarGap(const Car* c, float steer, float maxDist, int sign, int* who) {
     for (float d = 4.0f; d <= maxDist + 0.01f; d += 6.0f) {
         float x, y, h;
-        AdvancePose(c->x, c->y, c->heading, d * sign, steer, &x, &y, &h);
+        CarAdvancePose(c->x, c->y, c->heading, d * sign, steer, &x, &y, &h);
         int k = CarInWay(c, x, y, h);
         if (k >= 0) { *who = k; return d; }
     }
@@ -137,12 +140,12 @@ static float ArcCarGap(const Car* c, float steer, float maxDist, int sign, int* 
 }
 
 bool CarPoseBlocked(float x, float y, int z, float heading) {
-    return PoseBlockedMargin(x, y, z, heading, 0.0f);
+    return CarPoseBlockedMargin(x, y, z, heading, 0.0f);
 }
 
 // Kinematic bicycle about the rear axle: the centre pose after driving `dist`
 // pixels (signed: negative = reverse) with the wheels at `steer`
-static void AdvancePose(float x, float y, float h, float dist, float steer,
+void CarAdvancePose(float x, float y, float h, float dist, float steer,
                         float* ox, float* oy, float* oh) {
     float wb = WheelBase();
     float rx = x - cosf(h) * wb * 0.5f, ry = y - sinf(h) * wb * 0.5f;
@@ -150,7 +153,7 @@ static void AdvancePose(float x, float y, float h, float dist, float steer,
     float mh = (h + nh) * 0.5f;
     rx += cosf(mh) * dist;
     ry += sinf(mh) * dist;
-    *oh = AngleWrap(nh);
+    *oh = CarAngleWrap(nh);
     *ox = rx + cosf(*oh) * wb * 0.5f;
     *oy = ry + sinf(*oh) * wb * 0.5f;
 }
@@ -355,10 +358,10 @@ static bool HaArc(const HaNode* from, int dir, float steer, int z, float* ox, fl
     float x = from->x, y = from->y, h = from->h;
     float sub = HA_STEP / HA_SUBSTEPS;
     for (int k = 0; k < HA_SUBSTEPS; k++) {
-        AdvancePose(x, y, h, sub * dir, steer, &x, &y, &h);
+        CarAdvancePose(x, y, h, sub * dir, steer, &x, &y, &h);
         float sx = x - haStartX, sy = y - haStartY;
         float m = (sx * sx + sy * sy < haLooseR * haLooseR) ? -CAR_GRAZE : carPlanMargin;   // a car that scraped may start grazing
-        if (PoseBlockedMargin(x, y, z, h, m)) return false;
+        if (CarPoseBlockedMargin(x, y, z, h, m)) return false;
     }
     *ox = x; *oy = y; *oh = h;
     return true;
@@ -375,7 +378,7 @@ static bool HybridAStar(Car* car, float goalX, float goalY, int* outExpansions) 
     float lock = MaxSteer();
     const float steers[7] = {-lock, -lock * 0.5f, -lock * 0.125f, 0, lock * 0.125f, lock * 0.5f, lock};
     haStartX = car->x; haStartY = car->y;
-    haLooseR = PoseBlockedMargin(car->x, car->y, car->z, car->heading, carPlanMargin) ? 1.5f * CELL_SIZE : 0.0f;
+    haLooseR = CarPoseBlockedMargin(car->x, car->y, car->z, car->heading, carPlanMargin) ? 1.5f * CELL_SIZE : 0.0f;
     int start = HaPoolAdd((HaNode){car->x, car->y, car->heading, 0, -1, 0, 0});
     HeapPush(Heuristic(car->x, car->y, goalX, goalY), start);
     int goal = -1, expansions = 0;
@@ -400,7 +403,7 @@ static bool HybridAStar(Car* car, float goalX, float goalY, int* outExpansions) 
                 cost += fabsf(steers[s]) / lock * 1.0f;
                 if (steers[s] != cur.steer) cost += 1.0f;
                 // keep off the walls where there is room (drivers keep to the middle of the road)
-                if (PoseBlockedMargin(nx, ny, car->z, nh, HA_WALL_DIST)) cost += HA_STEP * HA_WALL_COST;
+                if (CarPoseBlockedMargin(nx, ny, car->z, nh, HA_WALL_DIST)) cost += HA_STEP * HA_WALL_COST;
                 float g = cur.g + cost;
                 int ni = HaPoolAdd((HaNode){nx, ny, nh, g, ci, (signed char)dir, steers[s]});
                 HeapPush(g + 1.1f * Heuristic(nx, ny, goalX, goalY), ni);
@@ -422,7 +425,7 @@ static bool HybridAStar(Car* car, float goalX, float goalY, int* outExpansions) 
         float px[HA_SUBSTEPS], py[HA_SUBSTEPS], ph[HA_SUBSTEPS];
         float sub = HA_STEP / HA_SUBSTEPS;
         for (int j = 0; j < HA_SUBSTEPS; j++) {
-            AdvancePose(x, y, h, sub * n->dir, n->steer, &x, &y, &h);
+            CarAdvancePose(x, y, h, sub * n->dir, n->steer, &x, &y, &h);
             px[j] = x; py[j] = y; ph[j] = h;
         }
         for (int j = HA_SUBSTEPS - 1; j >= 0; j--, k--) {
@@ -466,7 +469,7 @@ static float outX[CAR_MAX_PATH], outY[CAR_MAX_PATH], outH[CAR_MAX_PATH], outS[CA
 
 static float StretchHeading(float dx, float dy, int dir) {
     float h = atan2f(dy, dx);
-    return dir < 0 ? AngleWrap(h + CAR_PI) : h;
+    return dir < 0 ? CarAngleWrap(h + CAR_PI) : h;
 }
 
 // Curve through smX/smY into out* for path indices a..b (b = last)
@@ -490,7 +493,7 @@ static void SmoothRebuild(const Car* c, int a, int b, int n, int dir) {
         int j = i + 2 <= b ? i + 2 : b, i0 = j - 2 >= a ? j - 2 : a;   // two steps: less noise
         float dx = outX[j] - outX[i0], dy = outY[j] - outY[i0];
         float ds = sqrtf(dx * dx + dy * dy) * dir;
-        outS[i] = fabsf(ds) > 1e-3f ? atanf(wb * AngleWrap(outH[j] - outH[i0]) / ds) : 0;
+        outS[i] = fabsf(ds) > 1e-3f ? atanf(wb * CarAngleWrap(outH[j] - outH[i0]) / ds) : 0;
     }
     outS[b] = outS[b > a ? b - 1 : a];
 }
@@ -504,7 +507,7 @@ static bool SmoothStretch(Car* c, int a, int b) {
     for (int k = 0; k < n; k++) {
         smOX[k] = c->pathX[smIdx[k]]; smOY[k] = c->pathY[smIdx[k]];
         // tight places (less than 0.4 cell of room round the body) stay exactly as planned
-        smPin[k] = k < 2 || k >= n - 2 || PoseBlockedMargin(smOX[k], smOY[k], c->z, c->pathH[smIdx[k]], 0.4f * CELL_SIZE);
+        smPin[k] = k < 2 || k >= n - 2 || CarPoseBlockedMargin(smOX[k], smOY[k], c->z, c->pathH[smIdx[k]], 0.4f * CELL_SIZE);
     }
     float lock = MaxSteer();
     for (int round = 0; round < 6; round++) {
@@ -520,8 +523,8 @@ static bool SmoothStretch(Car* c, int a, int b) {
         // the start), or a bend the wheel can't make. Pin the arcs around them.
         bool bad = false;
         for (int i = a + 1; i < b; i++) {
-            bool hit = PoseBlockedMargin(outX[i], outY[i], c->z, outH[i], carPlanMargin)
-                       && !PoseBlockedMargin(c->pathX[i], c->pathY[i], c->z, c->pathH[i], carPlanMargin);
+            bool hit = CarPoseBlockedMargin(outX[i], outY[i], c->z, outH[i], carPlanMargin)
+                       && !CarPoseBlockedMargin(c->pathX[i], c->pathY[i], c->z, c->pathH[i], carPlanMargin);
             if (!hit && fabsf(outS[i]) <= lock * 0.9f) continue;
             int k = 0;
             while (k + 1 < n && smIdx[k + 1] <= i) k++;
@@ -550,7 +553,25 @@ static void SmoothPath(Car* c) {
 // ---------------------------------------------------------------------------
 // Spawning, stops, planning
 // ---------------------------------------------------------------------------
+static void CarFreePath(Car* c) {
+    free(c->pathX); free(c->pathY); free(c->pathDir); free(c->pathH); free(c->pathSteer);
+    c->pathX = c->pathY = c->pathH = c->pathSteer = NULL;
+    c->pathDir = NULL;
+}
+
+static void CarEnsurePath(Car* c) {
+    if (c->pathX) return;
+    c->pathX = malloc(sizeof(float) * CAR_MAX_PATH);
+    c->pathY = malloc(sizeof(float) * CAR_MAX_PATH);
+    c->pathH = malloc(sizeof(float) * CAR_MAX_PATH);
+    c->pathSteer = malloc(sizeof(float) * CAR_MAX_PATH);
+    c->pathDir = malloc(CAR_MAX_PATH);
+}
+
 void ClearCars(void) {
+    for (int i = 0; i < MAX_CARS; i++) CarFreePath(&cars[i]);
+    RoadsClear();
+    TrafficReset();
     memset(cars, 0, sizeof(cars));
     carCount = 0;
     clrZ = -1;   // the world may have changed
@@ -562,7 +583,9 @@ int SpawnCar(int cellX, int cellY, int z, float headingDeg) {
     if (carCount >= MAX_CARS) return -1;
     int i = carCount++;
     Car* c = &cars[i];
+    CarFreePath(c);
     memset(c, 0, sizeof(*c));
+    c->holdNode = -1;
     c->active = true;
     c->x = (cellX + 0.5f) * CELL_SIZE;
     c->y = (cellY + 0.5f) * CELL_SIZE;
@@ -628,6 +651,7 @@ static double NowMs(void) {
 
 bool CarDriveTo(int idx, int cellX, int cellY) {
     Car* c = &cars[idx];
+    CarEnsurePath(c);
     double t0 = NowMs();
     BuildClearance(c->z);   // cheap (one level); keeps up with edits
     int gx, gy;
@@ -726,7 +750,7 @@ static void AlongStretch(const Car* c, int cusp, float px, float py, float dist,
     *toCusp = rem;
 }
 
-static void SteerToward(Car* c, float want, float dt) {
+void CarSteerToward(Car* c, float want, float dt) {
     float maxS = MaxSteer();
     if (want > maxS) want = maxS;
     if (want < -maxS) want = -maxS;
@@ -751,8 +775,8 @@ static void SpeedToward(Car* c, float want, float dt) {
 static bool ArcBlocked(const Car* c, float steer, float dist, int sign) {
     for (float d = 2.0f; d <= dist + 0.01f; d += 4.0f) {
         float x, y, h;
-        AdvancePose(c->x, c->y, c->heading, d * sign, steer, &x, &y, &h);
-        if (PoseBlockedMargin(x, y, c->z, h, -CAR_GRAZE)) return true;
+        CarAdvancePose(c->x, c->y, c->heading, d * sign, steer, &x, &y, &h);
+        if (CarPoseBlockedMargin(x, y, c->z, h, -CAR_GRAZE)) return true;
     }
     return false;
 }
@@ -763,8 +787,8 @@ static int Move(Car* c, float dt) {
     float dist = c->speed * dt;
     if (fabsf(dist) < 1e-4f) return 0;
     float x, y, h;
-    AdvancePose(c->x, c->y, c->heading, dist, c->steer, &x, &y, &h);
-    if (PoseBlockedMargin(x, y, c->z, h, -CAR_GRAZE)) {
+    CarAdvancePose(c->x, c->y, c->heading, dist, c->steer, &x, &y, &h);
+    if (CarPoseBlockedMargin(x, y, c->z, h, -CAR_GRAZE)) {
         c->speed = 0;
         c->bumps++;
         return 1;
@@ -845,13 +869,13 @@ static void TickFollow(int idx, float dt) {
     float sL2 = sx * sx + sy * sy;
     float t = sL2 > 0 ? ((c->x - c->pathX[i0]) * sx + (c->y - c->pathY[i0]) * sy) / sL2 : 0;
     t = t < 0 ? 0 : (t > 1 ? 1 : t);
-    float refH = c->pathH[i0] + AngleWrap(c->pathH[i0 + 1] - c->pathH[i0]) * t;
-    float headErr = AngleWrap(refH - c->heading);
+    float refH = c->pathH[i0] + CarAngleWrap(c->pathH[i0 + 1] - c->pathH[i0]) * t;
+    float headErr = CarAngleWrap(refH - c->heading);
     float nX = -sinf(c->heading), nY = cosf(c->heading);       // the car's left (+heading side)
     float lat = ((c->x - px) * nX + (c->y - py) * nY) / CELL_SIZE;   // cells, + = left of route
     float want = c->pathSteer[i0] + gear * 1.0f * headErr
                - gear * atanf(2.0f * lat / (v / CELL_SIZE + 1.0f));
-    SteerToward(c, want, dt);
+    CarSteerToward(c, want, dt);
     // Standing (start, gear change): turn the wheel first, then pull away
     float wantC = fmaxf(-MaxSteer(), fminf(MaxSteer(), want));
     if (v < 0.2f * CELL_SIZE && fabsf(c->steer - wantC) > 5.0f * CAR_DEG) { c->speed = 0; return; }
@@ -873,7 +897,7 @@ static void TickFollow(int idx, float dt) {
             float ex = c->pathX[j] - c->pathX[i], ey = c->pathY[j] - c->pathY[i];
             float L2 = sqrtf(ex * ex + ey * ey);
             if (L > 0.5f && L2 > 0.5f) {
-                float curv = fabsf(AngleWrap(c->pathH[j] - c->pathH[i])) / L2;   // 1/px, over ~half a cell
+                float curv = fabsf(CarAngleWrap(c->pathH[j] - c->pathH[i])) / L2;   // 1/px, over ~half a cell
                 if (curv > 1e-4f) {
                     float vc = sqrtf(carLatAccel * CELL_SIZE / curv);
                     vmax = fminf(vmax, sqrtf(vc * vc + 2 * brake * d));
@@ -934,6 +958,7 @@ static void TickFollow(int idx, float dt) {
 }
 
 void CarsTick(float dt) {
+    TrafficTick(dt);
     static int dumpTick = 0;
     FILE* df = CarDump();
     if (df && (dumpTick++ % 3) == 0)
@@ -943,7 +968,7 @@ void CarsTick(float dt) {
                         cars[i].x, cars[i].y, cars[i].heading, cars[i].steer, cars[i].speed / CELL_SIZE, cars[i].state);
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
-        if (!c->active) continue;
+        if (!c->active || c->onRoad) continue;
         c->stateTime += dt;
         if (c->state == DRIVE_FOLLOW) c->legTime += dt;
         switch (c->state) {
@@ -959,6 +984,7 @@ void CarsTick(float dt) {
 }
 
 void CarsPrintStats(void) {
+    if (carCount > 0 && cars[0].onRoad) { TrafficPrintStats(); return; }
     printf("Cars: %d (length %.1f, width %.1f cells, lock %.0f deg, top %.1f cells/s, wheelbase %.2f cells, turn radius %.2f cells, plan margin %.1f px)\n",
            carCount, carLength, carWidth, carMaxSteerDeg, carMaxSpeed,
            WheelBase() / CELL_SIZE, WheelBase() / tanf(MaxSteer()) / CELL_SIZE, carPlanMargin);

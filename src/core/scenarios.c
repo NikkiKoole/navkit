@@ -15,6 +15,8 @@
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
 #include "../entities/cars.h"
+#include "../entities/roads.h"
+#include "../entities/traffic.h"
 #include "../entities/elevators.h"
 #include "../entities/containers.h"
 #include "../core/sim_manager.h"
@@ -3289,6 +3291,117 @@ static bool CarsTrafficCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Cars city: a road network (src/entities/roads.h) with lanes and reserved junctions,
+// carCityCount cars (default 100) driving trip after trip (src/entities/traffic.h).
+// 330x260 cells: a 9x7 grid of junctions ~36 cells apart, jittered; ~30% of the roads
+// bend; ~12% are left out (T-junctions), keeping every junction reachable. Roads 6 wide.
+// ---------------------------------------------------------------------------
+static unsigned int cityRng;
+static int CityRand(int n) { cityRng = cityRng * 1103515245u + 12345u; return (int)((cityRng >> 16) % (unsigned)n); }
+
+static bool CityConnected(const unsigned char* gone, int nodes) {
+    static int stack[RD_MAX_NODES];
+    unsigned char seen[RD_MAX_NODES] = {0};
+    int sp = 0, count = 0;
+    stack[sp++] = 0; seen[0] = 1;
+    while (sp > 0) {
+        int n = stack[--sp];
+        count++;
+        for (int k = 0; k < rdNodes[n].nEdge; k++) {
+            int e = rdNodes[n].edge[k];
+            if (gone[e]) continue;
+            int m = rdEdges[e].a == n ? rdEdges[e].b : rdEdges[e].a;
+            if (!seen[m]) { seen[m] = 1; stack[sp++] = m; }
+        }
+    }
+    return count == nodes;
+}
+
+static void SetupCarsCity(void) {
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_CONCRETE);
+        }
+    carMaxSpeed = 10.0f;   // ~80 km/h at 2.25 m per cell
+    carAccel = 3.0f;
+    carBrake = 4.0f;       // comfortable braking (IDM); hard braking goes to 3x
+    carLatAccel = 4.0f;
+    carFollow = false;
+
+    cityRng = (unsigned int)carCitySeed;
+    const int cols = 9, rows = 7;
+    const float spacing = 36, origin = 20;
+    RoadsClear();
+    for (int j = 0; j < rows; j++)
+        for (int i = 0; i < cols; i++)
+            RoadAddNode(origin + spacing * i + (CityRand(11) - 5), origin + spacing * j + (CityRand(11) - 5));
+    for (int j = 0; j < rows; j++)
+        for (int i = 0; i < cols; i++) {
+            float bend = CityRand(10) < 3 ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+            if (i + 1 < cols) RoadAddEdge(j * cols + i, j * cols + i + 1, bend);
+            bend = CityRand(10) < 3 ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+            if (j + 1 < rows) RoadAddEdge(j * cols + i, (j + 1) * cols + i, bend);
+        }
+    // Leave ~12% of the roads out: never a dead end, everything stays connected
+    unsigned char gone[RD_MAX_EDGES] = {0};
+    int deg[RD_MAX_NODES];
+    for (int n = 0; n < rdNodeCount; n++) deg[n] = rdNodes[n].nEdge;
+    int want = rdEdgeCount * 12 / 100;
+    for (int tries = 0; tries < 2000 && want > 0; tries++) {
+        int e = CityRand(rdEdgeCount);
+        if (gone[e] || deg[rdEdges[e].a] < 3 || deg[rdEdges[e].b] < 3) continue;
+        gone[e] = 1;
+        if (!CityConnected(gone, rdNodeCount)) { gone[e] = 0; continue; }
+        deg[rdEdges[e].a]--; deg[rdEdges[e].b]--;
+        want--;
+    }
+    // Rebuild without the gone roads
+    static RdEdge keep[RD_MAX_EDGES];
+    int nk = 0;
+    for (int e = 0; e < rdEdgeCount; e++) if (!gone[e]) keep[nk++] = rdEdges[e];
+    int nodes = rdNodeCount;
+    static float nx[RD_MAX_NODES], ny[RD_MAX_NODES];
+    for (int n = 0; n < nodes; n++) { nx[n] = rdNodes[n].x / CELL_SIZE; ny[n] = rdNodes[n].y / CELL_SIZE; }
+    RoadsClear();
+    for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
+    for (int e = 0; e < nk; e++) RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
+    RoadsBuild(carLatAccel);
+    RoadsCarve(1);
+    BuildEntrances(); BuildGraph();
+    InvalidateLighting();
+
+    // Cars on random lanes, at least 4 cells apart on a lane
+    int placed = 0;
+    for (int tries = 0; tries < carCityCount * 50 && placed < carCityCount; tries++) {
+        int lane = RoadLaneAt(CityRand(RoadLaneCount()));
+        float len = rdSegs[lane].len / CELL_SIZE;
+        if (len < 8) continue;
+        float s = 2 + (len - 4) * (CityRand(1000) / 1000.0f);
+        bool clear = true;
+        for (int i = 0; i < carCount && clear; i++)
+            if (cars[i].route[cars[i].routeIdx] == lane && fabsf(cars[i].s / CELL_SIZE - s) < 4) clear = false;
+        if (!clear) continue;
+        if (TrafficSpawn(lane, s * CELL_SIZE, 1) < 0) break;
+        placed++;
+    }
+    currentViewZ = 1;
+    AddMessage(TextFormat("Cars city: %d cars on %d roads, lanes + reserved junctions", placed, rdEdgeCount), GREEN);
+}
+
+// 3000 ticks: trips get done, nobody touches anybody or a wall
+static bool CarsCityCheck(char* why, int whyLen) {
+    int trips = 0;
+    for (int i = 0; i < carCount; i++) trips += cars[i].legsDone;
+    if (trips < carCount / 4 || trafficOverlapMax > 0 || trafficOffRoadMax > 0) {
+        snprintf(why, (size_t)whyLen, "cars-city: %d trips (want >= %d), %d car pairs touching, %d cars touching walls",
+                 trips, carCount / 4, trafficOverlapMax, trafficOffRoadMax);
+        return false;
+    }
+    return true;
+}
+
 static bool CarsTownCheck(char* why, int whyLen) {
     if (carCount < 1 || cars[0].legsDone < 1 || cars[0].stuck > 0) {
         snprintf(why, (size_t)whyLen, "cars-town: %d legs done (want >= 1), %d times stuck",
@@ -3373,6 +3486,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
+    {"cars-city",  "Cars experiment: 100 cars (setting carCityCount) on a road network - lanes, IDM car-following, reserved junctions",
+                   NULL,        SetupCarsCity, NULL, CarsScenarioPrintStats, CarsCityCheck, 330, 260},
     {"cars-traffic", "Cars experiment: the jam test - 30 cars (setting carTrafficCount) in the cars-town world, no lanes, braking for the car ahead",
                    NULL,        SetupCarsTraffic, NULL, CarsScenarioPrintStats, CarsTrafficCheck, 192, 128},
     {"cars-town",  "Cars experiment: long roads - ring road, downtown grid, roundabout, winding country road; one 2x2 car, realistic speeds, camera follows",

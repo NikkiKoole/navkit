@@ -61,6 +61,8 @@
 #include "entities/animals.c"
 #include "entities/trains.c"
 #include "entities/cars.c"       // cars experiment (scenario "cars" only)
+#include "entities/roads.c"      // cars experiment: road network
+#include "entities/traffic.c"    // cars experiment: road traffic
 #include "entities/belts.c"
 #include "entities/service.c"
 #include "entities/ladders.c"

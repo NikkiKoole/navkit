@@ -1,5 +1,7 @@
 // cars_draw.c - Drawing for the cars experiment (src/entities/cars.h)
 #include "../entities/cars.h"
+#include "../entities/roads.h"
+#include "../entities/traffic.h"
 #include "../entities/mover.h"
 #include "../game_state.h"
 #include <math.h>
@@ -64,16 +66,38 @@ static void DrawCarClearance(int z) {
         }
 }
 
+// Road network (debug): lane lines, faint; junction curves someone holds, green
+static void DrawRoadsDebug(void) {
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    for (int s = 0; s < rdSegCount; s++) {
+        const RdSeg* sg = &rdSegs[s];
+        bool held = false;
+        if (sg->kind == RD_CONN) {
+            for (int i = 0; i < carCount && !held; i++) if (cars[i].onRoad && cars[i].holdNode == s) held = true;
+            if (!held) continue;
+        }
+        Color col = held ? Fade(GREEN, 0.7f) : Fade(WHITE, 0.18f);
+        for (int i = 0; i + 1 < sg->n; i += 2) {
+            int k = sg->p0 + i, k2 = i + 2 < sg->n ? k + 2 : sg->p0 + sg->n - 1;
+            Vector2 a = CarScreen(rdX[k], rdY[k]), b = CarScreen(rdX[k2], rdY[k2]);
+            if ((a.x < 0 && b.x < 0) || (a.y < 0 && b.y < 0) || (a.x > sw && b.x > sw) || (a.y > sh && b.y > sh)) continue;
+            DrawLineEx(a, b, held ? 2.0f : 1.0f, col);
+        }
+    }
+}
+
 void DrawCars(void) {
     if (carCount == 0) return;
-    if (carDebug) DrawCarClearance(currentViewZ);
+    bool roads = rdSegCount > 0;
+    if (carDebug && !roads) DrawCarClearance(currentViewZ);
+    if (carDebug && roads) DrawRoadsDebug();
     float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE;
     float wb = L * 0.6f;
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
         if (!c->active || c->z != currentViewZ) continue;
         Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
-        if (carDebug) DrawCarDebug(c, col);
+        if (carDebug && !c->onRoad) DrawCarDebug(c, col);
         if (carDebug && c->waitNow > 0.5f && c->whyCar >= 0) {
             Vector2 a = {offset.x + c->x * zoom, offset.y + c->y * zoom};
             Vector2 b = {offset.x + cars[c->whyCar].x * zoom, offset.y + cars[c->whyCar].y * zoom};
@@ -95,6 +119,13 @@ void DrawCars(void) {
         if (c->speed < -1.0f) {
             CarPart(c, -L * 0.5f + 2, -W * 0.3f, 3, 4, 0, WHITE);
             CarPart(c, -L * 0.5f + 2, W * 0.3f, 3, 4, 0, WHITE);
+        }
+        // Road cars: why it brakes (green free, orange following, red waiting for a
+        // junction, yellow slowing for a bend) - like trackgen's traffic debug
+        if (carDebug && c->onRoad) {
+            static const Color whyCol[] = {{80, 220, 90, 255}, {255, 150, 40, 255}, {235, 50, 50, 255}, {240, 220, 60, 255}};
+            Color wc = whyCol[c->why >= 0 && c->why < 4 ? c->why : 0];
+            DrawCircleV(CarScreen(c->x, c->y), fmaxf(2.0f, 0.3f * CELL_SIZE * zoom), wc);
         }
     }
 }
