@@ -672,6 +672,10 @@ static const Setting settings[] = {
       "Seconds parked at each stop before driving to the next.", NULL),
     SET_FLOAT("carPlanMargin", "Plan Margin (px)", "Experiments/Cars", carPlanMargin, 0.1f, 0.0f, 8.0f,
       "The planner keeps the car body this many pixels (of 32 per cell) away from walls, so small steering errors don't scrape. 0 = exactly to the wall.", NULL),
+    SET_INT("carTrafficCount", "Traffic Cars", "Experiments/Cars", carTrafficCount, 0.2f, 1, MAX_CARS,
+      "How many cars the cars-traffic scenario spawns (restart the scenario to apply).", NULL),
+    SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
+      "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,
       "Draw route, pursuit point, state, stops, and where a car centre fits (dots; big = room to turn, the planner prefers those)."),
 

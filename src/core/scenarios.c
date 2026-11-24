@@ -3145,6 +3145,159 @@ static bool CarsCheck(char* why, int whyLen) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Cars town: long roads, all 5 wide, for the 2x2 car (experiment, docs/research/cars-experiment.md).
+// 192x128 cells (a cell ~2.25 m, so ~430 x 290 m). A 5-wide ring road with rounded
+// corners round the town; a downtown grid of streets; a diagonal
+// boulevard through a roundabout out to the ring; a winding country road
+// across the south. Parking lots: A home (downtown), B mall (north-east), C south lot,
+// E a downtown lot behind a 3-wide gate, F out west on the country road.
+// Settings: a fast car (~160 km/h top) that brakes hard for the bends.
+// ---------------------------------------------------------------------------
+static void TownDisc(float cx, float cy, float r, bool open) {
+    for (int y = (int)floorf(cy - r); y <= (int)ceilf(cy + r); y++)
+        for (int x = (int)floorf(cx - r); x <= (int)ceilf(cx + r); x++) {
+            if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+            float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+            if (dx * dx + dy * dy > r * r) continue;
+            if (open) CarsCarve(x, y, x, y);
+            else { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_CONCRETE); }
+        }
+}
+
+// A road `width` cells wide along the centreline (x0,y0)-(x1,y1) (cell units)
+static void TownRoad(float x0, float y0, float x1, float y1, float width) {
+    float dx = x1 - x0, dy = y1 - y0, L = sqrtf(dx * dx + dy * dy);
+    int n = (int)(L / 0.25f) + 1;
+    for (int i = 0; i <= n; i++) TownDisc(x0 + dx * i / n, y0 + dy * i / n, width * 0.5f, true);
+}
+
+static float TownCountryY(float x) { return 100.0f + 8.0f * sinf(x / 14.0f); }
+
+static void BuildCarsTown(void) {
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_CONCRETE);
+        }
+    // Ring road, centreline x 9..183, y 9..119, corners rounded (radius 14)
+    const float rx0 = 9, ry0 = 9, rx1 = 183, ry1 = 119, rr = 14, rw = 5;
+    TownRoad(rx0 + rr, ry0, rx1 - rr, ry0, rw);
+    TownRoad(rx0 + rr, ry1, rx1 - rr, ry1, rw);
+    TownRoad(rx0, ry0 + rr, rx0, ry1 - rr, rw);
+    TownRoad(rx1, ry0 + rr, rx1, ry1 - rr, rw);
+    const float cxs[4] = {rx0 + rr, rx1 - rr, rx1 - rr, rx0 + rr}, cys[4] = {ry0 + rr, ry0 + rr, ry1 - rr, ry1 - rr};
+    for (int k = 0; k < 4; k++)
+        for (int a = 0; a < 24; a++) {
+            float a0 = (k * 90 + 180 + a * 3.75f) * CAR_DEG, a1 = a0 + 3.75f * CAR_DEG;
+            TownRoad(cxs[k] + rr * cosf(a0), cys[k] + rr * sinf(a0), cxs[k] + rr * cosf(a1), cys[k] + rr * sinf(a1), rw);
+        }
+    // Downtown grid: streets on centrelines x 32,52,72,92,112 and y 22,42,62,82
+    for (int i = 0; i < 5; i++) TownRoad(32 + 20 * i, 22, 32 + 20 * i, 82, 5);
+    for (int j = 0; j < 4; j++) TownRoad(32, 22 + 20 * j, 112, 22 + 20 * j, 5);
+    TownRoad(72, ry0, 72, 22, 5);        // north to the ring
+    TownRoad(rx0, 42, 32, 42, 5);        // west to the ring
+    TownRoad(52, 82, 52, TownCountryY(52), 5);   // south to the country road
+    // Diagonal boulevard through a roundabout to the ring's east side
+    TownRoad(112, 82, 150, 44, 5);
+    TownRoad(150, 44, rx1, 44, 5);
+    TownDisc(131, 63, 9.0f, true);
+    TownDisc(131, 63, 4.0f, false);      // the island
+    // Winding country road, ring west side to ring east side
+    for (float x = rx0; x < rx1; x += 1.0f) TownRoad(x, TownCountryY(x), x + 1.0f, TownCountryY(x + 1.0f), 5);
+    // Lots
+    CarsCarve(56, 46, 67, 57);  CarsCarve(60, 44, 63, 45);     // A home, drive north onto y 42
+    CarsCarve(150, 14, 170, 28); CarsCarve(158, 11, 162, 13);   // B mall, off the ring's north side
+    CarsCarve(120, 108, 140, 115); CarsCarve(128, 116, 132, 116);   // C south lot, driveway south onto the ring
+    CarsCarve(96, 26, 107, 37); CarsCarve(100, 24, 102, 25);    // E downtown lot, 3-wide gate from y 22
+    BuildEntrances(); BuildGraph();
+    InvalidateLighting();
+
+    carMaxSpeed = 20.0f;   // ~160 km/h at 2.25 m per cell: fast on the long straights
+    carAccel = 4.0f;       // ~9 m/s^2 (a sports car)
+    carBrake = 6.0f;       // ~13.5 m/s^2 (hard braking)
+    carLatAccel = 4.0f;    // ~9 m/s^2 in bends
+    currentViewZ = 1;
+}
+
+static void SetupCarsTown(void) {
+    BuildCarsTown();
+    carFollow = true;
+    int c = SpawnCar(61, 51, 1, -90.0f);
+    int fx = 40, fy = (int)lroundf(TownCountryY(40.5f)) - 1;
+    const struct { int x, y; char name; } stops[] = {
+        {160, 21, 'B'}, {61, 51, 'A'}, {130, 112, 'C'}, {61, 51, 'A'}, {101, 31, 'E'}, {61, 51, 'A'},
+        {fx, fy, 'F'}, {61, 51, 'A'},
+    };
+    for (int i = 0; i < (int)(sizeof(stops) / sizeof(stops[0])); i++) CarAddStop(c, stops[i].x, stops[i].y, stops[i].name);
+    cars[c].stopIdx = 0;
+    CarDriveTo(c, stops[0].x, stops[0].y);
+    currentViewZ = 1;
+    AddMessage("Cars town: one 2x2 car drives long roads from home (A); the camera follows it (setting carFollow)", GREEN);
+}
+
+// 6000 ticks: at least one long leg, never stuck
+// ---------------------------------------------------------------------------
+// Cars traffic: the town with carTrafficCount cars (default 30), the jam test.
+// Every car has its own parking space along the edges of lots A, B, C and E
+// (aisles stay free) and tours: home -> a point on the roads -> home -> ...
+// Cars brake for the car on their arc ahead and wait behind it; they don't
+// plan around each other and there are no lanes: this shows where it jams.
+// ---------------------------------------------------------------------------
+static void SetupCarsTraffic(void) {
+    BuildCarsTown();
+    carFollow = false;
+    static const struct { short x, y, hdg; } spots[] = {
+        {57, 48, 0}, {57, 51, 0}, {57, 54, 0}, {66, 48, 180}, {66, 51, 180}, {66, 54, 180},          // A
+        {151, 15, 90}, {154, 15, 90}, {165, 15, 90}, {168, 15, 90},                                   // B, top row
+        {152, 27, -90}, {155, 27, -90}, {158, 27, -90}, {161, 27, -90}, {164, 27, -90}, {167, 27, -90}, // B, bottom row
+        {122, 109, 90}, {125, 109, 90}, {128, 109, 90}, {131, 109, 90}, {134, 109, 90}, {137, 109, 90}, // C, top row
+        {122, 114, -90}, {125, 114, -90},                                                               // C, bottom row
+        {97, 30, 0}, {97, 33, 0}, {97, 36, 0}, {106, 30, 180}, {106, 33, 180}, {106, 36, 180},        // E
+    };
+    const int nSpots = (int)(sizeof(spots) / sizeof(spots[0]));
+    int ways[14][2] = {
+        {100, 9}, {183, 80}, {100, 119}, {9, 70}, {150, 119},       // ring road
+        {42, 62}, {82, 22}, {82, 82}, {32, 52}, {112, 52},          // downtown
+        {121, 73}, {168, 44},                                       // diagonal, boulevard east
+        {80, 0}, {150, 0},                                          // country road (y below)
+    };
+    ways[12][1] = (int)lroundf(TownCountryY(80.5f)) - 1;
+    ways[13][1] = (int)lroundf(TownCountryY(150.5f)) - 1;
+    int n = carTrafficCount < nSpots ? carTrafficCount : nSpots;
+    unsigned int rng = 12345;
+    for (int i = 0; i < n; i++) {
+        int c = SpawnCar(spots[i].x, spots[i].y, 1, spots[i].hdg);
+        if (c < 0) break;
+        for (int k = 0; k < 3; k++) {
+            rng = rng * 1103515245u + 12345u;
+            int w = (int)((rng >> 16) % 14);
+            CarAddStop(c, ways[w][0], ways[w][1], (char)('a' + w));
+            CarAddStop(c, spots[i].x, spots[i].y, 'H');
+        }
+        // Leave home one after the other, 0.7 s apart (first one after carStopWait)
+        cars[c].stopIdx = cars[c].stopCount - 1;
+        cars[c].stateTime = -0.7f * i;
+    }
+    AddMessage(TextFormat("Cars traffic: %d cars, no lanes, brake for the car ahead. Red line = waiting for that car, red ring = deadlocked", n), GREEN);
+}
+
+static bool CarsTrafficCheck(char* why, int whyLen) {
+    int legs = 0;
+    for (int i = 0; i < carCount; i++) legs += cars[i].legsDone;
+    if (legs < 1) { snprintf(why, (size_t)whyLen, "cars-traffic: no trips done"); return false; }
+    return true;
+}
+
+static bool CarsTownCheck(char* why, int whyLen) {
+    if (carCount < 1 || cars[0].legsDone < 1 || cars[0].stuck > 0) {
+        snprintf(why, (size_t)whyLen, "cars-town: %d legs done (want >= 1), %d times stuck",
+                 carCount ? cars[0].legsDone : 0, carCount ? cars[0].stuck : 0);
+        return false;
+    }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -3220,6 +3373,10 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
+    {"cars-traffic", "Cars experiment: the jam test - 30 cars (setting carTrafficCount) in the cars-town world, no lanes, braking for the car ahead",
+                   NULL,        SetupCarsTraffic, NULL, CarsScenarioPrintStats, CarsTrafficCheck, 192, 128},
+    {"cars-town",  "Cars experiment: long roads - ring road, downtown grid, roundabout, winding country road; one 2x2 car, realistic speeds, camera follows",
+                   NULL,        SetupCarsTown, NULL, CarsScenarioPrintStats, CarsTownCheck, 192, 128},
     {"cars",       "Cars experiment: a 2x2 car with real steering tours a town from its home lot: 4/3/2-wide streets, sharp and cut corners, a dead end",
                    NULL,        SetupCars, NULL, CarsScenarioPrintStats, CarsCheck, 64, 40},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",

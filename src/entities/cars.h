@@ -18,8 +18,8 @@
 
 #include <stdbool.h>
 
-#define MAX_CARS 32
-#define CAR_MAX_PATH 2048
+#define MAX_CARS 64
+#define CAR_MAX_PATH 4096   // 4 px per point: routes up to ~500 cells
 #define CAR_MAX_STOPS 16
 
 typedef enum {
@@ -48,6 +48,12 @@ typedef struct {
     float lookX, lookY;    // pursuit target this tick (debug draw)
     float toCusp;          // pixels to the next gear change (or the end)
     float blockedTime;     // seconds stopped by something in the way
+    int whyCar;            // the car in our way (-1: none), for the debug line
+    float waitNow;         // seconds stopped behind another car, this time
+    float waitTime;        // seconds stopped behind other cars, in all
+    int deadlocks;         // times waitNow passed CAR_DEADLOCK_S
+    int replanStreak;      // replans without getting anywhere (a car length) in between
+    float replanX, replanY;
 
     // Stops: drives stop 0 -> 1 -> ... -> wraps, waiting carStopWait at each
     int stopX[CAR_MAX_STOPS], stopY[CAR_MAX_STOPS];
@@ -75,6 +81,10 @@ extern float carSteerRate;     // degrees/s
 extern float carLookahead;     // cells (minimum; grows with speed)
 extern float carStopWait;      // seconds parked at each stop
 extern float carPlanMargin;    // pixels: the planner keeps the body this far from walls
+extern bool carFollow;
+extern int carTrafficCount;    // cars in the cars-traffic scenario
+#define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock         // GUI camera follows car 0
+void CarsFollowCamera(float frameTime);
 extern bool carDebug;          // draw route, lookahead, clearance
 
 void ClearCars(void);

@@ -1789,6 +1789,8 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (carFollow && followMoverIdx < 0) CarsFollowCamera(frameTime);
+
         PROFILE_BEGIN(Render);
         BeginDrawing();
         double worldDrawStart = GetTime();

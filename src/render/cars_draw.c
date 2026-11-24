@@ -74,6 +74,12 @@ void DrawCars(void) {
         if (!c->active || c->z != currentViewZ) continue;
         Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
         if (carDebug) DrawCarDebug(c, col);
+        if (carDebug && c->waitNow > 0.5f && c->whyCar >= 0) {
+            Vector2 a = {offset.x + c->x * zoom, offset.y + c->y * zoom};
+            Vector2 b = {offset.x + cars[c->whyCar].x * zoom, offset.y + cars[c->whyCar].y * zoom};
+            DrawLineEx(a, b, 2.0f, RED);
+            if (c->waitNow >= CAR_DEADLOCK_S) DrawCircleLinesV(a, CELL_SIZE * 1.6f * zoom, RED);
+        }
         // Wheels (front ones turned by the steering angle)
         float wl = L * 0.2f, ww = W * 0.14f, side = W * 0.5f - ww * 0.3f;
         Color tyre = {25, 25, 25, 255};
@@ -91,4 +97,16 @@ void DrawCars(void) {
             CarPart(c, -L * 0.5f + 2, W * 0.3f, 3, 4, 0, WHITE);
         }
     }
+}
+
+// Camera follows car 0 (setting carFollow), eased like the mover follow
+void CarsFollowCamera(float frameTime) {
+    if (carCount < 1 || !cars[0].active) return;
+    float t = 6.0f * frameTime;
+    if (t > 1.0f) t = 1.0f;
+    float targetX = GetScreenWidth() * 0.5f - cars[0].x * zoom;
+    float targetY = GetScreenHeight() * 0.5f - cars[0].y * zoom;
+    offset.x += (targetX - offset.x) * t;
+    offset.y += (targetY - offset.y) * t;
+    currentViewZ = cars[0].z;
 }
