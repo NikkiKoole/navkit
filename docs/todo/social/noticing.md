@@ -178,12 +178,48 @@ data, save bump at step 2); animal path state probably transient.
 
 ---
 
+## Decisions (2026-11-24)
+
+- **Petting the cat is a social interaction** between two entities, like a conversation. People
+  and animals go through the same interaction code; a person-person talk is just one kind.
+- **Can be turned off**: relations and social responses are a switch (`GameDef` sets it, a
+  setting row toggles it), like hunger.
+- **Noticing across levels is v2.** v1 is same level only.
+- **How a conversation shows** is the interesting part, and needs **facing** (below).
+
+## Facing and showing interactions
+
+Today every mover is one symmetric front-view face sprite (`head`, tinted), no facing stored.
+
+### Facing
+
+- Store a facing per agent (8 directions, or a float angle snapped for drawing). It follows the
+  walking direction, but can be **set apart from movement**: face the conversation centre, face
+  the cat, look at what you noticed while walking past (a glance).
+- Drawing at 8x8 options:
+  1. **Face variants**: front (eyes + mouth), left, right (features shifted to one side), back
+     (no features). 3-4 sprites per creature; the classic answer.
+  2. **Eye shift only**: the same head, the two eye pixels drawn shifted toward the facing
+     direction. One sprite plus a tiny overlay; works in 8 directions.
+  3. **Direction mark**: a pixel or notch on the rim. Readable, ugly.
+- Animals need a side view that flips (cat walking left/right) plus front/back.
+
+### Showing a conversation (open, to sketch)
+
+Ideas to try, cheapest first:
+- **Placement + facing**: they stop and turn to each other (F-formation). Needs nothing else.
+- **Turn-taking pips**: small dots above whoever is "speaking", alternating between members.
+- **Topic icons** (The Sims' bubble idea): the bubble shows *what* they talk about, taken from
+  real state: a recent moodlet, something one noticed, an item, the other person. The talk is
+  about the world.
+- **Bob / gesture**: a small hop or lean while speaking (there is already an `animPhase`).
+- **Outcome**: a heart or a little cloud when it ends (relation up or down).
+- Petting the cat: the person faces the cat, a hand/heart pip, the cat's purr pip.
+
 ## Open questions
 
-- How far does noticing reach across levels (balcony looking down into the yard)?
-- How visible should a conversation be at 8x8: speech dots, facing only, an emote icon?
-- Relations from day one for every game, or switched on per game (`GameDef`), like hunger?
-- Do people notice animals the same way (stop to pet the cat = a conversation with a cat)?
+- Pick the facing drawing (variants vs eye shift) and the conversation look: sketch a few in
+  a mock image before building.
 
 ## Related
 
