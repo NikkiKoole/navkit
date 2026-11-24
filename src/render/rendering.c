@@ -1706,24 +1706,33 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
 }
 
 // --- Mover faces --------------------------------------------------------------
-// Which head sprite a mover shows: a view (where it looks) x a mouth (head_<view>_<mouth>
-// slices in worksheet8x8.ase). Facing is render-only for now: toward the next waypoint
-// (where it is heading, steady under avoidance pushes, also while paused); standing still,
-// at the mover it noticed most (notice.c), else front (docs/todo/social/noticing.md).
+// A mover's face: the blank head (head_back) with the inside (6x6 within the outline) of a
+// front face (head_front_<mouth>, worksheet8x8.ase) drawn over it, moved 1 pixel toward where
+// it looks; what moves onto the outline is clipped. So only the front faces are drawn by hand.
+// Facing is render-only for now: toward the next waypoint (where it is heading, steady under
+// avoidance pushes, also while paused); standing still, at the mover it noticed most
+// (notice.c), else front (docs/todo/social/noticing.md).
 enum { FACE_FRONT, FACE_LEFT, FACE_RIGHT, FACE_UP, FACE_DOWN, FACE_VIEW_COUNT };
 enum { MOUTH_GRIN, MOUTH_FLAT, MOUTH_SMALL, MOUTH_SMILE, MOUTH_SAD, MOUTH_OPEN, MOUTH_CLOSE, MOUTH_COUNT };
-static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
-    {SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
-     SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close},
-    {SPRITE_head_left_grin, SPRITE_head_left_flat, SPRITE_head_left_small, SPRITE_head_left_smile,
-     SPRITE_head_left_sad, SPRITE_head_left_open, SPRITE_head_left_close},
-    {SPRITE_head_right_grin, SPRITE_head_right_flat, SPRITE_head_right_small, SPRITE_head_right_smile,
-     SPRITE_head_right_sad, SPRITE_head_right_open, SPRITE_head_right_close},
-    {SPRITE_head_up_grin, SPRITE_head_up_flat, SPRITE_head_up_small, SPRITE_head_up_smile,
-     SPRITE_head_up_sad, SPRITE_head_up_open, SPRITE_head_up_close},
-    {SPRITE_head_down_grin, SPRITE_head_down_flat, SPRITE_head_down_small, SPRITE_head_down_smile,
-     SPRITE_head_down_sad, SPRITE_head_down_open, SPRITE_head_down_close},
+static const int faceMouthSprites[MOUTH_COUNT] = {
+    SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
+    SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close,
 };
+static const signed char faceShift[FACE_VIEW_COUNT][2] = { {0, 0}, {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
+
+// Draw the face into dest (the 8x8 head scaled up): blank head, then the shifted inside.
+static void DrawMoverFace(Rectangle dest, int view, int mouth, Color tint) {
+    FastSprite(atlas, SpriteGetRect(SPRITE_head_back), dest, tint);
+    Rectangle f = SpriteGetRect(faceMouthSprites[mouth]);
+    int sx = faceShift[view][0], sy = faceShift[view][1];
+    float px = dest.width / f.width, py = dest.height / f.height;   // screen size of one sprite pixel
+    float inW = f.width - 2, inH = f.height - 2;                     // the inside, within the outline
+    Rectangle src = { f.x + 1 + (sx < 0 ? 1 : 0), f.y + 1 + (sy < 0 ? 1 : 0),
+                      inW - (sx ? 1 : 0), inH - (sy ? 1 : 0) };
+    Rectangle dst = { dest.x + (1 + (sx > 0 ? 1 : 0)) * px, dest.y + (1 + (sy > 0 ? 1 : 0)) * py,
+                      src.width * px, src.height * py };
+    FastSprite(atlas, src, dst, tint);
+}
 static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
 
 static int MoverFaceView(int i, const Mover* m) {
@@ -1873,8 +1882,7 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
-        Rectangle src = SpriteGetRect(moverFaces ? faceSprites[MoverFaceView(i, m)][MoverMouth(m)]
-                                                 : SPRITE_head);
+        Rectangle src = SpriteGetRect(moverFaces ? SPRITE_head_back : SPRITE_head);   // silhouette for clothes
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 
         // Draw clothing outline behind mover (larger tinted sprite)
@@ -1900,7 +1908,8 @@ static void DrawMovers(void) {
             DrawRectangleLinesEx(draftDest, 1.0f, (Color){255, 60, 60, 180});
         }
 
-        FastSprite(atlas, src, dest, moverColor);
+        if (moverFaces) DrawMoverFace(dest, MoverFaceView(i, m), MoverMouth(m), moverColor);
+        else FastSprite(atlas, src, dest, moverColor);
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);
     }
