@@ -96,6 +96,7 @@ static int FindTerrainIndex(const char* name) {
 }
 
 void ScenarioResetWorld(const char* terrain) {
+    springTrickle = false;   // sources are taps unless the terrain says otherwise (island)
     SnapshotOrRestoreSettings();
     moverGoalPicker = NULL;
     // Entities first (ClearMovers also drops jobs and reservations)

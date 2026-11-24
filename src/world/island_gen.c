@@ -675,6 +675,7 @@ void GenerateIsland(void) {
     // Water sources keep rivers running: river heads, one per lake. The sea beyond the map edge
     // keeps the sea at its level and takes what the rivers bring (waterEdgeSeaZ)
     waterEdgeSeaZ = IS_SEA_Z;
+    springTrickle = true;   // river heads are springs with a flow (springRate), not endless taps
     int sources = 0;
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {

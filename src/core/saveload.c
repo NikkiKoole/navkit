@@ -572,6 +572,9 @@ bool SaveWorld(const char* filename) {
     fwrite(&tideEnabled, sizeof(bool), 1, f);
     fwrite(&tidePeriodHours, sizeof(float), 1, f);
     fwrite(&tideLowLevel, sizeof(int), 1, f);
+    // v103+: springs
+    fwrite(&springTrickle, sizeof(bool), 1, f);
+    fwrite(&springRate, sizeof(float), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1505,6 +1508,12 @@ bool LoadWorld(const char* filename) {
         tideEnabled = false;
         tidePeriodHours = 12.42f;
         tideLowLevel = 0;
+    }
+    if (version >= V103_SPRINGS) {
+        fread(&springTrickle, sizeof(bool), 1, f);
+        fread(&springRate, sizeof(float), 1, f);
+    } else {
+        springTrickle = false;   // saved with taps
     }
     TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 

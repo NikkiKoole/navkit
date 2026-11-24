@@ -539,6 +539,7 @@ void GenerateCurrentTerrain(void) {
     TraceLog(LOG_INFO, "Generating terrain: %s", terrainNames[currentTerrain]);
     waterEdgeOutflow = true;   // generated worlds drain off the map edge (an island sets its sea)
     waterEdgeSeaZ = -1;
+    springTrickle = false;     // sources are taps (the island generator makes its springs trickle)
     switch (currentTerrain) {
         case 0: InitGrid(); break;
         case 1: GenerateSparse(0.10f); break;

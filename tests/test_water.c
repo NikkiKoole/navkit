@@ -13,6 +13,9 @@
 #include <math.h>
 
 
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+
 // Global flag for verbose output in tests
 static bool test_verbose = false;
 
@@ -1598,6 +1601,80 @@ describe(water_drift) {
     }
 }
 
+// =============================================================================
+// Springs: sources inside the map trickle (springTrickle) instead of refilling to full
+// =============================================================================
+
+static int WaterTotalInRow(int y, int x0, int x1) {
+    int total = 0;
+    for (int x = x0; x <= x1; x++) total += GetWaterLevel(x, y, 0);
+    return total;
+}
+
+describe(water_springs) {
+    it("a spring adds springRate units per game-second; a tap fills the room at once") {
+        // A closed room 10 cells long: room for 70 units
+        InitTestGridFromAscii(
+            "############\n"
+            "#..........#\n"
+            "############\n");
+        InitWater();
+        waterEvaporationEnabled = false;
+        float savedDt = gameDeltaTime;
+        gameDeltaTime = TICK_DT;
+        springTrickle = true;
+        springRate = 3.0f;
+        SetWaterSource(1, 1, 0, true);
+        RunWaterTicks(600);   // 10 game-seconds: ~30 units (the spring cell starts empty)
+        int spring = WaterTotalInRow(1, 1, 10);
+        if (test_verbose) printf("spring: %d units after 10 s\n", spring);
+        expect(spring >= 27 && spring <= 33);
+
+        springTrickle = false;   // the same source as a tap: the room is full long before
+        RunWaterTicks(600);
+        expect(WaterTotalInRow(1, 1, 10) == 70);
+        gameDeltaTime = savedDt;
+        waterEvaporationEnabled = true;
+    }
+
+    it("a source on the map edge stays a tap (a river coming in from beyond)") {
+        InitTestGridFromAscii(
+            "..........#\n"
+            "###########\n");
+        InitWater();
+        waterEvaporationEnabled = false;
+        float savedDt = gameDeltaTime;
+        gameDeltaTime = TICK_DT;
+        springTrickle = true;
+        springRate = 0.5f;
+        SetWaterSource(0, 0, 0, true);   // on the edge
+        RunWaterTicks(300);
+        expect(GetWaterLevel(0, 0, 0) == WATER_MAX_LEVEL);
+        expect(WaterTotalInRow(0, 0, 9) > 20);   // far more than 0.5/s for 5 s
+        springTrickle = false;
+        gameDeltaTime = savedDt;
+        waterEvaporationEnabled = true;
+    }
+
+    it("springTrickle and springRate are saved") {
+        InitTestGridFromAscii(
+            "#####\n"
+            "#...#\n"
+            "#####\n");
+        InitWater();
+        springTrickle = true;
+        springRate = 2.5f;
+        expect(SaveWorld("/tmp/test_water_springs_save.bin"));
+        springTrickle = false;
+        springRate = 9.0f;
+        expect(LoadWorld("/tmp/test_water_springs_save.bin"));
+        expect(springTrickle);
+        expect(springRate == 2.5f);
+        springTrickle = false;
+        springRate = 1.0f;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1626,6 +1703,7 @@ int main(int argc, char* argv[]) {
     test(water_map_edge);
     test(water_freezing);
     test(water_drift);
+    test(water_springs);
     
     return summary();
 }

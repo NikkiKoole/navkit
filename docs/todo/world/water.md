@@ -119,13 +119,28 @@ cells are processed per tick, scanning bottom to top.
   stay offshore. Tests `test_water` water_drift (downstream, a rock stays, a reserved log stays,
   a log rests at the water's edge, sticks in a thin stream lost off the edge while a log stays).
 
+- **Trickling springs** (2026-11-24, save v103): with `springTrickle` on, a source inside the map
+  adds `springRate` units per game-second (default 1; per game-second like the flow it feeds, so
+  the day length doesn't change rivers) while it has room, instead of refilling to full every
+  visit. Sources on the map edge stay taps (a river from beyond: hills-water/survival). Every
+  terrain generation and scenario reset turns it off; the island generator turns it on (island
+  game and island scenarios). Island seed 1, 12k ticks: lowland (z4) water 26,926 with taps ->
+  1,030 with springs (generated: 700); river water above z4 stays near what was generated (930-963
+  of 973). Still a slow growth (+200/12k ticks at 1/s, about proportional to the rate): basins with
+  no outlet only lose level-1 water to evaporation; a sink (water soaking into soil) is the next
+  step. Trade-off: rivers are shallower (the same water over more cells), so logs, which need
+  water 2 deep, barely drift in the `drift` scenario anymore (taps: 20 logs up to 53 cells;
+  springs: 10 up to 2.7; sticks 30 up to 92 -> 27 up to 7.8). Options: a rate per river by its
+  catchment (the island has flow accumulation), a higher rate, or brooks as they are. Tests
+  `test_water` water_springs.
+
 Lesson: the old update cap hid a flood. Water that churned used the whole budget, so real flow
 far along the scan barely moved. With the churn gone, the water does what the rules say: any
 source with no way out floods until it finds one. Every source needs an outlet.
 
 ## Open
 
-1. **Trickling springs + soaking** (only if we want brooks and ponds inside the map). A source
+1. ~~**Trickling springs**~~ done 2026-11-24 (see Done); **soaking** still open (only if we want brooks and ponds inside the map). A source
    today refills to 7 every visit: unlimited flow. A spring could add a little per tick instead,
    and water standing on soil could soak away slowly (ties into the wetness/mud layer), so a
    spring-fed pond settles where inflow = soaking + evaporation. Rain balance belongs here too.

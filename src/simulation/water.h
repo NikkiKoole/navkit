@@ -112,6 +112,14 @@ void UpdateWaterFreezing(void);                        // Check temps and freeze
 void DestabilizeWater(int x, int y, int z);
 void WaterWakeAll(void);   // every cell gets looked at on the next tick (after a load)
 
+// Springs (2026-11-24): with springTrickle on, a source cell inside the map is a spring that adds
+// springRate units of water per game-second (a full cell is 7) instead of refilling to full on every
+// visit (an endless tap: every tap with no way out floods). Sources on the map edge stay taps:
+// they stand for a river coming in from beyond (hills-water). Off for test maps, sandbox and
+// survival; the island generator turns it on. Saved (v103).
+extern bool springTrickle;
+extern float springRate;
+
 // Water flow (current): which way water has been moving through a cell lately. Bookkeeping
 // only, the sim doesn't read it. Every unit that moves sideways (spreading, a pressure push
 // along its whole path, the map edge) adds its direction to the cells it leaves and enters;

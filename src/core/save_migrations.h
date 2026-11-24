@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 102
+#define CURRENT_SAVE_VERSION 103
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -62,6 +62,9 @@
 // float, tideLowLevel int). The sea itself rides in the water cells (WaterCell.isSea, a bit
 // that was spare: 0 in older saves). Older saves: no tide.
 #define V102_TIDE 102
+// v103: springs (springTrickle bool, springRate float, after the tide settings). Older saves:
+// sources are taps (as they were saved).
+#define V103_SPRINGS 103
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
     int32_t buf[256];
     while (n > 0) {

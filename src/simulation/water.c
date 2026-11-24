@@ -38,6 +38,22 @@ static float wetnessSyncAccum = 0.0f;
 // next tick starts there, so with more unstable cells than WATER_MAX_UPDATES_PER_TICK every
 // cell still gets its turn (a fixed bottom-to-top scan starved everything above the low ground)
 static int waterResumeRow = 0;
+
+// ---- Springs (see water.h) ----
+bool springTrickle = false;
+float springRate = 1.0f;            // water units per spring per game-second (like the flow it feeds)
+static float springAccum = 0.0f;    // fractional units owed to every spring
+static int* springCells = NULL;     // packed x, y, z of the source cells inside the map
+static int springCount = 0, springCap = 0;
+static bool springsDirty = true;    // rebuild springCells (a source changed, a load, a clear)
+
+static inline bool WaterOnMapEdge(int x, int y) {
+    return x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1;
+}
+// A source that trickles instead of refilling to full (springTrickle, not on the map edge)
+static inline bool WaterSourceTrickles(int x, int y) {
+    return springTrickle && !WaterOnMapEdge(x, y);
+}
 static void WaterNavReset(void);   // forget pending nav reports (water depth crossings)
 
 // Run bits: one per 16-cell run of a row (the unit of the scan's pre-check), set when a cell in it
@@ -58,7 +74,7 @@ static inline void WaterWakeRun(int x, int y, int z) {
     size_t i = WaterRunIndex(x, y, z);
     if (i < waterRunBitCount) waterRunBits[i >> 5] |= 1u << (i & 31);
 }
-void WaterWakeAll(void) { waterRunAllAwake = true; }
+void WaterWakeAll(void) { waterRunAllAwake = true; springsDirty = true; }
 
 // BFS queue for pressure propagation
 typedef struct {
@@ -142,6 +158,8 @@ void ClearWater(void) {
     waterResumeRow = 0;
     waterRunAllAwake = true;
     WaterNavReset();
+    springsDirty = true;
+    springAccum = 0.0f;
 }
 
 // Bounds check helper
@@ -358,6 +376,7 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
     
     bool wasActive = WaterCellIsActive(x, y, z);
     WATER_MUT(x, y, z).isSource = isSource;
+    springsDirty = true;
     bool isActive = WaterCellIsActive(x, y, z);
     
     if (!wasActive && isActive) {
@@ -787,8 +806,9 @@ static bool ProcessWaterCell(int x, int y, int z) {
         if (want != l) { SetSeaLevel(x, y, z, want); moved = true; }
     }
     
-    // Handle sources - refill to max and add pressure
-    if (cell->isSource) {
+    // Handle sources - refill to max and add pressure (a trickling spring gets its water from
+    // WaterSpringsTick instead)
+    if (cell->isSource && !WaterSourceTrickles(x, y)) {
         if (cell->level < WATER_MAX_LEVEL) {
             WaterDepthChanged(x, y, z, cell->level, WATER_MAX_LEVEL);
             cell->level = WATER_MAX_LEVEL;
@@ -837,8 +857,8 @@ static bool ProcessWaterCell(int x, int y, int z) {
         cell->pressureDirty = 0;
     }
     
-    // Sources refill AFTER spreading to maintain level 7
-    if (cell->isSource) {
+    // Sources refill AFTER spreading to maintain level 7 (taps; springs trickle)
+    if (cell->isSource && !WaterSourceTrickles(x, y)) {
         WaterDepthChanged(x, y, z, cell->level, WATER_MAX_LEVEL);
         cell->level = WATER_MAX_LEVEL;
         cell->hasPressure = true;
@@ -899,6 +919,41 @@ static void WaterEvaporateSweep(void) {
     }
 }
 
+// Springs: every source inside the map gets springRate units per game-second, while it has room
+// (per game-second, not per game hour: the water flows per tick, whatever the day length)
+// (a full spring backs up: it gives what flows away from it, at most springRate)
+static void WaterSpringsTick(void) {
+    if (!springTrickle || springRate <= 0.0f) return;
+    springAccum += springRate * gameDeltaTime;
+    int units = (int)springAccum;
+    if (units <= 0) return;
+    springAccum -= (float)units;
+    if (springsDirty) {
+        springCount = 0;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++) {
+                FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
+                    if (!wp->isSource || WaterOnMapEdge(x, y)) continue;
+                    if (springCount + 3 > springCap) {
+                        springCap = springCap ? springCap * 2 : 256;
+                        springCells = (int*)realloc(springCells, (size_t)springCap * sizeof(int));
+                    }
+                    springCells[springCount++] = x;
+                    springCells[springCount++] = y;
+                    springCells[springCount++] = z;
+                }
+            }
+        springsDirty = false;
+    }
+    for (int i = 0; i < springCount; i += 3) {
+        int x = springCells[i], y = springCells[i + 1], z = springCells[i + 2];
+        const WaterCell* c = &WATER(x, y, z);
+        if (!c->isSource || c->isFrozen || c->level >= WATER_MAX_LEVEL) continue;
+        int level = c->level + units;
+        SetWaterLevel(x, y, z, level > WATER_MAX_LEVEL ? WATER_MAX_LEVEL : level);
+    }
+}
+
 // Main water update - process all unstable cells
 // Falling sand style: bottom-to-top, single buffer, randomized spread
 void UpdateWater(void) {
@@ -906,6 +961,7 @@ void UpdateWater(void) {
     waterFlowTick++;
     if (waterFlowTick % WATER_NAV_FLUSH == 0) WaterNavFlush();
     TideTick();
+    WaterSpringsTick();
     
     // Early exit: no water activity at all
     if (waterActiveCells == 0) {
