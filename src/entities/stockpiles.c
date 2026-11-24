@@ -40,7 +40,7 @@ const char FILTER_CATEGORY_KEYS[FILTER_CAT_COUNT] = {
     [FILTER_CAT_TOOL]      = 'T',
     [FILTER_CAT_FOOD]      = 'F',
     [FILTER_CAT_FARM]      = 'A',
-    [FILTER_CAT_TEXTILE]   = 'X',
+    [FILTER_CAT_TEXTILE]   = 'Y',   // Y for yarn; not X (toggles all filters) nor L (ends stockpile linking)
     [FILTER_CAT_DEBUG]     = 'D',
 };
 

@@ -4,6 +4,7 @@
 // so two tools in one menu with the same key make the second one unreachable by key.
 #include "c89spec.h"
 #include "../src/core/action_registry.c"   // not in test_unity.o (input-side data)
+#include "../src/entities/stockpiles.h"      // FILTER_CATEGORY_KEYS (data in test_unity.o)
 #include <ctype.h>
 #include <stdio.h>
 
@@ -50,9 +51,24 @@ describe(action_registry_keys) {
     }
 }
 
+// Stockpile hover keys (input.c): a category key enters that category; X toggles all filters,
+// so no category may use X (Textile did: toggle-all was unreachable) and no two may share a key
+describe(stockpile_filter_keys) {
+    it("category keys are unique letters and none is X") {
+        for (int a = 0; a < FILTER_CAT_COUNT; a++) {
+            char k = FILTER_CATEGORY_KEYS[a];
+            expect(k >= 'A' && k <= 'Z');
+            expect(k != 'X');   // toggles all filters
+            expect(k != 'L');   // ends stockpile linking mode (checked while hovering a stockpile)
+            for (int b = a + 1; b < FILTER_CAT_COUNT; b++) { expect(FILTER_CATEGORY_KEYS[b] != k); }
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(action_registry_keys);
+    test(stockpile_filter_keys);
     return summary();
 }
