@@ -576,6 +576,8 @@ static const Setting settings[] = {
       "Game hours for hot food to lose half its heat over room temperature. Eaten at 40C or more = hot meal mood.", NULL),
     SET_FLOAT("fridgeSpoil", "Fridge Spoilage", "Entities/Movers/Needs", fridgeSpoilageFactor, 0.05f, 0.0f, 1.0f,
       "How fast food on a fridge spoils, as a share of the normal rate (0 = keeps forever, 1 = no fridge).", NULL),
+    SET_INT("latrineDirt", "Latrine Dirt", "Entities/Movers/Needs", latrineDirtPerUse, 0.2f, 0, 255,
+      "Floor dirt a pit latrine's cell gets each time it is used (a toilet: none). Filthy from 80, cleaners come from 30.", NULL),
     SET_INT("trashBinWalk", "Bin Walk (cells)", "Entities/Movers/Needs", trashBinWalkCells, 0.2f, 0, 64,
       "How far a mover walks to put a can or wrapper in a trash bin (Tidy: twice as far, Slob: 2). No bin with room that close: litter.", NULL),
 

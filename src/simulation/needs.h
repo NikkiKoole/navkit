@@ -37,6 +37,7 @@ int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
 // nearest trash bin with room within trashBinWalkCells (Tidy: twice as far, Slob: only a bin
 // right there), else onto the ground as litter. It becomes a real item only then.
 extern int trashBinWalkCells;
+extern int latrineDirtPerUse;   // floor dirt a pit latrine gets per use (setting latrineDirt)
 int FindTrashBinFor(int moverIdx, ItemType trash);   // bin item index with room, or -1
 
 #endif

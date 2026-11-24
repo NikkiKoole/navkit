@@ -198,7 +198,7 @@ static void SetSurvivalRules(void) {
     energyEnabled = true;
     bodyTempEnabled = true;
     thirstEnabled = true;
-    bladderEnabled = false;   // set explicitly: dollhouse leaves it on
+    bladderEnabled = true;    // bush, pit latrine, toilet (docs/todo/gameplay/survival-toilet.md)
     moodEnabled = true;       // startup default
     toolRequirementsEnabled = true;
     jobDistanceWeight = 0.2f;   // movers prefer work near them (one priority level = 5 cells)
@@ -577,13 +577,16 @@ static void StartSandbox(void) {
 // ---------------------------------------------------------------------------
 
 GameToolContext GameToolContextNow(void) {
-    GameToolContext c = {itemCount > 0, false, false, false, false};
-    for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks || !c.hasPlanks); i++) {
+    GameToolContext c = {itemCount > 0, false, false, false, false, false, false};
+    for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks || !c.hasPlanks ||
+                                              !c.hasSticks || !c.hasClay); i++) {
         if (!items[i].active) continue;
         if (items[i].type == ITEM_GRASS) c.hasGrass = true;
         if (items[i].type == ITEM_LEAVES) c.hasLeaves = true;
         if (items[i].type == ITEM_ROCK) c.hasRocks = true;
         if (items[i].type == ITEM_PLANKS) c.hasPlanks = true;
+        if (items[i].type == ITEM_STICKS) c.hasSticks = true;
+        if (items[i].type == ITEM_CLAY) c.hasClay = true;
     }
     return c;
 }
@@ -593,6 +596,8 @@ static bool HasRocks(const GameToolContext* c)  { return c->hasRocks; }
 static bool HasLeaves(const GameToolContext* c) { return c->hasLeaves; }
 static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
 static bool HasPlanks(const GameToolContext* c) { return c->hasPlanks; }
+static bool HasSticks(const GameToolContext* c) { return c->hasSticks; }
+static bool HasPlanksOrClay(const GameToolContext* c) { return c->hasPlanks || c->hasClay; }
 
 // The early-game designations every game offers in its play HUD
 #define BASIC_TOOLS \
@@ -605,6 +610,8 @@ static bool HasPlanks(const GameToolContext* c) { return c->hasPlanks; }
     {HUD_TAB_BUILD,  "Build Campfire",   ACTION_DRAW_WORKSHOP_CAMPFIRE, -1, HasItems}, \
     {HUD_TAB_BUILD,  "Build Leaf Pile",  ACTION_WORK_FURNITURE, CONSTRUCTION_LEAF_PILE,  HasLeaves}, \
     {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}, \
+    {HUD_TAB_BUILD,  "Build Pit Latrine", ACTION_WORK_FURNITURE, CONSTRUCTION_PIT_LATRINE, HasSticks}, \
+    {HUD_TAB_BUILD,  "Build Toilet",     ACTION_WORK_FURNITURE, CONSTRUCTION_TOILET,      HasPlanksOrClay}, \
     {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}
 

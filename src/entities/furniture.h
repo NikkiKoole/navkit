@@ -48,6 +48,7 @@ typedef enum {
     FURNITURE_TILL,        // a shop's counter: selling (City 1999's shop counter / snack stand)
     FURNITURE_BATH,        // washing; a bath or shower makes a bathroom (a toilet alone: a WC)
     FURNITURE_SHOWER,      // washing
+    FURNITURE_PIT_LATRINE, // survival: a seat over a dug pit (toilet comfort 1; dirties the floor around)
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
@@ -60,6 +61,7 @@ typedef struct {
     uint8_t heatLevel;    // CAP_HEAT level: 1 warm (grate, barrel), 2 cooking, 3 smelting
     int16_t heatTemp;     // Celsius it keeps its cell at in temperature.c (0 = none)
     uint8_t sleepers;     // movers that rest on it at once (0 = 1); a double bed: 2
+    uint8_t comfort;      // CAP_TOILET: 1 pit latrine, 2 toilet (higher is preferred; 0 = 2)
 } FurnitureDef;
 
 typedef struct {

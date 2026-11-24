@@ -111,6 +111,8 @@ typedef enum {
     CONSTRUCTION_TABLE,                  // 1 stage: 3 planks (furniture; append only, saves store the index)
     CONSTRUCTION_BELT,                   // 1 stage: 2 planks + 1 cordage (conveyor belt cell)
     CONSTRUCTION_SHAFT,                  // 1 stage: 4 planks + 2 cordage (elevator shaft, one level up)
+    CONSTRUCTION_PIT_LATRINE,            // 1 stage: 4 sticks (furniture: a seat over a dug pit)
+    CONSTRUCTION_TOILET,                 // 1 stage: 3 planks or 3 clay (furniture)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

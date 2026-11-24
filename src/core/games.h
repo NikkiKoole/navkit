@@ -21,7 +21,7 @@
 // What the play HUD knows about the world when deciding which tools to show.
 // Filled once per frame by GameToolContextNow().
 typedef struct {
-    bool hasItems, hasGrass, hasLeaves, hasRocks, hasPlanks;
+    bool hasItems, hasGrass, hasLeaves, hasRocks, hasPlanks, hasSticks, hasClay;
 } GameToolContext;
 
 // The play HUD's tabs (bottom left): what things are, not which mode makes them.

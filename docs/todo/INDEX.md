@@ -7,6 +7,7 @@
 
 ## Recently active
 
+- **2026-11-24 Survival toilet, levels 0-2** (`gameplay/survival-toilet.md`): bladder on in survival/island; pit latrine (4 sticks) and toilet (3 planks or clay) built in place, play HUD buttons; toilets found by CAP_TOILET and comfort (latrine 1, toilet 2); a latrine dirties its floor per use (`latrineDirt`). No save bump. Next: bucket flush + cesspit, then pipes (pipeGrid shared with dreamengine's plumbing)
 - **2026-11-24 Buildings vocabulary for dreamengine** (`architecture/capability-based-tasks.md` "Building capabilities", save v105; dreamengine's `docs/design/nk-navkit-wishlist.md`): MAT_CONCRETE, CELL_RAILING (blocks walking only; rooms flood through it); furniture SINK, DOUBLE_BED (sleeps two), FRIDGE (food on it spoils at `fridgeSpoil`), DESK, SHELF, SOFA, TILL; capability bits widened to 16 (WASHING, TOILET, SEATING, FLAT_SURFACE, SLEEPING, COLD_STORAGE, DISPLAY, SELLING); rooms: stove = kitchen, LIVING, HALL, WC, BATHROOM, STAIRS, LOBBY, OFFICE, unroofed = OUTDOORS; BATH and SHOWER make a bathroom (toilets alone: WC), a fridge alone no kitchen, a double bed a bedroom, lobby 24+ cells (batch 3 from dreamengine's port). Dollhouse is a concrete flat with hall, bathroom, living room, balcony. `--describe-cell X,Y,Z` headless. Next: wash hands after the toilet, the till as City 1999's exchange station, rooms counting blocking furniture (shelves as aisles)
 - **2026-11-24 City 1999: scrounging** (`../vision/city-1999.md` "Scrounging", save v107): burgers are big portions, the not-so-hungry leave Leftovers in the bin; Scavenger trait (not rolled; for now "no money": no stockpile food) searches the nearest reachable bin with food, eats, stows the rest; anyone starving does too; food in your own pockets comes first. Scenario `scrounge`
 - **2026-11-24 City 1999: inventory** (`../vision/city-1999.md` "Built: two hands, back, pockets", save v106): `Mover.hands[2]` (two-handed items take both), `wornBack` (backpack), pockets only on the Pocket Jacket, plastic bag held; `inventory.c` (`MoverStow`: pockets, backpack, held bag, free hand). Scenario `inventory`, `test_inventory`. Next: jobs respecting hands, volume, searching bins
@@ -70,7 +71,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (6k lines, ~85 functions)
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)
 - `environmental/fire-ignition-materials.md` — Fix: wood walls won't ignite, floors don't burn, tree trunks only top segment
-- `gameplay/survival-toilet.md` — Bush -> pit latrine -> dry toilet -> bucket flush + cesspit -> piped flush toilet by gravity; levels 0-2 need no new systems, pipes shared with dreamengine's plumbing model
+- `gameplay/survival-toilet.md` (levels 0-2 built) — Bush -> pit latrine -> dry toilet -> bucket flush + cesspit -> piped flush toilet by gravity; levels 0-2 need no new systems, pipes shared with dreamengine's plumbing model
 - `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains
 - ~~`gameplay/water-dependent-crafting.md`~~ — moved to done/ (mud mixer implemented)
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time

@@ -1160,6 +1160,43 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    // Survival toilet ladder (docs/todo/gameplay/survival-toilet.md)
+    [CONSTRUCTION_PIT_LATRINE] = {
+        .name = "Pit Latrine",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 1.0f,   // dig the pit, lash a seat over it
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_TOILET] = {
+        .name = "Toilet",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_PLANKS }, { .itemType = ITEM_CLAY }},
+                .altCount = 2,
+                .count = 3,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 1.5f,   // a box seat over a pit (no water yet: a dry toilet)
+        }},
+        .resultMaterial = MAT_NONE,    // wood or clay it was made of
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

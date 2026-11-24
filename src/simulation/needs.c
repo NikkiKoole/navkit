@@ -302,6 +302,30 @@ static int FindNearestFreeFurniture(FurnitureType type, float x, float y, int z)
     return bestIdx;
 }
 
+// Toilet comfort (FurnitureDef.comfort, 0 = 2): 1 pit latrine, 2 toilet
+static int ToiletComfort(int fi) {
+    int c = GetFurnitureDef(furniture[fi].type)->comfort;
+    return c > 0 ? c : 2;
+}
+
+// The free toilet (anything with CAP_TOILET) on this z that scores best: comfort, then
+// distance (comfort / (1 + cells away), as rest picks a bed)
+int latrineDirtPerUse = 40;   // setting latrineDirt
+
+static int FindBestFreeToilet(float x, float y, int z) {
+    int bestIdx = -1;
+    float bestScore = -1.0f;
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active || furniture[i].z != z || furniture[i].occupant != -1) continue;
+        if (!(GetFurnitureDef(furniture[i].type)->capabilities & CAP_TOILET)) continue;
+        float dx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f - x;
+        float dy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f - y;
+        float score = (float)ToiletComfort(i) / (1.0f + sqrtf(dx * dx + dy * dy) / CELL_SIZE);
+        if (score > bestScore) { bestScore = score; bestIdx = i; }
+    }
+    return bestIdx;
+}
+
 // Find a walkable outdoor cell near a tree or plant for privacy
 static bool FindNearbyBush(int cx, int cy, int z, int* outX, int* outY) {
     int radius = 8;
@@ -346,8 +370,8 @@ static void StartBladderSearch(Mover* m, int moverIdx) {
     int cy = (int)(m->y / CELL_SIZE);
     int cz = (int)m->z;
 
-    // Priority 1: toilet furniture
-    int toiletIdx = FindNearestFreeFurniture(FURNITURE_TOILET, m->x, m->y, cz);
+    // Priority 1: a toilet (toilet, pit latrine: anything with CAP_TOILET)
+    int toiletIdx = FindBestFreeToilet(m->x, m->y, cz);
     if (toiletIdx >= 0) {
         furniture[toiletIdx].occupant = moverIdx;
         m->freetimeState = FREETIME_SEEKING_TOILET;
@@ -1565,7 +1589,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         case FREETIME_SEEKING_TOILET: {
             int fi = m->needTarget;
             if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active ||
-                furniture[fi].type != FURNITURE_TOILET || furniture[fi].occupant != moverIdx) {
+                !(GetFurnitureDef(furniture[fi].type)->capabilities & CAP_TOILET) ||
+                furniture[fi].occupant != moverIdx) {
                 if (fi >= 0 && fi < MAX_FURNITURE && furniture[fi].occupant == moverIdx) {
                     furniture[fi].occupant = -1;
                 }
@@ -1598,6 +1623,13 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->needProgress >= GameHoursToGameSeconds(balance.toiletUseDurationGH)) {
                 m->bladder = 1.0f;
                 int fi = m->needTarget;
+                // A pit latrine smells: each use dirties its floor (cleaning, room quality,
+                // the filthy moodlet already follow from floor dirt)
+                if (fi >= 0 && fi < MAX_FURNITURE && furniture[fi].active && ToiletComfort(fi) <= 1) {
+                    int lx = furniture[fi].x, ly = furniture[fi].y, lz = furniture[fi].z;
+                    int d = GetFloorDirt(lx, ly, lz) + latrineDirtPerUse;
+                    SetFloorDirt(lx, ly, lz, d);   // clamps at DIRT_MAX
+                }
                 if (fi >= 0 && fi < MAX_FURNITURE) furniture[fi].occupant = -1;
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;

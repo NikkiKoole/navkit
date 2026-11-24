@@ -38,6 +38,8 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_TILL]       = { "Till",       0.0f,    false, 16, CAP_SELLING },
     [FURNITURE_BATH]       = { "Bath",       0.0f,    false, 20, CAP_WASHING },
     [FURNITURE_SHOWER]     = { "Shower",     0.0f,    false, 11, CAP_WASHING },
+    // Survival toilet ladder (docs/todo/gameplay/survival-toilet.md): bush < latrine < toilet
+    [FURNITURE_PIT_LATRINE]= { "Pit Latrine", 0.0f,   false, 11, CAP_TOILET, 0, 0, 0, 1 },
 };
 
 _Static_assert(sizeof(furnitureDefs) / sizeof(furnitureDefs[0]) == FURNITURE_TYPE_COUNT,

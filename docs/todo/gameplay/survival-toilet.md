@@ -1,6 +1,7 @@
 # Survival toilet: from the bush to a flushing toilet
 
-> Status: plan (2026-11-24). Nothing built yet. Pipes share their model with dreamengine's
+> Status: partial (2026-11-24). Levels 0-2 built (bush in survival, pit latrine, toilet);
+> 3-4 (bucket flush, pipes) are plans. Pipes share their model with dreamengine's
 > plumbing proposal (`~/Projects/dreamengine/docs/design/nk-plumbing.md`): one `pipeGrid` layer,
 > stacks as wall cells, a fixture only works when connected.
 
@@ -29,6 +30,19 @@ no fall", "cistern empty"), so the answer to "why not?" is something on the map.
   recipe in `construction.c`), workshops and the kiln (clay), water in clay pots, haul jobs,
   fixed containers (trash bins, `IF_FIXED`), belts built as a line of blueprints with a
   placement tool, floor dirt, mood moodlets, capabilities (`CAP_TOILET`).
+
+## Built (levels 0-2)
+
+- Survival and island have the bladder need on (`SetSurvivalRules`, `games.c`).
+- `FURNITURE_PIT_LATRINE` (CAP_TOILET, comfort 1), `CONSTRUCTION_PIT_LATRINE` (4 sticks) and
+  `CONSTRUCTION_TOILET` (3 planks or 3 clay) build furniture in place; play HUD "Build Pit
+  Latrine" (once there are sticks) and "Build Toilet" (planks or clay).
+- Toilets are found by `CAP_TOILET`, scored comfort / (1 + cells away) (`FindBestFreeToilet`,
+  `needs.c`; `FurnitureDef.comfort`: 1 latrine, 2 toilet).
+- Each use of a latrine adds `latrineDirt` (40) floor dirt to its cell: the filthy moodlet,
+  cleaning and room quality follow from floor dirt. A toilet stays clean.
+- A room with a latrine reads as a WC. Tests: `tests/test_toilet.c`.
+- No new items, no save bump. Not yet: the pit filling up (needs a counter per furniture).
 
 ## The ladder
 
