@@ -78,6 +78,7 @@
     #define SPRITE_grass_taller SPRITE8X8_grass_taller
     #define SPRITE_grass SPRITE8X8_grass
     #define SPRITE_slate SPRITE8X8_slate
+    #define SPRITE_light_nw SPRITE8X8_light_nw
     #define SPRITE_small_triangle SPRITE8X8_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
     #define SPRITE_chair SPRITE8X8_chair
@@ -97,6 +98,7 @@
     #define SPRITE_cordage SPRITE8X8_cordage
     #define SPRITE_wall_wood SPRITE8X8_wall_wood
     #define SPRITE_floor SPRITE8X8_floor
+    #define SPRITE_light_ne SPRITE8X8_light_ne
     #define SPRITE_light_shade SPRITE8X8_light_shade
     #define SPRITE_tree_leaves_pine SPRITE8X8_tree_leaves_pine
     #define SPRITE_floor_wood SPRITE8X8_floor_wood
@@ -195,6 +197,7 @@
     #define SPRITE_grass_taller SPRITE16X16_grass_taller
     #define SPRITE_grass SPRITE16X16_grass
     #define SPRITE_slate SPRITE16X16_slate
+    #define SPRITE_light_nw SPRITE16X16_light_nw
     #define SPRITE_small_triangle SPRITE16X16_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak
     #define SPRITE_chair SPRITE16X16_chair
@@ -214,6 +217,7 @@
     #define SPRITE_cordage SPRITE16X16_cordage
     #define SPRITE_wall_wood SPRITE16X16_wall_wood
     #define SPRITE_floor SPRITE16X16_floor
+    #define SPRITE_light_ne SPRITE16X16_light_ne
     #define SPRITE_light_shade SPRITE16X16_light_shade
     #define SPRITE_tree_leaves_pine SPRITE16X16_tree_leaves_pine
     #define SPRITE_floor_wood SPRITE16X16_floor_wood

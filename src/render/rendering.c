@@ -315,8 +315,8 @@ static int PlankSpriteForMaterial(MaterialType mat) {
 }
 
 // A railing runs along its railing neighbours: N/S makes it vertical, E/W horizontal.
-// With no railing neighbour it lines up with a wall it butts against. A corner or a
-// lone post draws horizontal (no corner sprite yet).
+// With no railing neighbour it lines up with a wall it butts against. A north+east
+// corner is └, north+west ┘; other corners, junctions and a lone post draw horizontal.
 static bool RailingLinksTo(int x, int y, int z, bool wallsToo) {
     if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
     CellType c = GRID(x, y, z);
@@ -327,8 +327,11 @@ static bool RailingLinksTo(int x, int y, int z, bool wallsToo) {
 static int RailingSpriteAt(int x, int y, int z) {
     for (int pass = 0; pass < 2; pass++) {
         bool walls = pass == 1;
-        bool ns = RailingLinksTo(x, y - 1, z, walls) || RailingLinksTo(x, y + 1, z, walls);
-        bool ew = RailingLinksTo(x - 1, y, z, walls) || RailingLinksTo(x + 1, y, z, walls);
+        bool n = RailingLinksTo(x, y - 1, z, walls), s = RailingLinksTo(x, y + 1, z, walls);
+        bool e = RailingLinksTo(x + 1, y, z, walls), w = RailingLinksTo(x - 1, y, z, walls);
+        bool ns = n || s, ew = e || w;
+        if (n && !s && e && !w) return SPRITE_light_ne;
+        if (n && !s && w && !e) return SPRITE_light_nw;
         if (ns && !ew) return SPRITE_light_vertical;
         if (ns || ew) return SPRITE_light_horizontal;
     }
