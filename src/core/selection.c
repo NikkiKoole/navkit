@@ -306,3 +306,54 @@ void ToggleMoverDraft(int moverIdx) {
     AddMessage(TextFormat("%s: %s", MoverDisplayName(moverIdx), m->isDrafted ? "DRAFTED" : "Undrafted"),
                m->isDrafted ? RED : GREEN);
 }
+
+// ---------------------------------------------------------------------------
+// Verbs (selection.h SelectionVerb): one row per thing you can do to a selected thing
+// ---------------------------------------------------------------------------
+
+void InputMode_StartLinking(int wsIdx);   // input_mode.c: linking a workshop is an input mode
+
+static const char* FollowLabel(int i) { return followMoverIdx == i ? "Unfollow" : "Follow"; }
+static const char* DraftLabel(int i) { return (i >= 0 && i < moverCount && movers[i].isDrafted) ? "Undraft" : "Draft"; }
+static const char* DeconstructLabel(int i) {
+    return (i >= 0 && i < MAX_WORKSHOPS && workshops[i].markedForDeconstruct) ? "Cancel deconstruct" : "Deconstruct";
+}
+static void VerbLink(int i) { InputMode_StartLinking(i); }
+static void VerbPriorityUp(int i) { StockpileAdjustPriority(i, 1); }
+static void VerbPriorityDown(int i) { StockpileAdjustPriority(i, -1); }
+static void VerbStackUp(int i) { StockpileAdjustStackSize(i, 1); }
+static void VerbStackDown(int i) { StockpileAdjustStackSize(i, -1); }
+static void VerbContainersUp(int i) { StockpileAdjustContainers(i, 1); }
+static void VerbContainersDown(int i) { StockpileAdjustContainers(i, -1); }
+
+static const SelectionVerb selectionVerbs[] = {
+    // Mover. F: follow the hovered mover, else the selected one (input.c, global key)
+    { SEL_MOVER, "Follow", FollowLabel, KEY_F, 0, false, false, true, ToggleMoverFollow },
+    { SEL_MOVER, "Draft", DraftLabel, KEY_D, 0, false, true, true, ToggleMoverDraft },
+    // Workshop (bills: per bill in the inspector, and on the hover keys 1-9 [ ] M + - X P)
+    { SEL_WORKSHOP, "Link stockpile", NULL, KEY_L, 0, false, true, true, VerbLink },
+    { SEL_WORKSHOP, "Deconstruct", DeconstructLabel, KEY_D, 0, false, true, true, WorkshopToggleDeconstruct },
+    // Stockpile (the inspector draws these as steppers with the value between - and +)
+    { SEL_STOCKPILE, "Priority +", NULL, KEY_EQUAL, KEY_KP_ADD, false, true, false, VerbPriorityUp },
+    { SEL_STOCKPILE, "Priority -", NULL, KEY_MINUS, KEY_KP_SUBTRACT, false, true, false, VerbPriorityDown },
+    { SEL_STOCKPILE, "Stack +", NULL, KEY_RIGHT_BRACKET, 0, false, true, false, VerbStackUp },
+    { SEL_STOCKPILE, "Stack -", NULL, KEY_LEFT_BRACKET, 0, false, true, false, VerbStackDown },
+    { SEL_STOCKPILE, "Containers +", NULL, KEY_RIGHT_BRACKET, 0, true, true, false, VerbContainersUp },
+    { SEL_STOCKPILE, "Containers -", NULL, KEY_LEFT_BRACKET, 0, true, true, false, VerbContainersDown },
+    // X: all filters on/off, only at the top filter level (input.c, next to the category keys)
+    { SEL_STOCKPILE, "All on/off", NULL, KEY_X, 0, false, false, false, StockpileToggleAll },   // drawn in the filters row
+};
+#define SELECTION_VERB_COUNT ((int)(sizeof(selectionVerbs) / sizeof(selectionVerbs[0])))
+
+int SelectionVerbCount(void) { return SELECTION_VERB_COUNT; }
+const SelectionVerb* SelectionVerbAt(int i) { return (i >= 0 && i < SELECTION_VERB_COUNT) ? &selectionVerbs[i] : NULL; }
+
+bool RunSelectionVerbKeys(SelectionKind kind, int idx) {
+    bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    for (int i = 0; i < SELECTION_VERB_COUNT; i++) {
+        const SelectionVerb* v = &selectionVerbs[i];
+        if (v->kind != kind || !v->hoverKey || v->shift != shiftDown) continue;
+        if ((v->key && IsKeyPressed(v->key)) || (v->altKey && IsKeyPressed(v->altKey))) { v->run(idx); return true; }
+    }
+    return false;
+}

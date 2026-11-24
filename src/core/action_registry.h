@@ -19,6 +19,10 @@ typedef struct {
     // Mouse hints shown after the tool's option in the bar ("L-drag place", "R-drag erase",
     // "+Shift=source"). NULL: "L-drag designate" / "R-drag cancel" from canDrag / canErase.
     const char* hints[4];
+    // The same tool done the other way (docs/todo/ui/find-palette.md step 3): a Draw tool
+    // (now: the developer's instant cheat) and its Work tool (order: a designation or blueprint
+    // the workers carry out) point at each other. I flips the current tool between them.
+    InputAction twin;
 } ActionDef;
 
 // A tool's option (docs/todo/ui/find-palette.md "Data tidying" step 2): what the tool can be

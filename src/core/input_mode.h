@@ -144,6 +144,8 @@ extern InputAction inputAction;
 extern int selectedMaterial;  // 1-based material index
 // Draw material for a selectedMaterial value (input.c drawMaterials: also the ghost preview)
 void DrawMaterialFor(int selected, MaterialType* outMat, ItemType* outSource);
+// The help panel's lines (input.c): global keys + what keys do on a hovered thing
+int InputHelpLines(char lines[][64], int max);
 
 // Soil pile mode settings
 extern float soilPileRadius;  // How far soil spreads in pile mode (shift+draw)

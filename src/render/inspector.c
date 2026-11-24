@@ -60,12 +60,19 @@ static bool Button(const char* label, bool draw, float* bx, float y) {
 // Content per selection kind
 // ---------------------------------------------------------------------------
 
-static void MoverButtons(bool draw, float x, float* y) {
-    int idx = selection.idx;
+// The selection's verbs (selection.c) of one kind as a row of buttons
+static void VerbButtons(SelectionKind kind, int idx, bool draw, float x, float* y) {
     float bx = x;
-    if (Button(followMoverIdx == idx ? "Unfollow" : "Follow", draw, &bx, *y + 2)) ToggleMoverFollow(idx);
-    if (Button(movers[idx].isDrafted ? "Undraft" : "Draft", draw, &bx, *y + 2)) ToggleMoverDraft(idx);
+    for (int i = 0; i < SelectionVerbCount(); i++) {
+        const SelectionVerb* v = SelectionVerbAt(i);
+        if (v->kind != kind || !v->button) continue;
+        if (Button(v->label ? v->label(idx) : v->name, draw, &bx, *y + 2)) v->run(idx);
+    }
     *y += INSPECTOR_BUTTON_H;
+}
+
+static void MoverButtons(bool draw, float x, float* y) {
+    VerbButtons(SEL_MOVER, selection.idx, draw, x, y);
 }
 
 static void WorkshopContent(bool draw, float x, float* y) {
@@ -115,11 +122,7 @@ static void WorkshopContent(bool draw, float x, float* y) {
     DescLines links = {0};
     DescribeWorkshopLinks(wsIdx, &links);
     Lines(&links, 0, draw, x, y);
-    float bx = x;
-    if (Button("Link stockpile", draw, &bx, *y + 2)) InputMode_StartLinking(wsIdx);
-    if (Button(ws->markedForDeconstruct ? "Cancel deconstruct" : "Deconstruct", draw, &bx, *y + 2))
-        WorkshopToggleDeconstruct(wsIdx);
-    *y += INSPECTOR_BUTTON_H;
+    VerbButtons(SEL_WORKSHOP, wsIdx, draw, x, y);   // link, deconstruct (selection.c verbs)
 }
 
 // Stockpile: priority / stack / containers steppers, filters as toggle buttons.

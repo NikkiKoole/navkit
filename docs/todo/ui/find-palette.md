@@ -1,6 +1,6 @@
 # Find palette and data-driven UI
 
-> Status: decided direction; data tidying steps 1-2 done (2026-11-24)
+> Status: decided direction; data tidying steps 1, 2, 4 done, 3 and 5 partly (2026-11-24)
 
 The goal: adding an item type, a setting, a command or a build kind should not need new
 hand-made UI. Every table row becomes reachable by itself. Tested as a playable sketch in
@@ -68,6 +68,24 @@ No UI decisions in any of these; they make a palette (and the player toolbar) al
 
 ## Done so far
 
+- 2026-11-24: **Draw/Work twins (step 3, first part).** `ActionDef.twin` links each Draw tool
+  (now: the developer's instant cheat) with its Work tool (order: workers build it): wall /
+  construct, floor, ladder, ramp, the workshop category and its 19 kinds (48 links, symmetric,
+  tested). **I** flips the current tool between them (Q was taken: Quern), the bar shows
+  "I:order" / "I:instant". Not done (needs a decision): hiding the Draw copies from the Draw
+  bar, and a per-game default how. Note: survival's player toolbar builds the campfire with
+  the instant Draw tool (`games.c`), unlike every other player build; switching it to the order
+  tool changes survival (materials + a settler).
+- 2026-11-24: **selection verbs (step 4).** `SelectionVerb` table in selection.c: mover (follow,
+  draft), workshop (link stockpile, deconstruct), stockpile (priority, stack size, containers,
+  all filters), each with name, current label, key(s), Shift. The hover keys
+  (`RunSelectionVerbKeys`) and the inspector's mover / workshop button rows read it; the
+  stockpile steppers and the per-bill / per-filter rows stay as they are. Key clash test.
+- 2026-11-24: **keys as data for the help panel (step 5, first part).** The `?` panel is made
+  from a table of the global keys (input.c `globalKeyHelp`) plus the verbs' keys; it dropped
+  the disabled "C Center view" and the old "L-click place wall" lines, and gained F, Tab,
+  the console, F7/F8 and the hover keys. The global keys' handlers themselves are still
+  hand-written in input.c.
 - 2026-11-24: **tool options as data (step 2).** `ActionOption` (action_registry.h): label,
   choices (count / name), get / set, and a style: numbered (keys 1-9), cycle (one key, e.g. R
   for recipes, T for tree type) or keyed (a key per choice: ramp A/arrows/HJKL, belt

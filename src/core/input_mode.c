@@ -243,6 +243,9 @@ int InputMode_GetBarItems(BarItem* items) {
     char actionHeader[32];
     snprintf(actionHeader, sizeof(actionHeader), "%s:", actionName);
     n = AddBackHeader(items, n, actionHeader, 1);
+    // The same tool the other way: I flips now (instant) <-> order (workers) (registry twin)
+    if (def->twin != ACTION_NONE)
+        n = AddItem(items, n, def->requiredMode == MODE_DRAW ? "I:order" : "I:instant", KEY_I, 0, false, false, false);
     
     // Check if this action has children (is a category like WORKSHOP/SOIL)
     const ActionDef* children[MAX_BAR_ITEMS];

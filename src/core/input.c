@@ -2582,20 +2582,8 @@ void HandleInput(void) {
     // ========================================================================
     if (hoveredStockpile >= 0) {
         // Actions are shared with the inspector panel (src/core/selection.c)
-        bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) StockpileAdjustPriority(hoveredStockpile, 1);
-        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) StockpileAdjustPriority(hoveredStockpile, -1);
-        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-            // ] = stack size up, Shift+] = more containers
-            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, 1);
-            else StockpileAdjustStackSize(hoveredStockpile, 1);
-            return;
-        }
-        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
-            if (shiftDown) StockpileAdjustContainers(hoveredStockpile, -1);
-            else StockpileAdjustStackSize(hoveredStockpile, -1);
-            return;
-        }
+        // Priority = -, stack size ] [, Shift+] [ containers: the stockpile verbs (selection.c)
+        if (RunSelectionVerbKeys(SEL_STOCKPILE, hoveredStockpile)) return;
         // Filter toggles - only in normal mode (two-level keyboard navigation)
         if (inputMode == MODE_NORMAL) {
             // Material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
@@ -2725,15 +2713,8 @@ void HandleInput(void) {
             return;
         }
 
-        // L = Link stockpiles (enter linking mode)
-        if (IsKeyPressed(KEY_L)) {
-            InputMode_StartLinking(hoveredWorkshop);
-            return;
-        }
-
-        // D = Mark/unmark workshop for deconstruction
-        if (IsKeyPressed(KEY_D)) {
-            WorkshopToggleDeconstruct(hoveredWorkshop);
+        // L link stockpiles, D deconstruct: the workshop verbs (selection.c)
+        if (RunSelectionVerbKeys(SEL_WORKSHOP, hoveredWorkshop)) {
             hoveredWorkshop = -1;
             return;
         }
@@ -2957,11 +2938,8 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
-        // Draft toggle: D while hovering a mover drafts/undrafts (consumes D before draw mode)
-        if (hoveredMover >= 0 && hoveredMover < moverCount && CheckKey(KEY_D)) {
-            ToggleMoverDraft(hoveredMover);
-            return;
-        }
+        // D while hovering a mover drafts/undrafts (before D = draw mode): the mover verbs (selection.c)
+        if (hoveredMover >= 0 && hoveredMover < moverCount && RunSelectionVerbKeys(SEL_MOVER, hoveredMover)) return;
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
         if (devUI && CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
         if (devUI && CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
@@ -3092,6 +3070,23 @@ void HandleInput(void) {
         return;
     }
     
+    // ========================================================================
+    // I flips the tool between now (Draw: instant) and order (Work: the workers build it)
+    // when it has a twin in the registry (docs/todo/ui/find-palette.md step 3)
+    // ========================================================================
+    {
+        const ActionDef* curDef = GetActionDef(inputAction);
+        if (curDef->twin != ACTION_NONE && CheckKey(KEY_I)) {
+            const ActionDef* t = GetActionDef(curDef->twin);
+            inputMode = t->requiredMode;
+            workSubMode = t->requiredSubMode;
+            inputAction = t->action;
+            if (inputMode == MODE_DRAW) AddMessage(TextFormat("%s: instant (dev)", t->name), YELLOW);
+            else AddMessage(TextFormat("%s: order (the workers build it)", t->name), BLUE);
+            return;
+        }
+    }
+
     // ========================================================================
     // Category child selection — data-driven from registry
     // ========================================================================
@@ -3279,4 +3274,65 @@ void HandleInput(void) {
         }
         done_execute:;
     }
+}
+
+// ============================================================================
+// Keys as data for the help panel (docs/todo/ui/find-palette.md step 5): the global keys
+// (handled in HandleInput / main.c) as a table, plus the selection verbs' keys (selection.c).
+// The tools' keys show in the bar (registry + tool options), commands in the console's help.
+// ============================================================================
+
+static const struct { const char* keys; const char* help; } globalKeyHelp[] = {
+    { NULL,          "--- View ---" },
+    { "Esc",         "Back / exit menu" },
+    { ", / .",       "Level down / up" },
+    { "Scroll",      "Zoom in / out" },
+    { "Middle-drag", "Pan view" },
+    { "Space",       "Pause / resume" },
+    { "F",           "Follow the hovered (or selected) mover" },
+    { NULL,          "--- General ---" },
+    { "L-click",     "Select a mover, animal, workshop, stockpile" },
+    { "Tab",         "Dev overlay (tools, settings)" },
+    { "`",           "Console (type help)" },
+    { "F5 / F6",     "Quick save / quick load" },
+    { "F7",          "State audit" },
+    { "F8",          "Dump the event log" },
+};
+
+static const char* HelpKeyName(int key) {
+    if (key >= KEY_A && key <= KEY_Z) { static char b[2][2]; static int k; k ^= 1; b[k][0] = (char)('A' + (key - KEY_A)); b[k][1] = 0; return b[k]; }
+    switch (key) {
+        case KEY_EQUAL: return "=";
+        case KEY_MINUS: return "-";
+        case KEY_KP_ADD: return "KP+";
+        case KEY_KP_SUBTRACT: return "KP-";
+        case KEY_LEFT_BRACKET: return "[";
+        case KEY_RIGHT_BRACKET: return "]";
+        default: return "?";
+    }
+}
+
+int InputHelpLines(char lines[][64], int max) {
+    int n = 0;
+    for (int i = 0; i < (int)(sizeof(globalKeyHelp) / sizeof(globalKeyHelp[0])) && n < max; i++) {
+        if (globalKeyHelp[i].keys) snprintf(lines[n++], 64, "%-13s %s", globalKeyHelp[i].keys, globalKeyHelp[i].help);
+        else snprintf(lines[n++], 64, "%s", globalKeyHelp[i].help);
+    }
+    static const struct { SelectionKind kind; const char* title; } kinds[] = {
+        { SEL_MOVER, "--- Hovering a mover ---" },
+        { SEL_WORKSHOP, "--- Hovering a workshop ---" },
+        { SEL_STOCKPILE, "--- Hovering a stockpile ---" },
+    };
+    for (int k = 0; k < 3 && n < max; k++) {
+        snprintf(lines[n++], 64, "%s", kinds[k].title);
+        for (int i = 0; i < SelectionVerbCount() && n < max; i++) {
+            const SelectionVerb* v = SelectionVerbAt(i);
+            if (v->kind != kinds[k].kind || !v->key) continue;
+            char keys[24];
+            snprintf(keys, sizeof(keys), "%s%s%s%s", v->shift ? "Shift+" : "", HelpKeyName(v->key),
+                     v->altKey ? " / " : "", v->altKey ? HelpKeyName(v->altKey) : "");
+            snprintf(lines[n++], 64, "%-13s %s", keys, v->name);
+        }
+    }
+    return n;
 }

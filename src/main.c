@@ -2294,26 +2294,10 @@ int main(int argc, char** argv) {
         }
 
         if (showHelpPanel) {
-            const char* shortcuts[] = {
-                "--- Navigation ---",
-                "ESC           Back / Exit menu",
-                "< / >         Change Z level",
-                "Scroll        Zoom in/out",
-                "Middle-drag   Pan view",
-                "C             Center view",
-                "Space         Pause/Resume",
-                "",
-                "--- Quick Edit (Normal mode) ---",
-                "L-click       Place wall",
-                "R-click       Erase",
-                "2 + L-click   Place wood wall",
-                "",
-                "--- General ---",
-                "F5            Quick save",
-                "F6            Quick load",
-            };
-            int shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
-            int panelW = 260;
+            // Made from data (input.c InputHelpLines: global keys + the selection verbs' keys)
+            static char shortcuts[40][64];
+            int shortcutCount = InputHelpLines(shortcuts, 40);
+            int panelW = 330;
             int panelH = 20 + shortcutCount * 18 + 10;
             int panelX = GetScreenWidth() - panelW - 5;
             int panelY = GetScreenHeight() - 28 - panelH;

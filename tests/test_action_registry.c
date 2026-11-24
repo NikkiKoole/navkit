@@ -5,6 +5,7 @@
 #include "c89spec.h"
 #include "../src/core/action_registry.c"   // not in test_unity.o (input-side data)
 #include "../src/entities/stockpiles.h"      // FILTER_CATEGORY_KEYS (data in test_unity.o)
+#include "../src/core/selection.h"          // selection verbs (data in test_unity.o)
 #include <ctype.h>
 #include <stdio.h>
 
@@ -65,10 +66,56 @@ describe(stockpile_filter_keys) {
     }
 }
 
+// Draw tool <-> Work tool (find-palette.md step 3): the twin links are symmetric, join a Draw
+// row to a Work row, and cover every action that exists in both (ACTION_DRAW_X / ACTION_WORK_X)
+describe(action_twins) {
+    it("twins point at each other, one Draw and one Work") {
+        int linked = 0;
+        for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+            const ActionDef* d = &ACTION_REGISTRY[i];
+            if (d->twin == ACTION_NONE) continue;
+            const ActionDef* t = GetActionDef(d->twin);
+            expect(t->twin == d->action);
+            expect((d->requiredMode == MODE_DRAW && t->requiredMode == MODE_WORK) ||
+                   (d->requiredMode == MODE_WORK && t->requiredMode == MODE_DRAW));
+            linked++;
+        }
+        expect(linked == 48);   // 23 + the workshop category + wall/construct, both ways
+    }
+    it("no key clash: I (the flip) is no bar key") {
+        for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) { expect(ACTION_REGISTRY[i].barKey != 'i'); }
+    }
+}
+
+// Selection verbs (selection.c, find-palette.md step 4): every verb runs something, and within a
+// kind no two keys collide (same key with the same Shift state)
+describe(selection_verbs) {
+    it("every verb has a name and a run function") {
+        expect(SelectionVerbCount() > 0);
+        for (int i = 0; i < SelectionVerbCount(); i++) {
+            const SelectionVerb* v = SelectionVerbAt(i);
+            expect(v->name != NULL && v->run != NULL);
+        }
+    }
+    it("no two verbs of one kind share a key (with the same Shift state)") {
+        for (int i = 0; i < SelectionVerbCount(); i++)
+            for (int j = i + 1; j < SelectionVerbCount(); j++) {
+                const SelectionVerb* a = SelectionVerbAt(i);
+                const SelectionVerb* b = SelectionVerbAt(j);
+                if (a->kind != b->kind || a->shift != b->shift) continue;
+                int ka[2] = { a->key, a->altKey }, kb[2] = { b->key, b->altKey };
+                for (int x = 0; x < 2; x++)
+                    for (int y = 0; y < 2; y++) { if (ka[x]) { expect(ka[x] != kb[y]); } }
+            }
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(action_registry_keys);
     test(stockpile_filter_keys);
+    test(action_twins);
+    test(selection_verbs);
     return summary();
 }
