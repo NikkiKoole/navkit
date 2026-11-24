@@ -433,6 +433,28 @@ static bool CarTrace(void) {
     return trace;
 }
 
+// CAR_DUMP=file: record the run (map, every plan, poses at 20 Hz) as JSON lines,
+// for an offline replay. Experiment-only; off unless the env var is set.
+static FILE* CarDump(void) {
+    static int init = 0;
+    static FILE* f = NULL;
+    if (!init) {
+        init = 1;
+        const char* path = getenv("CAR_DUMP");
+        if (path) f = fopen(path, "w");
+        if (f) {
+            fprintf(f, "{\"map\":{\"w\":%d,\"h\":%d,\"cell\":%d,\"rows\":[", gridWidth, gridHeight, (int)CELL_SIZE);
+            for (int y = 0; y < gridHeight; y++) {
+                fputc('"', f);
+                for (int x = 0; x < gridWidth; x++) fputc(CarCellDrivable(x, y, 1) ? '.' : '#', f);
+                fprintf(f, "\"%s", y < gridHeight - 1 ? "," : "");
+            }
+            fprintf(f, "]}}\n");
+        }
+    }
+    return f;
+}
+
 static void SetState(Car* c, int s) {
     if (CarTrace())
         printf("[car %d] %s -> %s at (%.2f,%.2f) hdg %.0f spd %.2f path %d/%d\n",
@@ -475,6 +497,13 @@ bool CarDriveTo(int idx, int cellX, int cellY) {
     if (!ok) { c->planFails++; return false; }
     c->legTime = 0;
     c->blockedTime = 0;
+    FILE* df = CarDump();
+    if (df) {
+        fprintf(df, "{\"plan\":%d,\"t\":%.2f,\"goal\":[%d,%d],\"ms\":%.1f,\"pts\":[", idx, (double)gameTime, cellX, cellY, ms);
+        for (int i = 0; i < c->pathLen; i++)
+            fprintf(df, "[%.1f,%.1f,%d]%s", c->pathX[i], c->pathY[i], c->pathDir[i], i < c->pathLen - 1 ? "," : "");
+        fprintf(df, "]}\n");
+    }
     SetState(c, DRIVE_FOLLOW);
     return true;
 }
@@ -707,6 +736,13 @@ static void TickFollow(int idx, float dt) {
 }
 
 void CarsTick(float dt) {
+    static int dumpTick = 0;
+    FILE* df = CarDump();
+    if (df && (dumpTick++ % 3) == 0)
+        for (int i = 0; i < carCount; i++)
+            if (cars[i].active)
+                fprintf(df, "{\"c\":%d,\"t\":%.2f,\"p\":[%.1f,%.1f,%.3f,%.3f,%.2f,%d]}\n", i, (double)gameTime,
+                        cars[i].x, cars[i].y, cars[i].heading, cars[i].steer, cars[i].speed / CELL_SIZE, cars[i].state);
     for (int i = 0; i < carCount; i++) {
         Car* c = &cars[i];
         if (!c->active) continue;
