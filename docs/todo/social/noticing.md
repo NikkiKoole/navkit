@@ -1,6 +1,6 @@
 # Noticing: agents that see each other and do something with it
 
-> Status: partial (2026-11-25): step 1 (noticing layer) and mover faces built. First place: the dollhouse.
+> Status: partial (2026-11-25): noticing layer, mover faces, polite passing, stop to talk (pairs) built. First place: the dollhouse.
 
 One loop for every agent, person or animal: **notice → judge → respond**. Social behaviour
 (talking in a circle, walking together, giving way, avoiding someone) and animal behaviour
@@ -163,9 +163,9 @@ residents, which only gives pairs, so it gets:
    and feuds) for counting things headless.
 2. **Relations**: per-pair like/familiarity, familiarity grows from noticing. Start the two
    residents as partners.
-3. **Ambient responses**: per-pair personal space, drift toward a liked one when idle, yield in
+3. *Partly done 2026-11-25:* **polite passing** (49d414de, `NoticePassSteer`): oncoming movers drift aside early; scenario `hallway` close contacts -77%, arrivals -1.6%. Slowing down while passing cost throughput and was dropped (`passSlow` 0). Still open: per-pair personal space, drift toward a liked one, doorway yielding. Original plan: **Ambient responses**: per-pair personal space, drift toward a liked one when idle, yield in
    doorways. The hall and kitchen should already feel different.
-4. **Conversation**: two idle residents who like each other stop, face each other, talk for a
+4. *Pair version done 2026-11-25 (cdf05b4f, `src/entities/talk.c`):* idle movers who noticed each other within 3 cells stop, stand 1.5 cells apart facing their middle, take turns speaking (mouth open/small) for 6-15 s, 30 s cooldown; a job or need ends it. A per-game rule (`talkEnabled`): dollhouse on, others off (it cut walking throughput in the pathfinding scenarios). Not yet: a third joining (circle), passers-by routing around the group, relation/mood effects. Original plan: **Conversation**: two idle residents who like each other stop, face each other, talk for a
    while (mood + relation up). Passers-by go around.
 5. **Animal movement on nav** (paths, levels, doors) behind the existing animal API.
 6. **The cat**: relations (owner, startled-by), responses approach / follow / hide / flee,
