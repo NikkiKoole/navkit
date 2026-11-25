@@ -1848,6 +1848,8 @@ int InspectSaveFile(int argc, char** argv) {
         fseek(f, insp_moverCount * (long)sizeof(MoverRelations), SEEK_CUR);
     // Town (v113+): skipped (not inspected yet)
     if (version >= V113_TOWN) TownSkipSave(f);
+    // Furniture fuel (v117+): one float per furniture, skipped
+    if (version >= V117_FURNITURE_FUEL && insp_furnitureCount > 0) fseek(f, insp_furnitureCount * (long)sizeof(float), SEEK_CUR);
     
     fclose(f);
     

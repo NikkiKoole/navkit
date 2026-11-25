@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 116
+#define CURRENT_SAVE_VERSION 117
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -123,6 +123,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // tideSurfPeriod, tideSurfHeight, tideBeachReach) and beltSpeed, after the v115 game rules.
 // Older saves: the startup defaults.
 #define V116_TIDE_WAVE_BELT 116
+// v117: furniture fuel (furniture.c furnitureFuel: game hours a burning barrel has left), one
+// float per saved furniture in save order, after the town. Older saves: full.
+#define V117_FURNITURE_FUEL 117
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)

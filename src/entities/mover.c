@@ -2584,6 +2584,7 @@ void TickWithDt(float dt) {
     // Temperature simulation
     PROFILE_BEGIN(Temperature);
     FurnitureHeatTick();
+    FurnitureFuelTick();   // burning barrels burn down (movers top them up: JOBTYPE_REFUEL)
     UpdateTemperature();
     PROFILE_BEGIN(Freezing);
     UpdateWaterFreezing();

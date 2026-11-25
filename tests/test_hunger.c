@@ -1620,6 +1620,9 @@ describe(trash) {
 static int heatSavedSeason, heatSavedDiurnal, heatSavedSurface;
 
 // 10x10 at z=0, a wall down x=3 (no way across), cold air (-10C, no day/season swing)
+bool SaveWorld(const char* filename);   // saveload.c
+bool LoadWorld(const char* filename);
+
 static void SetupHeatTest(void) {
     InitTestGridFromAscii(
         "...#......\n"
@@ -1711,6 +1714,59 @@ describe(heat) {
         movers[0].x = 2.5f * CELL_SIZE; movers[0].y = 3.5f * CELL_SIZE;   // next to the barrel
         for (int t = 0; t < 600; t++) NeedsTick();
         expect(movers[0].bodyTemp > away);
+        RestoreHeatTest();
+    }
+
+    it("a barrel burns its fuel down and goes out: no heat, no warm spot; a grate needs none") {
+        SetupHeatTest();
+        int g = SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        int b = SpawnFurniture(7, 2, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        expect(FurnitureLit(b) && !FurnitureNeedsFuel(b));   // placed with a full load
+        furnitureFuel[b] = 0.01f;
+        float savedDt = gameDeltaTime;
+        gameDeltaTime = GameHoursToGameSeconds(0.1f);
+        FurnitureFuelTick();
+        gameDeltaTime = savedDt;
+        expect(furnitureFuel[b] == 0.0f);
+        expect(!FurnitureLit(b) && FurnitureNeedsFuel(b));
+        expect(HeatLevelAt(7, 2, 0) == 0);
+        expect(!IsWarmSpot(6, 2, 0));
+        expect(FurnitureLit(g) && !FurnitureNeedsFuel(g) && IsWarmSpot(5, 5, 0));
+        FurnitureAddFuel(b, ITEM_LOG);
+        expect(FurnitureLit(b) && furnitureFuel[b] == 4.0f);
+        RestoreHeatTest();
+    }
+
+    it("a hauler brings sticks to a barrel under half full and tosses them in") {
+        SetupHeatTest();
+        bodyTempEnabled = false;   // a job, not a cold mover seeking warmth
+        int b = SpawnFurniture(1, 8, 0, FURNITURE_FIRE_BARREL, MAT_IRON);   // west of the wall, with the mover
+        furnitureFuel[b] = 1.0f;
+        int sticks = SpawnItem(1.5f * CELL_SIZE, 4.5f * CELL_SIZE, 0.0f, ITEM_STICKS);
+        items[sticks].stackCount = 3;
+        bool topped = false;
+        for (int t = 0; t < 12000 && !topped; t++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            topped = !FurnitureNeedsFuel(b) && movers[0].currentJobId < 0;
+        }
+        expect(topped);   // topped up to at least half of its 8 h, then they stop
+        expect(!items[sticks].active || items[sticks].stackCount <= 1);   // 2 h a bundle: 2 or 3 went in
+        expect(furnitureFuel[b] >= 4.0f);
+        RestoreHeatTest();
+    }
+
+    it("barrel fuel survives a save and load (v117)") {
+        SetupHeatTest();
+        SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        int b = SpawnFurniture(7, 2, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        furnitureFuel[b] = 2.5f;
+        expect(SaveWorld("/tmp/test_barrel_fuel.bin"));
+        ClearFurniture();
+        expect(LoadWorld("/tmp/test_barrel_fuel.bin"));
+        int b2 = GetFurnitureAt(7, 2, 0);
+        expect(b2 >= 0 && furnitureFuel[b2] == 2.5f);
         RestoreHeatTest();
     }
 }

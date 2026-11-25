@@ -49,6 +49,7 @@ typedef enum {
     JOBTYPE_REMOVE_BELT,             // Walk onto a belt, take it down
     JOBTYPE_THROW,                   // Fetch a small item, throw it at a goal cell (throwing.c)
     JOBTYPE_BLAST,                   // Fetch gunpowder, set it in a designated wall, light it, run
+    JOBTYPE_REFUEL,                  // Fetch sticks or a log, toss it into a burning barrel (furniture.c fuel)
     JOBTYPE_COUNT
 } JobType;
 
@@ -92,6 +93,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_REMOVE_BELT]         = "REMOVE_BELT",
         [JOBTYPE_THROW]               = "THROW",
         [JOBTYPE_BLAST]               = "BLAST",
+        [JOBTYPE_REFUEL]              = "REFUEL",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -232,6 +234,7 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveBelt(Job* job, void* mover, float dt);
 JobRunResult RunJob_Blast(Job* job, void* mover, float dt);
+JobRunResult RunJob_Refuel(Job* job, void* mover, float dt);   // targetMine* = the barrel's cell, targetAdj* = where to stand
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
@@ -316,6 +319,7 @@ int WorkGiver_PlantSapling(int moverIdx);
 int WorkGiver_GatherGrass(int moverIdx);
 int WorkGiver_GatherTree(int moverIdx);
 int WorkGiver_DeliverToPassiveWorkshop(int moverIdx);
+int WorkGiver_Refuel(int moverIdx);   // a burning barrel under half full: bring it fuel
 int WorkGiver_IgniteWorkshop(int moverIdx);
 int WorkGiver_Clean(int moverIdx);
 int WorkGiver_Knap(int moverIdx);

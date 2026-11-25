@@ -1148,6 +1148,7 @@ void AutoGatherTick(float dt) {
         }
         for (int f = 0; f < MAX_FURNITURE; f++) {
             if (!furniture[f].active || !(GetFurnitureDef(furniture[f].type)->capabilities & CAP_HEAT)) continue;
+            if (!FurnitureLit(f)) continue;   // a barrel gone out draws nobody
             AutoGatherEnsure(AG_HEAT, f, (furniture[f].x + 0.5f) * CELL_SIZE, (furniture[f].y + 0.5f) * CELL_SIZE,
                              furniture[f].z, "the warmth", 30.0f, 90.0f);
         }

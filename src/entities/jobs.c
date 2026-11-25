@@ -26,6 +26,7 @@
 #include "throwing.h"
 #include <math.h>
 #include "town.h"
+#include "furniture.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -2535,6 +2536,173 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Refuel job driver: fetch one fuel item, walk next to the barrel, toss it in (it burns)
+static int RefuelTarget(const Job* job) {
+    int fi = GetFurnitureAt(job->targetMineX, job->targetMineY, job->targetMineZ);
+    return (fi >= 0 && GetFurnitureDef(furniture[fi].type)->fuelHours > 0.0f) ? fi : -1;
+}
+
+JobRunResult RunJob_Refuel(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    (void)dt;
+    int fi = RefuelTarget(job);
+    if (fi < 0) return JOBRUN_FAIL;   // the barrel is gone
+
+    Point stand = { job->targetAdjX, job->targetAdjY, job->targetMineZ };
+    float standX = stand.x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float standY = stand.y * CELL_SIZE + CELL_SIZE * 0.5f;
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)item->z;
+        float dx = mover->x - item->x, dy = mover->y - item->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            itemIdx = TakeFromStockpileSlot(itemIdx, 1);   // one unit out of a stockpile stack
+            if (itemIdx < 0) return JOBRUN_FAIL;
+            if (items[itemIdx].stackCount > 1) {           // one unit off a stack on the ground
+                int one = SplitStack(itemIdx, 1);
+                if (one < 0) return JOBRUN_FAIL;
+                ReleaseItemReservation(itemIdx);
+                items[one].reservedBy = (int)(mover - movers);
+                itemIdx = one;
+            }
+            item = &items[itemIdx];
+            if (item->containedIn != -1) ExtractItemFromContainer(itemIdx);
+            item->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+            mover->goal = stand;
+            mover->needsRepath = true;
+        }
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        float dx = mover->x - standX, dy = mover->y - standY;
+        float distSq = dx * dx + dy * dy;
+
+        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
+            mover->goal = stand;
+            mover->needsRepath = true;
+        }
+        TryFinalApproach(mover, standX, standY, stand.x, stand.y, DROP_RADIUS);
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) return JOBRUN_FAIL;
+
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+
+        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+            int type = items[itemIdx].type;
+            job->carryingItem = -1;
+            DeleteItem(itemIdx);   // into the fire
+            FurnitureAddFuel(fi, type);
+            return JOBRUN_DONE;
+        }
+        return JOBRUN_RUNNING;
+    }
+    return JOBRUN_FAIL;
+}
+
+// WorkGiver_Refuel: the nearest burning barrel under half full that nobody is already
+// refuelling gets the nearest reachable fuel item (sticks, a log, ...)
+int WorkGiver_Refuel(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canHaul) return -1;
+    int moverZ = (int)m->z;
+
+    for (int fi = 0; fi < MAX_FURNITURE; fi++) {
+        if (!FurnitureNeedsFuel(fi)) continue;
+        const Furniture* f = &furniture[fi];
+        if (f->z != moverZ) continue;
+        if (!JobInRange(moverIdx, f->x, f->y, f->z)) continue;
+
+        bool pending = false;   // one refuel trip at a time per barrel
+        for (int j = 0; j < activeJobCount && !pending; j++) {
+            Job* other = GetJob(activeJobList[j]);
+            pending = other && other->type == JOBTYPE_REFUEL && other->targetMineX == f->x &&
+                      other->targetMineY == f->y && other->targetMineZ == f->z;
+        }
+        if (pending) continue;
+
+        // Where to stand: the walkable neighbour nearest the mover (the barrel blocks its cell)
+        static const int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+        int standX = -1, standY = -1;
+        float bestStand = 1e30f;
+        for (int d = 0; d < 4; d++) {
+            int ax = f->x + dirs[d][0], ay = f->y + dirs[d][1];
+            if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
+            if (!IsCellWalkableAt(f->z, ay, ax)) continue;
+            float ddx = (ax + 0.5f) * CELL_SIZE - m->x, ddy = (ay + 0.5f) * CELL_SIZE - m->y;
+            if (ddx * ddx + ddy * ddy < bestStand) { bestStand = ddx * ddx + ddy * ddy; standX = ax; standY = ay; }
+        }
+        if (standX < 0) continue;
+
+        int bestItemIdx = -1;
+        float bestDistSq = 1e30f;
+        for (int j = 0; j < itemHighWaterMark; j++) {
+            Item* item = &items[j];
+            if (!item->active || item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if (!ItemIsFuel(item->type)) continue;
+            if ((int)item->z != moverZ) continue;
+            int cellX = (int)(item->x / CELL_SIZE), cellY = (int)(item->y / CELL_SIZE);
+            if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+            if (!IsExplored(cellX, cellY, (int)item->z)) continue;
+            if (IsPassiveWorkshopWorkTile(cellX, cellY, (int)item->z)) continue;   // a fire's own fuel
+            float dx = item->x - m->x, dy = item->y - m->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) { bestDistSq = distSq; bestItemIdx = j; }
+        }
+        if (bestItemIdx < 0) continue;
+
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), moverZ };
+        Point itemCell = { (int)(items[bestItemIdx].x / CELL_SIZE), (int)(items[bestItemIdx].y / CELL_SIZE), moverZ };
+        Point tempPath[MAX_PATH];
+        if (FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH) == 0) {
+            SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+            continue;
+        }
+        if (!ReserveItem(bestItemIdx, moverIdx)) continue;
+
+        int jobId = CreateJob(JOBTYPE_REFUEL);
+        if (jobId < 0) { ReleaseItemReservation(bestItemIdx); return -1; }
+        Job* job = GetJob(jobId);
+        job->assignedMover = moverIdx;
+        job->targetItem = bestItemIdx;
+        job->targetMineX = f->x; job->targetMineY = f->y; job->targetMineZ = f->z;
+        job->targetAdjX = standX; job->targetAdjY = standY;
+        job->step = STEP_MOVING_TO_PICKUP;
+
+        m->currentJobId = jobId;
+        m->goal = itemCell;
+        m->needsRepath = true;
+        RemoveMoverFromIdleList(moverIdx);
+        return jobId;
+    }
+    return -1;
+}
+
 // Ignite workshop job driver: walk to workshop work tile, do short active work, set passiveReady
 JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -3668,6 +3836,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
     [JOBTYPE_THROW] = RunJob_Throw,
     [JOBTYPE_BLAST] = RunJob_Blast,
+    [JOBTYPE_REFUEL] = RunJob_Refuel,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
@@ -4492,6 +4661,28 @@ static void AssignJobs_P2b_PassiveDelivery(void) {
     }
 }
 
+// Burning barrels under half full (furniture fuel): an idle hauler brings fuel
+__attribute__((noinline))
+static void AssignJobs_P2g_Refuel(void) {
+    bool any = false;
+    for (int fi = 0; fi < MAX_FURNITURE && !any; fi++) any = FurnitureNeedsFuel(fi);
+    if (!any) return;
+    int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+    if (!idleCopy) return;
+    int idleCopyCount = idleMoverCount;
+    memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+    for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+        int moverIdx = idleCopy[i];
+        if (!moverIsInIdleList[moverIdx]) continue;
+        if (PhaseMoverSkip(moverIdx)) continue;
+        bool rs = PhaseMoverBegin();
+        int jobId = WorkGiver_Refuel(moverIdx);
+        PhaseMoverEnd(moverIdx, rs);
+        if (jobId >= 0) break;   // one trip per barrel: the next pass picks the next barrel
+    }
+    free(idleCopy);
+}
+
 __attribute__((noinline))
 static void AssignJobs_P2c_Ignition(void) {
     bool anyNeedsIgnition = false;
@@ -4915,6 +5106,7 @@ static const JobPhase jobPhases[] = {
     {AssignJobs_P2_Crafting,             1, "Band_P2_Crafting"},
     {AssignJobs_P2b_PassiveDelivery,     1, "Band_P2b_PassiveDelivery"},
     {AssignJobs_P2c_Ignition,            1, "Band_P2c_Ignition"},
+    {AssignJobs_P2g_Refuel,              1, "Band_P2g_Refuel"},
     {AssignJobs_P2d_Hunt,                2, "Band_P2d_Hunt"},
     {AssignJobs_P2e_Clothing,           -1, "Band_P2e_Clothing"},
     {AssignJobs_P2f_WaterPot,           -1, "Band_P2f_WaterPot"},
@@ -5039,6 +5231,11 @@ void AssignJobs(void) {
     PROFILE_BEGIN(Jobs_P2c_Ignition);
     AssignJobs_P2c_Ignition();
     PROFILE_END(Jobs_P2c_Ignition);
+    if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P2g_Refuel);
+    AssignJobs_P2g_Refuel();
+    PROFILE_END(Jobs_P2g_Refuel);
     if (idleMoverCount == 0) return;
 
     PROFILE_BEGIN(Jobs_P2d_Hunt);

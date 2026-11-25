@@ -557,6 +557,10 @@ bool SaveWorld(const char* filename) {
 
     // Town (v113+): roads, lots, who owns which bed (town.c)
     TownSave(f);
+
+    // Furniture fuel (v117+): one float per saved furniture, in the order written above
+    for (int i = 0; i < MAX_FURNITURE; i++)
+        if (furniture[i].active) fwrite(&furnitureFuel[i], sizeof(float), 1, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -1531,6 +1535,13 @@ bool LoadWorld(const char* filename) {
         AddMessage("Bad town section in save", RED);
         fclose(f);
         return false;
+    }
+
+    // Furniture fuel (v117+). The furniture loaded into slots 0..furnitureCount-1 in save order.
+    // Older saves: every fuel-burning piece full.
+    for (int i = 0; i < furnitureCount && i < MAX_FURNITURE; i++) {
+        if (version >= V117_FURNITURE_FUEL) fread(&furnitureFuel[i], sizeof(float), 1, f);
+        else furnitureFuel[i] = furniture[i].active ? GetFurnitureDef(furniture[i].type)->fuelHours : 0.0f;
     }
     
     // === VIEW SECTION ===
