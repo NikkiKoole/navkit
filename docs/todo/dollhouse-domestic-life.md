@@ -128,6 +128,8 @@ Three interconnected systems that together create the full Sims feel. Can be bui
 
 ### 1. Action Queue
 
+> 2026-11-25: plan to build it, checked against today's code and thousands of agents: `architecture/action-queue-and-need-index.md`.
+
 Replaces the hardcoded freetime state machine (11 FREETIME_* states) with a dynamic, mutable action sequence on each mover.
 
 ```c
