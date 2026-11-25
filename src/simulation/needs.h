@@ -28,6 +28,9 @@ bool MoverLyingIn(int moverIdx);   // resting, rested, staying in bed until it g
 // and the action queue's eat step (action_queue.c). The caller let go of it if it was held.
 struct Mover;
 void MoverEatItem(struct Mover* m, int moverIdx, int ti);
+// After eating or drinking: what was left (a wrapper, a can) to a bin, or dropped. Sets the
+// freetime state (NONE, or SEEKING_BIN): the action queue calls it when the queue is done.
+void MoverGetRidOfTrash(struct Mover* m, int moverIdx);
 
 // Walking cost (10 per cell, same rules as the pathfinder) from a cell to the nearest
 // water a mover can drink from (in or next to a cell it can stand on, that level or one

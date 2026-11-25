@@ -21,6 +21,8 @@ typedef enum {            // append only: saves store the number
     ACT_SIT,              // on the target furniture (reserved when the queue was made; held to the end)
     ACT_EAT,              // the food picked up by this queue (or the target item), eatingDurationGH
     ACT_WAIT,             // duration game seconds
+    ACT_LINGER,           // stay seated after a meal while someone at the same table still eats
+                          // (at most duration game seconds; ends at once with nobody else eating)
     ACT_TYPE_COUNT
 } ActionType;
 
@@ -88,6 +90,10 @@ static inline MoverAction ActSit(int f, bool optional) {
 static inline MoverAction ActEatHeld(void) {
     return (MoverAction){ .type = ACT_EAT, .targetKind = ATGT_NONE, .target = -1 };
 }
+static inline MoverAction ActLinger(float maxGameSeconds) {
+    return (MoverAction){ .type = ACT_LINGER, .duration = maxGameSeconds, .target = -1, .optional = 1 };
+}
+#define LINGER_MAX_GH 0.5f   // longest a diner lingers for a slow eater (game hours)
 static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
 }

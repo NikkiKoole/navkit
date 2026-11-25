@@ -111,7 +111,12 @@ measurement that needs it.
    idle: no jobs, no talk); saved (v112, after the mover paths). Sit-then-eat: at its food, a
    mover with a free hand and a free seat (CAP_SEATING) within 10 cells takes one unit there
    (`[pick up, walk to seat (opt), sit (opt), eat]`), setting `sitToEat`. In the dollhouse
-   every meal of a day was eaten at the chair. Tests: `tests/test_action_queue.c`. Not yet:
+   every meal of a day was eaten at the chair. Lingering (navkit-6f's idea, for table talk):
+   after the meal an optional `ACT_LINGER` keeps the diner seated while someone at the same
+   table (CAP_FLAT_SURFACE next to the seat) still eats, at most half a game hour. Fixed with
+   it: eating ends with "get rid of the trash", which reset the freetime state, so steps after
+   a meal were dropped; now the queue keeps going and the trash goes to a bin when the queue
+   is done. Tests: `tests/test_action_queue.c`. Not yet:
    the other 23 freetime states moved onto it (one at a time), interrupt-resume.
 3. **Player commands into the queue**: act on a hovered or selected thing (hover + key or the
    inspector; no right mouse button needed), Shift appends; the queue shown in the character

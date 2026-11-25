@@ -823,6 +823,8 @@ static void GetRidOfTrash(Mover* m, int moverIdx) {
     m->needsRepath = true;
 }
 
+void MoverGetRidOfTrash(Mover* m, int moverIdx) { GetRidOfTrash(m, moverIdx); }
+
 // What consuming one of type left (a can, a wrapper) goes in the hand; a mover that still
 // holds something lets go of that first
 static void TakeLeftover(Mover* m, int moverIdx, ItemType consumed) {

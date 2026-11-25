@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 MoverQueue moverQueues[MAX_MOVERS];
 bool sitToEat = true;
@@ -202,6 +203,11 @@ static StepResult QStepEat(int moverIdx, MoverAction* a) {
     bool held = ItemInMoverHands(moverIdx, it);
     if (held) QLetGoOfHeld(moverIdx, it);
     MoverEatItem(m, moverIdx, it);
+    // Eating ends with "get rid of the trash", which sets the freetime state (and may send the
+    // mover to a bin): the queue keeps going; the trash waits until the queue is done
+    m->freetimeState = FREETIME_QUEUE;
+    m->needTarget = -1;
+    QStopWalking(m);
     if (q->heldItem == it) q->heldItem = -1;
     return STEP_DONE;
 }
@@ -212,11 +218,50 @@ static StepResult QStepWait(int moverIdx, MoverAction* a) {
     return a->progress >= a->duration ? STEP_DONE : STEP_RUNNING;
 }
 
+// The table (CAP_FLAT_SURFACE: table, desk) next to a seat, -1 = none
+static int QTableOfSeat(int seat) {
+    if (!QFurnitureValid(seat)) return -1;
+    const Furniture* s = &furniture[seat];
+    for (int f = 0; f < MAX_FURNITURE; f++) {
+        if (!furniture[f].active || f == seat || furniture[f].z != s->z) continue;
+        if (!(GetFurnitureDef(furniture[f].type)->capabilities & CAP_FLAT_SURFACE)) continue;
+        if (abs(furniture[f].x - s->x) <= 1 && abs(furniture[f].y - s->y) <= 1) return f;
+    }
+    return -1;
+}
+
+// Someone else eating in a seat at this table right now
+static bool QOtherDinerEating(int moverIdx, int table) {
+    for (int j = 0; j < moverCount; j++) {
+        if (j == moverIdx || !movers[j].active || !QueueBusy(j)) continue;
+        const MoverQueue* q = &moverQueues[j];
+        if (q->current >= q->count || q->steps[q->current].type != ACT_EAT || q->seat < 0) continue;
+        if (QTableOfSeat(q->seat) == table) return true;
+    }
+    return false;
+}
+
+// Linger after the meal while a tablemate still eats (company: table talk, talk.c)
+static StepResult QStepLinger(int moverIdx, MoverAction* a) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    if (!a->started) { a->started = 1; a->target = QTableOfSeat(q->seat); }
+    if (a->target < 0 || !QOtherDinerEating(moverIdx, a->target)) return STEP_DONE;
+    movers[moverIdx].timeWithoutProgress = 0.0f;
+    a->progress += gameDeltaTime;
+    return a->progress >= a->duration ? STEP_DONE : STEP_RUNNING;
+}
+
+// The queue ran out or a required step failed: end it, then what eating left goes to a bin
+static void QueueFinish(int moverIdx) {
+    QueueEnd(moverIdx);
+    MoverGetRidOfTrash(&movers[moverIdx], moverIdx);
+}
+
 void QueueTick(int moverIdx) {
     MoverQueue* q = &moverQueues[moverIdx];
     // Several instant steps (pick up, sit) can finish in one tick; a running one ends the tick
     for (int guard = 0; guard < MAX_MOVER_ACTIONS; guard++) {
-        if (q->current >= q->count) { QueueEnd(moverIdx); return; }
+        if (q->current >= q->count) { QueueFinish(moverIdx); return; }
         MoverAction* a = &q->steps[q->current];
         StepResult r = STEP_FAILED;
         switch (a->type) {
@@ -225,12 +270,13 @@ void QueueTick(int moverIdx) {
             case ACT_SIT:     r = QStepSit(moverIdx, a); break;
             case ACT_EAT:     r = QStepEat(moverIdx, a); break;
             case ACT_WAIT:    r = QStepWait(moverIdx, a); break;
+            case ACT_LINGER:  r = QStepLinger(moverIdx, a); break;
             default: break;
         }
         if (r == STEP_RUNNING) return;
         if (r == STEP_FAILED && !a->optional) {
             EventLog("Mover %d queue step %d (type %d) failed: queue ends", moverIdx, q->current, a->type);
-            QueueEnd(moverIdx);
+            QueueFinish(moverIdx);
             return;
         }
         q->current++;
@@ -251,6 +297,7 @@ const char* QueueStepName(int moverIdx) {
         case ACT_SIT:     return TextFormat("Sitting down on %s", what);
         case ACT_EAT:     return "Eating";
         case ACT_WAIT:    return "Waiting";
+        case ACT_LINGER:  return "Lingering at the table";
         default:          return NULL;
     }
 }
@@ -269,6 +316,7 @@ static const char* StepLabel(const MoverAction* a) {
         case ACT_SIT:     return "Sit";
         case ACT_EAT:     return "Eat";
         case ACT_WAIT:    return "Wait";
+        case ACT_LINGER:  return "Linger";
         default:          return "?";
     }
 }
@@ -398,6 +446,7 @@ bool QueueSitThenEat(int moverIdx, int foodItem) {
     QueuePush(moverIdx, ActWalkToFurniture(seat, true));   // can't get there: eat where it stands
     QueuePush(moverIdx, ActSit(seat, true));
     QueuePush(moverIdx, ActEatHeld());
+    QueuePush(moverIdx, ActLinger(GameHoursToGameSeconds(LINGER_MAX_GH)));   // company at the table
     ReserveFurniture(seat, moverIdx);
     moverQueues[moverIdx].seat = seat;
     QueueStart(moverIdx, QUEUE_FROM_FREETIME);

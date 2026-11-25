@@ -222,6 +222,21 @@ describe(player_commands) {
         }
         expect(wasThere && movers[0].hunger > 0.6f);
     }
+    it("eat, then walk on: the queue carries on after the meal; the wrapper is dealt with after") {
+        Setup(openFloor);
+        movers[0].hunger = 0.6f;
+        SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_SNACK);
+        char said[128];
+        expect(QueueCommandAt(0, 5, 2, 0, false, said, sizeof(said)));
+        expect(strstr(said, "Snack") != NULL || strstr(said, "snack") != NULL);
+        expect(QueueCommandAt(0, 12, 4, 0, true, said, sizeof(said)));
+        expect(RunQueue(40000));
+        expect(CellX() == 12 && CellY() == 4);   // walked on after eating
+        expect(movers[0].hunger > 0.6f);
+        // no bin here: the wrapper is dropped once the queue is done
+        for (int t = 0; t < 600 && movers[0].heldTrash != ITEM_NONE; t++) { Tick(); NeedsTick(); ProcessFreetimeNeeds(); }
+        expect(movers[0].heldTrash == ITEM_NONE);
+    }
     it("a command replaces what it was doing (here: on its way to food)") {
         Setup(openFloor);
         for (int t = 0; t < 200 && movers[0].freetimeState != FREETIME_SEEKING_FOOD; t++) {
@@ -246,11 +261,69 @@ describe(player_commands) {
     }
 }
 
+describe(linger) {
+    it("lingers at the table while a tablemate still eats, then gets up") {
+        Setup(openFloor);
+        SpawnFurniture(9, 2, 0, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(9, 1, 0, FURNITURE_CHAIR, MAT_OAK);
+        int chair1 = SpawnFurniture(9, 3, 0, FURNITURE_CHAIR, MAT_OAK);
+        // A second diner with food in hand sits at the other chair and waits (until the first one
+        // is eating, then it starts eating too: it finishes a moment later)
+        Point g = {9, 3, 0};
+        InitMover(&movers[1], 9.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, g, MOVER_SPEED);
+        moverCount = 2;
+        movers[1].hunger = 1.0f;   // not hungry: it doesn't eat the snack on its own
+        int snack = SpawnItem(9.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_BERRIES);
+        expect(MoverHold(1, snack));
+        QueueReset(1);
+        QueuePush(1, ActWalkToFurniture(chair1, false));
+        QueuePush(1, ActSit(chair1, false));
+        QueuePush(1, ActWait(1e9f));
+        QueuePush(1, ActEatHeld());
+        ReserveFurniture(chair1, 1);
+        moverQueues[1].seat = chair1;
+        moverQueues[1].heldItem = snack;
+        QueueStart(1, QUEUE_FROM_FREETIME);
+        bool secondStarted = false, lingered = false;
+        int lingeredAlone = 0;   // ticks lingering with nobody else eating (1 allowed: the order within a tick)
+        for (int t = 0; t < 40000; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            const MoverQueue* q0 = &moverQueues[0];
+            MoverQueue* q1 = &moverQueues[1];
+            bool zeroEating = QueueBusy(0) && q0->current < q0->count && q0->steps[q0->current].type == ACT_EAT;
+            if (zeroEating && !secondStarted && QueueBusy(1) && q1->steps[q1->current].type == ACT_WAIT) {
+                q1->steps[q1->current].duration = 0;   // done waiting: eat
+                secondStarted = true;
+            }
+            bool zeroLingering = QueueBusy(0) && q0->current < q0->count && q0->steps[q0->current].type == ACT_LINGER;
+            bool oneEating = QueueBusy(1) && q1->steps[q1->current].type == ACT_EAT;
+            if (zeroLingering) { lingered = true; if (!oneEating) lingeredAlone++; }
+            if (secondStarted && !QueueBusy(0) && !QueueBusy(1)) break;
+        }
+        expect(secondStarted && lingered && lingeredAlone <= 1);
+        expect(!QueueBusy(0) && !QueueBusy(1));
+    }
+    it("alone at the table: no lingering") {
+        Setup(openFloor);
+        SpawnFurniture(9, 2, 0, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(9, 1, 0, FURNITURE_CHAIR, MAT_OAK);
+        bool lingered = false;
+        for (int t = 0; t < 40000; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            const MoverQueue* q0 = &moverQueues[0];
+            if (QueueBusy(0) && q0->current < q0->count && q0->steps[q0->current].type == ACT_LINGER) lingered = true;
+            if (movers[0].hunger > 0.5f && !QueueBusy(0)) break;
+        }
+        expect(!lingered && movers[0].hunger > 0.5f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(sit_then_eat);
     test(action_queue_basics);
     test(player_commands);
+    test(linger);
     return summary();
 }
