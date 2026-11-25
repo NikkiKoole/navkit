@@ -57,6 +57,11 @@ typedef enum {
     MOODLET_FILTHY,          // -1  standing on a very dirty floor
     MOODLET_ATE_STALE_FOOD,  // -1  ate food that was stale (or worse)
 
+    // Company (social.h; append only: saved moodlets store the type number)
+    MOODLET_LONELY,          // -1  social need low (while it lasts)
+    MOODLET_VERY_LONELY,     // -2  social need very low (while it lasts)
+    MOODLET_GOOD_COMPANY,    // +1  in company with plenty of it
+
     MOODLET_TYPE_COUNT
 } MoodletType;
 

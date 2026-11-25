@@ -1,6 +1,7 @@
 #include "mover.h"
 #include "action_queue.h"
 #include "money.h"
+#include "social.h"
 #include "inventory.h"
 #include "trains.h"
 #include "elevators.h"
@@ -978,6 +979,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     ClearMoverRelations((int)(m - movers));   // a new mover in this slot knows nobody
     QueueReset((int)(m - movers));            // ... and has nothing queued (action_queue.h)
     moverCoins[m - movers] = 0;               // ... and an empty purse (money.h)
+    SocialResetMover((int)(m - movers));      // ... and isn't lonely (social.h)
     m->x = x;
     m->y = y;
     m->z = z;
@@ -1174,6 +1176,7 @@ float MoverRouteCellsLeft(int i) {
 void ClearMovers(void) {
     QueueResetAll();
     MoneyResetAll();
+    SocialResetAll();
     ClearNotices();
     ClearTalks();
     ClearRelations();

@@ -118,6 +118,7 @@ static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
 static int insp_moverCoins[MAX_MOVERS];   // purses (v119+, money.h)
+static float insp_moverSocial[MAX_MOVERS];   // the social need (v120+, social.h)
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -215,6 +216,7 @@ static void print_mover(int idx) {
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
     printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
     { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCoins[m - insp_movers], mb, sizeof mb)); }
+    printf("Social: %.0f%%\n", insp_moverSocial[m - insp_movers] * 100.0f);
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
@@ -1748,6 +1750,9 @@ int InspectSaveFile(int argc, char** argv) {
     // Purses (v119+)
     memset(insp_moverCoins, 0, sizeof(insp_moverCoins));
     if (version >= V119_MONEY) fread(insp_moverCoins, sizeof(int), insp_moverCount, f);
+    // Social need (v120+)
+    for (int i = 0; i < MAX_MOVERS; i++) insp_moverSocial[i] = 1.0f;
+    if (version >= V120_SOCIAL) fread(insp_moverSocial, sizeof(float), insp_moverCount, f);
 
     // Animals
     fread(&insp_animalCount, 4, 1, f);
@@ -1999,6 +2004,7 @@ int InspectSaveFile(int argc, char** argv) {
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
         memcpy(moverCoins, insp_moverCoins, sizeof(int) * insp_moverCount);
+        memcpy(moverSocial, insp_moverSocial, sizeof(float) * insp_moverCount);
         moverCount = insp_moverCount;
         // Init job pool (allocates activeJobList) then copy data
         InitJobPool();

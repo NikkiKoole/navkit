@@ -67,6 +67,7 @@ const char* HungerLabel(float hunger, DescTone* tone);
 const char* ThirstLabel(float thirst, DescTone* tone);
 const char* BladderLabel(float bladder, DescTone* tone);
 const char* EnergyLabel(float energy, DescTone* tone);
+const char* SocialLabel(float social, DescTone* tone);   // the social need (social.h)
 const char* BodyTempLabel(float bodyTemp, DescTone* tone);
 DescTone MoodTone(float mood);
 

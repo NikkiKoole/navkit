@@ -12,6 +12,7 @@ void RebuildPostLoadState(void);
 #include "../entities/belts.h"
 #include "../entities/relations.h"
 #include "../entities/town.h"
+#include "../entities/social.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -513,6 +514,7 @@ bool SaveWorld(const char* filename) {
     }
     fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
     fwrite(moverCoins, sizeof(int), moverCount, f);           // v119: purses (money.h)
+    fwrite(moverSocial, sizeof(float), moverCount, f);        // v120: the social need (social.h)
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1379,6 +1381,9 @@ bool LoadWorld(const char* filename) {
     // Purses (v119+), after the queues; older saves: empty
     MoneyResetAll();
     if (version >= V119_MONEY) fread(moverCoins, sizeof(int), moverCount, f);
+    // The social need (v120+), after the purses; older saves: plenty of company
+    SocialResetAll();
+    if (version >= V120_SOCIAL) fread(moverSocial, sizeof(float), moverCount, f);
 
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);

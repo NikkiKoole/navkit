@@ -38,6 +38,7 @@
 #include "../simulation/mood.h"
 #include "../simulation/needs.h"
 #include <math.h>
+#include "../entities/social.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -97,6 +98,10 @@ const char* BladderLabel(float bladder, DescTone* tone) {
 const char* EnergyLabel(float energy, DescTone* tone) {
     static const char* w[4] = {"Rested", "Drowsy", "Tired", "Exhausted"};
     return LevelLabel(energy, w, tone);
+}
+const char* SocialLabel(float social, DescTone* tone) {
+    static const char* w[4] = {"Content", "Wants company", "Lonely", "Very lonely"};
+    return LevelLabel(social, w, tone);
 }
 
 const char* BodyTempLabel(float bodyTemp, DescTone* tone) {
@@ -172,6 +177,21 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         else if (m->freetimeState == FREETIME_USING_TOILET) DescAdd(d, DESC_GOOD, "  Using toilet");
         else if (m->freetimeState == FREETIME_SEEKING_BUSH) DescAdd(d, DESC_WARN, "  Seeking bush...");
         else if (m->freetimeState == FREETIME_USING_BUSH) DescAdd(d, DESC_MILD, "  Behind a bush...");
+    }
+
+    // Company (social.h): only where people have a social life
+    if (SocialActive()) {
+        int idx = (int)(m - movers), with[16];
+        const char* label = SocialLabel(moverSocial[idx], &tone);
+        DescAdd(d, tone, "Social: %.0f%% (%s)", moverSocial[idx] * 100.0f, label);
+        int n = SocialCompany(idx, with, 16);
+        if (n > 0) {
+            bool wanted = SocialCompanyScale(idx, with, n) > 0.0f;
+            char who[32];
+            if (n == 1) snprintf(who, sizeof(who), "%s", movers[with[0]].name[0] ? movers[with[0]].name : "someone");
+            else snprintf(who, sizeof(who), "%d others", n);
+            DescAdd(d, wanted ? DESC_GOOD : DESC_MUTED, "  In company (with %s)%s", who, wanted ? "" : ": not the company it wants");
+        }
     }
 
     // Trash in hand (what the last snack or drink left)

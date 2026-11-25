@@ -11,6 +11,8 @@ bool LoadWorld(const char* filename);
 #include "../src/entities/talk.h"
 #include "../src/entities/relations.h"
 #include "../src/entities/chase.h"
+#include "../src/entities/social.h"
+#include "../src/simulation/mood.h"
 #include "../src/entities/action_queue.h"
 #include "../src/entities/furniture.h"
 #include "../src/simulation/fire.h"
@@ -1420,6 +1422,105 @@ describe(joint_activities) {
     }
 }
 
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+
+// Run the social need for this many game hours (dayLength 60: 1 game hour = 2.5 s)
+static void RunSocial(float gameHours) {
+    gameDeltaTime = TICK_DT;
+    int ticks = (int)(GameHoursToGameSeconds(gameHours) / TICK_DT + 5) / 10 * 10;   // whole rounds: each mover is updated every 10th tick
+    for (int t = 0; t < ticks; t++) { currentTick++; SocialTick(); }
+}
+
+describe(social_need) {
+    it("alone and awake it goes down (a day to empty); asleep, or talk off: it stays") {
+        TalkSetup();
+        socialNeedEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(20, 8, 1);
+        expect(moverSocial[a] == 1.0f);
+        movers[b].freetimeState = FREETIME_RESTING;
+        RunSocial(6.0f);
+        expect(fabsf(moverSocial[a] - (1.0f - 6.0f / socialDrainGH)) < 0.02f);
+        expect(moverSocial[b] == 1.0f);   // asleep
+        talkEnabled = false;   // no social life in this game
+        float before = moverSocial[a];
+        RunSocial(6.0f);
+        expect(moverSocial[a] == before);
+        movers[b].freetimeState = FREETIME_NONE;
+        talkEnabled = true;   // the only one left: nobody to have company with, it stays
+        movers[b].active = false;
+        before = moverSocial[a];
+        RunSocial(6.0f);
+        expect(moverSocial[a] == before && !SocialActive());
+        movers[b].active = true;
+    }
+
+    it("in a talk it goes up: faster with a friend than a stranger, not at all with someone disliked") {
+        float got[3];
+        float likes[3] = { 50.0f, 0.0f, -60.0f };
+        for (int k = 0; k < 3; k++) {
+            TalkSetup();
+            socialNeedEnabled = true;
+            int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+            RelationSetPair(a, b, likes[k], 50.0f);
+            moverSocial[a] = moverSocial[b] = 0.2f;
+            TalkStart(a, b);
+            expect(MoverTalk(a) >= 0 && MoverTalk(b) == MoverTalk(a));
+            RunSocial(0.25f);
+            got[k] = moverSocial[a];
+        }
+        expect(fabsf(got[0] - (0.2f + 0.25f / socialGainGH)) < 0.03f);   // a friend: x1
+        expect(fabsf(got[1] - (0.2f + 0.5f * 0.25f / socialGainGH)) < 0.03f);   // a stranger: x0.5
+        expect(fabsf(got[2] - 0.2f) < 0.001f);   // disliked: no company it wants (and no drain)
+    }
+
+    it("playing a game is company too") {
+        TagSetup();
+        socialNeedEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1);
+        moverSocial[a] = 0.5f;
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        int with[4];
+        expect(SocialCompany(a, with, 4) == 1 && with[0] == b);
+        RunSocial(0.5f);
+        expect(moverSocial[a] > 0.6f);
+        ClearChase();
+    }
+
+    it("low: Lonely, very low: Very lonely; plenty of it in company: Good company") {
+        TalkSetup();
+        socialNeedEnabled = true;
+        bool savedMood = moodEnabled;
+        moodEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(12, 8, 1);
+        moverSocial[c] = 0.2f;
+        RunSocial(0.01f);   // (counts who is around)
+        moverSocial[c] = 0.2f;
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[c], MOODLET_LONELY) && !HasMoodlet(&movers[c], MOODLET_VERY_LONELY));
+        moverSocial[c] = 0.05f;
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[c], MOODLET_VERY_LONELY) && !HasMoodlet(&movers[c], MOODLET_LONELY));
+        expect(!HasMoodlet(&movers[a], MOODLET_GOOD_COMPANY));   // plenty, but alone
+        TalkStart(a, b);
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[a], MOODLET_GOOD_COMPANY));
+        moodEnabled = savedMood;
+    }
+
+    it("saved and loaded (v120); a new mover in a slot starts with plenty") {
+        TalkSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        moverSocial[a] = 0.37f; moverSocial[b] = 0.81f;
+        expect(SaveWorld("/tmp/test_notice_social.bin"));
+        moverSocial[a] = moverSocial[b] = 0.0f;
+        expect(LoadWorld("/tmp/test_notice_social.bin"));
+        expect(fabsf(moverSocial[a] - 0.37f) < 0.0001f && fabsf(moverSocial[b] - 0.81f) < 0.0001f);
+        InitMover(&movers[a], 4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1.0f, (Point){4, 4, 1}, 100.0f);
+        expect(moverSocial[a] == 1.0f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1444,5 +1545,6 @@ int main(int argc, char* argv[]) {
     test(pack_stealth);
     test(playing_is_busy);
     test(joint_activities);
+    test(social_need);
     return summary();
 }

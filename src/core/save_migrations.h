@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 119
+#define CURRENT_SAVE_VERSION 120
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -133,6 +133,10 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // V118_ITEM_TYPE_COUNT) and one int per saved mover (moverCoins, the purse) right after the
 // action queues. Older saves: empty purses.
 #define V119_MONEY 119
+// v120: the social need (social.h moverSocial: one float per saved mover) right after the
+// purses. Older saves: everyone 1 (plenty of company). Moodlets Lonely / Very lonely / Good
+// company appended (fixed-size moodlet slots: no size change).
+#define V120_SOCIAL 120
 #define V118_ITEM_TYPE_COUNT 85
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");

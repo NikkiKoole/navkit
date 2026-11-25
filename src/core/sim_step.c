@@ -7,6 +7,7 @@
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/chase.h"
+#include "../entities/social.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/town.h"
@@ -39,6 +40,7 @@ void SimStep(float dt) {
     NoticeTick();
     TalkTick(dt);
     ChaseTick(dt);
+    SocialTick();   // company: up in talks and games, down alone (social.h)
     PROFILE_END(Notice);
 
     PROFILE_BEGIN(Animals);

@@ -119,6 +119,10 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
   without a game: needs.c sets it back to `FREETIME_NONE`. A new kind: a row in
   `ActivityDefOf` + its state struct and hooks; iterate members by mover index
   (`ActivityHas(a, i)`).
+- The social need (`social.c`, saved v120 after the purses): `moverSocial[i]`, down alone, up in
+  company (`SocialCompany`: talk, gathering, walk, table talk, game), scaled by liking. Only when
+  `SocialActive()` (setting `socialNeed`, off for now; `talkEnabled`; 2+ movers). Moodlets in
+  mood.c. A new kind of company: add it to `SocialCompany`.
 - In the idle branch, `HideControls(i)` (any player: its game gives the goals, a calm one strolls
   via `PlayWander`) comes before the deactivate-else.
 - Game rules `talkEnabled`, `autoGatherings`: each game's start sets them; scenarios restore them

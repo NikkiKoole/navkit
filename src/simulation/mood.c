@@ -17,6 +17,7 @@
 #include "rooms.h"
 #include "weather.h"
 #include "floordirt.h"
+#include "../entities/social.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +53,9 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_ENJOYING_SUN]      = { "Enjoying the sun",    1.0f,  2.0f },
     [MOODLET_FILTHY]            = { "Filthy surroundings", -1.0f, 2.0f },
     [MOODLET_ATE_STALE_FOOD]    = { "Ate stale food",     -1.0f,  6.0f },
+    [MOODLET_LONELY]            = { "Lonely",             -1.0f,  0.5f },  // refreshed while low
+    [MOODLET_VERY_LONELY]       = { "Very lonely",        -2.0f,  0.5f },
+    [MOODLET_GOOD_COMPANY]      = { "Good company",        1.0f,  2.0f },  // refreshed while in company
 };
 
 // --- Trait definitions ---
@@ -533,6 +537,17 @@ static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
 
     // Rain, storm, sun, dirty floor (periodic)
     UpdateWeatherAndDirtMoodlets(m, moverIdx, dt);
+
+    // Company (social.h): lonely while low, good company while with others and plenty of it
+    if (SocialActive()) {
+        float s = moverSocial[moverIdx];
+        if (s < SOCIAL_VERY_LONELY) { AddMoodlet(m, MOODLET_VERY_LONELY); RemoveMoodlet(m, MOODLET_LONELY); }
+        else if (s < SOCIAL_LONELY) { AddMoodlet(m, MOODLET_LONELY); RemoveMoodlet(m, MOODLET_VERY_LONELY); }
+        else if (s > SOCIAL_GOOD_COMPANY) {
+            int with[1];
+            if (SocialCompany(moverIdx, with, 1) > 0) AddMoodlet(m, MOODLET_GOOD_COMPANY);
+        }
+    }
 }
 
 // --- Trait assignment ---

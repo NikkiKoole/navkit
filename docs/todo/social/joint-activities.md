@@ -1,6 +1,6 @@
 # Joint activities: a few movers doing something together
 
-Status: **partial** (2026-11-25): step 1 done (the games are activities, `src/entities/activity.c`); next: step 2
+Status: **partial** (2026-11-25): step 1 done (the games are activities, `src/entities/activity.c`); step 2a done (the social need, off by default); next: step 2b
 
 Several movers doing one thing together, each with a part, sometimes in a set order: a chat, a
 gathering round the fire, a walk together, tag, hide and seek, follow the leader, the pack hunt;
@@ -154,10 +154,25 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
    another game). Not yet: talk.c's own "free?" test (`CanTalk` names `ChaseIsPlaying`) moves to
    one shared test in step 4; members are counted, not listed (iterate movers by index: keeps
    the random order and the numbers).
-2. Starting games: tag and hide and seek proposed by idle friends (option 1 above), in the
-   dollhouse and survival (game rule, like `talkEnabled`). Describe lines for every role.
-   Check: a scenario where friends start games by themselves; how often, how long, nobody
-   misses a meal.
+2. Starting games, driven by a **social need** (user, 2026-11-25: "our movers have needs right?
+   sounds like social"; option 2 above instead of a bare chance):
+   - **2a, done 2026-11-25** (`src/entities/social.c`, save v120): `moverSocial[i]` 0..1. Awake
+     and alone: down (`socialDrainGH` 24 h full to empty); in company (talk, gathering, walk,
+     table talk, game): up (`socialGainGH` 1 h), x0.5 stranger .. x1 friend .. x1.5 close,
+     nothing with someone disliked; asleep: neither. Only with `talkEnabled` and someone else
+     alive (a lone survivor isn't punished for what it can't change). Moodlets Lonely (-1, below
+     30%), Very lonely (-2, below 10%), Good company (+1, above 80% in company). Describe line
+     "Social: 72% (Content)" + "In company (with Mara)". Setting `socialNeed` **off by default**:
+     measured over 3 days, town (12 citizens) ended at 0% for everyone (mood 52.8% -> 44.5%):
+     they have 1-4 idle hours a day but spend them apart, nobody goes looking for company.
+     Dollhouse (2): 93%, Good company, mood 64% vs 60%. Survival (1 settler): unchanged.
+   - **2b**: lonely movers go looking for company: walk to where others are (a home, the square,
+     a fire), start talks and propose games (tag, hide and seek) to friends near by, scored by
+     how low they are; the invited accept by their own need. Then `socialNeed` on by default,
+     re-measured in the town. Maybe: working beside others (bakery, field) as a little company.
+   - **2c**: describe lines for every game role ("Playing tag: it", "Hiding").
+   - Check: a scenario where friends start games by themselves; how often, how long, social and
+     mood on/off, nobody misses a meal.
 3. Effects: moodlet + liking at the end.
 4. Talks, gatherings and walks move over (talk.c keeps the drawing-side getters).
    Check: `talk`, `gathering`, `walks`, `garden-party`, `mingle`, ... unchanged.

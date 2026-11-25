@@ -31,6 +31,7 @@
 #include "../simulation/tide.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/social.h"
 #include "../entities/action_queue.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
@@ -590,6 +591,12 @@ static const Setting settings[] = {
       "Each mover looks around once per this many ticks (staggered over movers).", NULL),
     SET_BOOL("talk", "Stop to Talk", "Entities/Movers/Noticing", talkEnabled,
       "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in survival, island, dollhouse and town. Needs Noticing."),
+    SET_BOOL("socialNeed", "Social need", "Entities/Movers/Noticing", socialNeedEnabled,
+      "Company as a need: down while awake and alone, up in talks, gatherings, walks, table talk and games (faster with friends). Low: Lonely moodlets. Only where Stop to Talk is on and someone else lives. Off for now: nobody goes looking for company yet."),
+    SET_FLOAT("socialDrainGH", "Social: hours alone to empty", "Entities/Movers/Noticing", socialDrainGH, 1.0f, 1.0f, 240.0f,
+      "Game hours awake and alone from plenty of company to very lonely (lonely at 30%).", NULL),
+    SET_FLOAT("socialGainGH", "Social: hours together to full", "Entities/Movers/Noticing", socialGainGH, 0.1f, 0.1f, 24.0f,
+      "Game hours in a friend's company from empty to full (strangers: half as fast, disliked: nothing).", NULL),
     SET_FLOAT("watchRadius", "Watch: range (cells)", "Entities/Movers/Noticing", watchRadius, 0.1f, 1.0f, 20.0f,
       "How far an idle mover comes from to watch something (a performer), if it can see it.", NULL),
     SET_FLOAT("watchChance", "Watch: chance", "Entities/Movers/Noticing", watchChance, 0.01f, 0.0f, 1.0f,
