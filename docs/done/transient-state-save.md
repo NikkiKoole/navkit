@@ -1,6 +1,9 @@
 # Transient State: Save/Load Gaps
 
-> Status: spec
+> Status: done (2026-11-25). Designation progress survives a load: checked headless with `--scenario crafting`,
+> saved at tick 300 with three mines at 56/80/83%, loaded and run 1/5/20 ticks: the same percentages as an
+> uninterrupted run at 301/305/320. `LoadWorld` calls `ClearMovers()` before it reads the designations, so the
+> saved `progress` is what remains. The event log not being saved is accepted (F5 dumps it to a file).
 
 > Notes on runtime state that doesn't persist across save/load.
 > Low priority — batch fix when it becomes annoying.

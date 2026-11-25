@@ -8,7 +8,7 @@
 ## Recently active
 
 - **2026-11-25 Town (plan, step 1 starting)** (`../vision/town.md`): new game `town`, a city builder where every citizen is a mover. User calls: build instantly, every citizen a mover. Milestone 1: roads, lots with instant buildings, people move in, work with opening hours. Code on branch `town` (worktree `.claude/worktrees/town`).
-- **2026-11-25 Docs tidy** (this file): stale todo docs checked against the code. Moved to done: fire-ignition-materials, astar-priority-queue, per-chunk-edge-storage, bugs/worldgen-floating-trees. Status spec -> partial: village-next-steps, transport-layer, capability-based-tasks, 11-stockpile-filter, social-navigation; Partial/Specs summaries refreshed (trains, water, island, mood, elevators, belts); dollhouse-domestic-life + ensemble-stations listed. Unverified, left open: bugs/mover-on-flooded-ramp.md (likely fixed by `WadeTowardDryCell`), transient-state-save.md (likely fixed)
+- **2026-11-25 Docs tidy** (this file): stale todo docs checked against the code. Moved to done: fire-ignition-materials, astar-priority-queue, per-chunk-edge-storage, bugs/worldgen-floating-trees. Status spec -> partial: village-next-steps, transport-layer, capability-based-tasks, 11-stockpile-filter, social-navigation; Partial/Specs summaries refreshed (trains, water, island, mood, elevators, belts); dollhouse-domestic-life + ensemble-stations listed. Confirmed headless and moved to done: bugs/mover-on-flooded-ramp.md (mood scenario allowance removed from scenarios-check), transient-state-save.md
 - **2026-11-25 Explosions, slice 1** (`world/explosions.md`): `src/simulation/explosion.c`: `Explode(x,y,z,power)` floods the blast (walls soak their strength, shelter behind them), breaks walls and floors incl. natural rock (blast mining via mining code, drops fly), throws items by weight, knocks movers back + dazes (no harm); fuses; console `explode` / `charge`; scenario `explosions`, test_explosion. Next: structural support, gunpowder / blast-mining job
 - **2026-11-25 Action queue + need index** (`architecture/action-queue-and-need-index.md`): plan for player control (commands into a person's queue; autonomy as a dial per game) checked against thousands of agents. Measured: freetime searches scan every item (1.6 ms avg, 83 ms worst tick with ~940 movers over a game day). Step 1 done as two targeted fixes (berry search gate + bush claims; a starving sleeper's wake check): freetime 1.80 -> 0.11 ms avg, slow ticks 6943 -> 57, behaviour unchanged. Step 2 started: the action queue (`src/entities/action_queue.c`, save v112) with sit-then-eat (dollhouse meals at the chair; setting `sitToEat`); step 3 started: **E** on a selected mover = eat that / sit there / go there, Shift+E appends
 - **2026-11-25 Social: noticing, steering, talks, relations, games** (`social/noticing.md`, table "Built" at its top): faces (built in code from front faces), noticing, polite passing, talks and gatherings (also round fires / barrels / cooking by themselves, game rule `autoGatherings`), doorway manners, relations (saved v111), friends and foes, glances and greetings, walks and group outings, table talk (with navkit-3a's sit-then-eat), spot choice, mingling; games tag, hide and seek, follow the leader (`chase.c`). Each with a scenario, a setting row and tests (`test_notice`). Next: animals on the chase/flee blocks, the cat, topic icons
@@ -60,6 +60,8 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - ~~`pathfinding/astar-priority-queue-and-extraction.md`~~ → `docs/done/pathfinding/` (heap A*, pathfinder extracted to `nav/`)
 - ~~`pathfinding/per-chunk-edge-storage.md`~~ → `docs/done/pathfinding/` (1 wall at 512: 19.4 -> 5.1 ms)
 - ~~`bugs/worldgen-floating-trees.md`~~ → `docs/done/bugs/` (ec8a32f6)
+- ~~`bugs/mover-on-flooded-ramp.md`~~ → `docs/done/bugs/` (a4287302 wading out; confirmed headless 2026-11-25)
+- ~~`transient-state-save.md`~~ → `docs/done/` (designation progress survives a load, confirmed headless 2026-11-25)
 
 ## Partial (code exists, more to build)
 
@@ -89,7 +91,6 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 ## Specs (ready to build)
 
 - `09-onboarding-and-progression.md` — Starting scenarios, progressive need unlocks, difficulty tuning
-- `transient-state-save.md` — Known save/load gaps. The main one (designation progress lost on load) looks fixed by the load order (`ClearMovers()` runs before designations are read); confirm with one save/load check, then close
 - `jobs/instant-reassignment.md` — Assign next job immediately on completion instead of waiting for AssignJobs()
 - `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (doc says 6k lines; now ~8.5k)
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)

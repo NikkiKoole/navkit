@@ -9,9 +9,6 @@
 #
 # Games (src/core/games.c) run here too. Headless runs use a fixed seed (0 unless
 # --seed), so survival and dollhouse are deterministic like the scenarios.
-#
-# Known: mood allows 1 mover in a non-walkable cell - a mover stands on a ramp that
-# deep water floods (docs/bugs/mover-on-flooded-ramp.md).
 
 BIN=${BIN:-./build/bin/path}
 TICKS=${TICKS:-3000}
@@ -41,7 +38,7 @@ done <<'EOF'
 77  | 0 | --scenario ladder-oneway
 175 | 0 | --scenario door-oneway
 98  | 0 | --scenario oneway-tiers
-85  | 1 | --scenario mood
+85  | 0 | --scenario mood
 240 | 0 | --scenario faces
 49  | 0 | --scenario social
 300 | 0 | --scenario hallway

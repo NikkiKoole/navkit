@@ -1,6 +1,10 @@
 # Mover stuck on a flooded ramp
 
-**Status: OPEN** (found 2026-11-20, not investigated)
+**Status: FIXED** (found 2026-11-20; fixed 2026-11-23 by a4287302 + 913463e1: `WadeTowardDryCell` in
+`src/entities/mover.c`, tests in `tests/test_mover.c` "flooded ramp"). Confirmed 2026-11-25: `--scenario mood
+--ticks 3000 --check --check-max-nonwalkable 0` passes (the scenarios-check allowance is removed), survival seeds
+1-24 at 128 pass with 0 movers in non-walkable cells. The reproduce commands below no longer hit the case (the
+water model changed since), so they are history, not a test.
 
 ## Description
 

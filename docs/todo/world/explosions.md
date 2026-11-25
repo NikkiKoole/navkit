@@ -92,7 +92,7 @@ a flash / debris particles.
   slot, release reservations / cancel the jobs holding them. The state audit (item<->stockpile,
   reservations<->jobs) will catch mistakes; test with `--audit`.
 - Save: transient velocities can be dropped on save (items land where they are), see
-  `../transient-state-save.md`.
+  `../../done/transient-state-save.md`.
 
 ### 3. Movers
 
