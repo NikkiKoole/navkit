@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status (2026-11-25): steps 1-6, the mill, winter granary, overview and lot inspector on master. Game `town`.
+> Status (2026-11-26): playable on master. Start at "Where we are" below. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -11,6 +11,61 @@ doesn't) because of what you built, which you can see in the people living there
 individual agents" as what to avoid in SimCity. Town keeps the personal part: no zone figures,
 only people. SimCity's growth and money come later, and only as far as they come out of people.
 
+## Where we are (2026-11-26)
+
+**What you can do.** `./build/bin/path --set townStarter 6 --game town` (or `--game town` for an
+empty street). Play bar: Huisje tab = Road, Home, Bakery, Mill, Granary; Boompje tab = Farm
+(left-drag place, right-drag remove; dev UI: Draw > City). Everything appears at once. Click a
+lot for its inspector; the overview bar on top shows the town in one line.
+
+**What the town does by itself.**
+- Newcomers walk in from the road at the map edge while a bed is free; each gets a home and
+  their own bed, and a job if one is free (bakery, mill, farm; one job per stove / two querns /
+  24 field cells). Workplaces are open 7-17; on shift a worker only works at their workplace,
+  off shift and without a job anyone does any work.
+- The grain chain, all carried by the existing haul jobs: farm (wheat field, barn, seed store)
+  -> mill (querns, granary, flour store) -> bakery (stoves, flour store, bread shelf) -> each
+  home's fridge pantry. Granary lots store wheat and flour for the winter. Bills run "until N"
+  is in store (bread per home, flour).
+- The starter street: 6 houses (12 people), bakery (2 stoves), mill (4 querns, 2 millers),
+  a 96-cell farm (4 farmhands), a granary: 4 people without a job carry goods around.
+
+**How a year goes** (starter street, headless, 42 days = a year and a half):
+- Year one, winter included: everyone fed, **no imports after the first week**; the granary
+  carries the town through winter (695 -> 423 wheat).
+- Year two: wheat stays plentiful, but flour runs short again in its summer (440 flour imported,
+  6 people starving at day 42) while ~1000 wheat lies loose on the field (the harvest outgrows
+  stores and haulers), and **field fertility falls to 19/255** (wheat takes 20 a harvest,
+  nothing puts it back: growth 0.3x).
+
+**Stand-ins** (each a setting, each to be replaced by the real thing later):
+
+| stand-in | instead of | setting |
+|---|---|---|
+| emergency imports when the town runs out (counted) | trade / money (City 1999 has coins now) | `townFlourDelivery`, `townWheatDelivery` |
+| irrigated farms (cells kept wet) | a well and watering jobs | `townIrrigation` |
+| slower weeds on town farms (user's call) | lots of weeding labour | `townWeedRate` |
+| seed grain set aside from stored wheat | farmers choosing seed | (always) |
+| rotten food thrown out of town lots | bins and a garbage truck (City 1999) | (always) |
+| temperate climate, no weather | rain without drainage flooded the flat map | (game start) |
+
+**Fixed along the way in shared code** (all games): harvests drop one stack; crops aren't
+planted when the next season would kill them before they ripen; starving doesn't interrupt a
+craft that makes food; "Bake Loaves" and "Mill Flour" batch recipes; the day length is saved
+(navkit-e0, v118).
+
+**Next, in order:**
+1. **Fertility** (user to pick): compost (a compost pile workplace), crop rotation (lentils +60,
+   the town eats lentils too), or a stand-in (town fields slowly recover).
+2. Year-two flour: the harvest outgrows stores and haulers (bigger granaries, or hauling
+   priority for the harvest).
+3. Then the town as a game: growth (people come for jobs, not only for beds), money for
+   imports (City 1999's coins), more kinds of work and shops, cars on the drawn roads.
+
+Measuring: `for d in 14 21 28 35 42; do ... --ticks $((d*21600)) ... & done` (about 15 minutes
+in the background), the `Town:` line, `--describe-lot all`, `--dump-events`. Every fix so far
+moved the bottleneck: measure a year and a half after each change.
+
 ## User decisions (2026-11-25)
 
 - **Build instantly** (SimCity style), not orders carried out by workers.
@@ -19,6 +74,9 @@ only people. SimCity's growth and money come later, and only as far as they come
 - **Food at first: fridges the town restocks** (stand-in, step 3).
 - **Work makes what the town needs** (step 4), food first: a workplace's workers produce it and
   it reaches the homes' fridges, replacing the restock. Not desk-sitting for its own sake.
+- The bakery first, then the grain chain (farm -> mill -> bakery), then the mill's throughput.
+- Winter: "just make a big enough storage" (granary lots).
+- Weeds: slower weeds on town farms (not more farmhands, not a change for all games).
 
 Earlier ones that apply here:
 - Rhythm comes from world facts, not clock rules ([schedule decision](../todo/schedule-system.md)):
@@ -340,21 +398,23 @@ so after a load each lot finds its furniture, stoves/counters, pantry stockpile 
 again from its cells (`TownRelinkLot`); `townHome[]` follows from the bed owners. Older saves: no
 town. `inspect.c` reads past it (`TownSkipSave`). Checked: run, save, load, run on: everyone keeps
 their home, no extra newcomers, audit 0 violations. Not saved: arrival / housekeeping timers.
-After loading a town save the play HUD shows the sandbox tools (the game is found from
-`gameMode`); the dev Draw bar has the town tools.
+The running game's name is saved since v115 (navkit-e0), so a town save should come back with
+the town's play bar (not checked yet). Not saved: job assignments (handed out again within 0.1 h),
+import / waste / harvest counters.
 
 ## Open questions
 
-- Roads as a cell fact: a byte layer per (x, y) costs 4 MB at 2048; a ground material
-  (asphalt) costs nothing extra but adds a material (dreamengine mirrors the enums).
-- Does a home own its beds, or a mover their bed? Town needs only "my home"; City 1999's
-  `owner` field would generalise it later.
-- What a citizen does at work in milestone 1 (stand at a desk vs. make something).
+- Fertility: compost, crop rotation, or a stand-in (see "Where we are").
+- Roads are a list of rectangles (no cell layer); fine so far. Cars on them need the cars
+  branch's road network built from these strips.
+- Bed ownership lives in town.c (`townFurnOwner[]`); City 1999's `owner` field could take it over.
+- Answered: a citizen at work makes what the town needs (user, step 4).
 
 ## Coordination
 
 - Code in worktree `.claude/worktrees/town`, branch `town`; merged to master per verified step.
-- `games.c` gets one row; save changes (lots, `Mover.home`) get a save version when merged:
-  check the current version on master then.
+- Land per verified step: rebase on master, build + tests + `make scenarios-check`, then a
+  3-way merge per file into the shared checkout (other sessions' uncommitted hunks stay).
+- Save versions move fast (v119 on 2026-11-26): ask the other sessions before taking one.
 - Cars session: drawn roads should later feed its road network (`roads.c` builds from nodes +
   edges); keep town roads as straight axis-aligned strips so that conversion stays easy.
