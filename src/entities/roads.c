@@ -67,8 +67,8 @@ int RoadAddEdge(int a, int b, float bendCells) {
     return rdEdgeCount++;
 }
 
-void RoadSetAvenue(int edge) {
-    if (edge >= 0 && edge < rdEdgeCount && !rdEdges[edge].oneWay) rdEdges[edge].lanesPerDir = 2;
+void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lanes its way
+    if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lanesPerDir = 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +189,9 @@ static int BuildLane(int ei, int dir, int k) {
     int startNode = dir == 0 ? e->a : e->b, endNode = dir == 0 ? e->b : e->a;
     float sbA = rdNodes[startNode].setback * CELL_SIZE, sbB = rdNodes[endNode].setback * CELL_SIZE;
     // the right-hand lane (k 0) is the outer one, by the kerb; the overtaking lane (k 1) inner
-    float off = e->oneWay ? 0 : (RD_LANE_OFF + 3.0f * (e->lanesPerDir - 1 - k)) * CELL_SIZE;
+    // (one-way: one lane on the centre line, or two lanes either side of it: k 0 on the right)
+    float off = e->oneWay ? (e->lanesPerDir == 2 ? (k == 0 ? RD_LANE_OFF : -RD_LANE_OFF) * CELL_SIZE : 0)
+                          : (RD_LANE_OFF + 3.0f * (e->lanesPerDir - 1 - k)) * CELL_SIZE;
     int m = 0;
     for (int i = 0; i < n; i++) {
         if (cs[i] < sbA || cs[i] > acc - sbB) continue;
@@ -408,7 +410,7 @@ static void BuildAll(float latAccel) {
         E->lane2[0] = E->lane2[1] = -1;
         if (E->lanesPerDir == 2) {
             E->lane2[0] = BuildLane(e, 0, 1);
-            E->lane2[1] = BuildLane(e, 1, 1);
+            E->lane2[1] = E->oneWay ? -1 : BuildLane(e, 1, 1);
             for (int d = 0; d < 2; d++)
                 if (E->lane[d] >= 0 && E->lane2[d] >= 0) {
                     rdSegs[E->lane[d]].parallel = E->lane2[d];
@@ -608,11 +610,18 @@ static void CarveDisc(float cx, float cy, float r, int z) {
         }
 }
 
+// Half the carved width of a road (cells): 3 per lane, + half a cell (slanted roads are
+// carved in whole cells); a one-way road is centred on its lanes
+static float RoadHalfWidth(const RdEdge* e) {
+    if (e->oneWay && !e->arc) return 1.5f * e->lanesPerDir + 1.0f;
+    return RD_ROAD_WIDTH * 0.5f * e->lanesPerDir + 0.5f;
+}
+
 void RoadsCarve(int z) {
     for (int e = 0; e < rdEdgeCount; e++) {
         int n = EdgeCentre(&rdEdges[e]);
         for (int i = 0; i < n; i += 2)
-            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RD_ROAD_WIDTH * 0.5f * rdEdges[e].lanesPerDir + 0.5f, z);   // + half a cell: slanted roads are carved in whole cells
+            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RoadHalfWidth(&rdEdges[e]), z);
     }
     for (int i = 0; i < rdNodeCount; i++)
         if (rdNodes[i].nEdge > 0 && !rdNodes[i].ring)   // (a roundabout's ring junctions: the island stays)

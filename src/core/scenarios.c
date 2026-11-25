@@ -3478,6 +3478,68 @@ static bool CityConnected(const unsigned char* gone, int nodes) {
     return count == nodes;
 }
 
+// Manhattan (carCityLayout 1): avenues north-south every carCitySpacingX cells, one-way with
+// two lanes, alternating south / north (like 5th Avenue and Madison); cross streets east-west
+// every 24 cells (3:1 blocks), one-way with one lane, alternating east / west, every fifth one
+// two-way (14th, 23rd, 42nd...); Broadway, a two-way diagonal whose slope makes it cross an
+// avenue exactly at every third street (a 6-way junction, Times Square style) and cut the
+// streets in between at junctions of its own. The outermost avenues and streets are two-way
+// (West Side Highway, FDR Drive). No roundabouts, no streets left out.
+static void BuildManhattan(void) {
+    const float origin = 20, sx = carCitySpacingX, sy = 24;
+    int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin) / sy) + 1;
+    if (cols < 3) cols = 3;
+    if (rows < 4) rows = 4;
+    if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
+    RoadsClear();
+    for (int j = 0; j < rows; j++)
+        for (int i = 0; i < cols; i++) RoadAddNode(origin + sx * i, origin + sy * j);
+    // Broadway: from the top right, one column further west every three streets
+    static int bway[RD_MAX_NODES], bwaySpan[RD_MAX_NODES];   // per street: its Broadway junction, the span it cuts
+    int bi0 = cols - 1;
+    for (int j = 0; j < rows; j++) {
+        bway[j] = bwaySpan[j] = -1;
+        int whole = j / 3, part = j % 3;
+        int col = bi0 - whole;
+        if (col < 0 || (col == 0 && part > 0)) continue;
+        if (part == 0) bway[j] = j * cols + col;                         // through the avenue junction
+        else {                                                         // cuts the street west of it
+            bway[j] = RoadAddNode(origin + sx * col - sx * part / 3.0f, origin + sy * j);
+            bwaySpan[j] = col - 1;
+        }
+    }
+    // Cross streets
+    for (int j = 0; j < rows; j++) {
+        bool east = (j % 2) == 0, twoWay = (j % 5) == 2 || j == 0 || j == rows - 1;   // (the edges two-way)
+        for (int i = 0; i + 1 < cols; i++) {
+            int a = j * cols + i, b = j * cols + i + 1;
+            int pieces[3] = {a, b, -1}, n = 2;
+            if (bwaySpan[j] == i) { pieces[1] = bway[j]; pieces[2] = b; n = 3; }
+            for (int k = 0; k + 1 < n; k++) {
+                int from = east ? pieces[k] : pieces[k + 1], to = east ? pieces[k + 1] : pieces[k];
+                int e = RoadAddEdge(from, to, 0);
+                if (e >= 0 && !twoWay) rdEdges[e].oneWay = true;
+            }
+        }
+    }
+    // Avenues
+    for (int i = 0; i < cols; i++) {
+        bool south = (i % 2) == 0;
+        for (int j = 0; j + 1 < rows; j++) {
+            int a = j * cols + i, b = (j + 1) * cols + i;
+            int e = RoadAddEdge(south ? a : b, south ? b : a, 0);
+            if (e < 0) continue;
+            // the outer avenues two-way, like the West Side Highway and FDR Drive (a one-way grid's
+            // corners would have nothing arriving / nothing leaving)
+            if (i != 0 && i != cols - 1) rdEdges[e].oneWay = true;
+            if (carCityAvenues) RoadSetAvenue(e);
+        }
+    }
+    // Broadway itself
+    for (int j = 0; j + 1 < rows; j++)
+        if (bway[j] >= 0 && bway[j + 1] >= 0) RoadAddEdge(bway[j], bway[j + 1], 0);
+}
+
 // Avenues: the middle row / column of a small city, every 8th in a big one
 static bool CityAvenueRow(int k, int n) { return n <= 12 ? k == n / 2 : (k % 8) == 4; }
 
@@ -3494,71 +3556,74 @@ static void SetupCarsCity(void) {
     carFollow = false;
 
     cityRng = (unsigned int)carCitySeed;
-    // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
-    const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
-    int J = carCityJitter;
     rdSetback = carCitySetback;
-    int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin) / sy) + 1;
-    if (cols < 3) cols = 3;
-    if (rows < 3) rows = 3;
-    if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
-    RoadsClear();
-    for (int j = 0; j < rows; j++)
-        for (int i = 0; i < cols; i++)
-            RoadAddNode(origin + sx * i + (CityRand(2 * J + 1) - J), origin + sy * j + (CityRand(2 * J + 1) - J));
-    for (int j = 0; j < rows; j++)
-        for (int i = 0; i < cols; i++) {
-            float bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
-            if (i + 1 < cols) RoadAddEdge(j * cols + i, j * cols + i + 1, bend);
-            bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
-            if (j + 1 < rows) RoadAddEdge(j * cols + i, (j + 1) * cols + i, bend);
+    if (carCityLayout == 1) BuildManhattan();
+    else {
+        // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
+        const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
+        int J = carCityJitter;
+        int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin) / sy) + 1;
+        if (cols < 3) cols = 3;
+        if (rows < 3) rows = 3;
+        if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
+        RoadsClear();
+        for (int j = 0; j < rows; j++)
+            for (int i = 0; i < cols; i++)
+                RoadAddNode(origin + sx * i + (CityRand(2 * J + 1) - J), origin + sy * j + (CityRand(2 * J + 1) - J));
+        for (int j = 0; j < rows; j++)
+            for (int i = 0; i < cols; i++) {
+                float bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+                if (i + 1 < cols) RoadAddEdge(j * cols + i, j * cols + i + 1, bend);
+                bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+                if (j + 1 < rows) RoadAddEdge(j * cols + i, (j + 1) * cols + i, bend);
+            }
+        // Leave ~12% of the roads out: never a dead end, everything stays connected
+        unsigned char gone[RD_MAX_EDGES] = {0};
+        int deg[RD_MAX_NODES];
+        for (int n = 0; n < rdNodeCount; n++) deg[n] = rdNodes[n].nEdge;
+        int want = rdEdgeCount * 12 / 100;
+        for (int tries = 0; tries < 2000 && want > 0; tries++) {
+            int e = CityRand(rdEdgeCount);
+            if (gone[e] || deg[rdEdges[e].a] < 3 || deg[rdEdges[e].b] < 3) continue;
+            gone[e] = 1;
+            if (!CityConnected(gone, rdNodeCount)) { gone[e] = 0; continue; }
+            deg[rdEdges[e].a]--; deg[rdEdges[e].b]--;
+            want--;
         }
-    // Leave ~12% of the roads out: never a dead end, everything stays connected
-    unsigned char gone[RD_MAX_EDGES] = {0};
-    int deg[RD_MAX_NODES];
-    for (int n = 0; n < rdNodeCount; n++) deg[n] = rdNodes[n].nEdge;
-    int want = rdEdgeCount * 12 / 100;
-    for (int tries = 0; tries < 2000 && want > 0; tries++) {
-        int e = CityRand(rdEdgeCount);
-        if (gone[e] || deg[rdEdges[e].a] < 3 || deg[rdEdges[e].b] < 3) continue;
-        gone[e] = 1;
-        if (!CityConnected(gone, rdNodeCount)) { gone[e] = 0; continue; }
-        deg[rdEdges[e].a]--; deg[rdEdges[e].b]--;
-        want--;
-    }
-    // Rebuild without the gone roads
-    static RdEdge keep[RD_MAX_EDGES];
-    int nk = 0;
-    for (int e = 0; e < rdEdgeCount; e++) if (!gone[e]) keep[nk++] = rdEdges[e];
-    int nodes = rdNodeCount;
-    static float nx[RD_MAX_NODES], ny[RD_MAX_NODES];
-    for (int n = 0; n < nodes; n++) { nx[n] = rdNodes[n].x / CELL_SIZE; ny[n] = rdNodes[n].y / CELL_SIZE; }
-    RoadsClear();
-    for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
-    for (int e = 0; e < nk; e++) {
-        int ne = RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
-        // Avenues: the middle row and the middle column, two lanes each way
-        int ia = keep[e].a % cols, ja = keep[e].a / cols, ib = keep[e].b % cols, jb = keep[e].b / cols;
-        if (carCityAvenues && ((ja == jb && CityAvenueRow(ja, rows)) || (ia == ib && CityAvenueRow(ia, cols)))) RoadSetAvenue(ne);
-    }
-    // Roundabouts on some 4-way junctions (not next to each other, not on the edge)
-    int made = 0;
-    unsigned char near[RD_MAX_NODES] = {0};
-    int wantRings = carCityRoundabouts * cols * rows / 63;   // per 63 junctions (the default city)
-    for (int tries = 0; tries < 200 + 20 * wantRings && made < wantRings; tries++) {
-        int n = CityRand(nodes);
-        int i = n % cols, j = n / cols;
-        if (i == 0 || j == 0 || i == cols - 1 || j == rows - 1 || rdNodes[n].nEdge != 4 || near[n]) continue;
-        if (carCityAvenues && (CityAvenueRow(i, cols) || CityAvenueRow(j, rows))) continue;   // not on an avenue
-        int nb[RD_MAX_NODE_EDGES], nn = rdNodes[n].nEdge;
-        for (int k = 0; k < nn; k++) {
-            const RdEdge* e = &rdEdges[rdNodes[n].edge[k]];
-            nb[k] = e->a == n ? e->b : e->a;
+        // Rebuild without the gone roads
+        static RdEdge keep[RD_MAX_EDGES];
+        int nk = 0;
+        for (int e = 0; e < rdEdgeCount; e++) if (!gone[e]) keep[nk++] = rdEdges[e];
+        int nodes = rdNodeCount;
+        static float nx[RD_MAX_NODES], ny[RD_MAX_NODES];
+        for (int n = 0; n < nodes; n++) { nx[n] = rdNodes[n].x / CELL_SIZE; ny[n] = rdNodes[n].y / CELL_SIZE; }
+        RoadsClear();
+        for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
+        for (int e = 0; e < nk; e++) {
+            int ne = RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
+            // Avenues: the middle row and the middle column, two lanes each way
+            int ia = keep[e].a % cols, ja = keep[e].a / cols, ib = keep[e].b % cols, jb = keep[e].b / cols;
+            if (carCityAvenues && ((ja == jb && CityAvenueRow(ja, rows)) || (ia == ib && CityAvenueRow(ia, cols)))) RoadSetAvenue(ne);
         }
-        if (!RoadMakeRoundabout(n, 12.0f)) { near[n] = 1; continue; }   // roads too close in angle
-        for (int k = 0; k < nn; k++) near[nb[k]] = 1;
-        near[n] = 1;
-        made++;
+        // Roundabouts on some 4-way junctions (not next to each other, not on the edge)
+        int made = 0;
+        unsigned char near[RD_MAX_NODES] = {0};
+        int wantRings = carCityRoundabouts * cols * rows / 63;   // per 63 junctions (the default city)
+        for (int tries = 0; tries < 200 + 20 * wantRings && made < wantRings; tries++) {
+            int n = CityRand(nodes);
+            int i = n % cols, j = n / cols;
+            if (i == 0 || j == 0 || i == cols - 1 || j == rows - 1 || rdNodes[n].nEdge != 4 || near[n]) continue;
+            if (carCityAvenues && (CityAvenueRow(i, cols) || CityAvenueRow(j, rows))) continue;   // not on an avenue
+            int nb[RD_MAX_NODE_EDGES], nn = rdNodes[n].nEdge;
+            for (int k = 0; k < nn; k++) {
+                const RdEdge* e = &rdEdges[rdNodes[n].edge[k]];
+                nb[k] = e->a == n ? e->b : e->a;
+            }
+            if (!RoadMakeRoundabout(n, 12.0f)) { near[n] = 1; continue; }   // roads too close in angle
+            for (int k = 0; k < nn; k++) near[nb[k]] = 1;
+            near[n] = 1;
+            made++;
+        }
     }
     RoadsBuild(carLatAccel);
     TrafficSetupLights(carCityLights);

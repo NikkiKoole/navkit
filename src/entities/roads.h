@@ -23,7 +23,7 @@
 #define RD_MAX_EDGES 16384
 #define RD_MAX_SEGS 65000    // (routes store segments as RdSegId, an unsigned short)
 #define RD_MAX_NODE_EDGES 6
-#define RD_MAX_CONN 32       // connectors per junction (6 roads: 6 x 5)
+#define RD_MAX_CONN 40       // connectors per junction (6 roads, some with two lanes)
 #define RD_MAX_OUT 6         // connectors leaving one lane
 #define RD_ROAD_WIDTH 6.0f   // cells
 #define RD_LANE_OFF 1.5f     // cells: lane centre from the road's centre line

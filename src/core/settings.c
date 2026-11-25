@@ -703,6 +703,8 @@ static const Setting settings[] = {
       "cars-city: share of roads with a bend. Restart the scenario to apply.", NULL),
     SET_FLOAT("carCitySetback", "Junction Size (cells)", "Experiments/Cars", carCitySetback, 0.1f, 3.0f, 12.0f,
       "cars-city: lanes stop this far from a junction's centre. Small = compact junctions (fine for slot traffic); steered 2x2 cars need ~7 for their turning circle. Restart the scenario to apply.", NULL),
+    SET_INT("carCityLayout", "City Layout", "Experiments/Cars", carCityLayout, 0.05f, 0, 1,
+      "cars-city: 0 = grid, 1 = Manhattan (one-way two-lane avenues north-south, one-way streets east-west alternating, every fifth street two-way, Broadway diagonal). Restart the scenario to apply.", NULL),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
       "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,

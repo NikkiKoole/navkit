@@ -401,6 +401,21 @@ pushed back as needed): 5 layouts x 100/128 cars, 0 touches, 0 wall contacts, ju
 Long blocks mean less road per area (34 junctions / 104 lanes instead of 63 / 226 on the test
 map): fewer alternative routes, busier junctions.
 
+## Manhattan layout (2026-11-25)
+
+The user asked what would add a New York driving vibe; first pick: the layout. Setting
+`carCityLayout 1`: avenues north-south every 72 cells, one-way with two lanes, alternating
+directions; cross streets every 24 cells (3:1 blocks), one-way one lane, alternating, every fifth
+two-way; Broadway, a two-way diagonal whose slope (one avenue per three streets) makes it cross
+avenues exactly at street junctions (6-way, Times Square style) and cut the streets in between at
+4-way junctions of its own; lights on every 4-way junction. The outermost avenues and streets are
+two-way (West Side Highway / FDR Drive): a one-way grid's corners otherwise have nothing arriving
+or nothing leaving (`TR_NET` found it). New in the network: one-way roads with two lanes, road
+width per road, 40 curves per junction.
+
+Results: fully connected at 330 ... 2048 (2406 junctions); steered, 5 x 100/128 cars: 0 touches,
+0 wall contacts, 0 red runs, junction waits <= 54 s; slot traffic 250 cars: 492 trips (grid: 398).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

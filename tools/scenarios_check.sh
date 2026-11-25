@@ -71,6 +71,7 @@ done <<'EOF'
 0   | 0 | --scenario cars-traffic
 0   | 0 | --scenario cars-city
 0   | 0 | --scenario cars-city --set carCitySlots 1
+0   | 0 | --scenario cars-city --set carCityLayout 1
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
 17  | 0 | --scenario cargo
