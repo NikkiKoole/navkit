@@ -2070,10 +2070,18 @@ void UpdateMovers(void) {
             float vx = lineFollow ? followVx : dxf * invDist * effectiveSpeed;
             float vy = lineFollow ? followVy : dyf * invDist * effectiveSpeed;
 
-            // Passing politely (notice.c): someone noticed coming at us -> drift aside early, slow a bit
-            if (politePassing && !lineFollow && target.z == (int)m->z) {
-                float sideX, sideY, passScale;
-                if (NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale)) {
+            // Social steering, sideways drifts: passing politely (notice.c: someone noticed coming
+            // at us) and giving a conversation room (talk.c: a talk's circle ahead)
+            if (!lineFollow && target.z == (int)m->z) {
+                float sideX = 0.0f, sideY = 0.0f, passScale = 1.0f, roomX, roomY;
+                bool steer = politePassing &&
+                             NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale);
+                if (TalkGiveRoomSteer(i, dxf * invDist, dyf * invDist, &roomX, &roomY)) {
+                    sideX += roomX;
+                    sideY += roomY;
+                    steer = true;
+                }
+                if (steer) {
                     float near = 1.0f;   // ease off close to the waypoint so it can still reach it
                     if (dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
                         float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);

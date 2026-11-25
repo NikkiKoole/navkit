@@ -19,6 +19,7 @@ typedef struct {
     float slotX[TALK_MAX_MEMBERS], slotY[TALK_MAX_MEMBERS];   // where each member stands (pixels)
     int count;
     float centerX, centerY;   // the shared middle (o-space)
+    float radius;             // pixels from the middle to the members' spots
     int z;
     float timeLeft;           // sim seconds
     int speaker;              // index into members[]
@@ -32,6 +33,7 @@ extern float talkStartRadius;   // cells
 extern float talkChance;        // chance per check (each mover checks ~4x/s) that a talk starts
 extern float talkMinSeconds, talkMaxSeconds, talkCooldown;
 extern long talkStartedCount;   // since ClearTalks (stats)
+extern long talkJoinedCount;    // movers that joined a running talk (stats)
 
 void ClearTalks(void);
 void TalkTick(float dt);                 // start / run / end conversations (after NoticeTick)
@@ -41,5 +43,11 @@ bool MoverIsSpeaking(int moverIdx);
 bool TalkLookAt(int moverIdx, float* x, float* y);   // where a talking mover looks
 int TalkPartner(int moverIdx);           // another member (for describe), -1 if none
 void TalkStart(int a, int b);            // start a talk between two movers now (tests, scenarios)
+void TalkJoin(int t, int moverIdx);      // add a mover to talk t (room permitting)
+
+// Passers-by give a conversation room: a walker with a talk's middle ahead, near its line,
+// drifts sideways around the circle (like polite passing). Out: sideways direction * weight.
+extern bool talkGiveRoom;
+bool TalkGiveRoomSteer(int moverIdx, float hx, float hy, float* sideX, float* sideY);
 
 #endif

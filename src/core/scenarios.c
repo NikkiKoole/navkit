@@ -206,12 +206,12 @@ static void SetupFaces(void) {
 // social: 10 movers wandering a plaza with two wall pieces (line of sight), noticing each
 // other (notice.c). Standing between goals they look at whoever they noticed most.
 // Headless stats: noticed per mover, how often attention switches, standing movers looking.
-static long socialTalkTicks;
+static long socialTalkTicks, socialIntrusions, socialGroupTicks, socialBigGroupTicks;
 static long socialTicks, socialNoticedSum, socialSwitches, socialFlickBacks, socialStanding, socialStandingLooking;
 static int socialPrevTop[MAX_MOVERS], socialPrevPrevTop[MAX_MOVERS];
 
 static void SetupSocial(void) {
-    socialTalkTicks = 0;
+    socialTalkTicks = socialIntrusions = socialGroupTicks = socialBigGroupTicks = 0;
     socialTicks = socialNoticedSum = socialSwitches = socialFlickBacks = socialStanding = socialStandingLooking = 0;
     for (int i = 0; i < MAX_MOVERS; i++) socialPrevTop[i] = socialPrevPrevTop[i] = -1;
     for (int y = 6; y <= 12; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
@@ -231,10 +231,23 @@ static void SetupSocial(void) {
 
 static void SocialTickStats(void) {
     socialTicks++;
+    for (int t = 0; t < MAX_TALKS; t++) {
+        if (!talks[t].active) continue;
+        socialGroupTicks++;
+        if (talks[t].count >= 3) socialBigGroupTicks++;
+    }
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
         socialNoticedSum += moverNotice[i].count;
         if (MoverTalk(i) >= 0) socialTalkTicks++;
+        else if (movers[i].pathIndex >= 0) {   // a walker inside a conversation's circle
+            for (int t = 0; t < MAX_TALKS; t++) {
+                if (!talks[t].active || talks[t].z != (int)movers[i].z) continue;
+                float dx = movers[i].x - talks[t].centerX, dy = movers[i].y - talks[t].centerY;
+                float in = talks[t].radius * 0.8f;
+                if (dx * dx + dy * dy < in * in) socialIntrusions++;
+            }
+        }
         int top = NoticeTop(i);
         if (top != socialPrevTop[i] && socialPrevTop[i] >= 0 && top >= 0) {
             socialSwitches++;
@@ -260,6 +273,10 @@ static void SocialPrintStats(void) {
     printf("Talks started: %ld (%.1f per mover per minute), time spent talking: %.0f%%\n", talkStartedCount,
            minutes > 0 && active ? talkStartedCount / (minutes * active) : 0.0,
            socialTicks && active ? 100.0 * socialTalkTicks / (socialTicks * active) : 0.0);
+    printf("Joined a running talk: %ld; talks with 3+ people: %.0f%% of talk time\n", talkJoinedCount,
+           socialGroupTicks ? 100.0 * socialBigGroupTicks / socialGroupTicks : 0.0);
+    printf("Walkers inside a conversation's circle (give room %s): %ld ticks\n", talkGiveRoom ? "on" : "off",
+           socialIntrusions);
     printf("  of which back to the one before (A->B->A): %.1f\n",
            minutes > 0 && active ? socialFlickBacks / (minutes * active) : 0.0);
     printf("Standing mover-ticks: %ld, ", socialStanding);

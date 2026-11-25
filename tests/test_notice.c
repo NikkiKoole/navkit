@@ -283,6 +283,52 @@ describe(stop_to_talk) {
         movers[b].currentJobId = -1;
     }
 
+    it("a third joins: the three spread out round the middle, ~1.5 cells apart") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        TalkStart(a, b);
+        int c = AddMover(6, 7, 1);
+        Look();
+        RunTalk(0.5f);
+        int t = MoverTalk(a);
+        expect(t >= 0 && MoverTalk(c) == t);
+        expect(talks[t].count == 3);
+        RunTalk(3.0f);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(fabsf(Dist(b, c) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(fabsf(Dist(a, c) - 1.5f * CELL_SIZE) < 3.0f);
+    }
+
+    it("one leaves a group of three: the other two close up to a pair") {
+        TalkSetup();
+        talkMinSeconds = talkMaxSeconds = 60.0f;   // long enough to outlast the test
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1), c = AddMover(6, 7, 1);
+        TalkStart(a, b);
+        TalkJoin(MoverTalk(a), c);
+        RunTalk(3.0f);
+        movers[c].currentJobId = 0;
+        RunTalk(3.0f);
+        expect(MoverTalk(c) < 0);
+        expect(MoverTalk(a) >= 0 && talks[MoverTalk(a)].count == 2);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 3.0f);
+        movers[c].currentJobId = -1;
+    }
+
+    it("a walker heading at a conversation steers round it; walking away or off: nothing") {
+        TalkSetup();
+        talkGiveRoom = true;
+        int a = AddMover(10, 4, 1), b = AddMover(10, 6, 1), w = AddMover(7, 5, 1);   // 3 cells off
+        TalkStart(a, b);
+        float sx, sy;
+        expect(TalkGiveRoomSteer(w, 1, 0, &sx, &sy));
+        expect(sy > 0.0f);                              // dead ahead: goes round on its right (south)
+        expect(!TalkGiveRoomSteer(w, -1, 0, &sx, &sy)); // walking away
+        expect(!TalkGiveRoomSteer(a, 0, 1, &sx, &sy));  // a member doesn't steer round its own talk
+        talkGiveRoom = false;
+        expect(!TalkGiveRoomSteer(w, 1, 0, &sx, &sy));
+        talkGiveRoom = true;
+    }
+
     it("busy, too far or switched off: no talk") {
         TalkSetup();
         int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1), far = AddMover(5, 10, 1);

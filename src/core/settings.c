@@ -565,6 +565,8 @@ static const Setting settings[] = {
       "Each mover looks around once per this many ticks (staggered over movers).", NULL),
     SET_BOOL("talk", "Stop to Talk", "Entities/Movers/Noticing", talkEnabled,
       "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in the dollhouse. Needs Noticing."),
+    SET_BOOL("talkGiveRoom", "Talk: give room", "Entities/Movers/Noticing", talkGiveRoom,
+      "Walkers steer round a conversation's circle instead of through it."),
     SET_FLOAT("talkRadius", "Talk: start (cells)", "Entities/Movers/Noticing", talkStartRadius, 0.1f, 1.0f, 8.0f,
       "How close two idle movers must be to start talking.", NULL),
     SET_FLOAT("talkChance", "Talk: chance", "Entities/Movers/Noticing", talkChance, 0.01f, 0.0f, 1.0f,

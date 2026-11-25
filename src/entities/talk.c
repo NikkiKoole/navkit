@@ -15,6 +15,9 @@ float talkMinSeconds = 6.0f;
 float talkMaxSeconds = 15.0f;
 float talkCooldown = 30.0f;
 long talkStartedCount = 0;
+long talkJoinedCount = 0;
+bool talkGiveRoom = true;
+static int talkHigh = 0;   // talks[] entries at or above this are all free
 
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
 static float moverTalkCooldown[MAX_MOVERS]; // sim seconds until it may talk again
@@ -35,6 +38,8 @@ void ClearTalks(void) {
     memset(moverTalkIdx, 0, sizeof(moverTalkIdx));
     memset(moverTalkCooldown, 0, sizeof(moverTalkCooldown));
     talkStartedCount = 0;
+    talkJoinedCount = 0;
+    talkHigh = 0;
     talkTickCounter = 0;
 }
 
@@ -106,14 +111,39 @@ static void EndTalk(int t) {
     talks[t].active = false;
 }
 
-// Spot for a member: dist cells from the middle toward (ux, uy); where it stands if not walkable
-static void PickSlot(const Mover* m, float cx, float cy, float ux, float uy, float* sx, float* sy) {
-    float x = cx + ux * TALK_SLOT_HALF * CELL_SIZE, y = cy + uy * TALK_SLOT_HALF * CELL_SIZE;
-    int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
-    if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt((int)m->z, gy, gx)) {
-        x = m->x; y = m->y;
+// Members stand evenly on a circle round the middle, about 1.5 cells from their neighbours
+// (a pair: 1.5 apart). Each keeps the side it was on: sorted by its current angle, spread out
+// from the first one's angle. A spot that isn't walkable: it stands where it is.
+static void ArrangeSlots(int t) {
+    Talk* tk = &talks[t];
+    int n = tk->count;
+    if (n <= 0) return;
+    float r = (n <= 2 ? TALK_SLOT_HALF : TALK_SLOT_HALF / sinf(3.14159265f / (float)n)) * CELL_SIZE;
+    tk->radius = r;
+    float ang[TALK_MAX_MEMBERS];
+    int order[TALK_MAX_MEMBERS];
+    for (int k = 0; k < n; k++) {
+        const Mover* m = &movers[tk->members[k]];
+        ang[k] = atan2f(m->y - tk->centerY, m->x - tk->centerX);
+        order[k] = k;
     }
-    *sx = x; *sy = y;
+    for (int a = 1; a < n; a++)   // sort by angle (n <= 4)
+        for (int b = a; b > 0 && ang[order[b]] < ang[order[b - 1]]; b--) {
+            int tmp = order[b]; order[b] = order[b - 1]; order[b - 1] = tmp;
+        }
+    float start = ang[order[0]];
+    for (int s = 0; s < n; s++) {
+        int k = order[s];
+        const Mover* m = &movers[tk->members[k]];
+        float a = start + 6.2831853f * (float)s / (float)n;
+        float x = tk->centerX + cosf(a) * r, y = tk->centerY + sinf(a) * r;
+        int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
+        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt((int)m->z, gy, gx)) {
+            x = m->x; y = m->y;
+        }
+        tk->slotX[k] = x;
+        tk->slotY[k] = y;
+    }
 }
 
 void TalkStart(int a, int b) {
@@ -126,21 +156,30 @@ void TalkStart(int a, int b) {
     tk->z = (int)movers[a].z;
     tk->centerX = (movers[a].x + movers[b].x) * 0.5f;
     tk->centerY = (movers[a].y + movers[b].y) * 0.5f;
-    float dx = movers[b].x - movers[a].x, dy = movers[b].y - movers[a].y;
-    float len = sqrtf(dx * dx + dy * dy);
-    float ux = len > 0.5f ? dx / len : 1.0f, uy = len > 0.5f ? dy / len : 0.0f;
     tk->members[0] = a;
     tk->members[1] = b;
     tk->count = 2;
-    PickSlot(&movers[a], tk->centerX, tk->centerY, -ux, -uy, &tk->slotX[0], &tk->slotY[0]);
-    PickSlot(&movers[b], tk->centerX, tk->centerY, ux, uy, &tk->slotX[1], &tk->slotY[1]);
+    ArrangeSlots(t);
     tk->timeLeft = RandRange(talkMinSeconds, talkMaxSeconds);
     tk->speaker = GetRandomValue(0, 1);
     tk->speakTimer = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
     moverTalkIdx[a] = moverTalkIdx[b] = t + 1;
     StopWalking(a);
     StopWalking(b);
+    if (t + 1 > talkHigh) talkHigh = t + 1;
     talkStartedCount++;
+}
+
+void TalkJoin(int t, int i) {
+    Talk* tk = &talks[t];
+    if (!tk->active || tk->count >= TALK_MAX_MEMBERS || moverTalkIdx[i]) return;
+    tk->members[tk->count++] = i;
+    moverTalkIdx[i] = t + 1;
+    StopWalking(i);
+    ArrangeSlots(t);
+    float more = RandRange(talkMinSeconds, talkMaxSeconds) * 0.5f;   // a newcomer keeps it going
+    if (tk->timeLeft < more) tk->timeLeft = more;
+    talkJoinedCount++;
 }
 
 static void TryStartTalk(int i) {
@@ -149,7 +188,18 @@ static void TryStartTalk(int i) {
     float r = talkStartRadius * CELL_SIZE;
     for (int k = 0; k < n->count; k++) {
         int j = n->e[k].mover;
-        if (j < 0 || j >= moverCount || !CanTalk(j) || (int)movers[j].z != (int)movers[i].z) continue;
+        if (j < 0 || j >= moverCount || (int)movers[j].z != (int)movers[i].z) continue;
+        int t = MoverTalk(j);
+        if (t >= 0) {   // j is in a talk: join it if there's room and its middle is close
+            if (talks[t].count >= TALK_MAX_MEMBERS) continue;
+            float cx = talks[t].centerX - movers[i].x, cy = talks[t].centerY - movers[i].y;
+            float reach = r + talks[t].radius;
+            if (cx * cx + cy * cy > reach * reach) continue;
+            if (GetRandomValue(0, 9999) >= (int)(talkChance * 10000.0f)) return;
+            TalkJoin(t, i);
+            return;
+        }
+        if (!CanTalk(j)) continue;
         float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
         if (dx * dx + dy * dy > r * r) continue;
         if (GetRandomValue(0, 9999) >= (int)(talkChance * 10000.0f)) return;   // one roll per check
@@ -162,11 +212,15 @@ void TalkTick(float dt) {
     for (int i = 0; i < moverCount; i++)
         if (moverTalkCooldown[i] > 0.0f) moverTalkCooldown[i] -= dt;
 
-    for (int t = 0; t < MAX_TALKS; t++) {
+    int high = 0;
+    for (int t = 0; t < talkHigh; t++) {
         Talk* tk = &talks[t];
         if (!tk->active) continue;
+        high = t + 1;
+        int before = tk->count;
         for (int k = tk->count - 1; k >= 0; k--)
             if (!CanStayInTalk(tk->members[k])) LeaveTalk(t, k);
+        if (tk->count >= 2 && tk->count < before) ArrangeSlots(t);   // close the circle
         tk->age += dt;
         tk->timeLeft -= dt;
         if (tk->count < 2 || tk->timeLeft <= 0.0f || !talkEnabled) { EndTalk(t); continue; }
@@ -176,6 +230,8 @@ void TalkTick(float dt) {
             tk->speakTimer = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
         }
     }
+
+    talkHigh = high;
 
     if (!talkEnabled || !noticeEnabled) return;
     unsigned int phase = talkTickCounter++ % TALK_CHECK_EVERY;
@@ -202,4 +258,38 @@ bool TalkMoverTick(int i, float dt) {
     m->lastX = m->x;
     m->lastY = m->y;
     return true;
+}
+
+// --- Passers-by give a conversation room ---
+#define ROOM_LOOK     3.0f    // cells beyond the circle where a walker starts to steer round it
+#define ROOM_MARGIN   0.6f    // cells: how wide a berth beyond the members' spots
+#define ROOM_CENTRED  0.15f   // cells: closer to my line than this = dead ahead: go right
+
+bool TalkGiveRoomSteer(int i, float hx, float hy, float* sideX, float* sideY) {
+    *sideX = *sideY = 0.0f;
+    if (!talkGiveRoom || talkHigh == 0 || MoverTalk(i) >= 0) return false;
+    const Mover* m = &movers[i];
+    float rx = -hy, ry = hx;   // my right
+    float sx = 0.0f, sy = 0.0f;
+    bool any = false;
+    for (int t = 0; t < talkHigh; t++) {
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->z != (int)m->z) continue;
+        float dx = tk->centerX - m->x, dy = tk->centerY - m->y;
+        float berth = tk->radius + ROOM_MARGIN * CELL_SIZE;
+        float look = berth + ROOM_LOOK * CELL_SIZE;
+        float ahead = dx * hx + dy * hy;
+        if (ahead <= 0.0f || ahead > look) continue;
+        float lateral = dx * rx + dy * ry;          // > 0: the middle is on my right
+        if (fabsf(lateral) > berth) continue;       // my line already clears it
+        float w = 1.0f - ahead / look;
+        w *= 1.0f - fabsf(lateral) / berth * 0.5f;  // more when heading straight at it
+        float side = lateral > ROOM_CENTRED * CELL_SIZE ? -1.0f : 1.0f;
+        sx += side * rx * w;
+        sy += side * ry * w;
+        any = true;
+    }
+    *sideX = sx;
+    *sideY = sy;
+    return any;
 }
