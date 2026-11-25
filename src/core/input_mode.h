@@ -164,6 +164,7 @@ extern bool isDragging;
 extern int roadToolStage;
 extern float roadToolX1, roadToolY1, roadToolX2, roadToolY2;
 extern int roadToolClass;
+extern int roadToolEdge, roadToolNode;   // (stage 3: the road being bent; 4: the junction pressed)
 extern int dragStartX;
 extern int dragStartY;
 extern int dragStartZ;

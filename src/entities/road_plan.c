@@ -290,6 +290,68 @@ int RoadPlanCheck(char lines[][128], int max) {
     return k;
 }
 
+// One saved copy of the plan (a drag's start: right-click puts it back)
+static RpNode rpSaveN[RP_MAX_NODES];
+static RpEdge rpSaveE[RP_MAX_EDGES];
+static int rpSaveNN = -1, rpSaveNE = 0;
+void RoadPlanSave(void) {
+    memcpy(rpSaveN, rpNodes, sizeof(RpNode) * (size_t)rpNodeCount);
+    memcpy(rpSaveE, rpEdges, sizeof(RpEdge) * (size_t)rpEdgeCount);
+    rpSaveNN = rpNodeCount; rpSaveNE = rpEdgeCount;
+}
+void RoadPlanRestore(void) {
+    if (rpSaveNN < 0) return;
+    memcpy(rpNodes, rpSaveN, sizeof(RpNode) * (size_t)rpSaveNN);
+    memcpy(rpEdges, rpSaveE, sizeof(RpEdge) * (size_t)rpSaveNE);
+    rpNodeCount = rpSaveNN; rpEdgeCount = rpSaveNE;
+}
+
+bool RoadPlanIsStraight(int e) { return e >= 0 && e < rpEdgeCount && RpStraight(e); }
+
+void RoadPlanEdgeMid(int e, float* x, float* y) { RoadPlanPoint(e, 0.5f, x, y); }
+
+// Bend road e so its middle passes through (x, y) (B(0.5) = P0/4 + C/2 + P1/4); within a cell
+// of the straight line's middle: straight again
+void RoadPlanBendThrough(int e, float x, float y) {
+    if (e < 0 || e >= rpEdgeCount || !rpEdges[e].alive) return;
+    const RpNode *A = &rpNodes[rpEdges[e].a], *B = &rpNodes[rpEdges[e].b];
+    float mx = (A->x + B->x) * 0.5f, my = (A->y + B->y) * 0.5f;
+    if (hypotf(x - mx, y - my) < 1.0f) { rpEdges[e].cx = mx; rpEdges[e].cy = my; return; }
+    rpEdges[e].cx = 2.0f * x - mx;
+    rpEdges[e].cy = 2.0f * y - my;
+}
+
+// Move junction n to (x, y): its straight roads stay straight, a curved one's control point moves
+// half as far (it keeps roughly its shape)
+void RoadPlanMoveNode(int n, float x, float y) {
+    if (n < 0 || n >= rpNodeCount || !rpNodes[n].alive) return;
+    float dx = x - rpNodes[n].x, dy = y - rpNodes[n].y;
+    bool straight[64];
+    int es[64], k = 0;
+    for (int e = 0; e < rpEdgeCount && k < 64; e++)
+        if (rpEdges[e].alive && (rpEdges[e].a == n || rpEdges[e].b == n)) { es[k] = e; straight[k] = RpStraight(e); k++; }
+    rpNodes[n].x = x; rpNodes[n].y = y;
+    for (int i = 0; i < k; i++) {
+        RpEdge* E = &rpEdges[es[i]];
+        if (straight[i]) { E->cx = (rpNodes[E->a].x + rpNodes[E->b].x) * 0.5f; E->cy = (rpNodes[E->a].y + rpNodes[E->b].y) * 0.5f; }
+        else { E->cx += dx * 0.5f; E->cy += dy * 0.5f; }
+    }
+}
+
+// The road whose middle handle is within `within` of (x, y), -1: none
+int RoadPlanHandleAt(float x, float y, float within) {
+    int best = -1;
+    float bd = within * within;
+    for (int e = 0; e < rpEdgeCount; e++) {
+        if (!rpEdges[e].alive) continue;
+        float hx, hy;
+        RoadPlanEdgeMid(e, &hx, &hy);
+        float d = (hx - x) * (hx - x) + (hy - y) * (hy - y);
+        if (d <= bd) { bd = d; best = e; }
+    }
+    return best;
+}
+
 // Snap a point being drawn: to a junction near it, else onto a road near it, else (unless free)
 // to the 8-cell grid's tile centres (where the tile town's roads run)
 void RoadPlanSnap(float* x, float* y, bool free) {

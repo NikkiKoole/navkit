@@ -333,6 +333,50 @@ void DrawRoadToolPreview(void) {
         DrawCircleV(p, fmaxf(2.0f, 1.2f * CS * zoom), rpNodes[n].roundabout ? (Color){255, 200, 60, 160} : (Color){255, 255, 255, 110});
     }
     Vector2 ms = GetMousePosition(), m = ScreenToGrid(ms);
+    float pick = fmaxf(1.5f, 10.0f / (CS * zoom));
+    // bending a road / moving a junction: the roads changed, live (orange: more problems than before the drag)
+    static int problems0 = 0, lastStage = 0;
+    if (roadToolStage >= 3) {
+        char lines[32][128];
+        int now = RoadPlanCheck(lines, 32);
+        if (lastStage < 3) problems0 = now;   // (the drag just started: before it, the plan was this)
+        lastStage = roadToolStage;
+        Color col = now > problems0 ? (Color){255, 150, 40, 200} : (Color){90, 230, 120, 200};
+        for (int e = 0; e < rpEdgeCount; e++) {
+            if (!rpEdges[e].alive) continue;
+            bool mine = roadToolStage == 3 ? e == roadToolEdge : (rpEdges[e].a == roadToolNode || rpEdges[e].b == roadToolNode);
+            if (!mine) continue;
+            float w = (rpEdges[e].avenue ? 2.0f : 1.0f) * RD_ROAD_WIDTH * CS * zoom;
+            float px, py;
+            RoadPlanPoint(e, 0, &px, &py);
+            Vector2 prev = CarScreen(px * CS, py * CS);
+            for (int i = 1; i <= 40; i++) {
+                RoadPlanPoint(e, i / 40.0f, &px, &py);
+                Vector2 p = CarScreen(px * CS, py * CS);
+                DrawLineEx(prev, p, fmaxf(2.0f, w), col);
+                prev = p;
+            }
+        }
+        if (now > problems0) DrawText(lines[now - 1], (int)ms.x + 16, (int)ms.y + 12, 16, (Color){255, 170, 60, 255});
+        return;
+    }
+    lastStage = roadToolStage;
+    // handles: the middle of each road (drag to bend); the one under the mouse, or the junction, lit
+    if (roadToolStage == 0) {
+        int hn = RoadPlanNearestNode(m.x, m.y, pick);
+        int he = hn < 0 ? RoadPlanHandleAt(m.x, m.y, pick) : -1;
+        float hs = fmaxf(3.0f, 0.9f * CS * zoom);
+        for (int e = 0; e < rpEdgeCount; e++) {
+            if (!rpEdges[e].alive) continue;
+            float hx, hy;
+            RoadPlanEdgeMid(e, &hx, &hy);
+            Vector2 p = CarScreen(hx * CS, hy * CS);
+            Color c = e == he ? (Color){255, 255, 120, 255} : (Color){255, 255, 255, 150};
+            DrawRectangleV((Vector2){p.x - hs, p.y - hs}, (Vector2){2 * hs, 2 * hs}, c);
+        }
+        if (hn >= 0) DrawCircleLinesV(CarScreen(rpNodes[hn].x * CS, rpNodes[hn].y * CS), fmaxf(5.0f, 2.2f * CS * zoom), (Color){255, 255, 120, 255});
+        if (hn >= 0 || he >= 0) return;   // (pressing there grabs it, not a new road)
+    }
     float sx = m.x, sy = m.y;
     RoadPlanSnap(&sx, &sy, IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT));
     DrawCircleV(CarScreen(sx * CS, sy * CS), fmaxf(3.0f, 1.6f * CS * zoom), (Color){120, 220, 255, 200});

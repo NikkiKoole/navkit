@@ -95,6 +95,41 @@ describe(road_plan_remove) {
     }
 }
 
+describe(road_plan_shapes) {
+    it("bending a road puts its middle where it was dragged; back on the line it's straight") {
+        RoadPlanClear();
+        RoadPlanAdd(50, 100, 150, 100, false, 0, 0, RD_CLS_STREET);
+        RoadPlanBendThrough(0, 100, 120);
+        float x, y;
+        RoadPlanEdgeMid(0, &x, &y);
+        expect(Near(x, 100, 0.01f) && Near(y, 120, 0.01f));
+        expect(!RoadPlanIsStraight(0));
+        expect(RoadPlanHandleAt(101, 119, 2) == 0);
+        RoadPlanBendThrough(0, 100.4f, 100.5f);
+        expect(RoadPlanIsStraight(0));
+    }
+    it("moving a junction: straight roads stay straight, a curved one keeps bending") {
+        RoadPlanClear();
+        RoadPlanAdd(50, 100, 150, 100, false, 0, 0, RD_CLS_STREET);
+        RoadPlanAdd(150, 100, 150, 200, true, 170, 150, RD_CLS_STREET);
+        int n = RoadPlanNearestNode(150, 100, 1);
+        RoadPlanMoveNode(n, 160, 90);
+        expect(Near(rpNodes[n].x, 160, 0.01f) && Near(rpNodes[n].y, 90, 0.01f));
+        expect(RoadPlanIsStraight(0));
+        expect(!RoadPlanIsStraight(1));
+    }
+    it("a saved plan comes back after changes") {
+        RoadPlanClear();
+        RoadPlanAdd(50, 100, 150, 100, false, 0, 0, RD_CLS_STREET);
+        RoadPlanSave();
+        RoadPlanBendThrough(0, 100, 130);
+        RoadPlanAdd(100, 50, 100, 150, false, 0, 0, RD_CLS_STREET);
+        RoadPlanRestore();
+        expect(RoadPlanRoads() == 1);
+        expect(RoadPlanIsStraight(0));
+    }
+}
+
 describe(road_plan_check) {
     it("junctions too close, roads too sharp, a dead end") {
         RoadPlanClear();
@@ -154,6 +189,7 @@ int main(int argc, char* argv[]) {
     test(road_plan_join);
     test(road_plan_curves);
     test(road_plan_remove);
+    test(road_plan_shapes);
     test(road_plan_check);
     test(road_plan_network);
     return summary();

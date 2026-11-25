@@ -2484,9 +2484,17 @@ static bool CheckKey(int key) {
 // under the mouse. Points snap to junctions, roads, else the 8-cell grid (Shift: no grid).
 // Each edit rebuilds the city from the plan (CityRebuildFromPlan: cars placed again).
 // ---------------------------------------------------------------------------
-int roadToolStage = 0;
+// Shapes too: every road has a handle at its middle - drag it to bend the road (back on the
+// straight line: straight); press a junction and drag to move it (its roads follow); pressing a
+// junction without dragging starts a road from it. Right-click during a drag puts it back.
+int roadToolStage = 0;   // (+ 3 bending road roadToolEdge, 4 a junction pressed / moved: roadToolNode)
 float roadToolX1, roadToolY1, roadToolX2, roadToolY2;
 int roadToolClass = 1;   // (RD_CLS_STREET)
+int roadToolEdge = -1, roadToolNode = -1;
+static bool roadToolMoved = false;
+static float roadToolPressX, roadToolPressY;
+// handles and junctions are picked within ~10 px on screen (at least a cell and a half)
+static float RoadToolPick(void) { return fmaxf(1.5f, 10.0f / (CELL_SIZE * zoom)); }
 
 static void RoadToolApply(const char* what) {
     char lines[8][128];
@@ -2506,12 +2514,42 @@ static void HandleRoadTool(void) {
     float sx = m.x, sy = m.y;
     RoadPlanSnap(&sx, &sy, shift);
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        if (roadToolStage >= 3) { RoadPlanRestore(); roadToolStage = 0; return; }   // (a drag cancelled)
         if (roadToolStage > 0) { roadToolStage = 0; return; }
         if (RoadPlanRemoveAt(m.x, m.y, 4.0f)) RoadToolApply("Road removed");
         return;
     }
+    // bending a road: its middle follows the mouse
+    if (roadToolStage == 3) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { RoadPlanBendThrough(roadToolEdge, m.x, m.y); return; }
+        roadToolStage = 0;
+        RoadToolApply(RoadPlanIsStraight(roadToolEdge) ? "Road straightened" : "Road bent");
+        return;
+    }
+    // a junction pressed: dragged, it moves (to the grid unless Shift); let go unmoved, a road starts there
+    if (roadToolStage == 4) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            if (hypotf(m.x - roadToolPressX, m.y - roadToolPressY) > 1.5f) roadToolMoved = true;
+            if (roadToolMoved) {
+                float gx = m.x, gy = m.y;
+                if (!shift) { gx = floorf(gx / 8.0f) * 8.0f + 4.0f; gy = floorf(gy / 8.0f) * 8.0f + 4.0f; }
+                RoadPlanMoveNode(roadToolNode, gx, gy);
+            }
+            return;
+        }
+        if (roadToolMoved) { roadToolStage = 0; RoadToolApply("Junction moved"); return; }
+        roadToolX1 = rpNodes[roadToolNode].x; roadToolY1 = rpNodes[roadToolNode].y; roadToolStage = 1;
+        return;
+    }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (roadToolStage == 0) { roadToolX1 = sx; roadToolY1 = sy; roadToolStage = 1; }
+        if (roadToolStage == 0) {
+            float pick = RoadToolPick();
+            int n = RoadPlanNearestNode(m.x, m.y, pick);
+            int h = n < 0 ? RoadPlanHandleAt(m.x, m.y, pick) : -1;
+            if (n >= 0) { RoadPlanSave(); roadToolNode = n; roadToolMoved = false; roadToolPressX = m.x; roadToolPressY = m.y; roadToolStage = 4; return; }
+            if (h >= 0) { RoadPlanSave(); roadToolEdge = h; roadToolStage = 3; return; }
+            roadToolX1 = sx; roadToolY1 = sy; roadToolStage = 1;
+        }
         else if (roadToolStage == 1 && hypotf(sx - roadToolX1, sy - roadToolY1) >= 2.0f) { roadToolX2 = sx; roadToolY2 = sy; roadToolStage = 2; }
         return;
     }

@@ -53,6 +53,16 @@ void RoadPlanPoint(int e, float t, float* x, float* y);   // a point on road e, 
 float RoadPlanMinRadius(int cls);                          // cells: the tightest curve a class takes
 // Problems, one line each into buf (max lines); returns how many
 int RoadPlanCheck(char lines[][128], int max);
+// Editing shapes: a road's middle (its handle), bending it through a point (near the straight
+// line's middle: straight), moving a junction (straight roads stay straight, curved ones keep
+// roughly their shape), the road whose handle is near a point
+bool RoadPlanIsStraight(int e);
+void RoadPlanEdgeMid(int e, float* x, float* y);
+void RoadPlanBendThrough(int e, float x, float y);
+void RoadPlanMoveNode(int n, float x, float y);
+int RoadPlanHandleAt(float x, float y, float within);
+void RoadPlanSave(void);      // one saved copy (a drag's start) ...
+void RoadPlanRestore(void);   // ... put back (the drag cancelled)
 // A point being drawn snapped: to a junction near it, onto a road near it, else (unless free)
 // to the centre of its 8-cell tile
 void RoadPlanSnap(float* x, float* y, bool free);
