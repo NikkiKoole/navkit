@@ -350,6 +350,41 @@ Diagnostics added: `TR_NET` (reachability), `TR_FAILS` (failing route searches);
 route searches per caller and the most in one tick. Profiler sections: `Cars`,
 `TrafficLists/Junctions/Drive/Sample`, `DrawCars`.
 
+## Slot traffic: the "Game & Watch" idea (2026-11-25)
+
+The user's idea: every road position is a fixed spot; simulate which spots hold a car, and give
+cars a real pose only where someone looks. `src/entities/slots.c/.h`, setting `carCitySlots`
+(same network, lights, roundabouts). Every lane and junction curve is cut into slots of ~3 cells;
+each 1 s step all cars at once (Nagel-Schreckenberg): speed +1 slot (max 3), slowed to the free
+slots ahead, a 20% dawdle, move - two cars never share a slot. A curve is entered only when
+granted: green, no crossing curve occupied or granted, the exit lane with more free slots at
+its start than cars already on the curve; longest waiting first, ring traffic first. Routes:
+the same A*, 12 searches per tick from a queue; queue-aware costs; a car refused for want of room
+for 15 steps re-routes. Poses are computed only when drawn, for cars on screen, moving smoothly
+between slots.
+
+2048 city, 16000 cars, 5 game minutes:
+
+| | full sim | slot sim |
+|---|---|---|
+| CPU for the cars, avg per tick | ~9 ms | 0.43 ms (~20x less) |
+| trips | 1192 | 1275 |
+| mean speed now | 1.2 cells/s | 0.9 |
+| moving now | 5052 | 2280 |
+| longest standstill | 295 s | 299 s |
+
+Both are congested at this density; trips are about the same; the slot sim's junctions pass
+fewer cars (more queueing). 4000 cars on a 1024 city: full 1.24 ms, slot ~0 (under noise).
+
+Found building it: 500 route searches in one step made a 140 ms tick every second (now spread
+over ticks); "exit's first slot free" let two cars of one lane end up on one curve waiting for
+one slot, stopping inside the junction (now: free slots > cars on the curve); grants given to
+cars that couldn't reach the curve that step blocked crossing traffic for nothing; without the
+full sim's "find another way round a full exit" gridlock loops never broke.
+
+Not done yet: real (steered) cars in the watched area with a hand-over; parking in slot mode;
+the slot sim gridlocks at ~50000 cars on the 2048 city (a full network).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

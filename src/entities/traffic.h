@@ -21,6 +21,7 @@ void TrafficReset(void);                          // junction state + stats (Cle
 int TrafficSpawn(int lane, float s, int z);       // a car on lane at s px; -1 if full
 int TrafficSpawnParked(int bay, float parkFor, int z);   // a car parked in a free bay; -1 if taken/full
 void TrafficTick(float dt);                       // all road cars (CarsTick calls it)
+void TrafficClockTick(float dt);                  // only the traffic lights' clock (the slot traffic)
 // Traffic lights on every 4-way junction (opposite approaches green together; others
 // stay first come, first served). Call after RoadsBuild.
 void TrafficSetupLights(bool on);

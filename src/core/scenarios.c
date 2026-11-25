@@ -17,6 +17,7 @@
 #include "../entities/cars.h"
 #include "../entities/roads.h"
 #include "../entities/traffic.h"
+#include "../entities/slots.h"
 #include "../entities/elevators.h"
 #include "../entities/containers.h"
 #include "../core/sim_manager.h"
@@ -3289,7 +3290,10 @@ static void SetupCars(void) {
     AddMessage("Cars: one 2x2 car tours its home lot (A) and five streets (setting group Experiments/Cars)", GREEN);
 }
 
-static void CarsScenarioPrintStats(void) { CarsPrintStats(); }
+static void CarsScenarioPrintStats(void) {
+    if (slotCarCount > 0) SlotsPrintStats();
+    else CarsPrintStats();
+}
 
 // 3000 ticks: 5 legs (A-B-A, A-F-A started), C/D/E skipped (2-wide: no route for a
 // 2.0-wide car). Fail on a collapse: fewer than 4 legs, or the car got stuck.
@@ -3559,8 +3563,15 @@ static void SetupCarsCity(void) {
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
 
-    // Cars parked in random bays, leaving over the first 30 s; any left over on lanes
     int placed = 0;
+    if (carCitySlots) {   // the abstract slot traffic instead (slots.h)
+        SlotsBuild();
+        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed);
+        currentViewZ = 1;
+        AddMessage(TextFormat("Cars city, slot traffic: %d cars on %d roads", placed, rdEdgeCount), GREEN);
+        return;
+    }
+    // Cars parked in random bays, leaving over the first 30 s; any left over on lanes
     for (int tries = 0; carCityParking && tries < carCityCount * 4 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
         if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
     // (each lane fills from its start, 4-7 cells apart: no comparing every pair of cars)
@@ -3581,6 +3592,7 @@ static void SetupCarsCity(void) {
 
 // 3000 ticks: trips get done, nobody touches anybody or a wall, nobody runs a red light
 static bool CarsCityCheck(char* why, int whyLen) {
+    if (slotCarCount > 0) return SlotsCheck(why, whyLen);
     // (cars start parked and a trip counts when they park again: few trips in 3000 ticks)
     int trips = 0, drove = 0;
     for (int i = 0; i < carCount; i++) { trips += cars[i].legsDone; if (cars[i].driveTime > 0) drove++; }

@@ -2,6 +2,7 @@
 #include "../entities/cars.h"
 #include "../entities/roads.h"
 #include "../entities/traffic.h"
+#include "../entities/slots.h"
 #include "../entities/mover.h"
 #include "../game_state.h"
 #include "../../assets/atlas.h"
@@ -115,20 +116,26 @@ static void DrawTrafficLights(void) {
 
 // One atlas tile of a car: u forward / v to the right of travel (px from the car's
 // centre, in the car's frame), size lu x lv px, rotated with the car
-static void CarTile(const Car* c, int sprite, float u, float v, float lu, float lv, Color tint) {
-    float ch = cosf(c->heading), sh = sinf(c->heading);
-    float wx = c->x + ch * u - sh * v, wy = c->y + sh * u + ch * v;
+static void CarTileAt(float cx, float cy, float heading, int sprite, float u, float v, float lu, float lv, Color tint) {
+    float ch = cosf(heading), sh = sinf(heading);
+    float wx = cx + ch * u - sh * v, wy = cy + sh * u + ch * v;
     Vector2 p = CarScreen(wx, wy);
     Rectangle src = SpriteGetRect(sprite);
     Rectangle dst = {p.x, p.y, lu * zoom, lv * zoom};
-    DrawTexturePro(atlas, src, dst, (Vector2){lu * zoom * 0.5f, lv * zoom * 0.5f}, c->heading * RAD2DEG, tint);
+    DrawTexturePro(atlas, src, dst, (Vector2){lu * zoom * 0.5f, lv * zoom * 0.5f}, heading * RAD2DEG, tint);
 }
+#define CarTile(c, sprite, u, v, lu, lv, tint) CarTileAt((c)->x, (c)->y, (c)->heading, sprite, u, v, lu, lv, tint)
 
 // The car from its atlas tiles (worksheet8x8.ase: car-frame-*, car-seat), drawn facing
 // right (east) at heading 0: a narrow car (<= 1.25 cells) from the 1x2 frame (back + front
 // tile, one seat), a wider one from the 2x2 frame (four tiles, two seats). Frames take the
 // car's colour; seats don't.
-static void DrawCarSprite(const Car* c, Color col) {
+static void DrawCarSpriteAt(float x, float y, float heading, Color col);
+static void DrawCarSprite(const Car* c, Color col) { DrawCarSpriteAt(c->x, c->y, c->heading, col); }
+static void DrawCarSpriteAt(float x, float y, float heading, Color col) {
+    Car tmp;   // CarTile reads x, y, heading
+    tmp.x = x; tmp.y = y; tmp.heading = heading;
+    const Car* c = &tmp;
     float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE;
     float hu = L * 0.25f;   // tile centres a quarter of the length from the middle
     if (carWidth <= 1.25f) {
@@ -146,8 +153,38 @@ static void DrawCarSprite(const Car* c, Color col) {
     }
 }
 
+// The slot traffic: poses only for cars on screen
+static void DrawSlotCars(void) {
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    float x0 = -offset.x / zoom, y0 = -offset.y / zoom, x1 = (sw - offset.x) / zoom, y1 = (sh - offset.y) / zoom;
+    float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE, carPx = L * zoom;
+    for (int i = 0; i < slotCarCount; i++) {
+        if (!SlotCarVisible(i, x0, y0, x1, y1)) continue;
+        float x, y, h;
+        SlotCarPose(i, &x, &y, &h);
+        Vector2 sc = CarScreen(x, y);
+        if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
+        Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        if (carPx < 3) { DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col); continue; }
+        if (carPx < 8) {
+            Rectangle r = {sc.x, sc.y, (L - 2) * zoom, (W - 4) * zoom};
+            DrawRectanglePro(r, (Vector2){r.width * 0.5f, r.height * 0.5f}, h * RAD2DEG, col);
+            continue;
+        }
+        DrawCarSpriteAt(x, y, h, col);
+    }
+}
+
 void DrawCars(void) {
-    if (carCount == 0) return;
+    if (carCount == 0 && slotCarCount == 0) return;
+    if (carCount == 0) {
+        PROFILE_BEGIN(DrawCars);
+        if (rdSegCount > 0) DrawTrafficLights();
+        if (carDebug && carLength * CELL_SIZE * zoom >= 6) DrawRoadsDebug();
+        DrawSlotCars();
+        PROFILE_END(DrawCars);
+        return;
+    }
     PROFILE_BEGIN(DrawCars);
     if (rdSegCount > 0) DrawTrafficLights();
     bool roads = rdSegCount > 0;

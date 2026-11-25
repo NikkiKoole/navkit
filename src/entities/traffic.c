@@ -990,6 +990,8 @@ static void Sample(void) {
     if (off > trafficOffRoadMax) trafficOffRoadMax = off;
 }
 
+void TrafficClockTick(float dt) { trTime += dt; }
+
 void TrafficTick(float dt) {
     if (rdSegCount == 0) return;
     trTime += dt;

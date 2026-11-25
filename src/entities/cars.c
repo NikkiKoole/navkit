@@ -2,6 +2,7 @@
 #include "cars.h"
 #include "roads.h"
 #include "traffic.h"
+#include "slots.h"
 #include "mover.h"            // CELL_SIZE
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -34,6 +35,7 @@ bool carCityLights = true;
 int carCityRoundabouts = 3;
 bool carCityAvenues = true;
 bool carCityParking = true;
+bool carCitySlots = false;
 
 int carPlanCount = 0, carPlanExpansionsMax = 0;
 double carPlanMsTotal = 0, carPlanMsMax = 0;
@@ -576,6 +578,7 @@ void ClearCars(void) {
     for (int i = 0; i < MAX_CARS; i++) CarFreePath(&cars[i]);
     RoadsClear();
     TrafficReset();
+    SlotsClear();
     memset(cars, 0, sizeof(cars));
     carCount = 0;
     clrZ = -1;   // the world may have changed
