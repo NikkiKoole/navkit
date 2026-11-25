@@ -44,6 +44,7 @@ int carCityLayout = 0;   // 0 grid, 1 Manhattan
 float carCityCabs = 0.3f;
 bool carCityLaneRules = true;
 int carCityPeds = 80;
+int carCityDrivers = 20;
 bool carCityGreenWave = true;
 float carCitySetback = 4.0f;   // compact junctions (with near-square angles even steered 2x2 cars fit; 7 for jittery cities)
 

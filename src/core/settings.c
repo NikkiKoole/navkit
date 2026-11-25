@@ -719,6 +719,8 @@ static const Setting settings[] = {
       "Slot traffic: cars in the camera view also get a physical car (real steering, smooth speed) chasing their slot's position; elsewhere only slots."),
     SET_BOOL("carCityLaneRules", "City Lane Rules (slot traffic)", "Experiments/Cars", carCityLaneRules,
       "Slot traffic: right turns only from the right-hand lane, left turns only from the left lane, cars get into lane in time (like Trafficity). Steered cars keep the old rules for now (with these they deadlock - work to do). Restart the scenario to apply."),
+    SET_INT("carCityDrivers", "City Drivers (slot traffic)", "Experiments/Cars", carCityDrivers, 1.0f, 0, 2000,
+      "cars-city slot traffic: pedestrians who own a car parked at the kerb near them. For a far goal (50+ cells) with the car within 30 cells, they walk to it, drive to the free kerb spot nearest the goal, park and walk the rest. Restart the scenario to apply.", NULL),
     SET_INT("carCityPeds", "City Pedestrians (slot traffic)", "Experiments/Cars", carCityPeds, 1.0f, 0, 2000,
       "cars-city slot traffic: movers walking between random spots on the pavements, crossing wherever (pavements are a bit quicker to walk). Cars brake for anyone in the road; at the kerb a pedestrian waits for a gap (up to 6 s, then just goes). Restart the scenario to apply.", NULL),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,

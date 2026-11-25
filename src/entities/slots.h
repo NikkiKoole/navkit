@@ -46,6 +46,9 @@ typedef struct {
     int kerbStep;            // the step it pulled in or out (drawing: a sideways drift), -1 none
     bool kerbIn;             // ... in (true) or out
     int kerbFrom;            // ... from this slot
+    int owner;               // a mover's own car (-1: nobody's): parked until its owner drives it
+    bool ownerIn;            // the owner is driving it
+    float goalX, goalY;      // owner's drive: park as near this as a free kerb spot allows (px)
     int trips;
     int routeLen;
     unsigned short route[SL_MAX_ROUTE];   // RdSegId
@@ -76,6 +79,16 @@ int SlotCarSignals(int i);
 // the kerb waits for a gap (up to SL_PED_PATIENCE s, then just goes) and never walks into a car.
 // Install as moverStepHold (mover.h).
 bool SlotsPedHold(int moverIdx, float dirX, float dirY);
+
+// Movers driving (cars-city): a mover owns a car parked at the kerb. SlotsMoverBoard: the owner
+// (standing by it) gets in (TRANSPORT_RIDING: not walking, not drawn) and the car drives to the
+// free kerb spot nearest its transportFinalGoal, parks, and the owner gets out on the pavement
+// there and walks on to the goal. Owned cars never leave on their own.
+void SlotsSetOwner(int car, int mover);
+int SlotsCarOf(int mover);               // the car mover owns, -1 none
+bool SlotsCarParked(int car);            // at the kerb, nobody in it
+bool SlotsMoverBoard(int mover, int car);
+bool SlotCarDriven(int car);             // its owner is in it (drawing)
 
 // Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
 // (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;

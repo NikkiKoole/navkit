@@ -3606,11 +3606,49 @@ static void CityPavements(void) {
     navPathExtraZ = 1;
     free(road);
 }
+// A pavement cell next to where car `car` stands (its door)
+static Point CityCarDoor(int car) {
+    float x, y, h, st;
+    SlotCarDrawPose(car, &x, &y, &h, &st);
+    int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE), bx = cx, by = cy, best = 1 << 30;
+    for (int dy = -4; dy <= 4; dy++)
+        for (int dx = -4; dx <= 4; dx++) {
+            int xx = cx + dx, yy = cy + dy;
+            if (xx < 0 || yy < 0 || xx >= gridWidth || yy >= gridHeight || !HAS_FLOOR(xx, yy, 1)) continue;
+            if (dx * dx + dy * dy < best) { best = dx * dx + dy * dy; bx = xx; by = yy; }
+        }
+    return (Point){bx, by, 1};
+}
+static unsigned char cityToCar[MAX_MOVERS];   // walking to its car (to drive the next trip)
 static bool CityWalkGoal(int moverIdx, Point* goal) {
-    (void)moverIdx;
     if (cityWalkN == 0) return false;
+    Mover* m = &movers[moverIdx];
+    int car = SlotsCarOf(moverIdx);
+    // at its car: get in and drive (the goal it chose is in transportFinalGoal)
+    if (car >= 0 && cityToCar[moverIdx]) {
+        cityToCar[moverIdx] = 0;
+        Point door = CityCarDoor(car);
+        int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+        if (abs(mx - door.x) <= 2 && abs(my - door.y) <= 2 && SlotsMoverBoard(moverIdx, car)) {
+            *goal = (Point){mx, my, 1};
+            return true;
+        }
+        *goal = m->transportFinalGoal;   // couldn't drive: walk
+        return true;
+    }
     int c = cityWalk[CityRand(cityWalkN)];   // (the city's own generator: runs repeat)
     *goal = (Point){c % gridWidth, c / gridWidth, 1};
+    // a far goal and the car near: walk to the car first
+    if (car >= 0 && SlotsCarParked(car)) {
+        Point door = CityCarDoor(car);
+        float mx = m->x / CELL_SIZE, my = m->y / CELL_SIZE;
+        float far = hypotf(goal->x - mx, goal->y - my), toCar = hypotf(door.x - mx, door.y - my);
+        if (far > 50 && toCar < 30) {
+            m->transportFinalGoal = *goal;
+            cityToCar[moverIdx] = 1;
+            *goal = door;
+        }
+    }
     return true;
 }
 
@@ -3715,7 +3753,18 @@ static void SetupCarsCity(void) {
         hungerEnabled = thirstEnabled = energyEnabled = false;
         moverGoalPicker = CityWalkGoal;
         moverStepHold = SlotsPedHold;
-        for (int i = 0; i < carCityPeds && cityWalkN > 0; i++) {
+        memset(cityToCar, 0, sizeof(cityToCar));
+        int drivers = 0;
+        for (int car = 0; car < slotCarCount && drivers < carCityDrivers && drivers < carCityPeds; car++) {   // drivers: by their parked cars
+            if (!slotCars[car].kerb || slotCars[car].cab) continue;
+            Point door = CityCarDoor(car);
+            int before = moverCount;
+            SpawnMoverAt(door.x, door.y, 1);
+            if (moverCount == before) continue;
+            SlotsSetOwner(car, moverCount - 1);
+            drivers++;
+        }
+        for (int i = drivers; i < carCityPeds && cityWalkN > 0; i++) {
             int c = cityWalk[CityRand(cityWalkN)];
             SpawnMoverAt(c % gridWidth, c / gridWidth, 1);
         }

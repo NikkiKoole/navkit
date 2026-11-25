@@ -567,6 +567,21 @@ pavements are within 1.5 cells of tight right-turn curves).
 grid 470 (537), Manhattan 501 (532); pedestrians inside a car 85 / 56 of 96000 samples (mostly
 brushing a standing car while crossing). Setback alone costs: Manhattan 746 trips at 4, 334 at 8.
 
+## Slot traffic: movers drive (2026-11-25)
+
+Setting `carCityDrivers` (20, out of the pedestrians): a mover owns a car parked at the kerb
+(spawned at its door, the pavement cell nearest it). Owned cars never leave on their own.
+- The goal picker (`CityWalkGoal`): a goal 50+ cells away with the car within 30 cells: walk to
+  the door first (the goal kept in `transportFinalGoal`); at the door `SlotsMoverBoard`.
+- Boarding: the mover is `TRANSPORT_RIDING` (the train ride state: not walking, not drawn, needs
+  paused; set again every tick - the picker's path planning resets it via MaybeTakeTrain), its
+  position follows the car. The car plans to the free kerb spot nearest the goal (buckets in
+  growing squares; a spot taken on arrival: the next one), pulls out, drives with the traffic,
+  pulls in; the step after, the owner gets out on the nearest pavement cell and walks to the goal.
+
+250 cars, 80 pedestrians (20 drivers), 10 minutes: grid 28 drives, Manhattan 24, all parked and
+got out; pedestrians inside a car as without drivers (86 / 49 samples).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

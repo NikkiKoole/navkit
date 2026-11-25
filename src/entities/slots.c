@@ -4,6 +4,7 @@
 #include "traffic.h"
 #include "cars.h"
 #include "mover.h"            // CELL_SIZE
+#include "trains.h"           // TRANSPORT_RIDING (a driving mover rides its car)
 #include "../../shared/profiler.h"
 #include <math.h>
 #include <stdio.h>
@@ -49,6 +50,9 @@ static int* slSlotSeg = NULL;
 static int* slPedStamp = NULL;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
+static long slDrives = 0, slDrivesDone = 0, slDriveFails = 0;
+static bool SlDriveTo(int car);
+static void SlDriverOut(int car);
 static double* slPedHeldAt = NULL;   // gameTime a mover was last held (waiting: no walking ahead)
 static int slPedHeldCap = 0;
 // Stepping off the kerb is announced: the pedestrian waits for the next step, which then counts
@@ -107,6 +111,7 @@ void SlotsClear(void) {
     slTouchMax = 0;
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
+    slDrives = slDrivesDone = slDriveFails = 0;
     slStillMax = 0;
     slRouteCursor = 0;
 }
@@ -362,6 +367,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         c->kerb = true;
         c->stopSteps = 1 + (int)(SlRand() % 60);
         c->lcStep = c->kerbStep = -1;
+        c->owner = -1;
         slKerbCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
         slotCarCount++;
@@ -381,6 +387,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         c->needRoute = true;   // plans when it gets to the lane's end (searches spread over steps)
         c->cab = SlRand() < (unsigned)(cabShare * 32768);
         c->lcStep = c->kerbStep = -1;
+        c->owner = -1;
         slSlotCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
         SlQueueRoute(slotCarCount);
@@ -585,6 +592,7 @@ static void SlKerbMoves(void) {
             }
             if (kk < 0) {   // taken: a cab stands in the lane (the old way), a parker drives on
                 slKerbFull++;
+                if (c->owner >= 0) { if (!SlDriveTo(i)) SlQueueRoute(i); continue; }   // a driver: the next free spot near the goal
                 if (c->cab) c->stopSteps = 3 + (int)(SlRand() % 6);
                 else SlQueueRoute(i);
                 continue;
@@ -597,9 +605,11 @@ static void SlKerbMoves(void) {
             c->slot = c->prevSlot = kk;
             c->v = 0;
             c->stopSteps = c->cab ? 3 + (int)(SlRand() % 6) : 20 + (int)(SlRand() % 70);
+            if (c->owner >= 0) { c->stopSteps = 1 << 30; c->needRoute = false; }   // parked until its owner comes back
             if (c->cab) slFareStops++; else slParks++;
             continue;
         }
+        if (c->kerb && c->ownerIn && c->kerbStep != slStep) { SlDriverOut(i); continue; }   // parked: the driver gets out
         if (!c->kerb || c->kerbStep == slStep || c->stopSteps > 0 || c->needRoute) continue;
         // pull out: diagonally into the lane, one slot on; passing beside lane slot k
         if (k + 1 >= N || !SlFree(SlIdx(L, k)) || !SlFree(SlIdx(L, k + 1))) { slPullOutWaits++; continue; }
@@ -836,7 +846,7 @@ static void SlStampPedestrians(void) {
     float CS = CELL_SIZE, B = SL_BUCKET * CS, R = 1.5f * CS;   // (car half width + a pedestrian + a margin, from the slot's stretch)
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
-        if (!m->active) { slPedLX[i] = -1; continue; }
+        if (!m->active || m->transportState == TRANSPORT_RIDING) { slPedLX[i] = -1; continue; }
         float px = m->x, py = m->y, qx = px, qy = py;
         bool held = i < slPedHeldCap && slPedHeldAt[i] > gameTime - 0.5;
         bool going = i < slPedHeldCap && slPedGoStep[i] == slStep;
@@ -1089,7 +1099,7 @@ static void CheckTouches(void) {
             }
         }
     for (int mi = 0; mi < moverCount; mi++) {
-        if (!movers[mi].active) continue;
+        if (!movers[mi].active || movers[mi].transportState == TRANSPORT_RIDING) continue;
         for (int i = 0; i < slotCarCount; i++) {
             float dx = px[i] - movers[mi].x, dy = py[i] - movers[mi].y;
             if (dx * dx + dy * dy > near * near) continue;
@@ -1131,6 +1141,15 @@ void SlotsTick(float dt) {
         float a, b, c2, d;
         if (sscanf(getenv("SL_VIEW"), "%f,%f,%f,%f", &a, &b, &c2, &d) == 4) SlotsSetView(a * CELL_SIZE, b * CELL_SIZE, c2 * CELL_SIZE, d * CELL_SIZE);
     }
+    for (int i = 0; i < slotCarCount; i++)
+        if (slotCars[i].ownerIn && slotCars[i].owner >= 0 && slotCars[i].owner < moverCount) {
+            float x, y, h, st;
+            SlotCarDrawPose(i, &x, &y, &h, &st);
+            movers[slotCars[i].owner].x = x;
+            movers[slotCars[i].owner].y = y;
+            movers[slotCars[i].owner].transportState = TRANSPORT_RIDING;   // (the goal picker's path planning resets it: MaybeTakeTrain)
+            ClearMoverPath(slotCars[i].owner);
+        }
     PROFILE_BEGIN(SlotsReal);
     SlRealTick(dt);
     PROFILE_END(SlotsReal);
@@ -1220,6 +1239,103 @@ int SlotCarSignals(int i) {
     }
     if (c->parkNext && c->ri == c->routeLen - 1 && c->destSlot - c->slot <= SL_SIGNAL_SLOTS) sig |= SL_SIG_RIGHT;   // pulling in soon
     return sig;
+}
+
+// --- Movers driving
+void SlotsSetOwner(int car, int mover) {
+    SlotCar* c = &slotCars[car];
+    c->owner = mover;
+    c->ownerIn = false;
+    if (c->kerb) { c->stopSteps = 1 << 30; c->needRoute = false; }
+}
+int SlotsCarOf(int mover) {
+    for (int i = 0; i < slotCarCount; i++) if (slotCars[i].owner == mover) return i;
+    return -1;
+}
+bool SlotsCarParked(int car) { return car >= 0 && slotCars[car].kerb && !slotCars[car].ownerIn && slotCars[car].kerbStep != slStep; }
+bool SlotCarDriven(int car) { return slotCars[car].ownerIn; }
+
+// Plan car's drive to the free kerb spot nearest its goal (one it can route to); false: none
+static bool SlDriveTo(int car) {
+    SlotCar* c = &slotCars[car];
+    int cur = c->route[c->ri];
+    if (rdSegs[cur].kind != RD_LANE) return false;
+    float B = SL_BUCKET * CELL_SIZE;
+    int gbx = (int)(c->goalX / B), gby = (int)(c->goalY / B);
+    for (int ring = 0; ring <= 10; ring++) {   // buckets in growing squares round the goal
+        int best = -1;
+        float bestD = 1e30f;
+        for (int by = gby - ring; by <= gby + ring; by++)
+            for (int bx = gbx - ring; bx <= gbx + ring; bx++) {
+                if (bx < 0 || by < 0 || bx >= slBW || by >= slBH) continue;
+                if (ring > 0 && by != gby - ring && by != gby + ring && bx != gbx - ring && bx != gbx + ring) continue;
+                for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                    int idx = slBList[e];
+                    if (slKerbOk[idx] != 1 || slKerbCar[idx] >= 0) continue;
+                    if (idx == SlIdx(cur, c->slot) && c->kerb) continue;   // (not the spot we're leaving)
+                    float dx = slCX[idx] - c->goalX, dy = slCY[idx] - c->goalY;
+                    if (dx * dx + dy * dy < bestD) { bestD = dx * dx + dy * dy; best = idx; }
+                }
+            }
+        if (best < 0) continue;
+        int dl = slSlotSeg[best], k = best - slSeg0[dl];
+        unsigned short r[SL_MAX_ROUTE];
+        int n;
+        if (dl == cur && k - 1 > c->slot + 1) { r[0] = (unsigned short)cur; n = 1; }
+        else {
+            slRoutes++;
+            n = RoadRoute(cur, dl, r, SL_MAX_ROUTE - 8);
+            if (n <= 0) { slRouteFails++; continue; }
+        }
+        SlSetRoute(c, r, n, k - 1);
+        c->needRoute = false;
+        c->parkNext = true;
+        if (c->kerb) c->stopSteps = 0;   // pulls out as soon as there's a gap
+        return true;
+    }
+    return false;
+}
+
+bool SlotsMoverBoard(int mi, int car) {
+    if (!SlotsCarParked(car) || slotCars[car].owner != mi) return false;
+    Mover* m = &movers[mi];
+    SlotCar* c = &slotCars[car];
+    c->goalX = (m->transportFinalGoal.x + 0.5f) * CELL_SIZE;
+    c->goalY = (m->transportFinalGoal.y + 0.5f) * CELL_SIZE;
+    if (!SlDriveTo(car)) { slDriveFails++; c->stopSteps = 1 << 30; return false; }
+    c->ownerIn = true;
+    m->transportState = TRANSPORT_RIDING;
+    m->transportTrainIdx = -1;
+    ClearMoverPath(mi);
+    slDrives++;
+    return true;
+}
+
+// Parked with its owner in it: the owner gets out on the pavement beside it, walks on
+static void SlDriverOut(int car) {
+    SlotCar* c = &slotCars[car];
+    Mover* m = &movers[c->owner];
+    float x, y, h, st;
+    SlotCarDrawPose(car, &x, &y, &h, &st);
+    int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE), z = (int)m->z;
+    int bx = cx, by = cy;
+    float bestD = 1e30f;
+    for (int dy = -4; dy <= 4; dy++)
+        for (int dx = -4; dx <= 4; dx++) {
+            int xx = cx + dx, yy = cy + dy;
+            if (xx < 0 || yy < 0 || xx >= gridWidth || yy >= gridHeight || !HAS_FLOOR(xx, yy, z)) continue;
+            if (dx * dx + dy * dy < bestD) { bestD = (float)(dx * dx + dy * dy); bx = xx; by = yy; }
+        }
+    m->x = (bx + 0.5f) * CELL_SIZE;
+    m->y = (by + 0.5f) * CELL_SIZE;
+    m->lastX = m->x; m->lastY = m->y;
+    m->transportState = TRANSPORT_NONE;
+    m->goal = m->transportFinalGoal;
+    ClearMoverPath(c->owner);
+    m->needsRepath = true;
+    c->ownerIn = false;
+    c->stopSteps = 1 << 30;
+    slDrivesDone++;
 }
 
 // Is (x, y) inside car `car`'s body (grown by `grow` px)?
@@ -1444,6 +1560,7 @@ void SlotsPrintStats(void) {
             }
         }
     }
+    if (slDrives || slDriveFails) printf("  movers driving: %ld drives started, %ld parked and got out, %ld found no spot to drive to\n", slDrives, slDrivesDone, slDriveFails);
     if (moverCount > 0) printf("  pedestrians: %d; %ld slots blocked for them, %ld ticks waiting at the kerb or for a car; hard stops (any cause) %ld\n",
                                moverCount, slPedBlocks, slPedHolds, slHardStops);
     if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
