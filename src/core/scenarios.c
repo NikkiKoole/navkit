@@ -488,10 +488,14 @@ static bool GatheringCheck(char* why, int whyLen) {
 static double tiesFriendSum, tiesEnemySum, tiesStrangerSum;
 static long tiesFriendN, tiesEnemyN, tiesStrangerN, tiesEnemyClose, tiesTicks;
 static int tiesKind[16][16];   // 1 friends, -1 enemies, 0 strangers
+static int tiesBiggestWalk;
+static double tiesSlotDistSum; static long tiesSlotDistN;
 
 static void SetupSocialTies(void) {
     tiesFriendSum = tiesEnemySum = tiesStrangerSum = 0.0;
     tiesFriendN = tiesEnemyN = tiesStrangerN = tiesEnemyClose = tiesTicks = 0;
+    tiesBiggestWalk = 0;
+    tiesSlotDistSum = 0.0; tiesSlotDistN = 0;
     memset(tiesKind, 0, sizeof(tiesKind));
     endlessMoverMode = true;
     noticeEnabled = true;
@@ -512,6 +516,17 @@ static void SetupSocialTies(void) {
 
 static void SocialTiesTickStats(void) {
     tiesTicks++;
+    for (int t = 0; t < MAX_TALKS; t++)
+        if (talks[t].active && talks[t].kind == TALK_WALK) {
+            if (talks[t].count > tiesBiggestWalk) tiesBiggestWalk = talks[t].count;
+            for (int k = 1; k < talks[t].count; k++) {   // how far each follower is from its spot
+                float sx, sy;
+                if (!TalkWalkSlot(t, k, &sx, &sy)) continue;
+                const Mover* f = &movers[talks[t].members[k]];
+                tiesSlotDistSum += sqrtf((f->x - sx) * (f->x - sx) + (f->y - sy) * (f->y - sy)) / CELL_SIZE;
+                tiesSlotDistN++;
+            }
+        }
     for (int a = 0; a < 12 && a < moverCount; a++)
         for (int b = a + 1; b < 12 && b < moverCount; b++) {
             if (!movers[a].active || !movers[b].active) continue;
@@ -529,7 +544,9 @@ static void SocialTiesPrintStats(void) {
            tiesFriendN ? tiesFriendSum / tiesFriendN : 0.0, tiesStrangerN ? tiesStrangerSum / tiesStrangerN : 0.0,
            tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
     printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
-    printf("Talks started: %ld, walks: %ld\n", talkStartedCount, walkStartedCount);
+    printf("Talks started: %ld, walks: %ld (joined by %ld more), biggest walking group: %d\n", talkStartedCount,
+           walkStartedCount, walkJoinedCount, tiesBiggestWalk);
+    printf("Walking followers: %.2f cells from their spot on average\n", tiesSlotDistN ? tiesSlotDistSum / tiesSlotDistN : 0.0);
     printf("Glances: %ld, greetings: %ld\n", glanceCount, greetCount);
 }
 

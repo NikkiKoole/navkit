@@ -612,6 +612,39 @@ describe(walking_together) {
         expect(!TalkWalkStart(a, b));
     }
 
+    it("a group of four: everyone keeps its own spot round the leader") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1), c = AddMover(9, 7, 1), d = AddMover(10, 8, 1);
+        expect(TalkWalkStart(a, b));
+        int t = MoverTalk(a);
+        expect(TalkWalkJoin(t, c) && TalkWalkJoin(t, d));
+        expect(talks[t].count == 4);
+        for (int s = 0; s < 4 * TICK_RATE; s++)
+            for (int k = 1; k < 4; k++) TalkMoverTick(talks[t].members[k], TICK_DT);
+        for (int k = 1; k < 4; k++) {
+            float sx, sy;
+            expect(TalkWalkSlot(t, k, &sx, &sy));
+            const Mover* f = &movers[talks[t].members[k]];
+            expect(sqrtf((f->x - sx) * (f->x - sx) + (f->y - sy) * (f->y - sy)) < 3.0f);
+        }
+        float s1x, s1y, s2x, s2y;
+        TalkWalkSlot(t, 1, &s1x, &s1y); TalkWalkSlot(t, 2, &s2x, &s2y);
+        expect(fabsf(s1x - s2x) + fabsf(s1y - s2y) > CELL_SIZE * 0.5f);   // different spots
+    }
+
+    it("one drops out of a group, the rest walk on") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1), c = AddMover(9, 7, 1);
+        expect(TalkWalkStart(a, b));
+        int t = MoverTalk(a);
+        expect(TalkWalkJoin(t, c));
+        movers[c].currentJobId = 0;
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(c));
+        expect(MoverIsWalkingWith(a) && MoverIsWalkingWith(b) && talks[t].count == 2);
+        movers[c].currentJobId = -1;
+    }
+
     it("ends when they get separated or one gets a job") {
         WalkSetup();
         int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);

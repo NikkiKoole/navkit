@@ -76,12 +76,14 @@ bool MoverIsPerforming(int moverIdx);
 // (members[1]) keeps a spot at the leader's right, or behind it where there's no room. They
 // chat on the way. Ends on arrival, after walkMaxSeconds, a job/need, or if they get separated.
 extern float walkChance, walkMinLike, walkMaxSeconds, walkPace;
-extern long walkStartedCount;
+extern long walkStartedCount, walkJoinedCount;   // walks started; movers that joined a walking group
 bool TalkWalkStart(int leader, int follower);   // false if the leader found nowhere to go
 float TalkWalkSpeedScale(int moverIdx);         // the leader's pace (1 if not leading a walk)
 bool MoverIsWalkingWith(int moverIdx);
+bool TalkWalkSlot(int t, int k, float* x, float* y);
+bool TalkWalkJoin(int t, int moverIdx);   // join walking group t (up to 6), false if no room   // where follower k of walk t should be (stats, tests)
 
-// --- Table talk: movers eating seated (sit-then-eat, action_queue.c) next to the same table
+// --- Table talk: movers eating (or lingering after) seated (sit-then-eat, action_queue.c) next to the same table
 // chat with each other: the speaker takes turns, they look at the table and get to know each
 // other (half a conversation's rate). They stay busy with their meal; no talk record.
 extern bool tableTalkEnabled;
