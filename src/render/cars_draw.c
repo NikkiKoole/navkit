@@ -104,6 +104,11 @@ static void DrawTrafficLights(void) {
         int st = TrafficLightAt(sg->to, s);
         if (st < 0) continue;
         int k = sg->p0 + sg->n - 1;
+        {   // by level, as the cars: not above the view, not under a hill or deck
+            int lvl = (int)floorf(rdZ[k] + 0.5f);
+            if (lvl > currentViewZ) continue;
+            if (lvl < currentViewZ && !IsCellVisibleFromAbove((int)(rdX[k] / CELL_SIZE), (int)(rdY[k] / CELL_SIZE), lvl + 1, currentViewZ + 1)) continue;
+        }
         float h = atan2f(rdY[k] - rdY[k - 1], rdX[k] - rdX[k - 1]);
         // on the kerb side of the stop line
         Vector2 p = CarScreen(rdX[k] - sinf(h) * 1.6f * CELL_SIZE, rdY[k] + cosf(h) * 1.6f * CELL_SIZE);
@@ -175,6 +180,15 @@ static void DrawSlotCars(void) {
         Vector2 sc = CarScreen(x, y);
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
         Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        // by level, like the movers: above the view hidden; below it darker, hidden under a deck or ground
+        int lvl = (int)floorf(SlotCarZ(i) + 0.5f);
+        if (lvl > currentViewZ) continue;
+        if (lvl < currentViewZ) {
+            // (cars are drawn after the world: a deck at the viewed level itself covers them too)
+            if (!IsCellVisibleFromAbove((int)(x / CELL_SIZE), (int)(y / CELL_SIZE), lvl + 1, currentViewZ + 1)) continue;
+            float k = powf(0.6f, (float)(currentViewZ - lvl));
+            col = (Color){(unsigned char)(col.r * k), (unsigned char)(col.g * k), (unsigned char)(col.b * k), col.a};
+        }
         bool driven = SlotCarDriven(i);   // a mover is driving it: its head on the seat
         if (carPx < 3) { DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col); continue; }
         if (carPx < 8) {

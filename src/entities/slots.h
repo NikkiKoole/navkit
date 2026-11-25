@@ -80,6 +80,7 @@ bool SlotsCheck(char* why, int whyLen);   // invariants: one car per slot, trips
 // Where car i is now (drawing; interpolated within the step): false if off the network
 bool SlotCarPose(int i, float* x, float* y, float* heading);
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its segment's box overlaps (px)
+float SlotCarZ(int i);   // its height (levels; between levels on a ramp)
 // What car i signals (drawing): SL_SIG_LEFT / SL_SIG_RIGHT indicators (both: hazards), SL_SIG_BRAKE
 #define SL_SIG_LEFT 1
 #define SL_SIG_RIGHT 2

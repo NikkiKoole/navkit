@@ -45,6 +45,7 @@ typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
 
 typedef struct {
     float x, y;                         // pixels
+    float z;                            // level (the junction is flat at it)
     float setback;                      // cells: lanes stop this far from it (RD_SETBACK; less on a roundabout)
     bool ring;                          // a junction on a roundabout
     int ringOf;                         // ring junction: the roundabout's centre node (-1: none)
@@ -61,6 +62,9 @@ typedef struct {
     int lanesPerDir;   // 1, or 2 on an avenue (12 cells wide)
     bool oneWay;       // one lane, a -> b, on the centre line
     bool arc;          // an arc round (arcX, arcY) at radius arcR px, angle decreasing (roundabouts)
+    bool lifted;       // passes over the roads and junctions it crosses (RoadSetLifted): no junction there
+    int nLift;         // ... where it must be a level up: centre arc length s0..s1 (px), at level z
+    float liftS0[32], liftS1[32], liftZ[32];
     float arcX, arcY, arcR;
 } RdEdge;
 
@@ -89,6 +93,10 @@ extern RdSeg rdSegs[RD_MAX_SEGS];
 extern int rdNodeCount, rdEdgeCount, rdSegCount;
 extern RdBay rdBays[RD_MAX_BAYS];
 extern int rdBayCount;
+extern float *rdZ;   // the points' heights (levels; fractional on ramps)
+extern float rdBaseZ;    // new junctions' level (default 1)
+extern int rdLiftShort;  // lifted roads that couldn't get back down in time (a crossing too near a junction)
+#define RD_RAMP_CELLS 14.0f   // cells per level up or down (~8% at ~2.5 m a level)
 extern float *rdX, *rdY, *rdS;   // the points of all segments (grown as needed); pixels; rdS = arc length from the segment start
 extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traffic: queues)
 
@@ -98,6 +106,13 @@ void RoadCarveDisc(float cellX, float cellY, float rCells, int z);   // open gro
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
 void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild)
+// Heights: a lifted road passes a level over every road and junction it crosses (no shared
+// junction = grade separated), ramping at RD_RAMP_CELLS per level and back to its junctions'
+// level at both ends. RoadsCarve carves each point at its level and lays a deck (floor) where the
+// cell below is open; tunnels are roads carved through solid ground above them.
+void RoadSetLifted(int edge);
+float RoadZAt(int seg, float s);          // height (levels) at arc length s
+void RoadsDecks(void);                    // decks again (after something opened cells below them)
 // A 4-way (or any) junction becomes a roundabout: a one-way ring of radius rCells round
 // it (anticlockwise on screen: right-hand traffic), each road ending at its own ring
 // junction; the ring has right of way. Before RoadsBuild.

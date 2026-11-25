@@ -3741,12 +3741,27 @@ static void SetupCarsCity(void) {
             near[n] = 1;
             made++;
         }
+        // A flyover: corner to corner, a level over every road and junction it crosses
+        if (carCitySlots && carCityFlyover) {
+            int fe = RoadAddEdge(0, nodes - 1, 0);
+            if (fe >= 0) RoadSetLifted(fe);
+        }
     }
     RoadsBuild(carLatAccel);
+    // A hill (two levels) over part of the grid city: the roads already there go through it
+    if (carCitySlots && carCityHill && carCityLayout == 0) {
+        float hx = gridWidth * 0.27f, hy = gridHeight * 0.62f;
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                float d = hypotf(x + 0.5f - hx, y + 0.5f - hy);
+                for (int z = 2; z <= 3; z++)
+                    if (d < (z == 2 ? 26.0f : 15.0f)) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); }
+            }
+    }
     TrafficSetupLights(carCityLights);
     if (carCityLights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
     RoadsCarve(1);
-    if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); CityPavements(); }   // (slot traffic: kerb strips for parking, pavements)
+    if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); CityPavements(); RoadsDecks(); }   // (slot traffic: kerb strips for parking, pavements; decks over the new pavements)
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
 

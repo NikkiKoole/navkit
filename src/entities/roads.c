@@ -15,6 +15,9 @@ RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
 int rdNodeCount = 0, rdEdgeCount = 0, rdSegCount = 0;
 float *rdX = NULL, *rdY = NULL, *rdS = NULL;
+float* rdZ = NULL;
+float rdBaseZ = 1.0f;
+int rdLiftShort = 0;
 static float* rdH = NULL;   // heading from point k to k+1 (the last point: the one before)
 static int rdPtCount = 0, rdPtCap = 0;
 
@@ -26,6 +29,7 @@ static void EnsurePts(int n) {
     rdY = realloc(rdY, sizeof(float) * cap);
     rdS = realloc(rdS, sizeof(float) * cap);
     rdH = realloc(rdH, sizeof(float) * cap);
+    rdZ = realloc(rdZ, sizeof(float) * cap);
     rdPtCap = cap;
 }
 RdBay rdBays[RD_MAX_BAYS];
@@ -53,6 +57,7 @@ int RoadAddNode(float cellX, float cellY) {
     n->y = cellY * CELL_SIZE;
     n->setback = RD_SETBACK;
     n->ringOf = -1;
+    rdNodes[rdNodeCount].z = rdBaseZ;
     return rdNodeCount++;
 }
 
@@ -69,6 +74,8 @@ int RoadAddEdge(int a, int b, float bendCells) {
     return rdEdgeCount++;
 }
 
+void RoadSetLifted(int edge) { if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lifted = true; }
+
 void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lanes its way
     if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lanesPerDir = 2;
 }
@@ -78,6 +85,9 @@ void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lane
 // ---------------------------------------------------------------------------
 #define RD_TMP 8192
 static float tmpX[RD_TMP], tmpY[RD_TMP];
+static float tmpZ[RD_TMP];          // heights of tmp (when tmpHasZ), else all tmpZConst
+static bool tmpHasZ = false;
+static float tmpZConst = 1.0f;
 
 // Resample tmp[0..n) at RD_STEP into a new segment's points; returns the segment
 static int SegFromTmp(int n, RdSegKind kind) {
@@ -100,6 +110,7 @@ static int SegFromTmp(int n, RdSegKind kind) {
             float t = L > 1e-6f ? (next - acc) / L : 0;
             rdX[rdPtCount] = tmpX[i] + dx * t;
             rdY[rdPtCount] = tmpY[i] + dy * t;
+            rdZ[rdPtCount] = tmpHasZ ? tmpZ[i] + (tmpZ[i + 1] - tmpZ[i]) * t : tmpZConst;
             rdS[rdPtCount] = next;
             rdPtCount++;
             next += RD_STEP;
@@ -109,11 +120,13 @@ static int SegFromTmp(int n, RdSegKind kind) {
     if (acc - rdS[rdPtCount - 1] > 0.5f) {   // the exact end
         rdX[rdPtCount] = tmpX[n - 1];
         rdY[rdPtCount] = tmpY[n - 1];
+        rdZ[rdPtCount] = tmpHasZ ? tmpZ[n - 1] : tmpZConst;
         rdS[rdPtCount] = acc;
         rdPtCount++;
     }
     sg->n = rdPtCount - sg->p0;
     sg->len = rdS[rdPtCount - 1];
+    tmpHasZ = false;
     for (int i = sg->p0; i < rdPtCount - 1; i++) rdH[i] = atan2f(rdY[i + 1] - rdY[i], rdX[i + 1] - rdX[i]);
     rdH[rdPtCount - 1] = sg->n > 1 ? rdH[rdPtCount - 2] : 0;
     sg->bx0 = sg->by0 = 1e30f; sg->bx1 = sg->by1 = -1e30f;
@@ -176,6 +189,114 @@ static int EdgeCentre(const RdEdge* e) {
     return n + 1;
 }
 
+// The height of edge e at centre arc length s (px; len: the centre's length): its junctions'
+// levels, raised where it must pass over something, ramps between, back down at both ends
+static float EdgeZ(const RdEdge* e, float s, float len) {
+    float za = rdNodes[e->a].z, zb = rdNodes[e->b].z;
+    float z = len > 0 ? za + (zb - za) * s / len : za;
+    if (!e->lifted) return z;
+    float ramp = RD_RAMP_CELLS * CELL_SIZE;
+    for (int k = 0; k < e->nLift; k++) {
+        float d = s < e->liftS0[k] ? e->liftS0[k] - s : (s > e->liftS1[k] ? s - e->liftS1[k] : 0);
+        z = fmaxf(z, e->liftZ[k] - d / ramp);
+    }
+    // down to the junctions in time (lanes start a setback from them)
+    float sa = rdNodes[e->a].setback * CELL_SIZE, sb = rdNodes[e->b].setback * CELL_SIZE;
+    z = fminf(z, za + fmaxf(0, s - sa) / ramp);
+    z = fminf(z, zb + fmaxf(0, len - sb - s) / ramp);
+    return z;
+}
+
+static float RoadHalfWidth(const RdEdge* e);
+
+// Where each lifted road must be a level up: over every other road's centre line it crosses
+// (the crossing road's width + room for a car either side) and every junction it passes near
+static void LiftEdges(void) {
+    static float ex[RD_TMP], ey[RD_TMP], es[RD_TMP];
+    static float ox[RD_TMP], oy[RD_TMP];
+    rdLiftShort = 0;
+    float CS = CELL_SIZE;
+    for (int ei = 0; ei < rdEdgeCount; ei++) {
+        RdEdge* e = &rdEdges[ei];
+        e->nLift = 0;
+        if (!e->lifted) continue;
+        int n = EdgeCentre(e);
+        float acc = 0;
+        for (int i = 0; i < n; i++) {
+            ex[i] = tmpX[i]; ey[i] = tmpY[i];
+            if (i > 0) acc += hypotf(ex[i] - ex[i - 1], ey[i] - ey[i - 1]);
+            es[i] = acc;
+        }
+        float bx0 = 1e30f, by0 = 1e30f, bx1 = -1e30f, by1 = -1e30f;
+        for (int i = 0; i < n; i++) { bx0 = fminf(bx0, ex[i]); bx1 = fmaxf(bx1, ex[i]); by0 = fminf(by0, ey[i]); by1 = fmaxf(by1, ey[i]); }
+        // roads crossed
+        for (int oi = 0; oi < rdEdgeCount && e->nLift < 32; oi++) {
+            const RdEdge* o = &rdEdges[oi];
+            if (oi == ei || o->lifted || o->a == e->a || o->a == e->b || o->b == e->a || o->b == e->b) continue;
+            int m = EdgeCentre(o);
+            for (int i = 0; i < m; i++) { ox[i] = tmpX[i]; oy[i] = tmpY[i]; }
+            float obx0 = 1e30f, oby0 = 1e30f, obx1 = -1e30f, oby1 = -1e30f;
+            for (int i = 0; i < m; i++) { obx0 = fminf(obx0, ox[i]); obx1 = fmaxf(obx1, ox[i]); oby0 = fminf(oby0, oy[i]); oby1 = fmaxf(oby1, oy[i]); }
+            if (obx0 > bx1 || obx1 < bx0 || oby0 > by1 || oby1 < by0) continue;
+            for (int i = 0; i + 1 < n && e->nLift < 32; i++)
+                for (int j = 0; j + 1 < m; j++) {
+                    float ax = ex[i], ay = ey[i], adx = ex[i + 1] - ax, ady = ey[i + 1] - ay;
+                    float cx = ox[j], cy = oy[j], cdx = ox[j + 1] - cx, cdy = oy[j + 1] - cy;
+                    float den = adx * cdy - ady * cdx;
+                    if (fabsf(den) < 1e-6f) continue;
+                    float t = ((cx - ax) * cdy - (cy - ay) * cdx) / den, u = ((cx - ax) * ady - (cy - ay) * adx) / den;
+                    if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+                    float sinA = fabsf(den) / (hypotf(adx, ady) * hypotf(cdx, cdy));
+                    float half = (RoadHalfWidth(o) + 1.5f) * CS / fmaxf(sinA, 0.3f);
+                    float s = es[i] + t * (es[i + 1] - es[i]);
+                    float zo = rdNodes[o->a].z;   // (roads under a lifted one: flat at their junctions' level)
+                    e->liftS0[e->nLift] = s - half; e->liftS1[e->nLift] = s + half; e->liftZ[e->nLift] = zo + 1;
+                    e->nLift++;
+                }
+        }
+        // junctions passed near (their curves fill a disc round them)
+        for (int ni = 0; ni < rdNodeCount && e->nLift < 32; ni++) {
+            if (ni == e->a || ni == e->b || rdNodes[ni].nEdge == 0) continue;
+            const RdNode* N = &rdNodes[ni];
+            float r = (N->setback + 4.0f) * CS;
+            float best = 1e30f, bs = 0;
+            for (int i = 0; i < n; i++) { float d = hypotf(ex[i] - N->x, ey[i] - N->y); if (d < best) { best = d; bs = es[i]; } }
+            if (best > r) continue;
+            float half = sqrtf(fmaxf(0, r * r - best * best)) + CS;
+            e->liftS0[e->nLift] = bs - half; e->liftS1[e->nLift] = bs + half; e->liftZ[e->nLift] = N->z + 1;
+            e->nLift++;
+        }
+        // One viaduct, not a roller coaster: humps whose dip between them would be short (under
+        // ~40 cells at the bottom) join into one stretch up
+        for (int a = 0; a < e->nLift; a++)
+            for (int b = a + 1; b < e->nLift; b++)
+                if (e->liftS0[b] < e->liftS0[a]) {
+                    float t;
+                    t = e->liftS0[a]; e->liftS0[a] = e->liftS0[b]; e->liftS0[b] = t;
+                    t = e->liftS1[a]; e->liftS1[a] = e->liftS1[b]; e->liftS1[b] = t;
+                    t = e->liftZ[a]; e->liftZ[a] = e->liftZ[b]; e->liftZ[b] = t;
+                }
+        {
+            float join = (2.0f * RD_RAMP_CELLS + 40.0f) * CS;
+            int w = 0;
+            for (int k = 0; k < e->nLift; k++) {
+                if (w > 0 && e->liftS0[k] - e->liftS1[w - 1] < join && fabsf(e->liftZ[k] - e->liftZ[w - 1]) < 0.01f) {
+                    if (e->liftS1[k] > e->liftS1[w - 1]) e->liftS1[w - 1] = e->liftS1[k];
+                    continue;
+                }
+                e->liftS0[w] = e->liftS0[k]; e->liftS1[w] = e->liftS1[k]; e->liftZ[w] = e->liftZ[k];
+                w++;
+            }
+            e->nLift = w;
+        }
+        // could it reach every height it needs? (else a crossing at grade without a junction)
+        for (int k = 0; k < e->nLift; k++) {
+            float zm = fminf(EdgeZ(e, e->liftS0[k], acc), EdgeZ(e, e->liftS1[k], acc));
+            if (zm < e->liftZ[k] - 0.01f) { rdLiftShort++; break; }
+        }
+    }
+}
+
 // One lane of an edge: the centre line offset to the right of travel, without the
 // RD_SETBACK at each end. dir 0: a -> b, 1: b -> a.
 static int BuildLane(int ei, int dir, int k) {
@@ -203,8 +324,10 @@ static int BuildLane(int ei, int dir, int k) {
         tx /= tl; ty /= tl;
         tmpX[m] = cx[i] - ty * off;     // right of travel (y is down)
         tmpY[m] = cy[i] + tx * off;
+        tmpZ[m] = EdgeZ(e, dir == 0 ? cs[i] : acc - cs[i], acc);
         m++;
     }
+    tmpHasZ = true;
     int seg = SegFromTmp(m, RD_LANE);
     if (seg < 0) return -1;
     RdSeg* sg = &rdSegs[seg];
@@ -238,6 +361,7 @@ static int BuildConnector(int node, int in, int out, float maxTurn) {
         tmpX[i] = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
         tmpY[i] = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
     }
+    tmpZConst = rdNodes[node].z;
     int seg = SegFromTmp(n + 1, RD_CONN);
     if (seg < 0) return -1;
     RdSeg* sg = &rdSegs[seg];
@@ -270,6 +394,8 @@ static int Cubic(float x0, float y0, float h0, float x3, float y3, float h3, flo
 // A bay on `lane` starting at s0 px: in-curve to the spot, out-curve back to the lane
 static void BuildBay(int lane, float s0) {
     if (rdBayCount >= RD_MAX_BAYS || rdSegs[lane].nBays >= 4) return;
+    if (rdEdges[rdSegs[lane].edge].lifted) return;   // (no lay-bys on a viaduct)
+    tmpZConst = RoadZAt(lane, s0);
     float CS = CELL_SIZE, s1 = s0 + RD_BAY_LEN * CS, sm = (s0 + s1) * 0.5f;
     float ax, ay, ah, mx, my, mh, bx, by, bh;
     RoadPointAt(lane, s0, &ax, &ay, &ah);
@@ -278,6 +404,7 @@ static void BuildBay(int lane, float s0) {
     float px = mx - sinf(mh) * RD_BAY_OFF * CS, py = my + cosf(mh) * RD_BAY_OFF * CS;   // right of travel
     int in = SegFromTmp(Cubic(ax, ay, ah, px, py, mh, 0.45f), RD_BAYIN);
     if (in < 0) return;
+    tmpZConst = RoadZAt(lane, s0);
     int out = SegFromTmp(Cubic(px, py, mh, bx, by, bh, 0.45f), RD_BAYOUT);
     if (out < 0) { rdSegCount--; return; }
     RdBay* b = &rdBays[rdBayCount];
@@ -403,6 +530,7 @@ static bool PushBackCrampedJunctions(void) {
 }
 
 void RoadsBuild(float latAccel) {
+    LiftEdges();
     for (int pass = 0; pass < 6; pass++) {
         BuildAll(latAccel);
         if (!PushBackCrampedJunctions()) break;
@@ -520,6 +648,19 @@ static void BuildAll(float latAccel) {
         }
     }
     for (int s = 0; s < rdSegCount; s++) rdSegs[s].vmax = SegVmax(s, latAccel);
+}
+
+float RoadZAt(int seg, float s) {
+    const RdSeg* sg = &rdSegs[seg];
+    if (s <= 0) return rdZ[sg->p0];
+    if (s >= sg->len) return rdZ[sg->p0 + sg->n - 1];
+    int i = (int)(s / RD_STEP);
+    if (i > sg->n - 2) i = sg->n - 2;
+    while (i > 0 && rdS[sg->p0 + i] > s) i--;
+    while (i < sg->n - 2 && rdS[sg->p0 + i + 1] < s) i++;
+    int k = sg->p0 + i;
+    float L = rdS[k + 1] - rdS[k], t = L > 1e-6f ? (s - rdS[k]) / L : 0;
+    return rdZ[k] + (rdZ[k + 1] - rdZ[k]) * t;
 }
 
 void RoadPointAt(int seg, float s, float* x, float* y, float* h) {
@@ -664,18 +805,45 @@ static float RoadHalfWidth(const RdEdge* e) {
     return RD_ROAD_WIDTH * 0.5f * e->lanesPerDir + 0.5f;
 }
 
+static int RdLevel(float z) { return (int)floorf(z + 0.5f); }
+
+// Decks: a road point above the base level gets a floor under it at its level - a bridge over a
+// road, a pavement, water, a valley, and (so it shows) over solid ground too
+void RoadsDecks(void) {
+    for (int s = 0; s < rdSegCount; s++)
+        for (int i = 0; i < rdSegs[s].n; i++) {
+            int q = rdSegs[s].p0 + i, L = RdLevel(rdZ[q]);
+            if (L < 1 || L >= gridDepth || L <= (int)rdBaseZ) continue;
+            float cx = rdX[q] / CELL_SIZE, cy = rdY[q] / CELL_SIZE, r = 2.5f;
+            for (int y = (int)floorf(cy - r); y <= (int)ceilf(cy + r); y++)
+                for (int x = (int)floorf(cx - r); x <= (int)ceilf(cx + r); x++) {
+                    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                    if (dx * dx + dy * dy > r * r) continue;
+                    // (over solid ground too: a road surface you can see, not the block's roof)
+                    if (!HAS_FLOOR(x, y, L)) { SET_FLOOR(x, y, L); SetFloorMaterial(x, y, L, MAT_CONCRETE); }
+                }
+        }
+}
+
 void RoadsCarve(int z) {
+    (void)z;   // (each point at its own level now; z was the one level everything was at)
     for (int e = 0; e < rdEdgeCount; e++) {
-        int n = EdgeCentre(&rdEdges[e]);
+        const RdEdge* E = &rdEdges[e];
+        int n = EdgeCentre(E);
+        static float cxs[RD_TMP], cys[RD_TMP], css[RD_TMP];
+        float acc = 0;
+        for (int i = 0; i < n; i++) { cxs[i] = tmpX[i]; cys[i] = tmpY[i]; if (i > 0) acc += hypotf(cxs[i] - cxs[i - 1], cys[i] - cys[i - 1]); css[i] = acc; }
         for (int i = 0; i < n; i += 2)
-            CarveDisc(tmpX[i] / CELL_SIZE, tmpY[i] / CELL_SIZE, RoadHalfWidth(&rdEdges[e]), z);
+            CarveDisc(cxs[i] / CELL_SIZE, cys[i] / CELL_SIZE, RoadHalfWidth(E), RdLevel(EdgeZ(E, css[i], acc)));
     }
     for (int i = 0; i < rdNodeCount; i++)
         if (rdNodes[i].nEdge > 0 && !rdNodes[i].ring)   // (a roundabout's ring junctions: the island stays)
-            CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, rdNodes[i].setback + 1.0f, z);
+            CarveDisc(rdNodes[i].x / CELL_SIZE, rdNodes[i].y / CELL_SIZE, rdNodes[i].setback + 1.0f, RdLevel(rdNodes[i].z));
     // Room round every route a car can drive (lanes and junction curves): the body
     // (half-diagonal ~1.4 cells) always has ~0.5 cell to spare, whatever the angles
     for (int s = 0; s < rdSegCount; s++)
         for (int i = 0; i < rdSegs[s].n; i++)
-            CarveDisc(rdX[rdSegs[s].p0 + i] / CELL_SIZE, rdY[rdSegs[s].p0 + i] / CELL_SIZE, 2.5f, z);
+            CarveDisc(rdX[rdSegs[s].p0 + i] / CELL_SIZE, rdY[rdSegs[s].p0 + i] / CELL_SIZE, 2.5f, RdLevel(rdZ[rdSegs[s].p0 + i]));
+    RoadsDecks();
 }

@@ -46,7 +46,7 @@ static long slParks = 0, slFareStops = 0, slKerbFull = 0, slPullOutWaits = 0;
 // Pedestrians (movers on the road): slot centres in buckets of SL_BUCKET cells; each step the
 // slots a mover is in or walks into within ~a second are stamped and count as taken
 #define SL_BUCKET 4
-static float *slCX = NULL, *slCY = NULL, *slCH = NULL, *slHalf = NULL;   // slot centre, heading, half length (px)
+static float *slCX = NULL, *slCY = NULL, *slCH = NULL, *slHalf = NULL, *slCZ = NULL;   // (+ height, levels)   // slot centre, heading, half length (px)
 static int* slSlotSeg = NULL;
 static int* slPedStamp = NULL;
 static int *slYieldUntil = NULL, *slYieldCar = NULL;   // a slot held open for a merging car (until that step)
@@ -156,6 +156,7 @@ static void SlBuildBuckets(void) {
             int idx = slSeg0[s] + k;
             RoadPointAt(s, (k + 0.5f) * rdSegs[s].len / slSegN[s], &slCX[idx], &slCY[idx], &slCH[idx]);
             slHalf[idx] = 0.5f * rdSegs[s].len / slSegN[s];
+            slCZ[idx] = RoadZAt(s, (k + 0.5f) * rdSegs[s].len / slSegN[s]);
             slSlotSeg[idx] = s;
             slPedStamp[idx] = -1;
             slYieldUntil[idx] = -1;
@@ -248,7 +249,7 @@ static void SlBuildKerbs(void) {
             for (int s = 0; s < rdSegCount; s++) for (int p = 0; p < rdSegs[s].n; p++) ptSeg[rdSegs[s].p0 + p] = s;
             for (int L = 0; L < rdSegCount; L++) {
                 const RdSeg* S = &rdSegs[L];
-                if (S->kind != RD_LANE || S->laneIdx != 0 || S->priority || rdEdges[S->edge].arc) continue;
+                if (S->kind != RD_LANE || S->laneIdx != 0 || S->priority || rdEdges[S->edge].arc || rdEdges[S->edge].lifted) continue;
                 for (int k = 2; k <= slSegN[L] - 3; k++) {
                     float x, y, h;
                     SlKerbPoint(L, k, &x, &y, &h);
@@ -314,6 +315,7 @@ void SlotsBuild(void) {
         slCX = realloc(slCX, sizeof(float) * slSlotCap);
         slCY = realloc(slCY, sizeof(float) * slSlotCap);
         slCH = realloc(slCH, sizeof(float) * slSlotCap);
+        slCZ = realloc(slCZ, sizeof(float) * slSlotCap);
         slHalf = realloc(slHalf, sizeof(float) * slSlotCap);
         slSlotSeg = realloc(slSlotSeg, sizeof(int) * slSlotCap);
         slPedStamp = realloc(slPedStamp, sizeof(int) * slSlotCap);
@@ -927,6 +929,7 @@ static void SlStampPedestrians(void) {
             for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
                 for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
                     int idx = slBList[e];
+                    if (fabsf(slCZ[idx] - m->z) > 0.6f) continue;   // (a road above or below)
                     int ns = el > 0 ? 1 + (int)(sqrtf(el) / (0.5f * CS)) : 0;   // points every half cell along the walk
                     for (int t = 0; t <= ns; t++) {
                         float f = ns ? (float)t / ns : 0;
@@ -1142,13 +1145,16 @@ static void CheckTouches(void) {
     static float* px = NULL; static float* py = NULL; static float* ph = NULL;
     static int cap = 0;
     if (slotCarCount > cap) { cap = slotCarCount; px = realloc(px, sizeof(float) * cap); py = realloc(py, sizeof(float) * cap); ph = realloc(ph, sizeof(float) * cap); }
-    for (int i = 0; i < slotCarCount; i++) { float st; SlotCarDrawPose(i, &px[i], &py[i], &ph[i], &st); }
+    static float* pz = NULL; static int zcap = 0;
+    if (slotCarCount > zcap) { zcap = slotCarCount; pz = realloc(pz, sizeof(float) * zcap); }
+    for (int i = 0; i < slotCarCount; i++) { float st; SlotCarDrawPose(i, &px[i], &py[i], &ph[i], &st); pz[i] = SlotCarZ(i); }
     int pairs = 0;
     float near = 3.0f * CELL_SIZE;
     for (int i = 0; i < slotCarCount; i++)
         for (int j = i + 1; j < slotCarCount; j++) {
             float dx = px[i] - px[j], dy = py[i] - py[j];
             if (dx * dx + dy * dy > near * near) continue;
+            if (fabsf(pz[i] - pz[j]) > 0.6f) continue;   // one over the other
             if (!CarBodiesOverlap(px[i], py[i], ph[i], px[j], py[j], ph[j], -2.0f)) continue;
             pairs++;
             static int told = 0;
@@ -1165,6 +1171,7 @@ static void CheckTouches(void) {
         for (int i = 0; i < slotCarCount; i++) {
             float dx = px[i] - movers[mi].x, dy = py[i] - movers[mi].y;
             if (dx * dx + dy * dy > near * near) continue;
+            if (fabsf(pz[i] - movers[mi].z) > 0.6f) continue;
             if (SlInCar(i, movers[mi].x, movers[mi].y, -2.0f)) {
                 slPedHits++;
                 static int toldP = 0;
@@ -1464,6 +1471,7 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
             for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1] && !inWay; e++) {
                 int idx = slBList[e];
                 if (SlSlotDist2(idx, qx, qy) > 2.6f * 2.6f * CS * CS) continue;
+                if (fabsf(slCZ[idx] - m->z) > 0.6f) continue;   // (a road above or below)
                 int car = slSlotCar[idx];
                 // a car right where we step (unless we're touching it already: then walk on, out of it)
                 // (in the road: only a moving car - waiting for a standing one locked whole districts:
@@ -1540,6 +1548,15 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     if (slPedGoStep[mi] < 0) { slPedGoStep[mi] = slStep + 1; slPedDX[mi] = dirX; slPedDY[mi] = dirY; }
     if (slStep < slPedGoStep[mi]) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }   // until the next step starts
     return false;
+}
+
+float SlotCarZ(int i) {
+    const SlotCar* c = &slotCars[i];
+    int seg = c->route[c->ri];
+    float z1 = RoadZAt(seg, SlS(seg, c->slot));
+    if (c->prevRi != c->ri) return z1;
+    float z0 = RoadZAt(seg, SlS(seg, c->prevSlot)), f = slAcc / SL_STEP;
+    return z0 + (z1 - z0) * f;
 }
 
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1) {
@@ -1672,6 +1689,13 @@ void SlotsPrintStats(void) {
                n[0], n[0] ? (double)tr[0] / n[0] : 0.0, n[0] ? (double)vs[0] / n[0] * SL_SLOT_CELLS : 0.0,
                n[1], n[1] ? (double)tr[1] / n[1] : 0.0, n[1] ? (double)vs[1] / n[1] * SL_SLOT_CELLS : 0.0,
                n[2], n[2] ? (double)tr[2] / n[2] : 0.0, n[2] ? (double)vs[2] / n[2] * SL_SLOT_CELLS : 0.0, slYields, slYieldMerges);
+    }
+    {   // heights: lifted roads, how much of them is up a level
+        int lifted = 0, up = 0, pts = 0;
+        for (int e = 0; e < rdEdgeCount; e++) if (rdEdges[e].lifted) lifted++;
+        for (int sg = 0; sg < rdSegCount; sg++) if (rdSegs[sg].kind == RD_LANE && rdEdges[rdSegs[sg].edge].lifted)
+            for (int q = 0; q < rdSegs[sg].n; q++) { pts++; if (rdZ[rdSegs[sg].p0 + q] > rdBaseZ + 0.5f) up++; }
+        if (lifted) printf("  heights: %d lifted roads, %.0f%% of their lanes a level up; %d couldn't clear a crossing\n", lifted, pts ? 100.0 * up / pts : 0.0, rdLiftShort);
     }
     printf("  lane changes: %ld to overtake, %ld back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", slOvertakes, slKeepRights, slMerges, slMergeGiveUps);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);

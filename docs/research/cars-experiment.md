@@ -667,7 +667,34 @@ flyovers, diamond interchanges. Lessons taken over:
 
 Open calls: a level's height in metres (clearance: one level is enough for the game?); lanes are
 3 cells (2x2 cars) so a 3+3 highway is ~20 cells wide - fine, or narrower highway lanes?; start
-with 1 (+ the overpass scenario) or 2.
+with 1 (+ the overpass scenario) or 2. (User: go with phase 1; defaults: one level of clearance,
+ramps 14 cells a level.)
+
+### Phase 1 built (2026-11-25)
+
+- Junctions have a level (`RdNode.z`, `rdBaseZ` 1); every point a height (`rdZ`, levels).
+  `RoadSetLifted(edge)`: `LiftEdges` (first thing in `RoadsBuild`) finds every other road's centre
+  line it crosses (that road's half width + 1.5 cells, over sin of the angle) and every junction it
+  passes within setback + 4 cells of, and needs a level up there; `EdgeZ` = its junctions' levels,
+  raised over those stretches, ramps of `RD_RAMP_CELLS` (14) a level, back down by its junctions.
+  Humps whose dip between them would be under ~40 cells join (one viaduct, not a roller coaster:
+  the first version went up and down every block). `rdLiftShort` counts crossings it can't clear.
+- Lanes take their heights from the edge (same arc length along the centre); curves are flat at
+  their junction; no lay-bys or kerb spots on a lifted road.
+- `RoadsCarve`: every point at its own level; `RoadsDecks`: a concrete floor under every point above
+  the base level (over open space it's a bridge; over solid ground too, so the road shows - else
+  it was the blocks' roofs). The city runs it again after the pavements open cells.
+- Tunnels need nothing: a road carved at its level through solid ground above it. The grid city's
+  hill (`carCityHill`): granite at levels 2-3 over a disc; the roads under it are tunnels.
+- Slot traffic: slot heights (`slCZ`); pedestrians only block / wait for slots at their level;
+  touch checks per level. Drawing (`SlotCarZ`): by `viewZ` like movers - above hidden, below darker
+  and hidden under a deck or ground (cars are drawn after the world, so the deck at the viewed level
+  counts too); traffic lights the same.
+- `carCityFlyover` (slot mode, grid layout): an edge from the top-left junction to the bottom-right,
+  lifted: 73% of it a level up, every crossing cleared. 250 cars, 10 min: 485 trips (523 without
+  flyover and hill), 0 touches, 0 jumps. Steered cars don't know heights yet (flyover/hill: slots only).
+- Seen in screenshots: the deck uses the pavements' concrete (looks the same); pedestrians inside a
+  car 63 samples vs 37 (not looked into).
 
 ## Open questions / next steps
 
