@@ -573,6 +573,12 @@ static void StartTown(void) {
     // A main street in from the west edge: where newcomers will arrive
     int midY = TOWN_SIZE / 2;
     TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 8, midY + 1, 1, NULL);
+    // Starter homes (setting townStarter): 7x6 lots along the street, alternating sides
+    for (int i = 0; i < townStarter; i++) {
+        int x = 6 + (i / 2) * 9;
+        if (i % 2 == 0) TownAddLot(LOT_HOME, x, midY - 7, x + 6, midY - 2, 1, NULL);
+        else            TownAddLot(LOT_HOME, x, midY + 2, x + 6, midY + 7, 1, NULL);
+    }
     BuildEntrances();
     BuildGraph();
 

@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: steps 1-2 built on branch `town` (2026-11-25), step 3 next. Game `town`.
+> Status: steps 1-3 built on branch `town` (2026-11-25), step 4 (work makes the food) next. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -16,6 +16,9 @@ only people. SimCity's growth and money come later, and only as far as they come
 - **Build instantly** (SimCity style), not orders carried out by workers.
 - **Every citizen is a mover.** No crowds shown as numbers.
 - Milestone 1 is the "Town" below. Leave the economy and services until that feels fun.
+- **Food at first: fridges the town restocks** (stand-in, step 3).
+- **Work makes what the town needs** (step 4), food first: a workplace's workers produce it and
+  it reaches the homes' fridges, replacing the restock. Not desk-sitting for its own sake.
 
 Earlier ones that apply here:
 - Rhythm comes from world facts, not clock rules ([schedule decision](../todo/schedule-system.md)):
@@ -43,7 +46,7 @@ Earlier ones that apply here:
    building from a template that fits the lot appears at once, its door facing the road.
    Templates: small house (1 bed), house (double bed), workshop / office. Deleting a lot
    removes its building.
-3. **People move in.** A home with a free bed draws a newcomer: spawned at a road on the map
+3. **(built) People move in.** A home with a free bed draws a newcomer: spawned at a road on the map
    edge, walks to the house, it is now their home (`Mover.home`, a lot id). They sleep in their
    own home's bed; the beds of other homes are not theirs. Food: each home has a tap (mains
    water) and a fridge the town restocks (a stand-in for shops, which come with City 1999's coins).
@@ -75,6 +78,26 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
   reachable from the road, removal restores the ground).
 - **Not saved yet**: the cells and furniture are, the road and lot lists are not (a load
   forgets which building is a lot). Comes with step 3 (`Mover.home` needs a save change anyway).
+
+### Built (2026-11-25): step 3
+
+- Every bed in a home is private: unowned beds are kept for newcomers (`TOWN_OWNER_NOBODY`), an
+  owned bed is its owner's. The bed search in `needs.c` asks `TownMayUseFurniture`; everything
+  outside town homes stays public. Kept in town.c (`townFurnOwner[]`, `townHome[]`), no Mover
+  or Furniture struct change: City 1999's `owner` field can take it over later.
+- `TownTick` (sim_step.c, every 0.1 game hours): owners who are gone free their bed, homeless
+  movers in town take a free bed, and while a bed is free a newcomer arrives every
+  `townArrivalGH` (setting, 0.5 h) on a road cell at the map edge, gets the bed and walks home
+  (action queue "go there" to just inside the door). Newcomers come from main.c's
+  `SpawnMoverAt` through the `townSpawnMover` hook (names, looks; tests get plain movers).
+- Food stand-in: each home's fridge gets a bread stack of `townMealsPerResident` (setting, 3)
+  per resident, topped up when half is gone. Movers eat the nearest food, usually their own
+  fridge's, but a neighbour's is not off limits yet.
+- The describe lines say "Lives in home #N" or "Homeless". Setting `townStarter` (0-12): homes
+  already on the main street at the start. `scenarios-check` runs `--set townStarter 6 --game town`.
+- Measured, 6 starter homes (12 beds), arrivals every 0.1 h: 12 residents, nobody stuck, town
+  tick ~0 (whole game 0.02 ms/tick); `--day-budget` over 5 days: sleep 6.7 h, ~0.8 meals and 4.3
+  drinks a day each.
 
 ## Open questions
 

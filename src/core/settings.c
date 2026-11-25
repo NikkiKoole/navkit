@@ -34,6 +34,7 @@
 #include "../entities/relations.h"
 #include "../entities/chase.h"
 #include "../entities/throwing.h"
+#include "../entities/town.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -696,6 +697,12 @@ static const Setting settings[] = {
       "How fast food on a fridge spoils, as a share of the normal rate (0 = keeps forever, 1 = no fridge).", NULL),
     SET_INT("latrineDirt", "Latrine Dirt", "Entities/Movers/Needs", latrineDirtPerUse, 0.2f, 0, 255,
       "Floor dirt a pit latrine's cell gets each time it is used. Filthy from 80, cleaners come from 30.", NULL),
+    SET_FLOAT("townArrivalGH", "Newcomer every (game hours)", "Town", townArrivalGH, 0.05f, 0.05f, 24.0f,
+      "Town: while a home has a free bed, a newcomer arrives on the road at the map edge this often and walks to their new home.", NULL),
+    SET_INT("townStarter", "Starter homes", "Town", townStarter, 0.2f, 0, 12,
+      "Town: homes already standing on the main street when the game starts (0 = an empty street).", NULL),
+    SET_INT("townMealsPerResident", "Meals per resident", "Town", townMealsPerResident, 0.2f, 0, 20,
+      "Town: bread restocked on each home's fridge, per resident (a stand-in for shops). 0 = no restocking.", NULL),
     SET_BOOL("toiletsPlumbed", "Toilets Plumbed", "Entities/Movers/Needs", toiletsPlumbed,
       "The world has mains water: every toilet flushes. Off (survival, island): a toilet flushes only with a tap, sink or water pot within 3 cells."),
     SET_INT("toiletDryDirt", "Dry Toilet Dirt", "Entities/Movers/Needs", toiletDryDirtPerUse, 0.2f, 0, 255,

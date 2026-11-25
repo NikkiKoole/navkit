@@ -99,6 +99,8 @@ done <<'EOF'
 16  | 0 | --game dollhouse
 2   | 0 | --game survival
 23  | 0 | --game island
+# town: 6 starter homes (2 beds each), newcomers every 0.1 h walk in from the west edge
+28  | 0 | --set townArrivalGH 0.1 --set townStarter 6 --game town
 EOF
 
 echo

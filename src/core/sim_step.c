@@ -9,6 +9,7 @@
 #include "../entities/chase.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/town.h"
 #include "../entities/jobs.h"
 #include "../entities/throwing.h"
 #include "../world/designations.h"
@@ -49,6 +50,10 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Belts);
     BeltsTick(dt);
     PROFILE_END(Belts);
+
+    PROFILE_BEGIN(Town);
+    TownTick(dt);
+    PROFILE_END(Town);
 
     PROFILE_BEGIN(Designations);
     DesignationsTick(dt);

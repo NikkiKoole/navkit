@@ -6,12 +6,25 @@
 #include <stdlib.h>
 #include "furniture.h"
 #include "mover.h"
+#include "items.h"
+#include "action_queue.h"
+#include "../simulation/balance.h"
+#include "../core/time.h"
+#include "../simulation/mood.h"
 #include <string.h>
 
 TownRoad townRoads[TOWN_MAX_ROADS];
 int townRoadCount = 0;
 TownLot townLots[TOWN_MAX_LOTS];
 int townLotHighWater = 0;
+float townArrivalGH = 0.5f;
+int townMealsPerResident = 3;
+int townStarter = 0;
+
+static short townFurnOwner[MAX_FURNITURE];   // TOWN_OWNER_* or a mover index (beds of homes)
+static short townHome[MAX_MOVERS];           // lot a mover lives in, -1 none
+static float townHousekeepTimer = 0.0f;
+static float townArrivalTimer = 0.0f;
 
 const char* TownLotKindName(LotKind k) {
     switch (k) {
@@ -25,6 +38,10 @@ void ClearTown(void) {
     townRoadCount = 0;
     townLotHighWater = 0;
     memset(townLots, 0, sizeof(townLots));
+    for (int i = 0; i < MAX_FURNITURE; i++) townFurnOwner[i] = TOWN_OWNER_PUBLIC;
+    for (int i = 0; i < MAX_MOVERS; i++) townHome[i] = -1;
+    townHousekeepTimer = 0.0f;
+    townArrivalTimer = 0.0f;
 }
 
 static void TownNormRect(int* x1, int* y1, int* x2, int* y2) {
@@ -184,7 +201,10 @@ static void TownLotFurn(TownLot* L, int u, int v, FurnitureType type, uint8_t ma
     TownLocalToWorld(L, u, v, &x, &y);
     if (GetFurnitureAt(x, y, L->z) >= 0) return;
     int f = SpawnFurniture(x, y, L->z, type, mat);
-    if (f >= 0) L->furn[L->furnCount++] = f;
+    if (f < 0) return;
+    L->furn[L->furnCount++] = f;
+    townFurnOwner[f] = (L->kind == LOT_HOME && GetFurnitureDef(type)->restRate >= 1.0f) ? TOWN_OWNER_NOBODY : TOWN_OWNER_PUBLIC;
+    if (type == FURNITURE_FRIDGE) L->fridge = f;
 }
 
 // Walls, door, windows, floor, roof
@@ -322,7 +342,8 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
     }
     TownLot* L = &townLots[slot];
     memset(L, 0, sizeof(*L));
-    *L = (TownLot){ .active = true, .kind = kind, .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .z = z, .front = best };
+    *L = (TownLot){ .active = true, .kind = kind, .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .z = z, .front = best,
+                    .fridge = -1, .foodItem = -1 };
     TownStampShell(L);
     if (kind == LOT_HOME) TownFurnishHome(L);
     else TownFurnishWork(L);
@@ -332,8 +353,14 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
 void TownRemoveLot(int lot) {
     if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return;
     TownLot* L = &townLots[lot];
-    for (int i = 0; i < L->furnCount; i++)
-        if (furniture[L->furn[i]].active) RemoveFurniture(L->furn[i]);
+    for (int i = 0; i < MAX_MOVERS; i++) if (townHome[i] == lot) townHome[i] = -1;   // homeless now
+    for (int i = 0; i < L->furnCount; i++) {
+        int f = L->furn[i];
+        townFurnOwner[f] = TOWN_OWNER_PUBLIC;
+        if (!furniture[f].active) continue;
+        if (furniture[f].occupant >= 0) ReleaseFurniture(f, furniture[f].occupant);
+        RemoveFurniture(f);
+    }
     int z = L->z;
     for (int y = L->y1; y <= L->y2; y++)
         for (int x = L->x1; x <= L->x2; x++) {
@@ -366,4 +393,157 @@ int TownRemoveLotsIn(int x1, int y1, int x2, int y2, int z) {
         removed++;
     }
     return removed;
+}
+
+// ---------------------------------------------------------------------------
+// Residents
+// ---------------------------------------------------------------------------
+
+int TownHomeOf(int moverIdx) {
+    return (moverIdx >= 0 && moverIdx < MAX_MOVERS) ? townHome[moverIdx] : -1;
+}
+
+bool TownMayUseFurniture(int furnIdx, int moverIdx) {
+    if (townLotHighWater == 0 || furnIdx < 0 || furnIdx >= MAX_FURNITURE) return true;
+    int owner = townFurnOwner[furnIdx];
+    return owner == TOWN_OWNER_PUBLIC || owner == moverIdx;
+}
+
+int TownResidents(int lot) {
+    const TownLot* L = &townLots[lot];
+    int n = 0;
+    for (int i = 0; i < L->furnCount; i++) n += townFurnOwner[L->furn[i]] >= 0;
+    return n;
+}
+
+int TownFreeBeds(void) {
+    int n = 0;
+    for (int l = 0; l < townLotHighWater; l++) {
+        const TownLot* L = &townLots[l];
+        if (!L->active || L->kind != LOT_HOME) continue;
+        for (int i = 0; i < L->furnCount; i++) n += townFurnOwner[L->furn[i]] == TOWN_OWNER_NOBODY;
+    }
+    return n;
+}
+
+int TownHomeless(void) {
+    int n = 0;
+    for (int i = 0; i < moverCount; i++) n += movers[i].active && townHome[i] < 0;
+    return n;
+}
+
+// A walkable road cell on the map edge: where newcomers arrive
+static bool TownEntryCell(int* ox, int* oy, int* oz) {
+    for (int r = 0; r < townRoadCount; r++) {
+        const TownRoad* rd = &townRoads[r];
+        for (int y = rd->y1; y <= rd->y2; y++)
+            for (int x = rd->x1; x <= rd->x2; x++) {
+                if (x != 0 && y != 0 && x != gridWidth - 1 && y != gridHeight - 1) continue;
+                if (!IsCellWalkableAt(rd->z, y, x)) continue;
+                *ox = x; *oy = y; *oz = rd->z;
+                return true;
+            }
+    }
+    return false;
+}
+
+// Give a mover a home: the first unowned bed. Returns the lot or -1.
+static int TownGiveHome(int moverIdx) {
+    for (int l = 0; l < townLotHighWater; l++) {
+        TownLot* L = &townLots[l];
+        if (!L->active || L->kind != LOT_HOME) continue;
+        for (int i = 0; i < L->furnCount; i++) {
+            if (townFurnOwner[L->furn[i]] != TOWN_OWNER_NOBODY) continue;
+            townFurnOwner[L->furn[i]] = (short)moverIdx;
+            townHome[moverIdx] = (short)l;
+            return l;
+        }
+    }
+    return -1;
+}
+
+// Walk home: to the cell just inside the front door
+static void TownSendHome(int moverIdx, int lot) {
+    const TownLot* L = &townLots[lot];
+    int x, y, w, d;
+    TownInsideSize(L, &w, &d);
+    TownLocalToWorld(L, w / 2, 0, &x, &y);
+    char said[96];
+    QueueCommandAt(moverIdx, x, y, L->z, false, said, sizeof(said));
+}
+
+// Spawning a newcomer: the game's SpawnMoverAt (names, looks: main.c sets the hook); the
+// tests, which don't build main.c, get a plain mover
+static void TownSpawnFallback(int x, int y, int z) {
+    if (moverCount >= MAX_MOVERS || !IsCellWalkableAt(z, y, x)) return;
+    Mover* m = &movers[moverCount];
+    InitMover(m, x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, (Point){x, y, z}, balance.baseMoverSpeed);
+    AssignRandomTraits(m);
+    moverCount++;
+}
+void (*townSpawnMover)(int x, int y, int z) = TownSpawnFallback;
+
+static void TownArrive(void) {
+    int ex, ey, ez;
+    if (TownFreeBeds() == 0 || !TownEntryCell(&ex, &ey, &ez)) return;
+    int before = moverCount;
+    townSpawnMover(ex, ey, ez);
+    if (moverCount == before) return;
+    int m = moverCount - 1;
+    int lot = TownGiveHome(m);
+    if (lot >= 0) TownSendHome(m, lot);
+    EventLog("Town: mover %d arrives, home lot %d", m, lot);
+}
+
+// Restock a home's fridge (stand-in for shops: docs/vision/town.md)
+static void TownRestock(TownLot* L) {
+    int residents = TownResidents((int)(L - townLots));
+    if (residents == 0 || L->fridge < 0 || !furniture[L->fridge].active) return;
+    const Furniture* f = &furniture[L->fridge];
+    int want = residents * townMealsPerResident;
+    if (want <= 0) return;
+    if (L->foodItem >= 0) {
+        const Item* it = &items[L->foodItem];
+        bool still = it->active && it->type == ITEM_BREAD && (int)(it->x / CELL_SIZE) == f->x
+                  && (int)(it->y / CELL_SIZE) == f->y && (int)it->z == f->z && it->state == ITEM_ON_GROUND;
+        if (still && it->stackCount * 2 > want) return;   // more than half left
+        if (still && it->reservedBy < 0) { items[L->foodItem].stackCount = want; return; }
+        if (still) return;   // someone is taking from it: next time
+    }
+    int idx = SpawnItem(f->x * CELL_SIZE + CELL_SIZE * 0.5f, f->y * CELL_SIZE + CELL_SIZE * 0.5f, (float)f->z, ITEM_BREAD);
+    if (idx >= 0) items[idx].stackCount = want;
+    L->foodItem = idx;
+}
+
+void TownTick(float dt) {
+    if (townLotHighWater == 0) return;
+    townArrivalTimer += dt;
+    townHousekeepTimer += dt;
+    float housekeep = GameHoursToGameSeconds(0.1f);
+    if (townHousekeepTimer < housekeep) return;
+    townHousekeepTimer = 0.0f;
+    // Owners who are gone free their bed
+    for (int l = 0; l < townLotHighWater; l++) {
+        TownLot* L = &townLots[l];
+        if (!L->active || L->kind != LOT_HOME) continue;
+        for (int i = 0; i < L->furnCount; i++) {
+            int o = townFurnOwner[L->furn[i]];
+            if (o >= 0 && (o >= moverCount || !movers[o].active)) {
+                townFurnOwner[L->furn[i]] = TOWN_OWNER_NOBODY;
+                if (o < MAX_MOVERS) townHome[o] = -1;
+            }
+        }
+    }
+    // Homeless movers already in town take a free bed first, then newcomers arrive
+    for (int i = 0; i < moverCount && TownFreeBeds() > 0; i++)
+        if (movers[i].active && townHome[i] < 0) {
+            int lot = TownGiveHome(i);
+            if (lot >= 0) TownSendHome(i, lot);
+        }
+    if (townArrivalTimer >= GameHoursToGameSeconds(townArrivalGH)) {
+        townArrivalTimer = 0.0f;
+        TownArrive();
+    }
+    for (int l = 0; l < townLotHighWater; l++)
+        if (townLots[l].active && townLots[l].kind == LOT_HOME) TownRestock(&townLots[l]);
 }

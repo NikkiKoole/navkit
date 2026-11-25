@@ -1,5 +1,6 @@
 // describe.c - Entity descriptions as toned text lines (see describe.h)
 #include "describe.h"
+#include "../entities/town.h"
 #include "../entities/action_queue.h"
 #include "../entities/containers.h"
 #include "../entities/inventory.h"
@@ -430,6 +431,11 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
                 m->x, m->y, m->z, (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE));
     }
 
+    if (townLotHighWater > 0) {   // town: where they live
+        int home = TownHomeOf(idx);
+        if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
+        else DescAdd(out, DESC_WARN, "Homeless");
+    }
     DescribeMoverNeeds(m, out);
     DescribeMoverMood(m, out);
 

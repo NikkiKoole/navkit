@@ -32,6 +32,8 @@ typedef struct {
     int doorX, doorY;        // the front door cell
     int beds;                // homes: bed count; work: work spots (desks)
     int furn[TOWN_MAX_LOT_FURN], furnCount;   // furniture this lot's building placed
+    int fridge;              // homes: the fridge's furniture index (-1 none); food is restocked on it
+    int foodItem;            // homes: the restocked food stack (-1 none; checked before use)
 } TownLot;
 
 extern TownRoad townRoads[TOWN_MAX_ROADS];
@@ -54,5 +56,27 @@ void TownRemoveLot(int lot);
 int  TownRemoveLotsIn(int x1, int y1, int x2, int y2, int z);   // count removed
 int  TownLotAt(int x, int y, int z);                             // -1 = none
 int  TownLotCount(LotKind kind);                                  // active lots of a kind
+
+// ---------------------------------------------------------------------------
+// Residents (step 3): a home with a free bed draws a newcomer, who arrives on a road at the
+// map edge and walks home. Each bed in a home is private: its owner's, or (unassigned) nobody's.
+// ---------------------------------------------------------------------------
+
+#define TOWN_OWNER_PUBLIC   -1   // anyone may use it (every furniture outside town homes)
+#define TOWN_OWNER_NOBODY   -2   // a home's bed with no owner yet: kept for the next newcomer
+
+extern float townArrivalGH;      // game hours between newcomers (setting)
+extern int townMealsPerResident; // restocked food on a home's fridge per resident (setting)
+extern int townStarter;          // homes already standing when the town game starts (setting)
+
+extern void (*townSpawnMover)(int x, int y, int z);   // main.c: SpawnMoverAt
+
+void TownTick(float dt);                          // arrivals, leaving owners, restocking
+int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
+int  TownResidents(int lot);                      // movers who live there
+int  TownFreeBeds(void);                          // unowned beds in all homes
+int  TownHomeless(void);                          // active movers without a home (town only)
+// May this mover rest on / use this furniture? (needs.c bed search). Cheap when no town.
+bool TownMayUseFurniture(int furnIdx, int moverIdx);
 
 #endif

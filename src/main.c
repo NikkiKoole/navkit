@@ -11,6 +11,7 @@
 #include "core/pie_menu.h"
 #include "entities/jobs.h"
 #include "entities/workshops.h"
+#include "entities/town.h"
 #include "assets/fonts/comic_embedded.h"
 #include "assets/fonts/times_roman_embedded.h"
 #include "sound/sound_phrase.h"
@@ -1352,6 +1353,7 @@ Vector2 GetScreenShakeOffset(void) {
 // ============================================================================
 
 int main(int argc, char** argv) {
+    townSpawnMover = SpawnMoverAt;   // town newcomers get names and looks
     // Check for --inspect mode (runs without GUI)
     if (argc >= 2 && strcmp(argv[1], "--inspect") == 0) {
         return InspectSaveFile(argc, argv);

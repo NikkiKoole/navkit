@@ -13,6 +13,10 @@ static bool test_verbose = false;
 #include "../src/entities/mover.h"
 #include "../src/entities/furniture.h"
 #include "../src/entities/town.h"
+#include "../src/entities/items.h"
+#include "../src/entities/jobs.h"
+#include "../src/simulation/balance.h"
+#include "../src/simulation/needs.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -139,10 +143,81 @@ describe(town_lots) {
     }
 }
 
+// A street from the west edge, one home lot on it with `beds` beds wanted (lot size picks it)
+static int SetupStreetWithHome(void) {
+    SetupTown();
+    ClearItems();
+    ClearJobs();
+    InitBalance();
+    TownAddRoad(0, 10, 39, 12, 1, NULL);
+    int lot = TownAddLot(LOT_HOME, 10, 13, 16, 17, 1, NULL);   // 7x5: inside 5x2 = 1 bed
+    BuildEntrances();
+    BuildGraph();
+    return lot;
+}
+
+describe(town_residents) {
+    it("a free bed draws a newcomer from the edge road, who gets that home") {
+        int lot = SetupStreetWithHome();
+        expect(lot >= 0);
+        expect(townLots[lot].beds == 1);
+        expect(TownFreeBeds() == 1);
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);   // 10 game minutes in 1 s steps
+        expect(moverCount == 1);
+        expect(TownHomeOf(0) == lot);
+        expect(TownResidents(lot) == 1);
+        expect(TownFreeBeds() == 0);
+        expect((int)(movers[0].x / CELL_SIZE) == 0);    // arrived at the map edge
+    }
+    it("only one newcomer per free bed") {
+        SetupStreetWithHome();
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 6000; t++) TownTick(1.0f);
+        expect(moverCount == 1);
+    }
+    it("someone else's bed is not for resting; a public bed is") {
+        int lot = SetupStreetWithHome();
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        int bed = -1;
+        for (int i = 0; i < townLots[lot].furnCount; i++)
+            if (furniture[townLots[lot].furn[i]].type == FURNITURE_PLANK_BED) bed = townLots[lot].furn[i];
+        expect(bed >= 0);
+        expect(TownMayUseFurniture(bed, 0));
+        expect(!TownMayUseFurniture(bed, 1));
+        int pub = SpawnFurniture(30, 30, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        expect(TownMayUseFurniture(pub, 1));
+    }
+    it("the fridge is restocked for its residents") {
+        int lot = SetupStreetWithHome();
+        townArrivalGH = 0.05f;
+        townMealsPerResident = 3;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        int food = townLots[lot].foodItem;
+        expect(food >= 0);
+        expect(items[food].active && items[food].type == ITEM_BREAD && items[food].stackCount == 3);
+        const Furniture* f = &furniture[townLots[lot].fridge];
+        expect((int)(items[food].x / CELL_SIZE) == f->x && (int)(items[food].y / CELL_SIZE) == f->y);
+        items[food].stackCount = 1;                       // eaten down
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        expect(items[townLots[lot].foodItem].stackCount == 3);
+    }
+    it("removing a home makes its residents homeless") {
+        int lot = SetupStreetWithHome();
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        TownRemoveLot(lot);
+        expect(TownHomeOf(0) == -1);
+        expect(TownHomeless() == 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(town_roads);
     test(town_lots);
+    test(town_residents);
     return summary();
 }

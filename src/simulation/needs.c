@@ -33,6 +33,7 @@
 #include "../simulation/plants.h"
 #include "../world/designations.h"
 #include "../core/time.h"
+#include "../entities/town.h"
 #include <math.h>
 #include <limits.h>
 
@@ -677,6 +678,7 @@ static void StartRestSearchBody(Mover* m, int moverIdx) {
         if (!furniture[i].active) continue;
         if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only
+        if (!TownMayUseFurniture(i, moverIdx)) continue;  // someone else's bed (town homes)
 
         const FurnitureDef* def = GetFurnitureDef(furniture[i].type);
         if (def->restRate <= 0.0f) continue;  // Not restable
