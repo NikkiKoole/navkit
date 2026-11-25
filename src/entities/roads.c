@@ -1,6 +1,7 @@
 // roads.c - Road network for the cars experiment (see roads.h)
 #include "roads.h"
 #include "mover.h"            // CELL_SIZE
+#include "cars.h"             // carWidth (the lane width follows it)
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
@@ -9,6 +10,7 @@
 #include <string.h>
 
 float rdSetback = 7.0f;
+float rdLaneWidth = 3.0f;
 bool rdLaneRules = true;
 bool rdClasses = false;
 float rdClassSpeed[RD_CLS_COUNT] = {6.0f, 9.0f, 12.0f, 15.0f};
@@ -43,12 +45,13 @@ static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 #define RD_MAX_TURN 2.1f        // radians (~120 degrees): sharpest turn through a junction
 #define RD_LANE_CHANGE_COST 4.0f  // cells a lane change adds to a route
 #define RD_MAX_TURN_SHARP 2.6f  // (~150) allowed where nothing else leads in / out of a lane
-#define RD_CONFLICT 2.6f        // cells: connectors closer than this conflict
+#define RD_CONFLICT (carWidth + 0.6f)   // cells: connectors closer than this conflict (two cars side by side + a margin; was 2.6 for 2-cell cars)
 #define RD_ROUTE_TMP 4096
 
 void RoadsClear(void) {
     rdNodeCount = rdEdgeCount = rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
     rdClasses = false;
+    rdLaneWidth = carWidth + 1.0f;
     memset(rdSegExtra, 0, sizeof(rdSegExtra));
 }
 
@@ -335,7 +338,7 @@ static int BuildLane(int ei, int dir, int k) {
     // the right-hand lane (k 0) is the outer one, by the kerb; the overtaking lane (k 1) inner
     // (one-way: one lane on the centre line, or two lanes either side of it: k 0 on the right)
     float off = e->oneWay ? (e->lanesPerDir == 2 ? (k == 0 ? RD_LANE_OFF : -RD_LANE_OFF) * CELL_SIZE : 0)
-                          : (RD_LANE_OFF + 3.0f * (e->lanesPerDir - 1 - k)) * CELL_SIZE;
+                          : (RD_LANE_OFF + rdLaneWidth * (e->lanesPerDir - 1 - k)) * CELL_SIZE;
     int m = 0;
     for (int i = 0; i < n; i++) {
         if (cs[i] < sbA || cs[i] > acc - sbB) continue;
@@ -830,10 +833,10 @@ static void CarveDisc(float cx, float cy, float r, int z) {
 
 void RoadCarveDisc(float cx, float cy, float r, int z) { CarveDisc(cx, cy, r, z); }
 
-// Half the carved width of a road (cells): 3 per lane, + half a cell (slanted roads are
-// carved in whole cells); a one-way road is centred on its lanes
+// Half the carved width of a road (cells): a lane width per lane, + half a cell (slanted roads
+// are carved in whole cells); a one-way road is centred on its lanes
 static float RoadHalfWidth(const RdEdge* e) {
-    if (e->oneWay && !e->arc) return 1.5f * e->lanesPerDir + 1.0f;
+    if (e->oneWay && !e->arc) return 0.5f * rdLaneWidth * e->lanesPerDir + 1.0f;
     return RD_ROAD_WIDTH * 0.5f * e->lanesPerDir + 0.5f;
 }
 
@@ -846,7 +849,7 @@ void RoadsDecks(void) {
         for (int i = 0; i < rdSegs[s].n; i++) {
             int q = rdSegs[s].p0 + i, L = RdLevel(rdZ[q]);
             if (L < 1 || L >= gridDepth || L <= (int)rdBaseZ) continue;
-            float cx = rdX[q] / CELL_SIZE, cy = rdY[q] / CELL_SIZE, r = 2.5f;
+            float cx = rdX[q] / CELL_SIZE, cy = rdY[q] / CELL_SIZE, r = 0.5f * rdLaneWidth + 1.0f;
             for (int y = (int)floorf(cy - r); y <= (int)ceilf(cy + r); y++)
                 for (int x = (int)floorf(cx - r); x <= (int)ceilf(cx + r); x++) {
                     if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;

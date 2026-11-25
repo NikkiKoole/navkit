@@ -926,6 +926,28 @@ User: with more pedestrians, people always walking on a zebra keep the cars stuc
   on the ring road (568 -> 441 trips). Dutch roads are short anyway (27-42 cells between the
   ring's junctions).
 
+## Narrower cars: 2x1 (2026-11-25)
+
+User: the Dutch town is a terrible level design; roads should be drawn / generated a level up,
+on 8x8-cell tiles (SimCity-like). With 2x2 cars (4.5 m wide at 2.25 m a cell) lanes were 3 cells
+and a street 6 - no room in an 8-cell tile for pavements; junctions and roundabouts ~1.5x real.
+So first: cars 2 x 1 cells (4.5 x 2.25 m), `carWidth` 1 (was 2).
+- One lane width, `rdLaneWidth` = carWidth + 1 (2 cells; 3 for the old car), set by
+  `RoadsClear`; from it: road width, lane offsets (also the overtaking lane), carved width,
+  parking bays' offset, deck width under raised roads, the ring setback, the junction setback
+  pedestrians need (2 x lane width: 4, was 6), the pedestrian-to-car stamp radius.
+- **The clearance between junction curves follows the car** (`RD_CONFLICT`, the sibling-curve
+  distance in traffic.c, the shared start of curves in slots.c: carWidth + 0.6, were 2.6): at
+  2.6 with 2-cell lanes nearly every pair of curves "conflicted" - Manhattan fell from ~620 to
+  ~320 trips until this.
+- Curve speeds round up within 10% (`SL_CURVE_TOL`): a ring good for 6.0 cells/s got 1 slot/step
+  (1.99) and the access road's roundabout jammed.
+- The `cars` scenario keeps its 2x2 car (its town tests squeezing through 2-4-wide streets);
+  scenarios restore carWidth and carMaxSpeed after.
+- 10 min, 2 seeds, 2-cell -> 1-cell cars: grid 250 cars 696 -> 793 trips; Manhattan 250:
+  619 -> 921; Dutch 75: 511 -> 497. 0 touches; pedestrians inside a car fewer. Stats line
+  `network:` now shows lanes, curves, bays, kerb spots, lane width and the car's size.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

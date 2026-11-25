@@ -218,11 +218,12 @@ static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
 // a segment's top speed, slots per step (its class's limit; a street: SL_VMAX)
 // A curved lane (a roundabout's ring) no faster than its curve allows: rings were driven at the
 // road's limit, 12 cells/s on a curve good for ~7
+#define SL_CURVE_TOL 0.1f   // a curve good for just under N slots/step (6.0 cells/s = 1.99 slots) takes N: within 10%
 bool carSlotLaneCurves = true;   // (TEST: off = lanes at their class's limit whatever their curve)
 static int SlSegV(int seg) {
     int v = rdClasses ? (int)(RoadSegSpeed(seg) * SL_STEP / SL_SLOT_CELLS + 0.5f) : SL_VMAX;
     if (carSlotLaneCurves && rdSegs[seg].kind == RD_LANE && rdSegs[seg].vmax < 1e8f) {
-        int vc = (int)(rdSegs[seg].vmax * SL_STEP / SL_SLOT_CELLS);
+        int vc = (int)(rdSegs[seg].vmax * SL_STEP / SL_SLOT_CELLS + SL_CURVE_TOL);
         if (vc < v) v = vc;
     }
     return v < 1 ? 1 : v;
@@ -444,7 +445,7 @@ void SlotsBuild(void) {
     // drive through one turning right ahead of it)
     slShared = realloc(slShared, (size_t)rdSegCount);
     memset(slShared, 0, (size_t)rdSegCount);
-    float lim = 2.6f * CELL_SIZE;
+    float lim = (carWidth + 0.6f) * CELL_SIZE;   // (as the junction curves' conflicts: a car width + a margin)
     for (int s = 0; s < rdSegCount; s++) {
         if (rdSegs[s].kind != RD_CONN) continue;
         const RdNode* N = &rdNodes[rdSegs[s].node];
@@ -666,7 +667,7 @@ static int SlBrakeDist(int v, int D) {   // slots needed to stop from v
     return s;
 }
 static int SlCurveV(int conn) {           // top speed on a curve, slots per step
-    int v = (int)(rdSegs[conn].vmax * SL_STEP / SL_SLOT_CELLS);
+    int v = (int)(rdSegs[conn].vmax * SL_STEP / SL_SLOT_CELLS + SL_CURVE_TOL);
     if (v < 1) v = 1;
     int top = SlSegV(conn);   // (the smaller road's limit)
     return v > top ? top : v;
@@ -1162,7 +1163,7 @@ static void SlStampPedestrians(void) {
         for (int i = cap; i < moverCount; i++) slPedLX[i] = -1;
         cap = moverCount;
     }
-    float CS = CELL_SIZE, B = SL_BUCKET * CS, R = 1.5f * CS;   // (car half width + a pedestrian + a margin, from the slot's stretch)
+    float CS = CELL_SIZE, B = SL_BUCKET * CS, R = (0.5f * carWidth + 0.5f) * CS;   // (car half width + a pedestrian + a margin, from the slot's stretch)
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         if (!m->active || m->transportState == TRANSPORT_RIDING) { slPedLX[i] = -1; continue; }
@@ -2047,6 +2048,12 @@ void SlotsPrintStats(void) {
     }
     printf("Slots: %d slots (%.1f cells each) on %d segments; %d cars (%.0f%% of the slots)\n", slTotal, SL_SLOT_CELLS,
            rdSegCount, slotCarCount, slTotal ? 100.0 * slotCarCount / slTotal : 0.0);
+    {
+        int nk[4] = {0, 0, 0, 0}, kerbs = 0;
+        for (int s = 0; s < rdSegCount; s++) if (rdSegs[s].kind >= 0 && rdSegs[s].kind < 4) nk[rdSegs[s].kind]++;
+        for (int s = 0; s < slTotal; s++) if (slKerbOk && slKerbOk[s] == 1) kerbs++;
+        printf("  network: %d lanes, %d junction curves, %d bays; %d kerb spots; lane width %.1f cells, car %.1f x %.1f\n", nk[RD_LANE], nk[RD_CONN], nk[RD_BAYIN], kerbs, rdLaneWidth, carLength, carWidth);
+    }
     printf("Slot traffic: %d trips, mean speed now %.1f cells/s, %d moving now, %d waiting at junctions, %d waiting for a route\n",
            trips, slotCarCount ? (double)vsum / slotCarCount * SL_SLOT_CELLS / SL_STEP : 0.0, moving, waitingJunction, needRoute);
     if (getenv("SL_TOUCH")) printf("  touches: max %d pairs at once, %ld pair-samples over %ld samples; pedestrians inside a car: %ld\n", slTouchMax, slTouchSum, slTouchSamples, slPedHits);

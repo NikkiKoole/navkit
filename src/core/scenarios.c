@@ -36,7 +36,7 @@
 // ---------------------------------------------------------------------------
 typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ, mood;
-    float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
+    float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed, carWidth, carMaxSpeed;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -61,7 +61,7 @@ static void SnapshotOrRestoreSettings(void) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ, moodEnabled,
                                            dayLength, balance.baseMoverSpeed, jobDistanceWeight,
-                                           trainSpeed};
+                                           trainSpeed, carWidth, carMaxSpeed};
         haveSavedSettings = true;
         return;
     }
@@ -75,6 +75,8 @@ static void SnapshotOrRestoreSettings(void) {
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
     trainSpeed = savedSettings.trainSpeed;
+    carWidth = savedSettings.carWidth;
+    carMaxSpeed = savedSettings.carMaxSpeed;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
@@ -3256,6 +3258,7 @@ static void CarsCarve(int x0, int y0, int x1, int y1) {
 }
 
 static void SetupCars(void) {
+    carWidth = 2.0f;   // (this town tests a 2x2 car squeezing through 4/3/2-wide streets and cut corners)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
             GRID(x, y, 1) = CELL_WALL;
@@ -3873,7 +3876,8 @@ static void SetupCarsCity(void) {
 
     cityRng = (unsigned int)carCitySeed;
     rdSetback = carCitySetback;
-    if (carCitySlots && carCityPeds > 0 && rdSetback < 6) rdSetback = 6;   // room for a crossing in front of each junction
+    float xSet = 2.0f * (carWidth + 1.0f);   // room for a crossing in front of each junction (6 with 3-cell lanes)
+    if (carCitySlots && carCityPeds > 0 && rdSetback < xSet) rdSetback = xSet;
     rdLaneRules = carCityLaneRules && carCitySlots;   // (steered cars: not yet - they deadlock with them)
     if (carCityLayout == 1) BuildManhattan();
     else if (carCityLayout == 2) BuildDutch();
@@ -4207,7 +4211,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupCarsTraffic, NULL, CarsScenarioPrintStats, CarsTrafficCheck, 192, 128},
     {"cars-town",  "Cars experiment: long roads - ring road, downtown grid, roundabout, winding country road; one 2x2 car, realistic speeds, camera follows",
                    NULL,        SetupCarsTown, NULL, CarsScenarioPrintStats, CarsTownCheck, 192, 128},
-    {"cars",       "Cars experiment: a 2x2 car with real steering tours a town from its home lot: 4/3/2-wide streets, sharp and cut corners, a dead end",
+    {"cars",       "Cars experiment: a 2x2 car (whatever carWidth says) with real steering tours a town from its home lot: 4/3/2-wide streets, sharp and cut corners, a dead end",
                    NULL,        SetupCars, NULL, CarsScenarioPrintStats, CarsCheck, 64, 40},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},

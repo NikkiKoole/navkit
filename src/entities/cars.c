@@ -16,7 +16,7 @@ Car cars[MAX_CARS];
 int carCount = 0;
 
 float carLength = 2.0f;
-float carWidth = 2.0f;
+float carWidth = 1.0f;   // (a real car: ~4.5 x 1.8 m at 2.25 m a cell; it was 2 - lanes 3 cells, junctions and roundabouts ~1.5x real)
 float carMaxSpeed = 6.0f;
 float carAccel = 3.0f;
 float carBrake = 8.0f;

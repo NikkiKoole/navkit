@@ -25,8 +25,11 @@
 #define RD_MAX_NODE_EDGES 6
 #define RD_MAX_CONN 40       // connectors per junction (6 roads, some with two lanes)
 #define RD_MAX_OUT 6         // connectors leaving one lane
-#define RD_ROAD_WIDTH 6.0f   // cells
-#define RD_LANE_OFF 1.5f     // cells: lane centre from the road's centre line
+// Lane width (cells) follows the cars: a car + a cell (2 for a 2x1 car, 3 for the old 2x2 one);
+// RoadsClear sets it from carWidth, everything below follows
+extern float rdLaneWidth;
+#define RD_ROAD_WIDTH (2.0f * rdLaneWidth)   // cells: a two-lane road
+#define RD_LANE_OFF (0.5f * rdLaneWidth)     // cells: lane centre from the road's centre line
 #define RD_SETBACK rdSetback  // cells: lanes stop this far from a junction's centre (room for the turns)
 extern float rdSetback;       // (default 7; the scenario sets it from carCitySetback)
 extern bool rdLaneRules;      // lane connections (turns only from their lane) + routes that change lanes
@@ -44,7 +47,7 @@ typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)
 // (the bay's IN segment ends at the spot), and from the spot a curve back into the lane
 // at s1 = s0 + RD_BAY_LEN (OUT segment).
 #define RD_MAX_BAYS 16384
-#define RD_BAY_OFF 2.5f      // cells: the spot's centre from the lane's centre
+#define RD_BAY_OFF (rdLaneWidth - 0.5f)   // cells: the spot's centre from the lane's centre (a car beside the lane)
 #define RD_BAY_LEN 12.0f     // cells of lane a bay takes
 typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
 
@@ -130,7 +133,7 @@ void RoadsDecks(void);                    // decks again (after something opened
 // junction; the ring has right of way. Before RoadsBuild.
 // Refuses (false) when two roads arrive so close in angle that a ring stretch between
 // their ring junctions would be shorter than RD_RING_MIN_LANE cells.
-#define RD_RING_SETBACK 3.5f    // cells: lanes stop this far from a ring junction
+#define RD_RING_SETBACK (rdLaneWidth + 0.5f)   // cells: lanes stop this far from a ring junction
 #define RD_RING_MIN_LANE 6.0f   // cells: shortest ring stretch (a car + room to clear the junction)
 bool RoadMakeRoundabout(int node, float rCells);
 void RoadsBuild(float latAccel);          // lanes, connectors, conflicts, bend limits

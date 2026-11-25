@@ -53,7 +53,7 @@ static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0
 #define TR_LET_IN 3.0f         // s: a car waiting this long to pull out gets let in
 #define TR_PULL_BEHIND 8.0f    // cells: the lane must be clear this far behind a bay's exit (+ 2 s at the car's speed)
 #define TR_QUEUE_COST 8.0f     // cells of route cost per slow car on a lane
-#define RD_CONFLICT_CELLS 2.6f  // cells: a car on a sibling curve this close to ours is in our way
+#define RD_CONFLICT_CELLS (carWidth + 0.6f)  // cells: a car on a sibling curve this close to ours is in our way
 
 typedef struct { short car; int seg; } TrHold;
 typedef struct { short car; int seg; float t, waited, noRoom; } TrReq;
