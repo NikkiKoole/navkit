@@ -702,6 +702,69 @@ static bool TagCheck(char* why, int whyLen) {
     return true;
 }
 
+// hide-and-seek: a yard with wall pieces, corners, little huts and pillars; 8 players, the
+// seeker counts in the middle (chase.c). Compare hideSmart on/off: how long hiders stay hidden.
+static long hsTicks, hsHiddenSeenFromHome, hsHiddenTicks;
+
+static void HsWall(int x0, int y0, int x1, int y1) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_OAK);
+        }
+}
+
+static void SetupHideAndSeek(void) {
+    hsTicks = hsHiddenSeenFromHome = hsHiddenTicks = 0;
+    HsWall(4, 4, 9, 4);   HsWall(4, 5, 4, 8);          // an L corner
+    HsWall(22, 4, 27, 4); HsWall(27, 5, 27, 8);        // and another
+    HsWall(4, 22, 4, 27); HsWall(5, 27, 9, 27);
+    HsWall(22, 27, 27, 27); HsWall(27, 22, 27, 26);
+    // two huts (3x3 inside) with one opening each
+    HsWall(12, 2, 16, 2); HsWall(12, 3, 12, 6); HsWall(16, 3, 16, 6); HsWall(12, 6, 13, 6); HsWall(15, 6, 16, 6);
+    HsWall(15, 25, 19, 25); HsWall(15, 26, 15, 29); HsWall(19, 26, 19, 29); HsWall(15, 29, 19, 29);
+    GRID(17, 25, 1) = CELL_AIR;   // its door
+    HsWall(9, 13, 9, 19); HsWall(23, 13, 23, 19);       // long walls either side
+    HsWall(13, 10, 14, 11); HsWall(19, 20, 20, 21);     // pillars
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the first seeker
+    for (int i = 1; i < n; i++) SpawnMoverAt(14 + i % 5, 14 + (i / 5) * 4, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    HideSeekStart(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hide and seek: %d players (smart hiding %s)", n, hideSmart ? "on" : "off"), GREEN);
+}
+
+static void HideAndSeekTickStats(void) {
+    hsTicks++;
+    int s = HideSeeker();
+    if (s < 0) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!HideIsHidden(i)) continue;
+        hsHiddenTicks++;
+        int x = (int)(movers[i].x / CELL_SIZE), y = (int)(movers[i].y / CELL_SIZE);
+        if (HasLineOfSight(16, 16, x, y, 1)) hsHiddenSeenFromHome++;
+    }
+}
+
+static void HideAndSeekPrintStats(void) {
+    printf("Smart hiding: %s; rounds: %ld, found: %ld, found after %.1f s of seeking on average\n",
+           hideSmart ? "on" : "off", hideRounds, hideFoundCount,
+           hideFoundCount ? hideFoundSecondsSum / hideFoundCount : 0.0);
+    printf("Hidden in sight of home (the middle): %.0f%% of hidden time\n",
+           hsHiddenTicks ? 100.0 * hsHiddenSeenFromHome / hsHiddenTicks : 0.0);
+}
+
+static bool HideAndSeekCheck(char* why, int whyLen) {
+    if (hideFoundCount == 0) { snprintf(why, (size_t)whyLen, "nobody was found"); return false; }
+    return true;
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3788,6 +3851,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"hide-and-seek", "A yard with walls, huts and pillars, 8 players: hiding out of sight and seeking (setting hideSmart)",
+                   NULL,        SetupHideAndSeek, HideAndSeekTickStats, HideAndSeekPrintStats, HideAndSeekCheck, 0, 0},
     {"tag",        "Tag on a plaza with pillars, 8 players: chasing and fleeing (setting fleeSmart)",
                    NULL,        SetupTag,      TagTickStats, TagPrintStats, TagCheck, 0, 0},
     {"garden-party", "A lawn, a campfire, tables, a buffet, 14 guests who know each other: eating, talking, gathering round the fire",

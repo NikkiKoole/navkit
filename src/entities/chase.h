@@ -31,4 +31,20 @@ float ChaseSpeedScale(int moverIdx);     // running pace for a chasing/fleeing p
 bool ChaseIsFleeing(int moverIdx);
 float ChaseStamina(int moverIdx);        // 0..1: a runner gets tired (worn out below 0.3: slow)
 
+// --- Hide and seek ---
+// HideSeekStart(seeker, rounds): the seeker counts (eyes shut) at home; the others each pick a
+// hiding spot 4-14 cells away (hideSmart: out of sight from home, tucked in by walls, away from
+// the other hiders; off: any spot in range) and run there, then stand still. Then the seeker
+// searches, remembering where it has looked (goes where it hasn't); a hider is found when the
+// seeker notices it, and walks home. All found or the round's time up: the first one found seeks.
+extern bool hideSmart;
+extern long hideFoundCount, hideRounds;
+extern double hideFoundSecondsSum;   // time from the end of counting to each find
+void HideSeekStart(int seeker);
+int HideSeeker(void);                // -1 if no game
+bool HideIsCounting(int moverIdx);   // the seeker, eyes shut
+bool HideIsHidden(int moverIdx);     // in its spot, not found yet
+bool HideIsFound(int moverIdx);
+bool HideControls(int moverIdx);     // a player in a game of hide and seek: the game gives its goals
+
 #endif

@@ -50,6 +50,7 @@ done <<'EOF'
 75  | 0 | --scenario social-ties
 40  | 0 | --scenario garden-party
 240 | 0 | --scenario tag
+34  | 0 | --scenario hide-and-seek
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long

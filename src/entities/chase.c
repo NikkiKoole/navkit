@@ -6,6 +6,7 @@
 #include "../world/cell_defs.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 bool fleeSmart = true;
 float chaseSpeed = 1.25f;
@@ -42,7 +43,10 @@ static float ChaseRandRange(float lo, float hi) {
     return lo + (hi - lo) * (GetRandomValue(0, 10000) / 10000.0f);
 }
 
+static void ClearHideSeek(void);
+
 void ClearChase(void) {
+    ClearHideSeek();
     memset(playing, 0, sizeof(playing));
     memset(fleeing, 0, sizeof(fleeing));
     memset(replanTimer, 0, sizeof(replanTimer));
@@ -169,7 +173,10 @@ static bool ThreatClose(int i, int threat) {
     return d < 2.0f * CELL_SIZE;   // too close not to notice
 }
 
+static void HideSeekTick(float dt);
+
 void ChaseTick(float dt) {
+    HideSeekTick(dt);
     int it = ChaseIt();
     if (it < 0) return;
     tagChaseTime += dt;
@@ -228,10 +235,202 @@ void ChaseTick(float dt) {
     }
 }
 
+static bool HideMoverTick(int i);
+
 bool ChaseMoverTick(int i, float dt) {
     (void)dt;
+    if (HideMoverTick(i)) return true;
     if (i != ChaseIt() || tagFreeze <= 0.0f) return false;
     Mover* m = &movers[i];   // counting to three
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    m->timeWithoutProgress = 0.0f;
+    m->lastX = m->x;
+    m->lastY = m->y;
+    return true;
+}
+
+// ============================================================================
+// Hide and seek
+// ============================================================================
+bool hideSmart = true;
+long hideFoundCount = 0, hideRounds = 0;
+double hideFoundSecondsSum = 0.0;
+
+enum { HS_NONE, HS_COUNT, HS_SEEK };
+enum { HIDER_GOING, HIDER_HIDDEN, HIDER_FOUND };
+static int hsPhase = HS_NONE, hsSeeker = -1, hsFirstFound = -1;
+static float hsTimer = 0.0f, hsLookTimer = 0.0f;
+static Point hsHome;
+static int hsState[MAX_MOVERS];
+static unsigned char* hsSeen = NULL;   // per cell: the seeker has looked here this round
+static int hsSeenW = 0, hsSeenH = 0;
+
+#define HS_COUNT_TIME   10.0f   // seconds the seeker counts
+#define HS_ROUND_TIME   90.0f   // seconds of seeking before the round ends anyway
+#define HS_MIN          4.0f    // cells: hiding spots between these from where the hider stands
+#define HS_MAX          14.0f
+#define HS_CANDIDATES   40
+#define HS_LOOK_RADIUS  6       // cells the seeker marks as looked at (in sight)
+
+static void ClearHideSeek(void) {
+    hsPhase = HS_NONE;
+    hsSeeker = hsFirstFound = -1;
+    hideFoundCount = hideRounds = 0;
+    hideFoundSecondsSum = 0.0;
+    free(hsSeen);
+    hsSeen = NULL;
+    hsSeenW = hsSeenH = 0;
+}
+
+int HideSeeker(void) { return hsPhase != HS_NONE && hsSeeker >= 0 && hsSeeker < moverCount ? hsSeeker : -1; }
+bool HideIsCounting(int i) { return hsPhase == HS_COUNT && i == hsSeeker; }
+bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_HIDDEN; }
+bool HideControls(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i); }
+bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
+
+static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
+
+// A hiding spot for i: hideSmart = out of sight from home, tucked in, away from other hiders
+static bool PickHidingSpot(int i) {
+    const Mover* m = &movers[i];
+    int z = (int)m->z, bestX = -1, bestY = -1;
+    float bestScore = -1e9f;
+    for (int c = 0; c < HS_CANDIDATES; c++) {
+        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(HS_MIN, HS_MAX);
+        int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
+        float score = 0.0f;
+        if (hideSmart) {
+            if (HasLineOfSight(hsHome.x, hsHome.y, cx, cy, z)) score -= 20.0f;   // seen from home: bad
+            int walls = 0;   // tucked in
+            for (int oy = -1; oy <= 1; oy++)
+                for (int ox = -1; ox <= 1; ox++)
+                    if ((ox || oy) && !IsCellWalkableAt(z, cy + oy, cx + ox)) walls++;
+            score += walls * 1.5f;
+            for (int j = 0; j < moverCount; j++) {   // away from the other hiders' spots
+                if (j == i || !ChaseIsPlaying(j) || j == hsSeeker) continue;
+                float gx = (float)(movers[j].goal.x - cx), gy = (float)(movers[j].goal.y - cy);
+                if (gx * gx + gy * gy < 9.0f) score -= 4.0f;
+            }
+            score += ChaseRandRange(0.0f, 1.0f);
+        } else {
+            score = ChaseRandRange(0.0f, 1.0f);   // any spot in range
+        }
+        if (score > bestScore) {
+            int ox = (int)(m->x / CELL_SIZE), oy = (int)(m->y / CELL_SIZE);
+            Point start = {ox, oy, z}, goal = {cx, cy, z};
+            Mover* mm = &movers[i];
+            mm->goal = goal;
+            if (MoverPlanPath(i, start, goal) <= 0) continue;   // (keeps the best reachable path planned)
+            mm->needsRepath = false;
+            bestScore = score; bestX = cx; bestY = cy;
+        }
+    }
+    if (bestX < 0) return false;
+    return PathTo(i, bestX, bestY, z);   // the best one (the last planned may be a worse one)
+}
+
+void HideSeekStart(int seeker) {
+    hsSeeker = seeker;
+    hsPhase = HS_COUNT;
+    hsTimer = HS_COUNT_TIME;
+    hsFirstFound = -1;
+    hsHome = (Point){(int)(movers[seeker].x / CELL_SIZE), (int)(movers[seeker].y / CELL_SIZE), (int)movers[seeker].z};
+    if (hsSeenW != gridWidth || hsSeenH != gridHeight) {
+        free(hsSeen);
+        hsSeenW = gridWidth; hsSeenH = gridHeight;
+        hsSeen = calloc((size_t)hsSeenW * hsSeenH, 1);
+    } else if (hsSeen) memset(hsSeen, 0, (size_t)hsSeenW * hsSeenH);
+    hideRounds++;
+    movers[seeker].pathLength = 0;
+    movers[seeker].pathIndex = -1;
+    for (int i = 0; i < moverCount; i++) {
+        if (!ChaseIsPlaying(i) || i == seeker) continue;
+        hsState[i] = HIDER_GOING;
+        fleeing[i] = true;   // runs to its spot (fleeSpeed, ChaseSpeedScale)
+        PickHidingSpot(i);
+    }
+}
+
+// The seeker marks what it can see as looked at, then goes where it hasn't looked
+static void SeekerLook(int s) {
+    const Mover* m = &movers[s];
+    int sx = (int)(m->x / CELL_SIZE), sy = (int)(m->y / CELL_SIZE), z = (int)m->z;
+    for (int dy = -HS_LOOK_RADIUS; dy <= HS_LOOK_RADIUS; dy++)
+        for (int dx = -HS_LOOK_RADIUS; dx <= HS_LOOK_RADIUS; dx++) {
+            int x = sx + dx, y = sy + dy;
+            if (x < 0 || y < 0 || x >= hsSeenW || y >= hsSeenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
+            if (hsSeen[y * hsSeenW + x] || !IsCellWalkableAt(z, y, x)) continue;
+            if (HasLineOfSight(sx, sy, x, y, z)) hsSeen[y * hsSeenW + x] = 1;
+        }
+}
+
+static void SeekerGo(int s) {
+    const Mover* m = &movers[s];
+    int z = (int)m->z, bestX = -1, bestY = -1;
+    float bestScore = -1e9f;
+    for (int c = 0; c < 30; c++) {   // an unlooked-at cell, not too far
+        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 12.0f);
+        int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
+        int unseen = 0;   // how much unlooked-at ground round it
+        for (int oy = -2; oy <= 2; oy++)
+            for (int ox = -2; ox <= 2; ox++)
+                if (IsCellWalkableAt(z, cy + oy, cx + ox) && !SeenCell(cx + ox, cy + oy)) unseen++;
+        float score = unseen - d * 0.3f + ChaseRandRange(0.0f, 1.0f);
+        if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
+    }
+    if (bestX >= 0) PathTo(s, bestX, bestY, z);
+}
+
+static void HideSeekTick(float dt) {
+    if (hsPhase == HS_NONE || hsSeeker < 0 || !movers[hsSeeker].active) return;
+    int s = hsSeeker;
+    hsTimer -= dt;
+    // hiders: arrived at the spot -> hidden; found ones go home
+    for (int i = 0; i < moverCount; i++) {
+        if (!ChaseIsPlaying(i) || i == s) continue;
+        if (hsState[i] == HIDER_GOING && movers[i].pathIndex < 0) {
+            hsState[i] = HIDER_HIDDEN;
+            fleeing[i] = false;
+        }
+    }
+    if (hsPhase == HS_COUNT) {
+        if (hsTimer <= 0.0f) { hsPhase = HS_SEEK; hsTimer = HS_ROUND_TIME; hsLookTimer = 0.0f; }
+        return;
+    }
+    // seeking: look, spot, go on
+    if ((hsLookTimer -= dt) <= 0.0f) { SeekerLook(s); hsLookTimer = 0.5f; }
+    const MoverNotice* n = &moverNotice[s];
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (!ChaseIsPlaying(j) || j == s || hsState[j] == HIDER_FOUND) continue;
+        hsState[j] = HIDER_FOUND;   // spotted!
+        fleeing[j] = false;
+        hideFoundCount++;
+        hideFoundSecondsSum += HS_ROUND_TIME - hsTimer;
+        if (hsFirstFound < 0) hsFirstFound = j;
+        PathTo(j, hsHome.x, hsHome.y, hsHome.z);   // walk home
+    }
+    if (movers[s].pathIndex < 0) SeekerGo(s);
+    bool anyLeft = false;
+    for (int i = 0; i < moverCount; i++)
+        if (ChaseIsPlaying(i) && i != s && hsState[i] != HIDER_FOUND) anyLeft = true;
+    if (!anyLeft || hsTimer <= 0.0f) {   // next round: the first one found seeks
+        int next = hsFirstFound >= 0 ? hsFirstFound : s;
+        PathTo(s, hsHome.x, hsHome.y, hsHome.z);
+        HideSeekStart(next);
+    }
+}
+
+// Standing still: the seeker counting, hiders in their spot, found ones waiting at home
+static bool HideMoverTick(int i) {
+    if (hsPhase == HS_NONE || !ChaseIsPlaying(i)) return false;
+    bool stand = (i == hsSeeker && hsPhase == HS_COUNT) || (i != hsSeeker && hsState[i] == HIDER_HIDDEN) ||
+                 (i != hsSeeker && hsState[i] == HIDER_FOUND && movers[i].pathIndex < 0);
+    if (!stand) return false;
+    Mover* m = &movers[i];
     m->pathLength = 0;
     m->pathIndex = -1;
     m->timeWithoutProgress = 0.0f;

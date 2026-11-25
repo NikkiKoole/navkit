@@ -1908,7 +1908,9 @@ void UpdateMovers(void) {
                 }
             }
 
-            if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
+            if (HideControls(i)) {
+                // hide and seek (chase.c) gives this player its goals
+            } else if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
                 // Only assign random goals to idle movers without jobs or active needs
                 if (m->repathCooldown > 0) {
                     if (NoticeDislikedClose(i)) {   // someone it dislikes came close: leave now (notice.c)

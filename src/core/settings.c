@@ -605,6 +605,8 @@ static const Setting settings[] = {
       "An idle wanderer that noticed someone it likes (like >= 20) sometimes walks over to them instead of a random spot."),
     SET_BOOL("socialAvoid", "Avoid the disliked", "Entities/Movers/Noticing", socialAvoid,
       "Walkers steer round someone they dislike (like <= -20) and wanderers don't pick a goal near them."),
+    SET_BOOL("hideSmart", "Hide: smart", "Entities/Movers/Noticing", hideSmart,
+      "Hide and seek: hiders pick a spot out of sight of the seeker's home, tucked in by walls, away from the others. Off: any spot in range."),
     SET_BOOL("fleeSmart", "Flee: smart", "Entities/Movers/Noticing", fleeSmart,
       "Fleeing (tag, later animals): run along a path to a good open spot away from the threat. Off: straight away from it."),
     SET_FLOAT("chaseSpeed", "Chase: speed", "Entities/Movers/Noticing", chaseSpeed, 0.05f, 0.5f, 3.0f,

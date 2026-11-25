@@ -704,6 +704,45 @@ describe(tag) {
     }
 }
 
+describe(hide_and_seek) {
+    it("smart hiding: the spot is out of sight of the seeker's home") {
+        TagSetup();
+        hideSmart = true;
+        for (int y = 2; y <= 9; y++) GRID(14, y, 1) = CELL_WALL;   // a wall to hide behind
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        expect(HideSeeker() == s && HideIsCounting(s));
+        expect(movers[h].pathIndex >= 0);                        // off to its spot
+        Point g = movers[h].goal;
+        expect(!HasLineOfSight(8, 6, g.x, g.y, 1));              // out of sight of home
+    }
+
+    it("counting: the seeker stands with its eyes shut; then it searches") {
+        TagSetup();
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        expect(ChaseMoverTick(s, TICK_DT));
+        RunChase(10.5f);
+        expect(!HideIsCounting(s));
+        expect(!ChaseMoverTick(s, TICK_DT) || movers[s].pathIndex >= 0);
+    }
+
+    it("a hider in plain sight gets found and walks home") {
+        TagSetup();
+        for (int y = 0; y < H; y++) GRID(16, y, 1) = CELL_WALL;  // someone else far behind a wall
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1), other = AddMover(20, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true); ChaseSetPlayer(other, true);
+        HideSeekStart(s);
+        RunChase(10.5f);                                         // counted; nobody moved (no movement here)
+        expect(!HideIsFound(other));
+        expect(HideIsFound(h));                                  // h never left: right there
+        expect(hideFoundCount >= 1);
+        expect(movers[h].goal.x == 8 && movers[h].goal.y == 6); // home
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -715,5 +754,6 @@ int main(int argc, char* argv[]) {
     test(friends_and_foes);
     test(walking_together);
     test(tag);
+    test(hide_and_seek);
     return summary();
 }
