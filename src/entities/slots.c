@@ -139,29 +139,45 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare) {
 }
 
 // A new trip from the lane the car is on: a random lane and slot
+// Route searches run between steps, while the car may still be drawn gliding from its last
+// slot to this one: the new route keeps that stretch (old steps prevRi .. ri) in front, so the
+// glide carries on (resetting "previous" to "now" made the car snap forward - seen by the user)
+static void SlSetRoute(SlotCar* c, const unsigned short* r, int n, int destSlot) {
+    unsigned short pre[SL_MAX_ROUTE];
+    int keep = c->ri - c->prevRi;
+    if (keep < 0 || keep + n > SL_MAX_ROUTE) keep = 0;
+    for (int k = 0; k < keep; k++) pre[k] = c->route[c->prevRi + k];
+    if (keep == 0) c->prevSlot = c->prevRi == c->ri ? c->prevSlot : c->slot;
+    memcpy(c->route, pre, sizeof(unsigned short) * keep);
+    memcpy(c->route + keep, r, sizeof(unsigned short) * n);
+    c->routeLen = keep + n;
+    c->prevRi = 0;
+    c->ri = keep;
+    c->destSlot = destSlot;
+}
+
 static bool SlNewTrip(int i) {
     SlotCar* c = &slotCars[i];
     int cur = c->route[c->ri];
     if (rdSegs[cur].kind != RD_LANE) return false;
     int lanes = RoadLaneCount();
+    unsigned short r[SL_MAX_ROUTE];
     for (int tries = 0; tries < 6; tries++) {
         int dl = RoadLaneAt((int)((SlRand() * 32768u + SlRand()) % (unsigned)lanes));
         int ds = (int)(SlRand() % slSegN[dl]);
         int n;
-        if (dl == cur && ds > c->slot) { c->route[0] = (unsigned short)cur; n = 1; }
+        if (dl == cur && ds > c->slot) { r[0] = (unsigned short)cur; n = 1; }
         else {
             slRoutes++;
-            n = RoadRoute(cur, dl, c->route, SL_MAX_ROUTE);
-            if (n <= 0) { slRouteFails++; c->route[0] = (unsigned short)cur; continue; }
+            n = RoadRoute(cur, dl, r, SL_MAX_ROUTE - 8);
+            if (n <= 0) { slRouteFails++; continue; }
         }
-        c->routeLen = n;
-        c->ri = c->prevRi = 0;
-        c->prevSlot = c->slot;
-        c->destSlot = ds;
+        SlSetRoute(c, r, n, ds);
         c->needRoute = false;
         return true;
     }
-    c->routeLen = 1; c->ri = c->prevRi = 0; c->prevSlot = c->slot; c->destSlot = slSegN[cur] - 1;
+    r[0] = (unsigned short)cur;
+    SlSetRoute(c, r, 1, slSegN[cur] - 1);
     return false;
 }
 
@@ -343,6 +359,36 @@ static void SlRunStep(void) {
     }
 }
 
+// SL_JUMPS (diagnostic): every tick, every car's drawn pose; count moves bigger than twice
+// what the top speed allows in a tick (a visible jump)
+static float *jumpX = NULL, *jumpY = NULL;
+static long jumpCount = 0;
+static float jumpWorst = 0;
+static void CheckJumps(float dt) {
+    static int on = -1;
+    if (on < 0) on = getenv("SL_JUMPS") != NULL;
+    if (!on) return;
+    static int cap = 0;
+    if (slotCarCount > cap) { cap = slotCarCount; jumpX = realloc(jumpX, sizeof(float) * cap); jumpY = realloc(jumpY, sizeof(float) * cap);
+                              for (int i = 0; i < cap; i++) jumpX[i] = -1; }
+    float limit = 2.0f * SL_VMAX * SL_SLOT_CELLS * CELL_SIZE / SL_STEP * dt + 2.0f;
+    for (int i = 0; i < slotCarCount; i++) {
+        float x, y, h;
+        SlotCarPose(i, &x, &y, &h);
+        if (jumpX[i] >= 0) {
+            float d = sqrtf((x - jumpX[i]) * (x - jumpX[i]) + (y - jumpY[i]) * (y - jumpY[i]));
+            if (d > limit) {
+                jumpCount++;
+                if (d > jumpWorst) jumpWorst = d;
+                static int told = 0;
+                if (told++ < 5) printf("jump: car %d moved %.1f px in a tick (limit %.1f), ri %d/%d slot %d prev %d/%d\n", i, d, limit,
+                                       slotCars[i].ri, slotCars[i].routeLen, slotCars[i].slot, slotCars[i].prevRi, slotCars[i].prevSlot);
+            }
+        }
+        jumpX[i] = x; jumpY[i] = y;
+    }
+}
+
 void SlotsTick(float dt) {
     if (slotCarCount == 0 || slTotal == 0) return;
     TrafficClockTick(dt);   // the traffic lights' clock
@@ -361,6 +407,7 @@ void SlotsTick(float dt) {
         SlRunStep();
         PROFILE_END(SlotsStep);
     }
+    CheckJumps(dt);
 }
 
 bool SlotCarPose(int i, float* x, float* y, float* heading) {
@@ -448,6 +495,7 @@ void SlotsPrintStats(void) {
            rdSegCount, slotCarCount, slTotal ? 100.0 * slotCarCount / slTotal : 0.0);
     printf("Slot traffic: %d trips, mean speed now %.1f cells/s, %d moving now, %d waiting at junctions, %d waiting for a route\n",
            trips, slotCarCount ? (double)vsum / slotCarCount * SL_SLOT_CELLS / SL_STEP : 0.0, moving, waitingJunction, needRoute);
+    if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }
 
