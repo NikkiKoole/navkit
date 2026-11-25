@@ -621,6 +621,15 @@ static void RunExplode(const CmdValue* v) {
     Say(ORANGE, "Boom at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires, %d gunpowder set off",
         x, y, z, v[0].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited, r.powderSetOff);
 }
+static const char* const blastKindChoices[] = { "gunpowder", "dynamite" };
+// blast <kind> [power] [x y z]: a blast of that kind of explosive, now
+static void RunBlastKind(const CmdValue* v) {
+    int x, y, z;
+    if (!ExplodeTarget(v + 2, &x, &y, &z)) return;
+    ExplosionResult r = ExplodeKind(x, y, z, v[1].f, (BlastKind)v[0].choice);
+    Say(ORANGE, "%s at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires",
+        blastKinds[v[0].choice].name, x, y, z, v[1].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited);
+}
 static void RunCharge(const CmdValue* v) {
     int x, y, z;
     if (!ExplodeTarget(v + 2, &x, &y, &z)) return;
@@ -762,6 +771,13 @@ static const CommandDef commandTable[] = {
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
       RunExplode, NULL },
+    { "blast", "World/Explosions", "Blast of a kind of explosive at the mouse (or x y z): dynamite shatters rock harder, less fire and smoke",
+      5, { ARG_CHOICE("kind", blastKindChoices),
+           { .name = "power", .type = CARG_FLOAT, .optional = true, .lo = 1, .hi = EXPLOSION_MAX_POWER, .def = 6 },
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunBlastKind, NULL },
     { "charge", "World/Explosions", "Lit charge at the mouse (or x y z): explodes after the fuse (game seconds)",
       5, { { .name = "power", .type = CARG_FLOAT, .optional = true, .lo = 1, .hi = EXPLOSION_MAX_POWER, .def = 6 },
            { .name = "fuse", .type = CARG_FLOAT, .optional = true, .lo = 0, .hi = 120, .def = 3 },

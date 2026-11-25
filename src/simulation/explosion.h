@@ -22,6 +22,18 @@ extern float gunpowderSparkChance; // setting gunpowderSpark: chance per look th
 // reaches it. A pile of n is one charge of power blastPower * cbrt(n).
 float GunpowderPower(int stackCount);
 
+// Kinds of explosive: the same blast with different numbers
+typedef enum { BLAST_GUNPOWDER, BLAST_DYNAMITE, BLAST_KIND_COUNT } BlastKind;
+typedef struct {
+    const char* name;
+    float brisance;   // how hard it shatters: walls and floors soak strength / brisance
+    float fire;       // burnable cells within this many cells of the charge catch fire
+    float smoke;      // x the smoke it leaves
+    float push;       // x the push on items and movers
+    float fireball;   // x the size of the fireball drawn
+} BlastKindDef;
+extern const BlastKindDef blastKinds[BLAST_KIND_COUNT];
+
 typedef struct {
     int cellsBroken;     // walls / windows
     int floorsBroken;
@@ -34,10 +46,12 @@ typedef struct {
 } ExplosionResult;
 
 // Blast at cell (x, y, z). A charge inside a wall (drilled in) breaks that wall first.
-ExplosionResult Explode(int x, int y, int z, float power);
+ExplosionResult Explode(int x, int y, int z, float power);   // gunpowder
+ExplosionResult ExplodeKind(int x, int y, int z, float power, BlastKind kind);
 
 // A lit charge: explodes after `seconds` game seconds. Returns false if all fuse slots are taken.
-bool ExplosionLightFuse(int x, int y, int z, float power, float seconds);
+bool ExplosionLightFuse(int x, int y, int z, float power, float seconds);   // gunpowder
+bool ExplosionLightFuseKind(int x, int y, int z, float power, float seconds, BlastKind kind);
 int ExplosionFuseCount(void);
 int ExplosionCount(void);   // explosions since the last ClearExplosions
 

@@ -231,6 +231,47 @@ In `src/world/support.c` (bottom, "Landslides"; ticks from `SupportTick`), setti
 - Not done: keeping part of the broken soil as loose fill instead of ~35 dirt items, the
   scorch fading.
 
+## Next: kinds of explosive, gas and flash fires (planned 2026-11-25)
+
+Talked through with the user (gasoline, grenades, dynamite, "steekvlammen"). Two families:
+
+- **Detonations** (gunpowder, dynamite): a charge goes off at once. No new grid: the same blast
+  with different numbers (presets).
+- **Deflagrations** (petrol vapour, gas leaks, firedamp, flour dust, flash fires): an invisible
+  cloud builds up, one spark lights all of it, and the flame runs through it. The bang comes
+  from how much there was and how closed in it was. Needs a grid and a system:
+  1. a fuel vapour grid (sparse like steam, 0-7): heavier than air, it sinks and pools in
+     cellars, pits and low ground, spreads and thins slowly. Room in the cell for a kind bit:
+     firedamp (lighter than air, gathers under a mine's roof) comes later as the second kind;
+  2. a burn front: a fire or spark in a cell with enough vapour lights it; the flame runs cell
+     to cell through the connected cloud over a few ticks (not an instant disc): fire, heat,
+     smoke and a push per burning cell;
+  3. enclosure: in the open it is a flash fire rolling over the ground; in a closed room
+     (`rooms.c`) the burnt volume against the room's volume is a pressure that vents through
+     the weakest openings (windows, then doors, then walls, with `ExplosionCellStrength`) and
+     the flame jets out of each (the "steekvlam"). Backdraft (a starved room fire and an
+     opened door) can be faked from hot smoke in a closed room later, no oxygen grid.
+- Flour dust is not a gas: a dusty room (a room property, swept clean) that a spark sets off
+  as a whole, through the same room pressure.
+
+User decisions: one vapour kind first (heavier than air), firedamp later as a kind; no
+injuries yet and no grenades (the games are about building and living: accidents, not
+weapons; knockback and daze carry it; a "lethal blasts in survival" setting is the cheap step
+if wanted later).
+
+Order: 1. blast presets (built, below), 2. vapour grid + burn front, open-air flash fire only,
+3. enclosure (room pressure, windows/doors blowing out, flame jets), 4. sources: firedamp in
+mines, dusty mills (Town), a petrol barrel (City 1999).
+
+### Built: blast kinds (2026-11-25)
+
+`BlastKind` / `blastKinds[]` in `explosion.c`: name, brisance (walls and floors soak strength /
+brisance), fire reach, smoke, push, fireball size. `ExplodeKind`, `ExplosionLightFuseKind`;
+`Explode` / `ExplosionLightFuse` are gunpowder (unchanged numbers). Dynamite: brisance 2, fire
+1 cell, half the smoke, 0.8 the push, a smaller fireball: at power 5 it takes 28 cells of
+granite where gunpowder takes 7 (gunpowder needs 8 for that). Console `blast <kind> [power] [x y z]`.
+No dynamite item yet (nothing in the game makes it; an item and recipe when a game wants it).
+
 ### Other ideas from the brainstorm (not planned yet)
 
 - Explosions touching other sims: steam explosions (lava or a hot cell meeting water), dust

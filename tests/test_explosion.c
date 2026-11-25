@@ -12,6 +12,7 @@
 #include "../src/world/designations.h"
 #include "../src/core/effects.h"
 #include "../src/simulation/water.h"
+#include "../src/simulation/smoke.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -397,6 +398,36 @@ describe(explosion_crater) {
     }
 }
 
+describe(blast_kinds) {
+    it("lets dynamite shatter more rock than gunpowder of the same power, with less smoke") {
+        int broken[2], smoke[2];
+        for (int k = 0; k < 2; k++) {
+            FlatWorld();
+            ClearSmoke();
+            for (int z = 1; z <= 6; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) { Wall(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z); }
+            for (int z = 7; z < gridDepth; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) GRID(x, y, z) = CELL_AIR;
+            Wall(12, 12, 6, MAT_NONE); GRID(12, 12, 6) = CELL_AIR;   // a shaft so there's open air to smoke
+            ExplosionResult r = ExplodeKind(12, 12, 4, 5.0f, k == 0 ? BLAST_GUNPOWDER : BLAST_DYNAMITE);
+            broken[k] = r.cellsBroken;
+            smoke[k] = 0;
+            for (int z = 0; z < gridDepth; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) smoke[k] += GetSmokeLevel(x, y, z);
+        }
+        expect(broken[1] > broken[0] * 2);
+        expect(smoke[1] < smoke[0] || smoke[0] == 0);
+    }
+
+    it("goes off as its own kind from a fuse") {
+        FlatWorld();
+        for (int z = 1; z <= 4; z++) for (int y = 6; y <= 18; y++) for (int x = 6; x <= 18; x++) { Wall(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z); }
+        ExplosionLightFuseKind(12, 12, 2, 5.0f, 0.5f, BLAST_DYNAMITE);
+        for (int i = 0; i < 60; i++) ExplosionsTick(1.0f / 60.0f);
+        int open = 0;
+        for (int z = 1; z <= 4; z++) for (int y = 6; y <= 18; y++) for (int x = 6; x <= 18; x++) if (GRID(x, y, z) == CELL_AIR) open++;
+        expect(ExplosionCount() == 1);
+        expect(open > 7);   // gunpowder at 5 takes 7 cells of granite
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -410,5 +441,6 @@ int main(int argc, char** argv) {
     test(blast_effects);
     test(explosion_water);
     test(explosion_crater);
+    test(blast_kinds);
     return summary();
 }

@@ -94,7 +94,7 @@ static float FloorStrength(int x, int y, int z) {
 // Transient state
 
 #define MAX_FUSES 64
-typedef struct { int x, y, z; float power, t; } Fuse;
+typedef struct { int x, y, z; float power, t; int kind; } Fuse;
 static Fuse fuses[MAX_FUSES];
 static int fuseCount;
 
@@ -127,9 +127,22 @@ int ExplosionCount(void) { return explosionsTotal; }
 int ExplosionFlyingCount(void) { return flyingCount; }
 bool MoverKnocked(int i) { return i >= 0 && i < MAX_MOVERS && knockDaze[i] > 0.0f; }
 
+// What kinds of explosive do differently (power is the reach either way)
+const BlastKindDef blastKinds[BLAST_KIND_COUNT] = {
+    //               name         brisance fire  smoke push  fireball
+    [BLAST_GUNPOWDER] = { "gunpowder", 1.0f, 2.5f, 1.0f, 1.0f, 1.0f },
+    [BLAST_DYNAMITE]  = { "dynamite",  2.0f, 1.0f, 0.5f, 0.8f, 0.7f },
+};
+
+static float curBrisance = 1.0f;   // the kind going off now (StepBlocked reads it)
+
 bool ExplosionLightFuse(int x, int y, int z, float power, float seconds) {
+    return ExplosionLightFuseKind(x, y, z, power, seconds, BLAST_GUNPOWDER);
+}
+
+bool ExplosionLightFuseKind(int x, int y, int z, float power, float seconds, BlastKind kind) {
     if (fuseCount >= MAX_FUSES) return false;
-    fuses[fuseCount++] = (Fuse){ x, y, z, power, seconds };
+    fuses[fuseCount++] = (Fuse){ x, y, z, power, seconds, (int)kind };
     FxEmitSparks(x, y, z, seconds);
     EventLog("Fuse lit at (%d,%d,z%d) power %.1f, %.1fs", x, y, z, power, seconds);
     return true;
@@ -176,7 +189,7 @@ static HeapNode HeapPop(Heap* h) {
 static bool StepBlocked(int x, int y, int z, float v) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return true;
     float s = ExplosionCellStrength(x, y, z);
-    return s < 0.0f || s > v - 1.0f;
+    return s < 0.0f || s / curBrisance > v - 1.0f;
 }
 
 // Hash for a direction when something sits right on the charge
@@ -312,7 +325,14 @@ void ExplosionKnockMover(int moverIdx, float fromX, float fromY, float power) {
 }
 
 ExplosionResult Explode(int x, int y, int z, float power) {
+    return ExplodeKind(x, y, z, power, BLAST_GUNPOWDER);
+}
+
+ExplosionResult ExplodeKind(int x, int y, int z, float power, BlastKind kind) {
     ExplosionResult res = {0};
+    if ((int)kind < 0 || kind >= BLAST_KIND_COUNT) kind = BLAST_GUNPOWDER;
+    const BlastKindDef* K = &blastKinds[kind];
+    curBrisance = K->brisance;
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return res;
     if (power <= 0.0f) return res;
     if (power > EXPLOSION_MAX_POWER) power = EXPLOSION_MAX_POWER;
@@ -361,11 +381,13 @@ ExplosionResult Explode(int x, int y, int z, float power) {
             if (dz != 0) {
                 int fx = dz > 0 ? nx : cx, fy = dz > 0 ? ny : cy, fz = dz > 0 ? nz : cz;
                 float fs = FloorStrength(fx, fy, fz);
+                if (fs > 0.0f) fs /= K->brisance;
                 if (fs < 0.0f || v < fs) continue;
                 if (fs > 0.0f) { v -= fs; breakFloor[BIDX(fx, fy, fz)] = 1; if (v <= 0.0f) continue; }
             }
             int ni = BIDX(nx, ny, nz);
             float s = ExplosionCellStrength(nx, ny, nz);
+            if (s > 0.0f) s /= K->brisance;   // a sharper explosive shatters walls for less
             if (s < 0.0f || v < s) continue;
             if (s > 0.0f) { breakCell[ni] = 1; v -= s; if (v <= 0.0f) continue; }
             if (v > best[ni]) { best[ni] = v; HeapPush(&h, v, ni); }
@@ -482,7 +504,7 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     // 3. Loose items: a push away from the charge, by power and weight. Rubble the blast made
     // (drops of broken walls) flies too, by the power in the cell it came from
     float ox = x + 0.5f, oy = y + 0.5f;
-    for (int k = 0; k < pushN; k++) PushItem(pushIdx[k], pushPow[k], pushZ[k], ox, oy, &res);
+    for (int k = 0; k < pushN; k++) PushItem(pushIdx[k], pushPow[k] * K->push, pushZ[k], ox, oy, &res);
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* it = &items[i];
         if (listed[i] || !it->active || it->containedIn >= 0 || it->state != ITEM_ON_GROUND) continue;
@@ -493,7 +515,7 @@ ExplosionResult Explode(int x, int y, int z, float power) {
         PushItem(i, (v > 0.0f ? v : 0.0f) + 1.0f, it->z, ox, oy, &res);
     }
     // 4. Movers: knocked back and dazed
-    for (int k = 0; k < knockN; k++) KnockMover(knockIdx[k], knockPow[k], ox, oy, &res);
+    for (int k = 0; k < knockN; k++) KnockMover(knockIdx[k], knockPow[k] * K->push, ox, oy, &res);
     free(pushIdx); free(pushPow); free(pushZ); free(listed); free(knockIdx); free(knockPow);
 
     // 5. Fire near the charge, smoke over the inner half
@@ -502,14 +524,14 @@ ExplosionResult Explode(int x, int y, int z, float power) {
             for (int cx = x0; cx <= x1; cx++) {
                 float v = best[BIDX(cx, cy, cz)];
                 if (v <= 0.0f) continue;
-                if (v >= power - 2.5f && !HasFire(cx, cy, cz) && GetFuelAt(cx, cy, cz) > 0) {
+                if (v >= power - K->fire && !HasFire(cx, cy, cz) && GetFuelAt(cx, cy, cz) > 0) {
                     IgniteCell(cx, cy, cz);
                     if (HasFire(cx, cy, cz)) res.cellsIgnited++;
                 }
                 // Real smoke (the smoke simulation: it rises, spreads, fills rooms, drifts off),
                 // thickest at the centre, in the open cells of the inner half of the blast
                 if (v >= power * 0.5f && !CellIsSolid(GRID(cx, cy, cz))) {
-                    int level = 2 + (int)(5.0f * v / power);
+                    int level = (int)((2.0f + 5.0f * v / power) * K->smoke);
                     if (level > SMOKE_MAX_LEVEL) level = SMOKE_MAX_LEVEL;
                     if (GetSmokeLevel(cx, cy, cz) < level) SetSmokeLevel(cx, cy, cz, level);
                 }
@@ -567,13 +589,13 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     free(breakCell);
     free(breakFloor);
 
-    FxBlast((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, power);
+    FxBlast((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, power * K->fireball);
     float shake = power * 0.8f;
     TriggerScreenShake(shake > 8.0f ? 8.0f : shake, 0.3f + power * 0.03f);
-    TraceLog(LOG_INFO, "Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires, %d ramps, %d water",
-             x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited, res.rampsMade, res.waterThrown);
-    EventLog("Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires",
-             x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited);
+    TraceLog(LOG_INFO, "Explosion (%s) at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires, %d ramps, %d water",
+             K->name, x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited, res.rampsMade, res.waterThrown);
+    EventLog("Explosion (%s) at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires",
+             K->name, x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited);
     return res;
 }
 
@@ -634,7 +656,7 @@ void ExplosionsTick(float dt) {
             if (fuses[f].t > 0.0f) { f++; continue; }
             Fuse fu = fuses[f];
             fuses[f] = fuses[--fuseCount];
-            Explode(fu.x, fu.y, fu.z, fu.power);
+            ExplodeKind(fu.x, fu.y, fu.z, fu.power, (BlastKind)fu.kind);
         }
     }
     if (flyingCount > 0) FlyingTick(dt);
