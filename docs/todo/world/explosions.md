@@ -146,7 +146,9 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
   toward the rim plus value noise (clumps, not a checkerboard), a ragged rim in 2-pixel blocks,
   hard colour steps (inner / outer). Fading = fewer pixels, never alpha.
 - Blast: grows to 0.8 x power cells, white -> yellow -> orange -> red -> smoke over 0.45 + 0.05 x
-  power s, thinning after 30 %. Flash: a white halo for 0.1 s. Smoke puffs drift off.
+  power s, thinning after 30 %. Flash: a white halo for 0.1 s. Smoke (user: "a little more"):
+  10 + 2 x power puffs over the blast, showing as the fireball dies, rising and swelling for
+  2.5-4.5 s, thick at first and thinning late, two shades of grey.
 - Chunks (1-2 sprite pixels, the broken wall's material colour) fly out in an arc with a bounce;
   dust puffs from broken walls, where a collapse lands, and trickling under a creaking piece
   (shown on the floor it falls to); sparks from a burning fuse.

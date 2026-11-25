@@ -127,19 +127,25 @@ static bool FxVisible(int z) { return z <= currentViewZ + 1 && z >= currentViewZ
 void DrawEffects(void) {
     if (fxCount == 0 || !FxInit()) return;
     float inner[3], outer[3];
-    // Discs: flashes under the rest, then dust, then fireballs on top
+    // Discs: flashes under the rest, then dust, fireballs, and the smoke over them
     BeginShaderMode(fxShader);
-    for (int pass = 0; pass < 3; pass++) {
-        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : FX_BLAST;
+    for (int pass = 0; pass < 4; pass++) {
+        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : pass == 2 ? FX_BLAST : FX_SMOKE;
         for (int i = 0; i < fxCount; i++) {
             const Fx* f = &fx[i];
-            if (f->kind != want || !FxVisible(f->z)) continue;
+            if (f->kind != want || f->age < 0.0f || !FxVisible(f->z)) continue;
             float t = f->age / f->life;
             if (f->kind == FX_BLAST) {
                 float grow = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
                 float dens = t < 0.3f ? 1.0f : 1.0f - (t - 0.3f) / 0.7f;
                 BlastColours(t, inner, outer);
                 DrawDisc(f->x, f->y, f->radius * (0.3f + 0.7f * grow), dens, 0.45f, 0.35f, 0.1f + 0.35f * t, 0.55f, inner, outer, f->seed);
+            } else if (f->kind == FX_SMOKE) {
+                // Thick at first, thinning late; swells as it rises; a lighter edge
+                float dens = 0.62f * (1.0f - t * t);
+                Col3(inner, f->r, f->g, f->b);
+                Col3(outer, f->r + 22, f->g + 22, f->b + 22);
+                DrawDisc(f->x, f->y, f->radius * (1.0f + 1.4f * t), dens, 0.55f, 0.5f, 0.3f, 0.6f, inner, outer, f->seed);
             } else if (f->kind == FX_FLASH) {
                 Col3(inner, 255, 255, 235);
                 DrawDisc(f->x, f->y, f->radius, 0.6f * (1.0f - t), 1.0f, 0.3f, 0.2f, 1.0f, inner, inner, f->seed);   // a halo, thin at the rim

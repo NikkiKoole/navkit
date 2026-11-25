@@ -72,8 +72,22 @@ void FxBlast(float wx, float wy, int z, float power) {
     f->life = 0.45f + 0.05f * power;
     Fx* fl = NewFx(FX_FLASH);
     if (fl) { fl->x = wx; fl->y = wy; fl->z = z; fl->radius = power * CELL_SIZE * 0.7f; fl->life = 0.1f; }
-    // Smoke left behind, drifting off
-    FxDust(wx, wy, z, -1, 4 + (int)power, power * CELL_SIZE * 0.4f);
+    // Smoke left behind: a cloud over the blast as the fireball dies, rising and swelling
+    int puffs = 10 + (int)(2.0f * power);
+    float spread = power * CELL_SIZE * 0.55f;
+    for (int i = 0; i < puffs; i++) {
+        Fx* s = NewFx(FX_SMOKE);
+        if (!s) break;
+        float a = FxRandRange(0.0f, 6.2832f), d = spread * sqrtf(FxRand01());
+        s->x = wx + cosf(a) * d; s->y = wy + sinf(a) * d; s->z = z;
+        s->vx = cosf(a) * FxRandRange(2.0f, 8.0f) + FxRandRange(-3.0f, 3.0f);
+        s->vy = sinf(a) * FxRandRange(2.0f, 8.0f) - FxRandRange(6.0f, 14.0f);   // drifts up the screen
+        s->radius = CELL_SIZE * FxRandRange(0.5f, 1.0f) * (0.7f + 0.06f * power);
+        s->age = -FxRandRange(0.25f, 0.6f) * f->life;   // appears while the fireball fades
+        s->life = FxRandRange(2.5f, 4.5f);
+        int g = FxRand01() < 0.5f ? 70 : 96;   // two shades: some depth
+        s->r = (uint8_t)g; s->g = (uint8_t)(g - 3); s->b = (uint8_t)(g - 6);
+    }
 }
 
 void FxDust(float wx, float wy, int z, int mat, int n, float spread) {
@@ -163,6 +177,7 @@ void FxTick(float dt) {
         Fx* f = &fx[i];
         f->age += dt;
         if (f->age >= f->life) continue;
+        if (f->age < 0.0f) { if (w != i) fx[w] = *f; w++; continue; }   // not there yet
         f->x += f->vx * dt;
         f->y += f->vy * dt;
         if (f->kind == FX_CHUNK) {
@@ -175,6 +190,8 @@ void FxTick(float dt) {
             }
         } else if (f->kind == FX_DUST) {
             f->vx *= 1.0f - 1.5f * dt; f->vy *= 1.0f - 1.5f * dt;
+        } else if (f->kind == FX_SMOKE) {
+            f->vx *= 1.0f - 0.4f * dt; f->vy *= 1.0f - 0.4f * dt;
         }
         if (w != i) fx[w] = *f;
         w++;

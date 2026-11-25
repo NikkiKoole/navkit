@@ -17,6 +17,7 @@ typedef enum {
     FX_DUST,     // a small puff in a material's colour, drifting and thinning out
     FX_CHUNK,    // a bit of the broken wall flying in an arc
     FX_SPARK,    // a bright pixel (fuses, gunpowder by a fire)
+    FX_SMOKE,    // a blast's smoke: shows as the fireball dies, rises, swells, thins out late
 } FxKind;
 
 typedef struct {
@@ -26,7 +27,7 @@ typedef struct {
     float x, y;          // world units
     float vx, vy;        // world units per second
     float h, vh;         // chunks: height above the ground (world units), drawn as an offset up
-    float age, life;     // seconds
+    float age, life;     // seconds (age < 0: not there yet, a delayed start)
     float radius;        // world units (blast: full size; dust: start size)
     uint32_t seed;
 } Fx;

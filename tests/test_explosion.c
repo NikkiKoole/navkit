@@ -300,7 +300,10 @@ describe(blast_effects) {
         expect(blasts == 1);
         expect(chunks > 0);
         expect(dust > 0);
-        for (int i = 0; i < 180; i++) FxTick(1.0f / 60.0f);
+        int smoke = 0;
+        for (int i = 0; i < fxCount; i++) if (fx[i].kind == FX_SMOKE) smoke++;
+        expect(smoke >= 10);                       // a cloud, not a wisp
+        for (int i = 0; i < 6 * 60; i++) FxTick(1.0f / 60.0f);   // the smoke lingers a few seconds
         expect(FxCount() == 0);
 
         ClearExplosions();
