@@ -31,6 +31,9 @@ static const char* fxDiscFS =
     "uniform vec3 outerCol;\n"
     "uniform float seed;\n"
     "uniform float noiseAmt;\n"   // clumping: density +- this, from blobs about 3 pixels across
+    "uniform float lump;\n"       // how far the outline bulges in and out (0 = round)
+    "uniform float ring;\n"       // > 0: only the outer band this thick (fraction of the radius)
+    "uniform float time;\n"       // the effect's age: the noise drifts with it (boils)
     "const float bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,\n"
     "                                  3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);\n"
     "float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + seed) * 43758.5453); }\n"
@@ -41,10 +44,16 @@ static const char* fxDiscFS =
     "void main() {\n"
     "    vec2 local = floor(fragTexCoord * quadPix);\n"
     "    vec2 world = local + quadOrigin;\n"
-    "    float r = length(local + 0.5 - center) / max(radius, 0.5);\n"
+    "    vec2 dir = local + 0.5 - center;\n"
+    "    float len = length(dir);\n"
+    "    vec2 unit = len > 0.0 ? dir / len : vec2(1.0, 0.0);\n"
+    "    float outline = 1.0 + (vnoise(unit * 1.7 + vec2(seed * 0.13, time * 0.9)) - 0.5) * 2.0 * lump;\n"
+    "    float r = len / max(radius * outline, 0.5);\n"
     "    float rim = 1.0 + (hash(floor(world / 2.0)) - 0.5) * ragged;\n"   // in 2-pixel blocks: chunky
     "    if (r > rim) discard;\n"
-    "    float dens = density * (1.0 - falloff * r * r) + (vnoise(world / 3.0) - 0.5) * 2.0 * noiseAmt;\n"
+    "    if (ring > 0.0 && r < 1.0 - ring) discard;\n"
+    "    vec2 drift = vec2(time * 1.7, -time * 2.6);\n"   // the clumps churn as it ages
+    "    float dens = density * (1.0 - falloff * r * r) + (vnoise(world / 3.0 + drift) - 0.5) * 2.0 * noiseAmt;\n"
     "    ivec2 b = ivec2(mod(world, 4.0));\n"
     "    if ((bayer[b.x + b.y * 4] + 0.5) / 16.0 >= dens) discard;\n"
     "    float edge = innerFrac + (vnoise(world / 2.0 + 17.0) - 0.5) * 0.3;\n"
@@ -55,7 +64,7 @@ static Shader fxShader;
 static Texture2D fxWhite;
 static bool fxReady = false, fxFailed = false;
 static int locQuadPix, locQuadOrigin, locCenter, locRadius, locDensity, locFalloff, locRagged,
-           locInnerFrac, locInnerCol, locOuterCol, locSeed, locNoise;
+           locInnerFrac, locInnerCol, locOuterCol, locSeed, locNoise, locLump, locRing, locTime;
 
 static bool FxInit(void) {
     if (fxReady) return true;
@@ -77,6 +86,9 @@ static bool FxInit(void) {
     locOuterCol = GetShaderLocation(fxShader, "outerCol");
     locSeed = GetShaderLocation(fxShader, "seed");
     locNoise = GetShaderLocation(fxShader, "noiseAmt");
+    locLump = GetShaderLocation(fxShader, "lump");
+    locRing = GetShaderLocation(fxShader, "ring");
+    locTime = GetShaderLocation(fxShader, "time");
     fxReady = true;
     return true;
 }
@@ -84,10 +96,13 @@ static bool FxInit(void) {
 static void Col3(float* out, int r, int g, int b) { out[0] = r / 255.0f; out[1] = g / 255.0f; out[2] = b / 255.0f; }
 
 // A dithered disc centred at (cx, cy) world units, radius in world units
+typedef struct { float lump, ring, time; } DiscShape;   // outline bulge, ring band, age
+
 static void DrawDisc(float cx, float cy, float radius, float density, float falloff, float ragged,
-                     float noise, float innerFrac, const float* inner, const float* outer, uint32_t seed) {
+                     float noise, float innerFrac, const float* inner, const float* outer, uint32_t seed,
+                     DiscShape shape) {
     if (density <= 0.0f || radius <= 0.0f) return;
-    float reach = radius * (1.0f + 0.5f * ragged) + FX_PIXEL;
+    float reach = radius * (1.0f + 0.5f * ragged) * (1.0f + shape.lump) + FX_PIXEL;
     float x0 = floorf((cx - reach) / FX_PIXEL), y0 = floorf((cy - reach) / FX_PIXEL);
     float x1 = ceilf((cx + reach) / FX_PIXEL), y1 = ceilf((cy + reach) / FX_PIXEL);
     float pix = FX_PIXEL * zoom;
@@ -108,6 +123,9 @@ static void DrawDisc(float cx, float cy, float radius, float density, float fall
     SetShaderValue(fxShader, locOuterCol, outer, SHADER_UNIFORM_VEC3);
     SetShaderValue(fxShader, locSeed, &s, SHADER_UNIFORM_FLOAT);
     SetShaderValue(fxShader, locNoise, &noise, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locLump, &shape.lump, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locRing, &shape.ring, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locTime, &shape.time, SHADER_UNIFORM_FLOAT);
     DrawTexturePro(fxWhite, (Rectangle){ 0, 0, 1, 1 }, dest, (Vector2){ 0, 0 }, 0.0f, WHITE);
     rlDrawRenderBatchActive();   // the next disc sets other uniforms
 }
@@ -127,10 +145,10 @@ static bool FxVisible(int z) { return z <= currentViewZ + 1 && z >= currentViewZ
 void DrawEffects(void) {
     if (fxCount == 0 || !FxInit()) return;
     float inner[3], outer[3];
-    // Discs: flashes under the rest, then dust, fireballs, and the smoke over them
+    // Discs: flashes under the rest, then dust, fireballs, smoke over them, the shockwave on top
     BeginShaderMode(fxShader);
-    for (int pass = 0; pass < 4; pass++) {
-        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : pass == 2 ? FX_BLAST : FX_SMOKE;
+    for (int pass = 0; pass < 5; pass++) {
+        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : pass == 2 ? FX_BLAST : pass == 3 ? FX_SMOKE : FX_RING;
         for (int i = 0; i < fxCount; i++) {
             const Fx* f = &fx[i];
             if (f->kind != want || f->age < 0.0f || !FxVisible(f->z)) continue;
@@ -139,20 +157,30 @@ void DrawEffects(void) {
                 float grow = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
                 float dens = t < 0.3f ? 1.0f : 1.0f - (t - 0.3f) / 0.7f;
                 BlastColours(t, inner, outer);
-                DrawDisc(f->x, f->y, f->radius * (0.3f + 0.7f * grow), dens, 0.45f, 0.35f, 0.1f + 0.35f * t, 0.55f, inner, outer, f->seed);
+                DrawDisc(f->x, f->y, f->radius * (0.3f + 0.7f * grow), dens, 0.45f, 0.35f, 0.1f + 0.35f * t, 0.55f, inner, outer, f->seed,
+                         (DiscShape){ 0.22f, 0.0f, f->age });
             } else if (f->kind == FX_SMOKE) {
                 // Thick at first, thinning late; swells as it rises; a lighter edge
                 float dens = 0.62f * (1.0f - t * t);
                 Col3(inner, f->r, f->g, f->b);
                 Col3(outer, f->r + 22, f->g + 22, f->b + 22);
-                DrawDisc(f->x, f->y, f->radius * (1.0f + 1.4f * t), dens, 0.55f, 0.5f, 0.3f, 0.6f, inner, outer, f->seed);
+                DrawDisc(f->x, f->y, f->radius * (1.0f + 1.4f * t), dens, 0.55f, 0.5f, 0.3f, 0.6f, inner, outer, f->seed,
+                         (DiscShape){ 0.25f, 0.0f, f->age });
+            } else if (f->kind == FX_RING) {
+                // Out to the reach in its life, fast first; a thin pale band, thinning
+                float grow = 1.0f - (1.0f - t) * (1.0f - t);
+                Col3(inner, 255, 245, 200);
+                DrawDisc(f->x, f->y, f->radius * (0.25f + 0.75f * grow), 0.85f * (1.0f - t), 0.0f, 0.15f, 0.15f, 1.0f, inner, inner, f->seed,
+                         (DiscShape){ 0.06f, 0.07f, f->age });
             } else if (f->kind == FX_FLASH) {
                 Col3(inner, 255, 255, 235);
-                DrawDisc(f->x, f->y, f->radius, 0.6f * (1.0f - t), 1.0f, 0.3f, 0.2f, 1.0f, inner, inner, f->seed);   // a halo, thin at the rim
+                DrawDisc(f->x, f->y, f->radius, 0.6f * (1.0f - t), 1.0f, 0.3f, 0.2f, 1.0f, inner, inner, f->seed,
+                         (DiscShape){ 0.2f, 0.0f, f->age });   // a halo, thin at the rim
             } else {
                 Col3(outer, f->r, f->g, f->b);
                 Col3(inner, f->r + (255 - f->r) / 5, f->g + (255 - f->g) / 5, f->b + (255 - f->b) / 5);   // a shade lighter
-                DrawDisc(f->x, f->y, f->radius * (1.0f + 0.8f * t), 0.7f * (1.0f - t), 0.6f, 0.6f, 0.25f, 0.4f, inner, outer, f->seed);
+                DrawDisc(f->x, f->y, f->radius * (1.0f + 0.8f * t), 0.7f * (1.0f - t), 0.6f, 0.6f, 0.25f, 0.4f, inner, outer, f->seed,
+                         (DiscShape){ 0.25f, 0.0f, f->age });
             }
         }
     }

@@ -297,7 +297,10 @@ describe(blast_effects) {
             if (fx[i].kind == FX_CHUNK) chunks++;
             if (fx[i].kind == FX_DUST) dust++;
         }
-        expect(blasts == 1);
+        expect(blasts >= 4);                       // a lumpy cluster, not one disc
+        int rings = 0;
+        for (int i = 0; i < fxCount; i++) if (fx[i].kind == FX_RING) rings++;
+        expect(rings == 1);                        // the shockwave
         expect(chunks > 0);
         expect(dust > 0);
         int smoke = 0;
@@ -306,7 +309,11 @@ describe(blast_effects) {
         for (int i = 0; i < 6 * 60; i++) FxTick(1.0f / 60.0f);   // the smoke lingers a few seconds
         expect(FxCount() == 0);
 
+        expect(!FxHitStopFrame());                 // power 5: no hit stop
+        Explode(12, 12, 1, 9.0f);
+        expect(FxHitStopFrame());                  // a big one holds the picture a few frames
         ClearExplosions();
+        expect(!FxHitStopFrame());
         effectsEnabled = false;
         Explode(12, 12, 1, 5.0f);
         expect(FxCount() == 0);

@@ -14,6 +14,7 @@ typedef struct { uint8_t kind; uint8_t r, g, b; int x, y, z; float t, acc, rate;
 static FxEmitter emitters[MAX_EMITTERS];
 static int emitterCount;
 static uint32_t fxRng = 0x9e3779b9u;
+static int hitStopFrames;
 
 // Deterministic (headless runs and screenshots repeat)
 static float FxRand01(void) {
@@ -24,6 +25,7 @@ static float FxRandRange(float a, float b) { return a + (b - a) * FxRand01(); }
 
 void ClearFx(void) {
     fxCount = 0;
+    hitStopFrames = 0;
     emitterCount = 0;
     fxRng = 0x9e3779b9u;
 }
@@ -64,12 +66,37 @@ static void MaterialRGB(int mat, uint8_t* r, uint8_t* g, uint8_t* b) {
     *r = (uint8_t)c[0]; *g = (uint8_t)c[1]; *b = (uint8_t)c[2];
 }
 
+bool FxHitStopFrame(void) {
+    if (hitStopFrames <= 0) return false;
+    hitStopFrames--;
+    return true;
+}
+
 void FxBlast(float wx, float wy, int z, float power) {
-    Fx* f = NewFx(FX_BLAST);
+    if (!effectsEnabled) return;
+    float R = power * CELL_SIZE * 0.8f, life = 0.45f + 0.05f * power;
+    // The fireball: a cluster of lumps, not one disc. A big one in the middle, smaller ones off
+    // centre, each with its own size, start and length (expands fast, then slows, unevenly)
+    int lumps = 4 + (int)(power * 0.5f);
+    if (lumps > 9) lumps = 9;
+    Fx* f = NULL;
+    for (int i = 0; i < lumps; i++) {
+        Fx* l = NewFx(FX_BLAST);
+        if (!l) break;
+        if (i == 0) f = l;
+        float a = FxRandRange(0.0f, 6.2832f), d = i == 0 ? 0.0f : R * FxRandRange(0.15f, 0.4f);
+        l->x = wx + cosf(a) * d; l->y = wy + sinf(a) * d; l->z = z;
+        l->radius = i == 0 ? R * 0.75f : R * FxRandRange(0.4f, 0.65f);
+        l->life = life * (i == 0 ? 1.0f : FxRandRange(0.75f, 1.1f));
+        l->age = i == 0 ? 0.0f : -FxRandRange(0.0f, 0.07f);
+    }
     if (!f) return;
-    f->x = wx; f->y = wy; f->z = z;
-    f->radius = power * CELL_SIZE * 0.8f;
-    f->life = 0.45f + 0.05f * power;
+    // The shockwave: a thin ring out to the blast's real reach
+    Fx* ring = NewFx(FX_RING);
+    if (ring) { ring->x = wx; ring->y = wy; ring->z = z; ring->radius = power * CELL_SIZE; ring->life = 0.18f; }
+    // Hit stop: a big bang freezes the picture for a moment
+    int stop = power >= 8.0f ? 4 : power >= 6.0f ? 2 : 0;
+    if (stop > hitStopFrames) hitStopFrames = stop;
     Fx* fl = NewFx(FX_FLASH);
     if (fl) { fl->x = wx; fl->y = wy; fl->z = z; fl->radius = power * CELL_SIZE * 0.7f; fl->life = 0.1f; }
     // Smoke left behind: a cloud over the blast as the fireball dies, rising and swelling

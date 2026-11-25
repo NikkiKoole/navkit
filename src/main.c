@@ -31,6 +31,7 @@
 void rlDrawRenderBatchActive(void);   // rlgl (part of raylib): flush pending draws
 #include "render/play_hud.h"
 #include "world/support.h"
+#include "core/effects.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -1748,7 +1749,9 @@ int main(int argc, char** argv) {
             UpdateCutscene(frameTime);
         }
 
-        if (!paused && !IsCutsceneActive()) {
+        if (FxHitStopFrame()) {
+            accumulator = 0.0f;   // hit stop: a big blast holds the picture a few frames (core/effects.c)
+        } else if (!paused && !IsCutsceneActive()) {
             bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
             float tickDt = useFixedTimestep ? TICK_DT : frameTime;
             

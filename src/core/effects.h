@@ -18,6 +18,7 @@ typedef enum {
     FX_CHUNK,    // a bit of the broken wall flying in an arc
     FX_SPARK,    // a bright pixel (fuses, gunpowder by a fire)
     FX_SMOKE,    // a blast's smoke: shows as the fireball dies, rises, swells, thins out late
+    FX_RING,     // a blast's shockwave: a thin ring racing out to its reach
 } FxKind;
 
 typedef struct {
@@ -49,6 +50,10 @@ void FxEmitSparks(int x, int y, int z, float seconds);
 void FxEmitDustFall(int x, int y, int z, int mat, float seconds);
 
 void FxTick(float dt);   // SimStep
+
+// Hit stop: a big blast freezes the game for a few frames (the windowed loop asks every frame:
+// true = skip this frame's ticks). Headless runs never ask, so they're unaffected.
+bool FxHitStopFrame(void);
 void ClearFx(void);
 int FxCount(void);
 

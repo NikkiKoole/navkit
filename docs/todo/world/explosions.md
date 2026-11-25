@@ -149,6 +149,15 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
   power s, thinning after 30 %. Flash: a white halo for 0.1 s. Smoke (user: "a little more"):
   10 + 2 x power puffs over the blast, showing as the fireball dies, rising and swelling for
   2.5-4.5 s, thick at first and thinning late, two shades of grey.
+- After a short web look at how others do it (user: "not this perfect disc"): the fireball is a
+  cluster of 4-9 lumps (a big one in the middle, smaller ones off centre, each with its own size,
+  start and length); every disc's outline bulges by smooth noise around it; the dither noise
+  drifts with age (boils); a thin shockwave ring races out to the real reach in 0.18 s; a big
+  blast (power 6+: 2 frames, 8+: 4) holds the picture (hit stop, windowed loop only).
+  Sources: PixelJoint (lumpy circle, fast then slow, smoke from the lumps), Quirkbit's stylised
+  explosions (noise clipping, rotating noise), Vlambeer's screenshake talk (hit stop), NVIDIA's
+  "Bigger bang with fewer sprites" (shockwave). Not done: one shared density buffer for smoke
+  (puffs merge instead of stacking), a light flash through the lighting system, a boom sound.
 - Chunks (1-2 sprite pixels, the broken wall's material colour) fly out in an arc with a bounce;
   dust puffs from broken walls, where a collapse lands, and trickling under a creaking piece
   (shown on the floor it falls to); sparks from a burning fuse.
