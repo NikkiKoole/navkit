@@ -58,7 +58,7 @@ int RoadPlanCheck(char lines[][128], int max);
 // roughly their shape), the road whose handle is near a point
 bool RoadPlanIsStraight(int e);
 void RoadPlanEdgeMid(int e, float* x, float* y);
-void RoadPlanBendThrough(int e, float x, float y);
+void RoadPlanBendThrough(int e, float x, float y, float straightWithin);   // (within straightWithin cells of the line's middle: straight)
 void RoadPlanMoveNode(int n, float x, float y);
 int RoadPlanHandleAt(float x, float y, float within);
 void RoadPlanSave(void);      // one saved copy (a drag's start) ...

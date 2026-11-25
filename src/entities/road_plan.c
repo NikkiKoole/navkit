@@ -312,11 +312,11 @@ void RoadPlanEdgeMid(int e, float* x, float* y) { RoadPlanPoint(e, 0.5f, x, y); 
 
 // Bend road e so its middle passes through (x, y) (B(0.5) = P0/4 + C/2 + P1/4); within a cell
 // of the straight line's middle: straight again
-void RoadPlanBendThrough(int e, float x, float y) {
+void RoadPlanBendThrough(int e, float x, float y, float straightWithin) {
     if (e < 0 || e >= rpEdgeCount || !rpEdges[e].alive) return;
     const RpNode *A = &rpNodes[rpEdges[e].a], *B = &rpNodes[rpEdges[e].b];
     float mx = (A->x + B->x) * 0.5f, my = (A->y + B->y) * 0.5f;
-    if (hypotf(x - mx, y - my) < 1.0f) { rpEdges[e].cx = mx; rpEdges[e].cy = my; return; }
+    if (hypotf(x - mx, y - my) < straightWithin) { rpEdges[e].cx = mx; rpEdges[e].cy = my; return; }
     rpEdges[e].cx = 2.0f * x - mx;
     rpEdges[e].cy = 2.0f * y - my;
 }

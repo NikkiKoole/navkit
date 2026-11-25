@@ -2479,7 +2479,7 @@ static bool CheckKey(int key) {
 
 // ---------------------------------------------------------------------------
 // Road tool (cars experiment): draw roads of the cars-city road plan (road_plan.h) - click a
-// start, click an end (press and drag the end to bend the road: the curve's middle follows the
+// start, click an end (a straight road; Ctrl + the end, dragged: bent, the curve's middle follows the
 // mouse), the next road starts where this one ended; right-click: cancel, or remove the road
 // under the mouse. Points snap to junctions, roads, else the 8-cell grid (Shift: no grid).
 // Each edit rebuilds the city from the plan (CityRebuildFromPlan: cars placed again).
@@ -2521,7 +2521,7 @@ static void HandleRoadTool(void) {
     }
     // bending a road: its middle follows the mouse
     if (roadToolStage == 3) {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { RoadPlanBendThrough(roadToolEdge, m.x, m.y); return; }
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { RoadPlanBendThrough(roadToolEdge, m.x, m.y, RoadToolPick()); return; }
         roadToolStage = 0;
         RoadToolApply(RoadPlanIsStraight(roadToolEdge) ? "Road straightened" : "Road bent");
         return;
@@ -2550,7 +2550,15 @@ static void HandleRoadTool(void) {
             if (h >= 0) { RoadPlanSave(); roadToolEdge = h; roadToolStage = 3; return; }
             roadToolX1 = sx; roadToolY1 = sy; roadToolStage = 1;
         }
-        else if (roadToolStage == 1 && hypotf(sx - roadToolX1, sy - roadToolY1) >= 2.0f) { roadToolX2 = sx; roadToolY2 = sy; roadToolStage = 2; }
+        else if (roadToolStage == 1 && hypotf(sx - roadToolX1, sy - roadToolY1) >= 2.0f) {
+            roadToolX2 = sx; roadToolY2 = sy;
+            // straight unless Ctrl is held (then dragging bends it): a mouse moving a little while
+            // clicking bent roads meant to be straight (the user) - bend afterwards with the handle
+            if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { roadToolStage = 2; return; }
+            int pieces = RoadPlanAdd(roadToolX1, roadToolY1, roadToolX2, roadToolY2, false, 0, 0, roadToolClass);
+            roadToolX1 = roadToolX2; roadToolY1 = roadToolY2;   // (the next road from here)
+            if (pieces > 0) RoadToolApply("Road placed");
+        }
         return;
     }
     if (roadToolStage == 2 && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {

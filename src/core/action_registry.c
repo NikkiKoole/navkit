@@ -545,7 +545,7 @@ const ActionDef ACTION_REGISTRY[] = {
         .parentAction = ACTION_DRAW_TRANSPORT,
         .canDrag = false,
         .canErase = true,
-        .hints = { "L-click start, L-click end", "drag 2nd click: bend", "R-click: remove / cancel", "Shift: no snapping" },
+        .hints = { "L-click start, L-click end", "drag a road's middle: bend; Ctrl+2nd click: bend now", "R-click: remove / cancel", "Shift: no snapping" },
     },
     {
         .action = ACTION_WORK_HARVEST_BERRY,

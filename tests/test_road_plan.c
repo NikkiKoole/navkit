@@ -99,13 +99,13 @@ describe(road_plan_shapes) {
     it("bending a road puts its middle where it was dragged; back on the line it's straight") {
         RoadPlanClear();
         RoadPlanAdd(50, 100, 150, 100, false, 0, 0, RD_CLS_STREET);
-        RoadPlanBendThrough(0, 100, 120);
+        RoadPlanBendThrough(0, 100, 120, 1.0f);
         float x, y;
         RoadPlanEdgeMid(0, &x, &y);
         expect(Near(x, 100, 0.01f) && Near(y, 120, 0.01f));
         expect(!RoadPlanIsStraight(0));
         expect(RoadPlanHandleAt(101, 119, 2) == 0);
-        RoadPlanBendThrough(0, 100.4f, 100.5f);
+        RoadPlanBendThrough(0, 100.4f, 100.5f, 1.0f);
         expect(RoadPlanIsStraight(0));
     }
     it("moving a junction: straight roads stay straight, a curved one keeps bending") {
@@ -122,7 +122,7 @@ describe(road_plan_shapes) {
         RoadPlanClear();
         RoadPlanAdd(50, 100, 150, 100, false, 0, 0, RD_CLS_STREET);
         RoadPlanSave();
-        RoadPlanBendThrough(0, 100, 130);
+        RoadPlanBendThrough(0, 100, 130, 1.0f);
         RoadPlanAdd(100, 50, 100, 150, false, 0, 0, RD_CLS_STREET);
         RoadPlanRestore();
         expect(RoadPlanRoads() == 1);
