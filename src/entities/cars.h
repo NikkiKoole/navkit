@@ -165,5 +165,6 @@ bool CarBodiesOverlap(float x1, float y1, float h1, float x2, float y2, float h2
 const char* DriveStateName(int state);
 void CarsPrintStats(void);
 void DrawCars(void);   // render/cars_draw.c
+void DrawCarsGround(void);   // render/cars_draw.c: road markings (crossings), before the movers
 
 #endif

@@ -722,6 +722,32 @@ ramps 14 cells a level.)
 - Not done: pedestrians kept off highways (the flyover is up a level, nobody reaches it; an
   at-grade highway would need it); steered cars ignore classes (`rdClasses` only in slot mode).
 
+## Slot traffic: crossings and the rules for pedestrians (2026-11-25)
+
+User: cars stopped for every pedestrian; with zebra crossings the pedestrian should have right of
+way, but someone just walking out into the street shouldn't make the cars stop - a little brake,
+slower driving, the traffic rules.
+- The city marks its crossings (the bands across each road's mouth that already cost nothing on
+  pedestrians' routes): `SlotsMarkCrossing`, drawn as zebra stripes (`DrawCarsGround`, before the
+  movers). "On a crossing" = within a cell of one (people step on from the corner).
+- **On a crossing**: right of way. At the kerb they wait only for a car that can't stop before
+  them any more (its braking distance from its speed); then the slots they walk are taken (hard
+  stamps: cars stop). At lights: the walk sign, as before.
+- **Anywhere else**: they wait for a real gap (no moving car within 6 slots), up to 25 s
+  (`SL_PED_PATIENCE_JAY`, was 6 s for everyone) before just going. In the road only where they are
+  and the next ~half second is taken; further along their way cars only ease off
+  (`slPedSoft`: half speed, a crawl right before them).
+- Brushing the road's edge isn't stepping off (the road must go on 2.5 cells ahead): walkers pushed
+  off the line by others, kerb notches. Most "mid-block crossings" in the first count were that.
+- The city's pedestrians path with plain A* (`pathAlgorithm` + `moverPathAlgorithm`; the scenario
+  reset syncs them back): HPA* puts an entrance in the middle of an open run on a chunk border, and
+  where the border cuts across a road that's in the road.
+- 250 cars, 10 min, grid: 636 trips (599); 784 road crossings on a crossing, 247 elsewhere (first
+  count 407 / 1863); kerb waiting about halved; 0 touches, 0 jumps; pedestrians inside a car 55
+  (38-63 between runs before). Manhattan: 586 (573), 1264 on crossings, 124 elsewhere.
+- Left: some junctions have no crossings (probably the roundabouts: the bands fall inside the ring's lanes), so people cut
+  across them; "cars eased off" stays ~0 - people off the crossings only go into a real gap.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

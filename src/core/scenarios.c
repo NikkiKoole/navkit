@@ -107,6 +107,7 @@ void ScenarioResetWorld(const char* terrain) {
     springTrickle = false;   // sources are taps unless the terrain says otherwise (island)
     buildNow = true;         // dev setups: the build tools work instantly (I flips to order)
     SnapshotOrRestoreSettings();
+    moverPathAlgorithm = (PathAlgorithm)pathAlgorithm;   // (the cars city sets both)
     moverGoalPicker = NULL;
     moverStepHold = NULL;
     navPathExtra = NULL;   // (the cars city's road cost: its buffer stays allocated there)
@@ -3575,6 +3576,7 @@ static void CityPavements(void) {
     // walking in the road costs 26x on routes (not in speed): along the pavement, across at the crossings
     static unsigned char* extra = NULL;
     extra = realloc(extra, (size_t)(W * H));
+    SlotsCrossingsBegin(W, H);
     for (int i = 0; i < W * H; i++) extra[i] = road[i] ? 250 : 0;
     // Crossings: across each road's mouth, just past every lane's end (where cars wait at the
     // stop line, nobody stands): no extra cost there, so pedestrians cross at the junctions
@@ -3599,7 +3601,7 @@ static void CityPavements(void) {
                         if (dx * dx + dy * dy < 2.5f * 2.5f * CS * CS) { clear = false; break; }
                     }
                 }
-                if (clear) extra[cy * W + cx] = 0;
+                if (clear) { extra[cy * W + cx] = 0; SlotsMarkCrossing(cx, cy, fabsf(ch) > fabsf(sh) ? 1 : 2); }
             }
     }
     navPathExtra = extra;
@@ -3782,6 +3784,11 @@ static void SetupCarsCity(void) {
         hungerEnabled = thirstEnabled = energyEnabled = false;
         moverGoalPicker = CityWalkGoal;
         moverStepHold = SlotsPedHold;
+        // plain A*: HPA* puts an entrance mid-run on a chunk border, and where the border cuts
+        // across a road that's in the road - everyone walking along the pavement there stepped
+        // into the road and back (most road crossings were mid-block)
+        pathAlgorithm = PATH_ALGO_ASTAR;
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
         memset(cityToCar, 0, sizeof(cityToCar));
         int drivers = 0;
         for (int car = 0; car < slotCarCount && drivers < carCityDrivers && drivers < carCityPeds; car++) {   // drivers: by their parked cars

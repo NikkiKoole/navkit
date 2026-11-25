@@ -49,6 +49,10 @@ static long slParks = 0, slFareStops = 0, slKerbFull = 0, slPullOutWaits = 0;
 static float *slCX = NULL, *slCY = NULL, *slCH = NULL, *slHalf = NULL, *slCZ = NULL;   // (+ height, levels)   // slot centre, heading, half length (px)
 static int* slSlotSeg = NULL;
 static int* slPedStamp = NULL;
+static int* slPedSoft = NULL;   // a pedestrian off the crossings walks here: slow down (not a stop)
+static unsigned char* slCross = NULL;   // crossings: per cell, 0 / orient
+static int slCrossW = 0, slCrossH = 0, *slCrossList = NULL, slCrossN = 0, slCrossCap = 0;
+static long slPedSlows = 0, slPedJay = 0, slPedZebra = 0;
 static int *slYieldUntil = NULL, *slYieldCar = NULL;   // a slot held open for a merging car (until that step)
 static long slYields = 0, slYieldMerges = 0, slClassYields = 0;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
@@ -99,8 +103,30 @@ static void SlQueueRoute(int i) {
 
 static unsigned int SlRand(void) { slRng = slRng * 1103515245u + 12345u; return (slRng >> 16) & 0x7fff; }
 
+void SlotsCrossingsBegin(int w, int h) {
+    slCrossW = w; slCrossH = h; slCrossN = 0;
+    slCross = realloc(slCross, (size_t)(w * h > 0 ? w * h : 1));
+    if (w * h > 0) memset(slCross, 0, (size_t)(w * h));
+}
+void SlotsMarkCrossing(int x, int y, int orient) {
+    if (x < 0 || y < 0 || x >= slCrossW || y >= slCrossH || slCross[y * slCrossW + x]) return;
+    slCross[y * slCrossW + x] = (unsigned char)orient;
+    if (slCrossN >= slCrossCap) { slCrossCap = slCrossCap ? 2 * slCrossCap : 1024; slCrossList = realloc(slCrossList, sizeof(int) * slCrossCap); }
+    slCrossList[slCrossN++] = y * slCrossW + x;
+}
+int SlotsCrossingAt(int x, int y) { return x < 0 || y < 0 || x >= slCrossW || y >= slCrossH ? 0 : slCross[y * slCrossW + x]; }
+int SlotsCrossingCount(void) { return slCrossN; }
+int SlotsCrossingCell(int i, int* x, int* y) { int c = slCrossList[i]; *x = c % slCrossW; *y = c / slCrossW; return slCross[c]; }
+static bool SlCrossingPx(float x, float y) {   // on or right by a crossing (stepping on from its corner)
+    int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE);
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) if (SlotsCrossingAt(cx + dx, cy + dy)) return true;
+    return false;
+}
+
 void SlotsClear(void) {
     slotCarCount = 0;
+    slCrossW = slCrossH = slCrossN = 0;
     slRealTicks = slRealSum = slRealSnaps = slRealErrN = 0;
     slRealErrSum = 0;
     slRealErrMax = 0;
@@ -117,6 +143,7 @@ void SlotsClear(void) {
     slTouchMax = 0;
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
+    slPedSlows = slPedJay = slPedZebra = 0;
     slYields = slYieldMerges = slClassYields = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
@@ -170,6 +197,7 @@ static void SlBuildBuckets(void) {
             slCZ[idx] = RoadZAt(s, (k + 0.5f) * rdSegs[s].len / slSegN[s]);
             slSlotSeg[idx] = s;
             slPedStamp[idx] = -1;
+            slPedSoft[idx] = -1;
             slYieldUntil[idx] = -1;
             int bx = (int)(slCX[idx] / B), by = (int)(slCY[idx] / B);
             if (bx < 0) bx = 0;
@@ -330,6 +358,7 @@ void SlotsBuild(void) {
         slHalf = realloc(slHalf, sizeof(float) * slSlotCap);
         slSlotSeg = realloc(slSlotSeg, sizeof(int) * slSlotCap);
         slPedStamp = realloc(slPedStamp, sizeof(int) * slSlotCap);
+        slPedSoft = realloc(slPedSoft, sizeof(int) * slSlotCap);
         slYieldUntil = realloc(slYieldUntil, sizeof(int) * slSlotCap);
         slYieldCar = realloc(slYieldCar, sizeof(int) * slSlotCap);
         slBList = realloc(slBList, sizeof(int) * slSlotCap);
@@ -599,6 +628,10 @@ static int SlSafeSpeed(int i) {
             ri++;
             k = 0;
             seg = next;
+        }
+        if (slPedSoft[SlIdx(seg, k)] == slStep && dist < 6) {   // someone walking out in the road ahead: ease off
+            int cap = dist <= 1 ? 1 : (vmax + 1) / 2;
+            if (cap < best) { best = cap; if (c->v > cap) slPedSlows++; }
         }
         int o = slSlotCar[SlIdx(seg, k)];
         if (o >= 0 || slPedStamp[SlIdx(seg, k)] == slStep ||
@@ -970,6 +1003,7 @@ static void SlStampPedestrians(void) {
         }
         slPedLX[i] = px; slPedLY[i] = py;
         float ex = qx - px, ey = qy - py, el = ex * ex + ey * ey;
+        bool cross = SlCrossingPx(px, py) || SlCrossingPx(qx, qy);   // (else: walking out in the road)
         int bx0 = (int)((fminf(px, qx) - R - SL_SPAN_REACH) / B), bx1 = (int)((fmaxf(px, qx) + R + SL_SPAN_REACH) / B);
         int by0 = (int)((fminf(py, qy) - R - SL_SPAN_REACH) / B), by1 = (int)((fmaxf(py, qy) + R + SL_SPAN_REACH) / B);
         for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
@@ -980,7 +1014,10 @@ static void SlStampPedestrians(void) {
                     int ns = el > 0 ? 1 + (int)(sqrtf(el) / (0.5f * CS)) : 0;   // points every half cell along the walk
                     for (int t = 0; t <= ns; t++) {
                         float f = ns ? (float)t / ns : 0;
-                        if (SlSlotDist2(idx, px + ex * f, py + ey * f) < R * R) { if (slPedStamp[idx] != slStep) slPedBlocks++; slPedStamp[idx] = slStep; break; }
+                        if (SlSlotDist2(idx, px + ex * f, py + ey * f) >= R * R) continue;
+                        // (off a crossing: only where they are + the next ~half second)
+                        if (cross || f <= 0.4f) { if (slPedStamp[idx] != slStep) slPedBlocks++; slPedStamp[idx] = slStep; break; }
+                        slPedSoft[idx] = slStep;   // (keep looking: it may be right here too)
                     }
                 }
     }
@@ -1482,7 +1519,8 @@ static bool SlInCar(int car, float x, float y, float grow) {
 
 static double* slPedWaitStart = NULL;
 static int slPedWaitCap = 0;
-#define SL_PED_PATIENCE 6.0   // seconds at the kerb before a pedestrian just goes (the cars stop)
+#define SL_PED_PATIENCE 6.0   // seconds at a crossing's kerb (a car that couldn't stop) before just going
+#define SL_PED_PATIENCE_JAY 25.0   // seconds waiting for a gap off the crossings before just going
 bool SlotsPedHold(int mi, float dirX, float dirY) {
     if (slotCarCount == 0 || slTotal == 0 || !slBHead) return false;
     if (mi >= slPedWaitCap) {
@@ -1504,6 +1542,9 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     float CS = CELL_SIZE, B = SL_BUCKET * CS;
     float qx = m->x + dirX * 0.8f * CS, qy = m->y + dirY * 0.8f * CS;
     bool onRoad = SlRoadAt(m->x, m->y, (int)m->z), qOnRoad = SlRoadAt(qx, qy, (int)m->z), hold = false, inWay = false;
+    bool zebra = SlCrossingPx(qx, qy) || SlCrossingPx(m->x, m->y);   // on a crossing: right of way
+    bool deep = SlRoadAt(m->x + dirX * 2.5f * CS, m->y + dirY * 2.5f * CS, (int)m->z);   // (stepping off: the road goes on ahead)
+    int Dk = SlBrakeSlots();
     int wayCar = -1;
     int bx0 = (int)((m->x - 3 * CS - SL_SPAN_REACH) / B), bx1 = (int)((m->x + 3 * CS + SL_SPAN_REACH) / B);
     int by0 = (int)((m->y - 3 * CS - SL_SPAN_REACH) / B), by1 = (int)((m->y + 3 * CS + SL_SPAN_REACH) / B);
@@ -1529,13 +1570,15 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
                     bool atSlot = slotCars[car].v > 0 && SlSlotDist2(idx, qx, qy) < 1.5f * 1.5f * CS * CS;
                     if (atSlot || SlInCar(car, qx, qy, 0.4f * CS)) { inWay = true; wayCar = car; }
                 }
-                if (onRoad || !qOnRoad) continue;   // the kerb wait: only when stepping off the pavement
-                // stepping off the kerb: a moving car there or coming (4 slots back) - wait
+                if (onRoad || !qOnRoad || !deep) continue;   // the kerb wait: only when stepping off the pavement
+                // stepping off the kerb: a moving car there - wait. On a crossing also for a car that
+                // can't stop before it any more; elsewhere for a real gap (a moving car 6 slots back)
                 if (car >= 0 && slotCars[car].v > 0) hold = true;
                 int seg = slSlotSeg[idx], k = idx - slSeg0[seg];
-                for (int b = 1; b <= 4 && k - b >= 0; b++) {
+                for (int b = 1; b <= 6 && k - b >= 0; b++) {
                     int o = slSlotCar[SlIdx(seg, k - b)];
-                    if (o >= 0 && slotCars[o].v > 0) hold = true;
+                    if (o < 0 || slotCars[o].v == 0) continue;
+                    if (!zebra || SlBrakeDist(slotCars[o].v, Dk) >= b) hold = true;
                 }
             }
     if (getenv("SL_PEDDBG")) {
@@ -1558,6 +1601,10 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
         return false;
     }
     if (!qOnRoad) { slPedGoStep[mi] = -1; slPedWaitStart[mi] = -1; return false; }   // walking the pavement
+    if (!deep) {   // only brushing the road's edge (pushed off the line by others, a kerb notch): not crossing
+        if (inWay) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
+        slPedGoStep[mi] = -1; slPedWaitStart[mi] = -1; return false;
+    }
     // at the kerb, about to step off
     // At a junction with lights: cross the road only while its traffic has red (the walk sign);
     // the nearest lane says which road we cross
@@ -1589,10 +1636,18 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     if (inWay) hold = true;   // a car where we'd step: wait (with patience) like for a gap
     if (hold) {
         if (slPedWaitStart[mi] < 0) slPedWaitStart[mi] = gameTime;
-        if (gameTime - slPedWaitStart[mi] < SL_PED_PATIENCE) { slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
+        if (gameTime - slPedWaitStart[mi] < (zebra ? SL_PED_PATIENCE : SL_PED_PATIENCE_JAY)) { slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
         // waited long enough: steps out anyway (announced: the cars stop)
     }
-    if (slPedGoStep[mi] < 0) { slPedGoStep[mi] = slStep + 1; slPedDX[mi] = dirX; slPedDY[mi] = dirY; }
+    if (slPedGoStep[mi] < 0) {
+        slPedGoStep[mi] = slStep + 1; slPedDX[mi] = dirX; slPedDY[mi] = dirY;
+        if (zebra) slPedZebra++;
+        else {
+            slPedJay++;
+            if (getenv("SL_JAYLOG") && slPedJay < 40)   // (diagnostic: where people cross off the crossings)
+                printf("jay: mover %d steps off at (%.1f,%.1f) dir (%.2f,%.2f), goal (%d,%d)\n", mi, m->x / CS, m->y / CS, dirX, dirY, m->goal.x, m->goal.y);
+        }
+    }
     if (slStep < slPedGoStep[mi]) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }   // until the next step starts
     return false;
 }
@@ -1715,6 +1770,8 @@ void SlotsPrintStats(void) {
                slChoseDrive, slChoseWalk, slSumWalkT / (slChoseDrive + slChoseWalk), slSumDriveT / (slChoseDrive + slChoseWalk), slDriveSpeed);
     if (moverCount > 0) printf("  pedestrians: %d; %ld slots blocked for them, %ld ticks waiting at the kerb or for a car; hard stops (any cause) %ld\n",
                                moverCount, slPedBlocks, slPedHolds, slHardStops);
+    if (moverCount > 0) printf("  crossing the road: %ld times on a crossing (%d crossing cells), %ld elsewhere; cars eased off for them %ld times\n",
+                               slPedZebra, slCrossN, slPedJay, slPedSlows);
     if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
     if (carSlotReal)
         printf("  real cars in view: %.1f on average; tracking error mean %.2f cells, max %.2f; %ld snaps; touches max %d pairs\n",

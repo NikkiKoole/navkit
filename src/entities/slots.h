@@ -86,10 +86,20 @@ float SlotCarZ(int i);   // its height (levels; between levels on a ramp)
 #define SL_SIG_RIGHT 2
 #define SL_SIG_BRAKE 4
 int SlotCarSignals(int i);
-// Pedestrians (movers): the slots a mover walks are taken for cars; a mover about to step off
-// the kerb waits for a gap (up to SL_PED_PATIENCE s, then just goes) and never walks into a car.
-// Install as moverStepHold (mover.h).
+// Pedestrians (movers), by the traffic rules:
+// - on a crossing (zebra; at lights: on the walk sign) they have right of way: they step off
+//   unless a car can't stop for them any more, and the slots they walk are taken (cars stop);
+// - anywhere else they wait at the kerb for a gap (SL_PED_PATIENCE_JAY s, then just go); cars
+//   only slow near them (soft stamps) and stop only for a pedestrian right in their slot.
+// Nobody walks into a car. Install SlotsPedHold as moverStepHold (mover.h).
 bool SlotsPedHold(int moverIdx, float dirX, float dirY);
+// Crossings (the city marks them after SlotsBuild): cells; orient 1 = the road runs along x
+// (stripes along x), 2 = along y. SlotsClear forgets them.
+void SlotsCrossingsBegin(int w, int h);
+void SlotsMarkCrossing(int x, int y, int orient);
+int SlotsCrossingAt(int x, int y);   // 0: none
+int SlotsCrossingCount(void);
+int SlotsCrossingCell(int i, int* x, int* y);   // returns orient
 
 // Movers driving (cars-city): a mover owns a car parked at the kerb. SlotsMoverBoard: the owner
 // (standing by it) gets in (TRANSPORT_RIDING: not walking, not drawn) and the car drives to the

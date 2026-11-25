@@ -218,6 +218,25 @@ static void DrawSlotCars(void) {
     }
 }
 
+// Crossings: white stripes along the road (every other cell across it), drawn before the movers
+void DrawCarsGround(void) {
+    int n = SlotsCrossingCount();
+    if (n == 0 || slotCarCount == 0) return;
+    int lvl = (int)rdBaseZ;
+    if (lvl > currentViewZ) return;
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight(), cs = CELL_SIZE * zoom;
+    Color white = lvl < currentViewZ ? (Color){150, 150, 150, 200} : (Color){235, 235, 225, 210};
+    for (int i = 0; i < n; i++) {
+        int x, y, o = SlotsCrossingCell(i, &x, &y);
+        if ((o == 1 ? y : x) % 2) continue;
+        Vector2 p = CarScreen(x * CELL_SIZE, y * CELL_SIZE);
+        if (p.x < -cs || p.y < -cs || p.x > sw || p.y > sh) continue;
+        if (lvl < currentViewZ && !IsCellVisibleFromAbove(x, y, lvl + 1, currentViewZ + 1)) continue;
+        if (o == 1) DrawRectangleRec((Rectangle){p.x, p.y + cs * 0.2f, cs, cs * 0.6f}, white);
+        else DrawRectangleRec((Rectangle){p.x + cs * 0.2f, p.y, cs * 0.6f, cs}, white);
+    }
+}
+
 void DrawCars(void) {
     if (carCount == 0 && slotCarCount == 0) return;
     if (carCount == 0) {

@@ -1861,6 +1861,7 @@ int main(int argc, char** argv) {
         }
         DrawLightSources();
         DrawTrackLines();
+        DrawCarsGround();
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();
