@@ -35,6 +35,7 @@ float walkMaxSeconds = 60.0f;
 float walkPace = 0.7f;
 long walkStartedCount = 0;
 long walkJoinedCount = 0;
+bool spotByFriends = true;
 static int talkHigh = 0;   // talks[] entries at or above this are all free
 
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
@@ -325,7 +326,9 @@ static int WatchPickSpot(const Talk* tk, const Mover* m) {
             WatchSpotPos(tk, spot, &x, &y);
             int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
             if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt(tk->z, gy, gx)) continue;
-            float d = fabsf(remainderf(6.2831853f * (float)k / (float)cap - from, 6.2831853f));
+            float ringR = WATCH_RING0 + WATCH_RING_STEP * ring;   // how far round the ring (cells) ...
+            float d = fabsf(remainderf(6.2831853f * (float)k / (float)cap - from, 6.2831853f)) * ringR;
+            d -= SpotPreference((int)(m - movers), x, y, tk->z);   // ... less: who'd be next to it
             if (d < bestD) { bestD = d; best = spot; }
         }
         if (best >= 0) return best;
@@ -873,4 +876,45 @@ static bool WalkSlot(const Talk* tk, int k, float* tx, float* ty) {
     *tx = x;
     *ty = y;
     return true;
+}
+
+// --- Choosing a spot by who's next to it ---
+#define SPOT_NEAR 1.6f   // cells: who counts as next to a spot
+
+static float NeighbourBonus(int i, int j) {
+    float like = RelationLike(i, j);
+    if (like <= -20.0f) return like / 10.0f;   // -4 at -40
+    if (like >= 20.0f) return like / 25.0f;    // +0.8 .. +4
+    return RelationFamiliarity(i, j) < 15.0f ? -0.5f : 0.3f;
+}
+
+float SpotPreference(int i, float x, float y, int z) {
+    if (!spotByFriends || i < 0 || i >= moverCount) return 0.0f;
+    float near = SPOT_NEAR * CELL_SIZE, bonus = 0.0f;
+    int counted[32], nc = 0;
+    // who will sit next to it: the occupants of seats round the spot
+    for (int f = 0; f < MAX_FURNITURE; f++) {
+        if (!furniture[f].active || furniture[f].z != z || furniture[f].occupant < 0 || furniture[f].occupant == i) continue;
+        float fx = (furniture[f].x + 0.5f) * CELL_SIZE - x, fy = (furniture[f].y + 0.5f) * CELL_SIZE - y;
+        if (fx * fx + fy * fy > near * near || fx * fx + fy * fy < 1.0f) continue;   // (not the spot itself)
+        int j = furniture[f].occupant;
+        if (j >= moverCount || !movers[j].active) continue;
+        bonus += NeighbourBonus(i, j);
+        if (nc < 32) counted[nc++] = j;
+    }
+    // ... and who stands there
+    for (int j = 0; j < moverCount; j++) {
+        if (j == i || !movers[j].active || (int)movers[j].z != z) continue;
+        float dx = movers[j].x - x, dy = movers[j].y - y;
+        if (dx * dx + dy * dy > near * near) continue;
+        bool done = false;
+        for (int k = 0; k < nc; k++) if (counted[k] == j) done = true;
+        if (!done) bonus += NeighbourBonus(i, j);
+    }
+    return bonus;
+}
+
+float SeatPreference(int i, int f) {
+    if (f < 0 || f >= MAX_FURNITURE || !furniture[f].active) return 0.0f;
+    return SpotPreference(i, (furniture[f].x + 0.5f) * CELL_SIZE, (furniture[f].y + 0.5f) * CELL_SIZE, furniture[f].z);
 }

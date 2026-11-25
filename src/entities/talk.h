@@ -91,6 +91,15 @@ extern long tableTalkTicks;          // diner-ticks with someone to talk to at t
 int MoverDiningAt(int moverIdx);     // the table it eats at (furniture index), -1 if none
 void TableTalkTick(float dt);        // (TalkTick calls it)
 
+// --- Choosing a spot (a seat, a place in a gathering's ring) by who's next to it ---
+// A bonus in cells (positive: nicer, negative: rather not) from the people within 1.6 cells of
+// the spot (sitting/reserved on seats there, or standing there): a friend (like >= 20) up to +4,
+// someone it knows +0.3, a stranger -0.5 (you'd rather not sit right next to one), someone it
+// dislikes -4 and worse. Spot finders take the best of distance minus this. Setting spotByFriends.
+extern bool spotByFriends;
+float SpotPreference(int moverIdx, float x, float y, int z);
+float SeatPreference(int moverIdx, int furnitureIdx);   // (action_queue.c's seat finder)
+
 // Passers-by give a conversation room: a walker with a talk's middle ahead, near its line,
 // drifts sideways around the circle (like polite passing). Out: sideways direction * weight.
 extern bool talkGiveRoom;

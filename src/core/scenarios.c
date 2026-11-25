@@ -558,6 +558,7 @@ static void SocialTiesPrintStats(void) {
 #define GP_FIRE_Y 16
 static long gpTicks, gpAtFireSum, gpAtFireMax, gpTalkSum, gpMeals, gpDarkTicks, gpDarkFireSum;
 static long gpMealsSeated;
+static double gpTableLikeSum, gpFireLikeSum; static long gpTableLikeN, gpFireLikeN;
 static int gpLastDined[MAX_MOVERS];   // gpTicks when it last sat eating at a table
 static long gpWalkTicks, gpWalkDistN; static double gpWalkDistSum; static long gpWalkSide, gpWalkBehind;
 static float gpPrevHunger[MAX_MOVERS];
@@ -566,6 +567,7 @@ static void SetupGardenParty(void) {
     gpTicks = gpAtFireSum = gpAtFireMax = gpTalkSum = gpMeals = gpDarkTicks = gpDarkFireSum = 0;
     gpWalkTicks = gpWalkDistN = gpWalkSide = gpWalkBehind = 0; gpWalkDistSum = 0.0;
     gpMealsSeated = 0;
+    gpTableLikeSum = gpFireLikeSum = 0.0; gpTableLikeN = gpFireLikeN = 0;
     for (int i = 0; i < MAX_MOVERS; i++) gpLastDined[i] = -100;
     hungerEnabled = true;
     thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
@@ -645,6 +647,17 @@ static void GardenPartyTickStats(void) {
             if (hl > 0.5f) { if (fabsf((dx * hx + dy * hy) / hl) < CELL_SIZE * 0.4f) gpWalkSide++; else gpWalkBehind++; }
         }
     }
+    // neighbours: diners at the same table, people next to each other round the fire (how they like them)
+    for (int a = 0; a < moverCount; a++)
+        for (int b = 0; b < moverCount; b++) {
+            if (a == b || !movers[a].active || !movers[b].active) continue;
+            if (MoverDiningAt(a) >= 0 && MoverDiningAt(a) == MoverDiningAt(b)) {
+                gpTableLikeSum += RelationLike(a, b); gpTableLikeN++;
+            } else if (MoverIsWatching(a) && MoverIsWatching(b) && MoverTalk(a) == MoverTalk(b)) {
+                float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+                if (dx * dx + dy * dy < (1.6f * CELL_SIZE) * (1.6f * CELL_SIZE)) { gpFireLikeSum += RelationLike(a, b); gpFireLikeN++; }
+            }
+        }
     gpAtFireSum += atFire;
     if (IsSkyDark()) { gpDarkTicks++; gpDarkFireSum += atFire; }
     if (atFire > gpAtFireMax) gpAtFireMax = atFire;
@@ -660,6 +673,9 @@ static void GardenPartyPrintStats(void) {
            gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
     printf("Talks started: %ld, joined: %ld; glances: %ld, greetings: %ld\n", talkStartedCount, talkJoinedCount,
            glanceCount, greetCount);
+    printf("Spots by friends: %s; how much neighbours like each other: at a table %+.1f, next to each other at the fire %+.1f\n",
+           spotByFriends ? "on" : "off", gpTableLikeN ? gpTableLikeSum / gpTableLikeN : 0.0,
+           gpFireLikeN ? gpFireLikeSum / gpFireLikeN : 0.0);
     printf("Meals at a table: %ld of %ld (sit to eat %s); table talk: %.1f diner-minutes\n", gpMealsSeated, gpMeals,
            sitToEat ? "on" : "off", tableTalkTicks / (double)TICK_RATE / 60.0);
     printf("Walks: %ld started, %.0f%% of the time walking with someone; pair %.2f cells apart, side by side %.0f%%\n",

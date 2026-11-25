@@ -590,6 +590,8 @@ static const Setting settings[] = {
       "Longest walk, seconds (it ends sooner when they arrive).", NULL),
     SET_FLOAT("walkPace", "Walk: pace", "Entities/Movers/Noticing", walkPace, 0.05f, 0.2f, 1.0f,
       "Strolling speed as a fraction of walking speed.", NULL),
+    SET_BOOL("spotByFriends", "Spots by friends", "Entities/Movers/Noticing", spotByFriends,
+      "Choosing a seat or a place in a ring: next to friends, not right next to strangers, away from people it dislikes."),
     SET_BOOL("talkGiveRoom", "Talk: give room", "Entities/Movers/Noticing", talkGiveRoom,
       "Walkers steer round a conversation's circle instead of through it."),
     SET_FLOAT("talkRadius", "Talk: start (cells)", "Entities/Movers/Noticing", talkStartRadius, 0.1f, 1.0f, 8.0f,

@@ -873,6 +873,49 @@ describe(table_talk) {
     }
 }
 
+describe(spot_choice) {
+    it("a seat next to a friend scores higher, next to a stranger a little lower, next to a foe much lower") {
+        TalkSetup();
+        ClearFurniture();
+        spotByFriends = true;
+        int me = AddMover(2, 2, 1);
+        int f1 = SpawnFurniture(5, 5, 1, FURNITURE_CHAIR, MAT_OAK), n1 = SpawnFurniture(6, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        int f2 = SpawnFurniture(5, 9, 1, FURNITURE_CHAIR, MAT_OAK), n2 = SpawnFurniture(6, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        int f3 = SpawnFurniture(15, 5, 1, FURNITURE_CHAIR, MAT_OAK), n3 = SpawnFurniture(16, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        int empty = SpawnFurniture(15, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        int friendM = AddMover(20, 1, 1), stranger = AddMover(21, 1, 1), foe = AddMover(22, 1, 1);
+        RelationAdd(me, friendM, 60.0f, 80.0f);
+        RelationAdd(me, foe, -50.0f, 60.0f);
+        furniture[n1].occupant = friendM;   // reserved: on their way to it
+        furniture[n2].occupant = stranger;
+        furniture[n3].occupant = foe;
+        float pf = SeatPreference(me, f1), ps = SeatPreference(me, f2), pe = SeatPreference(me, f3), p0 = SeatPreference(me, empty);
+        expect(pf > 2.0f);
+        expect(ps < 0.0f && ps > -1.0f);
+        expect(pe < -4.0f);
+        expect(p0 == 0.0f);
+        spotByFriends = false;
+        expect(SeatPreference(me, f1) == 0.0f);
+        spotByFriends = true;
+    }
+
+    it("round the fire: a newcomer takes the spot next to its friend") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        int friendM = AddMover(12, 2, 1);          // comes from the north first
+        RunTalk(4.0f);
+        expect(MoverIsWatching(friendM));
+        int me = AddMover(6, 6, 1);                // comes from the west
+        RelationAdd(me, friendM, 70.0f, 80.0f);
+        RunTalk(4.0f);
+        expect(MoverIsWatching(me));
+        float dx = movers[me].x - movers[friendM].x, dy = movers[me].y - movers[friendM].y;
+        expect(sqrtf(dx * dx + dy * dy) < 1.6f * CELL_SIZE);   // right beside the friend, not on the west side
+        (void)t;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -887,5 +930,6 @@ int main(int argc, char* argv[]) {
     test(hide_and_seek);
     test(glances_and_greetings);
     test(table_talk);
+    test(spot_choice);
     return summary();
 }
