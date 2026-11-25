@@ -1661,17 +1661,26 @@ void UpdateMovers(void) {
             CellType currentCell = GRID(currentX, currentY, currentZ);
             bool isWorkshopBlock = CELL_FLAGS(currentX, currentY, currentZ) & CELL_FLAG_WORKSHOP_BLOCK;
             
+            bool steppedDown = false;   // onto a ramp below: done, not a wall to be pushed out of
             // If it's a non-blocking cell (like air) without workshop flag, try to fall
             if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {
                 // Check if there's a ramp below we can descend to
-                bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1);
+                // A ramp's exit is a platform only on solid ground: over thawed ice or air
+                // (its support gone) the mover falls in and wades out instead of being
+                // treated as walled in below.
+                bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1) &&
+                                  CellIsSolid(GRID(currentX, currentY, currentZ - 1));
                 bool isAboveRamp = (currentZ > 0) && CellIsDirectionalRamp(GRID(currentX, currentY, currentZ - 1));
                 
                 if (isAboveRamp) {
                     // Descend onto the ramp - NOT a fall, just z-transition
                     m->z = (float)(currentZ - 1);
                     m->needsRepath = true;
-                    // Don't continue - let them move on the ramp
+                    steppedDown = true;
+                    // Don't continue - let them move on the ramp. The wall handling below
+                    // must not run for this: it looked for a neighbour at the old level and
+                    // pushed the mover sideways, or removed it as walled in when there was
+                    // none (air over a valley; frequent at high game speed).
                 } else if (!isRampExit) {
                     // Actual fall
                     if (!TryFallToGround(m, currentX, currentY)) {
@@ -1692,8 +1701,8 @@ void UpdateMovers(void) {
             // Check if this is a ramp z-transition: mover is at the exit cell (wall at z)
             // but should transition to z+1 where it's walkable (air above solid)
             int rampX, rampY;
-            bool handledByRamp = false;
-            if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX) &&
+            bool handledByRamp = steppedDown;
+            if (!steppedDown && currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX) &&
                 FindRampPointingTo(currentX, currentY, currentZ, &rampX, &rampY)) {
                 // Found a ramp pointing to us - transition to z+1
                 m->z = (float)(currentZ + 1);

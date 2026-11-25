@@ -5060,7 +5060,51 @@ describe(building_job_execution) {
         // Mover should be idle
         expect(MoverIsIdle(m));
     }
-    
+
+    it("a builder works a wall from beside it, so the finished wall doesn't pop them out") {
+        // docs/done/bugs/wall-build-pop.md: the builder stood on the blueprint cell and the
+        // finished wall pushed them to the first walkable neighbour (north first), whichever
+        // side they came from.
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        Mover* m = &movers[0];
+        Point goal = {0, 3, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        for (int i = 0; i < 3; i++)
+            SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        CreateRecipeBlueprint(5, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        float beforeX = m->x, beforeY = m->y;
+        bool built = false;
+        for (int i = 0; i < 6000 && !built; i++) {
+            beforeX = m->x; beforeY = m->y;
+            Tick();
+            AssignJobs();
+            JobsTick();
+            built = (GRID(5, 3, 0) == CELL_WALL);
+        }
+        expect(built);
+        // No jump in the tick the wall appeared (a walking step is a few pixels)
+        float jump = sqrtf((m->x - beforeX) * (m->x - beforeX) + (m->y - beforeY) * (m->y - beforeY));
+        expect(jump < CELL_SIZE * 0.5f);
+        // Standing beside the wall, not in it
+        int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+        int manhattan = (cx > 5 ? cx - 5 : 5 - cx) + (cy > 3 ? cy - 3 : 3 - cy);
+        expect(manhattan == 1);
+    }
+
     it("should cancel haul job when blueprint is cancelled") {
         InitTestGridFromAscii(
             "......\n"

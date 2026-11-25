@@ -8022,8 +8022,36 @@ int WorkGiver_Build(int moverIdx) {
     Point tempPath[MAX_PATH];
     int tempLen = 0;
 
-    if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
-        // Blueprint cell is walkable - path directly to it (e.g. building wall on ground)
+    const ConstructionRecipe* bpRecipe = GetConstructionRecipe(bp->recipeIndex);
+    bool buildsWall = bpRecipe && bpRecipe->buildCategory == BUILD_WALL;
+    if (IsCellWalkableAt(bp->z, bp->y, bp->x) && buildsWall) {
+        // A wall on walkable ground: work from the neighbour nearest the builder, so the
+        // finished wall doesn't shove them out of its cell to some arbitrary side
+        // (docs/done/bugs/wall-build-pop.md). The cell itself when no neighbour is reachable.
+        int dx[] = {1, -1, 0, 0};
+        int dy[] = {0, 0, 1, -1};
+        bool tried[4] = {false, false, false, false};
+        for (int n = 0; n < 4 && tempLen == 0; n++) {
+            int best = -1;
+            float bestD = 1e30f;
+            for (int i = 0; i < 4; i++) {
+                if (tried[i]) continue;
+                int ax = bp->x + dx[i], ay = bp->y + dy[i];
+                if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) { tried[i] = true; continue; }
+                if (!IsCellWalkableAt(bp->z, ay, ax)) { tried[i] = true; continue; }
+                float ddx = (ax + 0.5f) * CELL_SIZE - m->x, ddy = (ay + 0.5f) * CELL_SIZE - m->y;
+                float d = ddx * ddx + ddy * ddy + (moverCell.z != bp->z ? 1.0f : 0.0f);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best < 0) break;
+            tried[best] = true;
+            Point adjCell = { bp->x + dx[best], bp->y + dy[best], bp->z };
+            tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
+            if (tempLen > 0) goalCell = adjCell;
+        }
+        if (tempLen == 0) tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+    } else if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
+        // Blueprint cell is walkable - path directly to it (e.g. a floor on ground)
         tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
     } else {
         // Blueprint cell is not walkable (e.g. floor over air) - find adjacent walkable cell
