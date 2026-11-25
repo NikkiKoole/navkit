@@ -454,6 +454,23 @@ a stop line. Manhattan, 250 cars, 5 minutes, view 140 x 100 cells:
 cars, 2048 city: 0.15 ms/tick either way); throughput down 13-25% (cars brake for junctions).
 Diagnostics: SL_VIEW, SL_JUMPS (counts only jumps inside the view when there is one), SL_SNAPS.
 
+## Slot traffic: lane changes (2026-11-25)
+
+The user: leave the physical layer off and grow what the slot model can do. First: lane changes
+(`carSlotLaneChange`, on). On a lane with a parallel neighbour a car moves diagonally, one slot
+forward into the lane beside, when that slot and the one beside it are free and the first car
+behind could stop in time; it then plans from the new lane. Safe anywhere on the lane (but its
+last slot): speeds are worked out after the lane-change pass, so every car behind sees the car
+in its new slot. Why: overtake a slow / standing car just ahead (a cab at a fare, a queue) when
+the other lane has 2+ more free slots; keep right onto clearly free road (4 slots, or free to a
+short lane's end). 5 steps between changes, at most 40 a step (each plans a route). Drawn as an
+S-drift with the car turned toward its new lane.
+
+Results (250 cars, 3-cell slots, 5 minutes): grid 26 overtakes / 93 keep-rights, Manhattan 0 /
+65 (its avenue lanes are short and mostly queues at lights); 0 jumps; trips grid 276 -> 268 avg
+over 4 seeds (-3%: cars behind brake), Manhattan 366 -> 395. 16000 cars: 0.2 ms/tick, worst tick
+18 ms. Keeping right "as soon as it had as much room" made cars swap lanes all the time.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

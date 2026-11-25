@@ -33,6 +33,9 @@ typedef struct {
     bool needRoute;          // waits at its lane's end for a route search
     int waitSteps;           // steps standing still (junction priority, stats)
     int noRoomSteps;         // steps refused a curve for want of room past the junction
+    int lcStep;              // the step it changed lanes in (drawing: a sideways drift), -1 none
+    int lcFromSeg, lcFromSlot;   // ... from this lane and slot
+    int lcCool;              // steps before it may change lanes again
     bool cab;                // a yellow cab: stands a few steps at each fare
     int stopSteps;           // cab: steps left at a fare
     int trips;
@@ -61,6 +64,7 @@ bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its seg
 // comes from the drawing (SlotsSetView each frame); headless, SL_VIEW=x0,y0,x1,y1 (cells).
 extern bool carSlotReal;
 extern bool carSlotPhysical;   // braking over several steps, curve speeds (needed for carSlotReal)
+extern bool carSlotLaneChange; // overtaking / keeping right on two-lane roads
 void SlotsSetView(float x0, float y0, float x1, float y1);   // px
 bool SlotCarDrawPose(int i, float* x, float* y, float* heading, float* steer);   // the real car's if it has one
 

@@ -13,6 +13,7 @@
 float carSlotCells = 3.0f;
 bool carSlotReal = false;
 bool carSlotPhysical = true;
+bool carSlotLaneChange = true;
 static float SL_REAL_PULL = 2.0f, SL_REAL_ACCEL = 1.5f;   // (tuning: env SL_PULL / SL_ACCEL)
 
 typedef struct { float x, y, h, v, steer; bool on; } SlReal;
@@ -38,7 +39,7 @@ static int slTotal = 0, slSegCap = 0, slSlotCap = 0;
 static float slAcc = 0;               // seconds into the current step
 static int slStep = 0;
 static unsigned int slRng = 1;
-static long slRoutes = 0, slRouteFails = 0, slReroutes = 0;
+static long slRoutes = 0, slRouteFails = 0, slReroutes = 0, slOvertakes = 0, slKeepRights = 0;
 static int slStillMax = 0;
 static int slRouteCursor = 0;
 
@@ -78,12 +79,13 @@ void SlotsClear(void) {
     slTotal = 0;
     slAcc = 0;
     slStep = 0;
-    slRoutes = slRouteFails = slReroutes = 0;
+    slRoutes = slRouteFails = slReroutes = slOvertakes = slKeepRights = 0;
     slStillMax = 0;
     slRouteCursor = 0;
 }
 
 static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
+static float slSlotCells(void) { return SL_SLOT_CELLS * CELL_SIZE; }   // px per slot (about: slots stretch per segment)
 static float SlS(int seg, int k) { return (k + 0.5f) * rdSegs[seg].len / slSegN[seg]; }
 
 void SlotsBuild(void) {
@@ -154,6 +156,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare) {
         c->destSlot = slSegN[lane] - 1;
         c->needRoute = true;   // plans when it gets to the lane's end (searches spread over steps)
         c->cab = SlRand() < (unsigned)(cabShare * 32768);
+        c->lcStep = -1;
         slSlotCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
         SlQueueRoute(slotCarCount);
@@ -302,6 +305,70 @@ static int SlSafeSpeed(int i) {
     return best;
 }
 
+// --- Lane changes (two-lane roads): a diagonal move, one slot forward into the lane beside
+static int SlParallelSlot(int from, int k, int to) {   // the slot on lane `to` beside slot k of `from`
+    int kk = (int)((k + 0.5f) * slSegN[to] / slSegN[from]);
+    return kk >= slSegN[to] ? slSegN[to] - 1 : kk;
+}
+static int SlFreeRun(int seg, int k, int max) {          // free slots ahead of slot k on one lane
+    int n = 0;
+    while (n < max && k + 1 + n < slSegN[seg] && slSlotCar[SlIdx(seg, k + 1 + n)] < 0) n++;
+    return n;
+}
+static void SlLaneChanges(void) {
+    int D = SlBrakeSlots(), changes = 0;
+    for (int i = 0; i < slotCarCount && changes < 40; i++) {   // (each change plans a route: at most 40 a step)
+        SlotCar* c = &slotCars[i];
+        if (c->lcCool > 0) { c->lcCool--; continue; }
+        if (c->stopSteps > 0 || c->needRoute) continue;
+        int A = c->route[c->ri];
+        if (rdSegs[A].kind != RD_LANE || rdSegs[A].parallel < 0) continue;
+        int B = rdSegs[A].parallel, k = c->slot;
+        // (safe anywhere: speeds are worked out after this pass, so every car behind - on lane B or
+        // coming off a junction curve into it - sees us in our new slot; only not in the last slot)
+        if (k > slSegN[A] - 2) continue;
+        int dest = c->route[c->routeLen - 1];
+        if (rdSegs[dest].edge == rdSegs[A].edge) continue;              // our trip ends on this road
+        int kb = SlParallelSlot(A, k, B), kt = kb + 1;
+        if (kb < 1 || kt > slSegN[B] - 2) continue;
+        if (slSlotCar[SlIdx(B, kb)] >= 0 || slSlotCar[SlIdx(B, kt)] >= 0) continue;
+        // why change: overtake a slow / standing car just ahead, or back to the right-hand lane
+        int aheadA = SlFreeRun(A, k, 8), aheadB = SlFreeRun(B, kt, 8);
+        bool keepRight = rdSegs[A].laneIdx == 1;
+        bool overtake = false;
+        if (!keepRight && aheadA <= 1 && k + aheadA + 1 < slSegN[A]) {
+            int o = slSlotCar[SlIdx(A, k + aheadA + 1)];
+            if (o >= 0 && (slotCars[o].v <= 1 || slotCars[o].stopSteps > 0) && aheadB >= aheadA + 2) overtake = true;
+        }
+        // keep right only onto clearly free road (moving back the moment it had as much room made
+        // cars swap lanes all the time and everyone behind brake: 16% fewer trips)
+        int clear = slSegN[B] - kt - 1 < 4 ? slSegN[B] - kt - 1 : 4;   // (a short lane: free to its end)
+        if (!overtake && !(keepRight && aheadB >= clear && aheadB >= aheadA)) continue;
+        // the first car behind in lane B must be able to stop in time
+        int back = 0, kk = kb - 1;
+        while (kk >= 0 && slSlotCar[SlIdx(B, kk)] < 0 && back < 16) { back++; kk--; }
+        if (kk >= 0 && back < 16) {
+            const SlotCar* o = &slotCars[slSlotCar[SlIdx(B, kk)]];
+            if (SlBrakeDist(o->v, D) > back) continue;
+        }
+        // plan from lane B; then move
+        unsigned short r[SL_MAX_ROUTE];
+        slRoutes++;
+        int n = RoadRoute(B, dest, r, SL_MAX_ROUTE - 8);
+        if (n <= 0) { slRouteFails++; continue; }
+        slSlotCar[SlIdx(A, k)] = -1;
+        slSlotCar[SlIdx(B, kt)] = i;
+        c->lcFromSeg = A; c->lcFromSlot = k; c->lcStep = slStep;
+        memcpy(c->route, r, sizeof(unsigned short) * n);
+        c->routeLen = n;
+        c->ri = c->prevRi = 0;
+        c->slot = c->prevSlot = kt;
+        c->lcCool = 5;
+        if (overtake) slOvertakes++; else slKeepRights++;
+        changes++;
+    }
+}
+
 // Junction requests: cars at the end of a lane whose next step is a curve
 static int SlWantsCurve(int i) {
     const SlotCar* c = &slotCars[i];
@@ -421,10 +488,12 @@ static void SlRunStep(void) {
             slotCars[i].noRoomSteps = 0;
             rer++;
         }
+    if (carSlotLaneChange) SlLaneChanges();
     // speeds (all from the same occupancy), then moves
     for (int i = 0; i < slotCarCount; i++) {
         SlotCar* c = &slotCars[i];
         if (c->stopSteps > 0) { c->stopSteps--; slStepV[i] = 0; if (c->stopSteps == 0) SlQueueRoute(i); continue; }   // a cab at a fare
+        if (c->lcStep == slStep) { slStepV[i] = -1; continue; }   // changed lanes this step (it keeps its speed)
         int v = c->v + 1 > SL_VMAX ? SL_VMAX : c->v + 1;
         if (carSlotPhysical) { int vs = SlSafeSpeed(i); if (v > vs) v = vs; }   // brake in time, slow for curves
         int f = SlFreeAhead(i, v);
@@ -434,6 +503,7 @@ static void SlRunStep(void) {
     }
     for (int i = 0; i < slotCarCount; i++) {
         SlotCar* c = &slotCars[i];
+        if (slStepV[i] < 0) continue;   // changed lanes this step: already moved
         c->prevRi = c->ri;
         c->prevSlot = c->slot;
         int v = slStepV[i];
@@ -603,6 +673,20 @@ bool SlotCarPose(int i, float* x, float* y, float* heading) {
     int seg = c->route[c->ri];
     float sCur = SlS(seg, c->slot);
     float f = slAcc / SL_STEP;
+    if (c->lcStep == slStep) {   // changing lanes this step: from beside the old slot to the new one
+        float sA0 = SlS(c->lcFromSeg, c->lcFromSlot), sA1 = sA0 + slSlotCells();
+        float sB1 = sCur, sB0 = sB1 - slSlotCells();
+        float ax, ay, ah, bx, by, bh;
+        RoadPointAt(c->lcFromSeg, sA0 + (sA1 - sA0) * f, &ax, &ay, &ah);
+        RoadPointAt(seg, sB0 + (sB1 - sB0) * f, &bx, &by, &bh);
+        float w = f * f * (3 - 2 * f);   // smoothstep: an S-curve
+        *x = ax + (bx - ax) * w;
+        *y = ay + (by - ay) * w;
+        float side = 3.0f * CELL_SIZE * 6 * f * (1 - f);   // sideways speed (lanes ~3 cells apart) vs forward
+        float lr = (bx - ax) * -sinf(ah) + (by - ay) * cosf(ah) > 0 ? 1.0f : -1.0f;
+        *heading = ah + lr * atan2f(side, slSlotCells());
+        return true;
+    }
     if (c->prevRi == c->ri && c->prevSlot == c->slot) { RoadPointAt(seg, sCur, x, y, heading); return true; }
     // from the old slot to the new one along the route
     int pr = c->prevRi;
@@ -688,6 +772,7 @@ void SlotsPrintStats(void) {
         printf("  real cars in view: %.1f on average; tracking error mean %.2f cells, max %.2f; %ld snaps; touches max %d pairs\n",
                slRealTicks ? (double)slRealSum / slRealTicks : 0.0, slRealErrN ? slRealErrSum / slRealErrN / CELL_SIZE : 0.0,
                slRealErrMax / CELL_SIZE, slRealSnaps, slRealTouchMax);
+    printf("  lane changes: %ld to overtake, %ld back to the right-hand lane\n", slOvertakes, slKeepRights);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }
 
