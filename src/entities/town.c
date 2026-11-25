@@ -32,6 +32,7 @@ int townGroceries = 2;
 int townBreadPerHome = 8;
 int townFlourTarget = 40;
 bool townIrrigation = true;
+float townWeedRate = 0.2f;
 int townOpenHour = 7;
 int townCloseHour = 17;
 
@@ -506,7 +507,7 @@ static void TownFurnishMill(TownLot* L) {
     int w, d;
     TownInsideSize(L, &w, &d);
     int doorU = w / 2, querns = 0;
-    int r = TownRecipeIndex(WORKSHOP_QUERN, "Grind Wheat");
+    int r = TownRecipeIndex(WORKSHOP_QUERN, "Mill Flour");
     for (int u = 0; u < w; u++) {
         if (u == doorU) continue;
         int before = L->wsCount;
@@ -516,13 +517,21 @@ static void TownFurnishMill(TownLot* L) {
             querns++;
         }
     }
-    L->beds = querns;
+    L->beds = (querns + 1) / 2;   // a miller minds two querns (the grind is slow, the stones wait)
     if (doorU - 1 >= 0) {   // the granary ranks above the farm's barn: wheat moves on to the mill
         TownLotStore(L, 0, 0, doorU - 1, d >= 3 ? d - 2 : 0, ITEM_WHEAT);
         if (L->storeCount > 0) SetStockpilePriority(L->stores[L->storeCount - 1], 7);
     }
     int supplyU = doorU + 1 < w ? doorU + 1 : doorU - 1;
     TownLocalToWorld(L, supplyU, 0, &L->supplyX, &L->supplyY);
+    // The flour store, front row right of the delivery spot: flour is stacked where it is ground
+    // (a quern drops single flour; a bake needs a stack of 4), counts for "until N" (the mill stops
+    // instead of covering its floor), and ranks below the bakery's store so it moves on. Without it,
+    // when every resident had a job, nobody was free to carry the singles and the town starved.
+    if (doorU + 2 < w) {
+        TownLotStore(L, doorU + 2, 0, w - 1, 0, ITEM_FLOUR);
+        if (L->storeCount > 0) SetStockpilePriority(L->stores[L->storeCount - 1], 3);
+    }
     TownStaffAmenities(L);
 }
 
@@ -553,6 +562,14 @@ static void TownFurnishFarm(TownLot* L) {
     int bx1 = frontNS ? L->x1 + 1 : sx, bx2 = frontNS ? L->x2 : sx;
     int by1 = frontNS ? sy : L->y1 + 1, by2 = frontNS ? sy : L->y2;
     if (L->front == SIDE_E) { by1 = L->y1 + 1; by2 = L->y2; }
+    // The far end of the row: a tap and a toilet for the farmhands (they walked home to drink)
+    int tx = frontNS ? bx2 : bx1, ty = frontNS ? by1 : by2;
+    int tx2 = frontNS ? bx2 - 1 : bx1, ty2 = frontNS ? by1 : by2 - 1;
+    int tap = SpawnFurniture(tx, ty, L->z, FURNITURE_TAP, MAT_GRANITE);
+    if (tap >= 0 && L->furnCount < TOWN_MAX_LOT_FURN) { L->furn[L->furnCount++] = tap; townFurnOwner[tap] = TOWN_OWNER_PUBLIC; }
+    int wc = SpawnFurniture(tx2, ty2, L->z, FURNITURE_TOILET, MAT_GRANITE);
+    if (wc >= 0 && L->furnCount < TOWN_MAX_LOT_FURN) { L->furn[L->furnCount++] = wc; townFurnOwner[wc] = TOWN_OWNER_PUBLIC; }
+    if (frontNS) bx2 -= 2; else by2 -= 2;
     int barn = CreateStockpile(bx1, by1, L->z, bx2 - bx1 + 1, by2 - by1 + 1);
     if (barn >= 0) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(barn, (ItemType)t, t == ITEM_WHEAT);
@@ -562,13 +579,16 @@ static void TownFurnishFarm(TownLot* L) {
     for (int y = L->y1; y <= L->y2; y++)
         for (int x = L->x1; x <= L->x2; x++) {
             if (x >= bx1 && x <= bx2 && y >= by1 && y <= by2) continue;   // barn
+            if ((x == tx && y == ty) || (x == tx2 && y == ty2)) continue;   // tap, toilet
             if (x == sx && y == sy) continue;                               // seed store
             if (!DesignateFarm(x, y, L->z)) continue;
             FarmCell* fc = GetFarmCell(x, y, L->z);
             if (fc) fc->desiredCropType = CROP_WHEAT;
             fields++;
         }
-    L->beds = 0;   // no jobs yet: whoever is idle farms
+    // Farmhands: on shift they work the field (tend, sow, harvest); off shift anyone idle helps
+    L->beds = (fields + TOWN_FARM_CELLS_PER_HAND - 1) / TOWN_FARM_CELLS_PER_HAND;
+    if (L->beds < 1) L->beds = 1;
     for (int left = fields; left > 0; left -= ItemMaxStack(ITEM_WHEAT_SEEDS)) {
         int idx = SpawnItem(sx * CELL_SIZE + CELL_SIZE * 0.5f, sy * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, ITEM_WHEAT_SEEDS);
         if (idx >= 0) items[idx].stackCount = left < ItemMaxStack(ITEM_WHEAT_SEEDS) ? left : ItemMaxStack(ITEM_WHEAT_SEEDS);
@@ -871,6 +891,9 @@ static void TownThrowOutRotten(void) {
 static void TownDeliver(TownLot* L, ItemType type, int want, int runOutBelow) {
     if (want <= 0 || L->wsCount == 0) return;
     if (TownUsableStock(type, runOutBelow) >= runOutBelow) return;   // the town still has some it can use
+    // ... or plenty in small stacks (a harvest bigger than the stores lies on the field in 4s;
+    // haulers stack it into the granary as room frees): not running out
+    if (TownUsableStock(type, 1) >= 4 * runOutBelow) return;
     int idx = SpawnItem(L->supplyX * CELL_SIZE + CELL_SIZE * 0.5f, L->supplyY * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, type);
     if (idx < 0) return;
     items[idx].stackCount = want;
@@ -963,6 +986,15 @@ bool TownMayCraftAt(int workshopIdx, int moverIdx) {
     return moverIdx >= 0 && moverIdx < MAX_MOVERS && townJob[moverIdx] == lot && TownLotOpen(lot);
 }
 
+// Weeds on a town farm grow at townWeedRate of the pace: the farming system's weeds go heavy a
+// day after weeding (tuned for small survival plots), so a 96-cell field needed ~4 people
+// weeding full time; a grain field gets weeded about once a crop (user's call, 2026-11-25)
+float TownWeedFactor(int x, int y, int z) {
+    if (townLotHighWater == 0) return 1.0f;
+    int lot = TownLotAt(x, y, z);
+    return (lot >= 0 && townLots[lot].kind == LOT_FARM) ? townWeedRate : 1.0f;
+}
+
 bool TownJobAllowed(int moverIdx, int x, int y, int z) {
     if (townLotHighWater == 0 || moverIdx < 0 || moverIdx >= MAX_MOVERS) return true;
     int lot = townJob[moverIdx];
@@ -1041,7 +1073,7 @@ void TownTick(float dt) {
     for (int l = 0; l < townLotHighWater; l++) {
         if (!townLots[l].active) continue;
         if (townLots[l].kind == LOT_WORK) TownDeliver(&townLots[l], ITEM_FLOUR, townFlourDelivery, 4);   // a batch: Bake Loaves
-        if (townLots[l].kind == LOT_MILL) TownDeliver(&townLots[l], ITEM_WHEAT, townWheatDelivery, 2);   // Grind Wheat
+        if (townLots[l].kind == LOT_MILL) TownDeliver(&townLots[l], ITEM_WHEAT, townWheatDelivery, 8);   // Mill Flour
     }
 }
 

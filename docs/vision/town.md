@@ -300,6 +300,38 @@ bigger farm, granaries big enough for 7 days (~170 wheat for 12 people), food th
 - Seen with it at day 12: 86 of the farm's 96 cells had heavy weeds (growth 0.5x): tending
   doesn't keep up, likely part of why the farm can't build a winter surplus.
 
+### Farmhands and weeds (2026-11-25/26, user: "weed cleaning job yes"; slower weeds on town farms)
+
+- **Farms are workplaces**: a farmhand per 24 field cells (`TOWN_FARM_CELLS_PER_HAND`), opening
+  hours, the on-shift rule (they work the field). The farm got a tap and a toilet at the end of
+  its road-side row.
+- **Weeds**: the farming system's weeds go heavy (half growth) ~21 game hours after weeding;
+  tending only starts once heavy. A 96-cell field needs ~38 game hours of weeding a day; four
+  farmhands managed 13 of ~96 cells a day. User's call: **slower weeds on town farms**
+  (`townWeedRate`, 0.2: about once a crop; farming.c asks `TownWeedFactor`). Day 12: heavy-weed
+  cells 81 -> 11, harvests 115 -> 191.
+- That run then collapsed (everyone starving from ~day 21, 900 wheat in town): **every resident
+  had a job**, and on shift nobody may work outside their workplace, so nobody carried the mill's
+  single flour to the bakery. Fixes:
+  - The mill got a **flour store** (front row, priority 3: flour stacks where it's ground, counts
+    for "until N", moves on to the bakery's store).
+  - **Right-sized starter workplaces**: bakery 7 wide (2 stoves), a miller per two querns.
+    12 people: 2 bakers, 2 millers, 4 farmhands, 4 free to carry.
+  - **Batch milling**: quern recipe "Mill Flour" (8 wheat -> 4 flour, 2 h; appended). A miller
+    manages ~2.5 grinds a day between meals and a midday sleep: one flour a grind couldn't feed
+    a town (5 flour a day for ~14 loaves eaten).
+- **Starving no longer interrupts food-making crafts** (needs.c `JobProducesFood`: berry picking
+  as before, plus any craft whose recipe makes food). Starving bakers had dropped their 2-hour
+  bake every 15 minutes: no bread was ever baked again, a permanent lock. All games.
+- Imports: none while the town has plenty in small stacks (a harvest bigger than the stores
+  lies on the field in 4s).
+- **42 days measured** (12 people): winter needs **no imports** now (695 -> 423 wheat through
+  winter), fed throughout year one. Year two: wheat self-sufficient, but flour ran short again in
+  its summer (440 flour imported by day 40, 6 starving at day 42) while ~1000 wheat lay loose on
+  the field: the harvest outruns the stores and haulers. And **fertility** falls to 19/255 by
+  day 40 (wheat takes 20 a harvest, nothing puts it back): growth 0.3x. Next: fertility (compost,
+  or lentils in rotation: +60), stores/hauling for big harvests.
+
 ### Save (v113)
 
 After the relations: the road rectangles, then per lot its geometry and the owners of its

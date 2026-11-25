@@ -739,6 +739,21 @@ static bool IsGoodDrink(ItemType type) {
     return type == ITEM_HERBAL_TEA || type == ITEM_BERRY_JUICE;
 }
 
+// A job that makes food is not interrupted by starving: picking berries, and crafting a recipe
+// whose output is food (baking, cooking). Interrupting them locked a town for good: starving
+// bakers dropped their 2-hour bake every 15 minutes (the food search found nothing, the job came
+// back, the next search took it again), so no bread was ever baked again.
+static bool JobProducesFood(const Job* job) {
+    if (job->type == JOBTYPE_HARVEST_BERRY) return true;
+    if (job->type != JOBTYPE_CRAFT || job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS) return false;
+    const Workshop* ws = &workshops[job->targetWorkshop];
+    if (!ws->active || job->targetBillIdx < 0 || job->targetBillIdx >= ws->billCount) return false;
+    int recipeCount;
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    int r = ws->bills[job->targetBillIdx].recipeIdx;
+    return r >= 0 && r < recipeCount && ItemIsEdible(recipes[r].outputType);
+}
+
 // A critical need takes the mover off its job only when it looks for help right now.
 // During the search cooldown (the last search found nothing) it keeps working: taking the
 // job away anyway left the mover standing still, getting the job back from AssignJobs and
@@ -1141,7 +1156,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             if (starving) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
-                bool jobProducesFood = m->currentJobId >= 0 && jobs[m->currentJobId].type == JOBTYPE_HARVEST_BERRY;
+                bool jobProducesFood = m->currentJobId >= 0 && JobProducesFood(&jobs[m->currentJobId]);
                 if (jobProducesFood) handled = true;
                 else handled = CriticalNeed(m, moverIdx, canSearch, StartFoodSearch);
             }

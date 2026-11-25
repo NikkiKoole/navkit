@@ -7,6 +7,7 @@
 #include "../simulation/balance.h"
 #include "../simulation/weather.h"
 #include "../entities/items.h"
+#include "../entities/town.h"
 #include <string.h>
 
 // Grid storage
@@ -189,6 +190,12 @@ void FarmTick(float dt) {
                 if (seasonWeedRate > 0.0f) {
                     int weedGrowth = (int)(WEED_GROWTH_PER_TICK * seasonWeedRate);
                     if (weedGrowth < 1) weedGrowth = 1;
+                    float slower = TownWeedFactor(x, y, z);   // town farms: weeded about once a crop
+                    if (slower < 1.0f) {
+                        float g = WEED_GROWTH_PER_TICK * seasonWeedRate * slower;
+                        weedGrowth = (int)g;
+                        if (GetRandomValue(0, 999) < (int)((g - weedGrowth) * 1000.0f)) weedGrowth++;
+                    }
                     int newWeed = fc->weedLevel + weedGrowth;
                     if (newWeed > 255) newWeed = 255;
                     fc->weedLevel = (uint8_t)newWeed;

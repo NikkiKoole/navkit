@@ -25,7 +25,8 @@ typedef struct { int x1, y1, x2, y2, z; } TownRoad;   // z = the walking level o
 
 // Saved as a number: append only. LOT_WORK is the bakery.
 typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_GRANARY, LOT_KIND_COUNT } LotKind;
-#define TownIsWorkplace(k) ((k) == LOT_WORK || (k) == LOT_MILL)   // has jobs, opening hours
+#define TownIsWorkplace(k) ((k) == LOT_WORK || (k) == LOT_MILL || (k) == LOT_FARM)   // jobs, opening hours
+#define TOWN_FARM_CELLS_PER_HAND 24   // a farmhand tends ~24 cells (weeds go heavy in ~21 h; a tend takes 0.4 h)
 typedef enum { SIDE_N, SIDE_E, SIDE_S, SIDE_W } TownSide;
 
 typedef struct {
@@ -89,6 +90,8 @@ int  TownLotCount(LotKind kind);                                  // active lots
 extern float townArrivalGH;      // game hours between newcomers (setting)
 extern int townBreadPerHome;     // bakeries bake until the pantries hold this many loaves per home (setting)
 extern int townFlourTarget;      // mills grind until the bakeries' stores hold this much flour (setting)
+extern float townWeedRate;       // weeds on town farms grow at this share of the normal pace (setting)
+float TownWeedFactor(int x, int y, int z);   // farming.c: townWeedRate on a town farm, else 1
 extern bool townIrrigation;      // town farms are kept wet (stand-in for a well + watering; setting)
 extern int townGroceries;        // loaves a newcomer brings for the pantry (setting)
 extern int townOpenHour;         // bakeries open at this hour (setting) ...

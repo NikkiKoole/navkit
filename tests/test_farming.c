@@ -750,8 +750,9 @@ describe(farming) {
     it("quern has grind wheat recipe") {
         int count = 0;
         const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_QUERN, &count);
-        expect(count == 2);   // grind wheat, grind gunpowder (blast mining)
+        expect(count == 3);   // grind wheat, grind gunpowder (blast mining), mill flour (a town mill's batch)
         expect(recipes[1].outputType == ITEM_GUNPOWDER);
+        expect(recipes[2].inputCount == 8 && recipes[2].outputType == ITEM_FLOUR && recipes[2].outputCount == 4);
         expect(recipes != NULL);
         expect(recipes[0].inputType == ITEM_WHEAT);
         expect(recipes[0].inputCount == 2);

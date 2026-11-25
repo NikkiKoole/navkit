@@ -456,7 +456,8 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
         else DescAdd(out, DESC_WARN, "Homeless");
         int job = TownJobOf(idx);
-        if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)", townLots[job].kind == LOT_MILL ? "mill" : "bakery", job,
+        if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)",
+                              townLots[job].kind == LOT_MILL ? "mill" : townLots[job].kind == LOT_FARM ? "farm" : "bakery", job,
                               TownLotOpen(job) ? "open" : "closed", townOpenHour, townCloseHour);
         else if (home >= 0) DescAdd(out, DESC_MUTED, "No job");
     }
@@ -1090,22 +1091,33 @@ void DescribeLot(int lot, DescLines* out) {
             DescAdd(out, workers < L->beds ? DESC_WARN : DESC_NORMAL, "Jobs: %d of %d filled", workers, L->beds);
             for (int m = 0; m < moverCount; m++)
                 if (movers[m].active && TownJobOf(m) == lot) DescribeLotPerson(m, lot, true, out);
-            int made = 0;
+            int made = 0, units = 0;   // batches, and what they made (recipe output count)
             for (int i = 0; i < L->wsCount; i++) {
                 const Workshop* w = &workshops[L->ws[i]];
-                if (w->active && w->billCount > 0) made += w->bills[0].completedCount;
+                if (!w->active || w->billCount == 0) continue;
+                int rc;
+                const Recipe* rs = GetRecipesForWorkshop(w->type, &rc);
+                int r = w->bills[0].recipeIdx;
+                made += w->bills[0].completedCount;
+                if (r >= 0 && r < rc) units += w->bills[0].completedCount * rs[r].outputCount;
             }
             if (L->kind == LOT_WORK) {
                 DescAdd(out, DESC_NORMAL, "Flour in store: %d", TownLotStock(lot, ITEM_FLOUR));
                 DescAdd(out, DESC_NORMAL, "Bread on the shelf: %d", TownLotStock(lot, ITEM_BREAD));
-                DescAdd(out, DESC_INFO, "Baked so far: %d batches (%d loaves)", made, made * 4);
+                DescAdd(out, DESC_INFO, "Baked so far: %d batches (%d loaves)", made, units);
             } else {
                 DescAdd(out, DESC_NORMAL, "Wheat in the granary: %d", TownLotStock(lot, ITEM_WHEAT));
-                DescAdd(out, DESC_INFO, "Ground so far: %d flour", made);
+                DescAdd(out, DESC_INFO, "Ground so far: %d batches (%d flour)", made, units);
             }
             break;
         }
         case LOT_FARM: {
+            bool open = TownLotOpen(lot);
+            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            int hands = TownWorkers(lot);
+            DescAdd(out, hands < L->beds ? DESC_WARN : DESC_NORMAL, "Farmhands: %d of %d", hands, L->beds);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownJobOf(m) == lot) DescribeLotPerson(m, lot, true, out);
             TownFarmStats st = TownFarmStatsOf(lot);
             DescAdd(out, DESC_NORMAL, "Field: %d cells", st.fields);
             DescAdd(out, DESC_GOOD, "  growing %d, ripe %d", st.growing, st.ripe);

@@ -119,6 +119,9 @@ Recipe quernRecipes[] = {
     // Black powder without sulfur: weaker, fine for blasting rock (one gunpowder = one charge).
     // One of each: a recipe takes an input's count from one stack, and saltpeter often lies in two
     { "Grind Gunpowder", ITEM_SALTPETER, 1, ITEM_CHARCOAL, 1, ITEM_NONE, 0, ITEM_GUNPOWDER, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // A batch: a town mill's querns (town.c). A miller works ~2.5 grinds a day between meals and
+    // sleep: one flour a grind could not feed a town. Appended: bills store the index.
+    { "Mill Flour", ITEM_WHEAT, 8, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_FLOUR, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int quernRecipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]);
 

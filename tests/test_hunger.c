@@ -1156,6 +1156,41 @@ describe(eating_starving_unassigns_job) {
         expect(movers[mi].currentJobId == 0);
     }
 
+    it("starving mover does NOT unassign a craft job that makes food (baking), but does a non-food craft") {
+        for (int food = 1; food >= 0; food--) {
+            SetupClean();
+            ClearWorkshops();
+            int mi = SetupMover(1, 1);
+            movers[mi].hunger = 0.05f;
+            int ws = CreateWorkshop(5, 5, 1, food ? WORKSHOP_STOVE : WORKSHOP_QUERN);
+            expect(ws >= 0);
+            AddBill(ws, 0, BILL_DO_FOREVER, 0);   // stove 0: Cook Meat (food); quern 0: Grind Wheat (flour, not edible)
+            ClearJobs();
+            Job* j = &jobs[0];
+            j->active = true;
+            j->type = JOBTYPE_CRAFT;
+            j->assignedMover = mi;
+            j->step = 0;
+            j->targetItem = -1;
+            j->targetStockpile = -1;
+            j->targetBlueprint = -1;
+            j->targetWorkshop = ws;
+            j->targetBillIdx = 0;
+            j->targetMineX = -1;
+            j->targetMineY = -1;
+            j->targetMineZ = -1;
+            j->carryingItem = -1;
+            j->targetItem2 = -1;
+            j->fuelItem = -1;
+            movers[mi].currentJobId = 0;
+            jobHighWaterMark = 1;
+            activeJobCount = 1;
+            ProcessFreetimeNeeds();
+            if (food) { expect(movers[mi].currentJobId == 0); }    // keeps cooking: it is the food
+            else      { expect(movers[mi].currentJobId == -1); }   // grinding flour gives way to hunger
+        }
+    }
+
     it("unassign preserves mine designation progress") {
         SetupClean();
         int mi = SetupMover(1, 1);

@@ -314,7 +314,7 @@ describe(town_waste) {
 }
 
 describe(town_grain) {
-    it("a mill gets querns that grind until N flour is in store, a granary, a job per quern") {
+    it("a mill gets querns that grind until N flour is in store, a granary, a flour store, a miller per two querns") {
         SetupTown();
         TownAddRoad(0, 10, 39, 12, 1, NULL);
         int lot = TownAddLot(LOT_MILL, 2, 13, 9, 18, 1, NULL);
@@ -325,13 +325,16 @@ describe(town_grain) {
             const Workshop* w = &workshops[L->ws[i]];
             expect(w->type == WORKSHOP_QUERN);
             expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_UNTIL_X);
-            expect(strcmp(quernRecipes[w->bills[0].recipeIdx].name, "Grind Wheat") == 0);
+            expect(strcmp(quernRecipes[w->bills[0].recipeIdx].name, "Mill Flour") == 0);
+            expect(quernRecipes[w->bills[0].recipeIdx].inputCount == 8 && quernRecipes[w->bills[0].recipeIdx].outputCount == 4);
             querns++;
         }
-        expect(querns >= 2 && L->beds == querns);
-        expect(L->storeCount == 1);
+        expect(querns >= 2 && L->beds == (querns + 1) / 2);   // a miller per two querns
+        expect(L->storeCount == 2);
         const Stockpile* g = &stockpiles[L->stores[0]];
         expect(g->allowedTypes[ITEM_WHEAT] && !g->allowedTypes[ITEM_FLOUR]);
+        const Stockpile* fs = &stockpiles[L->stores[1]];
+        expect(fs->allowedTypes[ITEM_FLOUR] && !fs->allowedTypes[ITEM_WHEAT] && fs->priority < 7);
         expect(TownIsWorkplace(L->kind));
     }
     it("a farm marks its field for wheat, a barn row and a seed store with a seed per field cell") {
@@ -354,9 +357,19 @@ describe(town_grain) {
         expect(seeds == 28);
         expect(L->storeCount == 2 && stockpiles[L->stores[0]].allowedTypes[ITEM_WHEAT_SEEDS]);
         const Stockpile* barn = &stockpiles[L->stores[1]];
-        expect(barn->allowedTypes[ITEM_WHEAT] && barn->width * barn->height == 6);
+        expect(barn->allowedTypes[ITEM_WHEAT] && barn->width * barn->height == 4);   // the row minus seed store, tap, toilet
+        expect(CountFurnitureType(FURNITURE_TAP) == 1 && CountFurnitureType(FURNITURE_TOILET) == 1);
         expect(GRID(L->x1 + 3, L->y1 + 2, 1) == CELL_AIR);   // no building on a farm
-        expect(!TownIsWorkplace(L->kind));
+        expect(TownIsWorkplace(L->kind));
+        expect(L->beds == 2);   // a farmhand per 24 field cells (28 cells)
+    }
+    it("weeds grow slower on a town farm, normal elsewhere") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_FARM, 2, 13, 8, 17, 1, NULL);
+        townWeedRate = 0.2f;
+        expect(TownWeedFactor(townLots[lot].x1 + 2, townLots[lot].y1 + 2, 1) == 0.2f);
+        expect(TownWeedFactor(30, 30, 1) == 1.0f);
     }
     it("removing a farm takes its field back to grass") {
         SetupTown();

@@ -582,8 +582,10 @@ static void StartTown(void) {
         else            TownAddLot(LOT_HOME, x, midY + 2, x + 6, midY + 7, 1, NULL);
     }
     if (townStarter > 0) {   // and the grain chain at the east end: bakery, mill, farm
-        TownAddLot(LOT_WORK, 59, midY - 8, 70, midY - 2, 1, NULL);
-        TownAddLot(LOT_MILL, 59, midY + 2, 65, midY + 7, 1, NULL);    // 2 querns
+        // Workplaces sized for 12 people: 2 stoves bake ~40 loaves a day, 2 querns grind ~20 flour
+        // (they eat ~16); bigger ones hired everyone and left nobody free to carry goods around
+        TownAddLot(LOT_WORK, 59, midY - 8, 65, midY - 2, 1, NULL);
+        TownAddLot(LOT_MILL, 59, midY + 2, 65, midY + 7, 1, NULL);
         // A farm big enough for a winter stock (12 people eat ~32 wheat a day; winter is 7 days
         // without a harvest) and a granary to keep it in: barn row + 99 wheat cells, granary 15x6
         TownAddLot(LOT_FARM, 74, midY - 10, 85, midY - 2, 1, NULL);

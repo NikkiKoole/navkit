@@ -757,6 +757,8 @@ static const Setting settings[] = {
       "Town: bakeries bake until the pantries hold this many loaves per home (a Do Until X bill).", NULL),
     SET_INT("townFlourTarget", "Flour in store", "Town", townFlourTarget, 0.5f, 4, 200,
       "Town: mills grind until this much flour is in stores (a Do Until X bill).", NULL),
+    SET_FLOAT("townWeedRate", "Weed pace on farms", "Town", townWeedRate, 0.02f, 0.0f, 1.0f,
+      "Town: weeds on town farms grow at this share of the normal pace (1 = like survival plots: heavy a day after weeding; 0.2 = about once a crop).", NULL),
     SET_BOOL("townIrrigation", "Irrigated farms", "Town", townIrrigation,
       "Town: farm fields are kept wet (a stand-in for a well and watering). Off: rain only, and wheat grows at about a third of its pace."),
     SET_INT("townOpenHour", "Bakeries open (hour)", "Town", townOpenHour, 0.1f, 0, 23,
