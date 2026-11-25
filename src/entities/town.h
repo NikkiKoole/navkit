@@ -74,6 +74,9 @@ int  TownLotCount(LotKind kind);                                  // active lots
 #define TOWN_OWNER_NOBODY   -2   // a home's bed with no owner yet: kept for the next newcomer
 
 extern float townArrivalGH;      // game hours between newcomers (setting)
+extern int townGroceries;        // loaves a newcomer brings for the pantry (setting)
+extern int townOpenHour;         // bakeries open at this hour (setting) ...
+extern int townCloseHour;        // ... and close at this one
 extern int townFlourDelivery;    // flour kept at each bakery's delivery spot (setting; 0 = none)
 extern int townStarter;          // homes already standing when the town game starts (setting)
 
@@ -90,6 +93,16 @@ int  TownHomeless(void);                          // active movers without a hom
 void TownSave(FILE* f);
 bool TownLoad(FILE* f);                // false: corrupt counts
 bool TownSkipSave(FILE* f);            // inspect.c: read past the town section
+
+// Jobs (step 4b): each bakery has a job per stove; a resident without a job takes a free one.
+// A bakery's stoves are worked only by its own workers, and only while it is open.
+int  TownJobOf(int moverIdx);                     // lot index, -1 = no job
+int  TownWorkers(int lot);                        // movers with a job there
+int  TownFreeJobs(void);
+int  TownUnemployed(void);                        // residents (with a home) without a job
+bool TownLotOpen(int lot);                        // a workplace's opening hours, now
+// May this mover take a craft job at this workshop? (jobs.c WorkGiver_Craft). Cheap when no town.
+bool TownMayCraftAt(int workshopIdx, int moverIdx);
 
 // May this mover rest on / use this furniture? (needs.c bed search). Cheap when no town.
 bool TownMayUseFurniture(int furnIdx, int moverIdx);

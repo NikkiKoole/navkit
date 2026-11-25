@@ -164,6 +164,8 @@ Recipe stoveRecipes[] = {
     { "Boil Water",  ITEM_WATER, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BOILED_WATER, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
     { "Brew Tea",    ITEM_WATER, 1, ITEM_DRIED_GRASS, 2, ITEM_NONE, 0, ITEM_HERBAL_TEA, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
     { "Cook Lentils",ITEM_LENTILS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+    // A batch: a town bakery's stoves (town.c) feed ~20 people per baker. Appended: bills store the index.
+    { "Bake Loaves", ITEM_FLOUR, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BREAD, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, CAP_PREP_SURFACE, 0 },
 };
 int stoveRecipeCount = sizeof(stoveRecipes) / sizeof(stoveRecipes[0]);
 

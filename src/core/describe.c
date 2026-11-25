@@ -435,6 +435,10 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         int home = TownHomeOf(idx);
         if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
         else DescAdd(out, DESC_WARN, "Homeless");
+        int job = TownJobOf(idx);
+        if (job >= 0) DescAdd(out, DESC_INFO, "Works at bakery #%d (%s, %d-%d h)", job,
+                              TownLotOpen(job) ? "open" : "closed", townOpenHour, townCloseHour);
+        else if (home >= 0) DescAdd(out, DESC_MUTED, "No job");
     }
     DescribeMoverNeeds(m, out);
     DescribeMoverMood(m, out);

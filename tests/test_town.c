@@ -19,6 +19,7 @@ static bool test_verbose = false;
 #include "../src/simulation/needs.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
+#include "../src/core/time.h"
 #include <stdlib.h>
 #include "test_helpers.h"
 #include <string.h>
@@ -234,7 +235,7 @@ describe(town_bakery) {
             if (w->type != WORKSHOP_STOVE) continue;
             stoves++;
             expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_FOREVER);
-            expect(strcmp(stoveRecipes[w->bills[0].recipeIdx].name, "Bake Bread") == 0);
+            expect(strcmp(stoveRecipes[w->bills[0].recipeIdx].name, "Bake Loaves") == 0);
             bool near = false;
             for (int j = 0; j < L->wsCount; j++) {
                 const Workshop* c = &workshops[L->ws[j]];
@@ -280,6 +281,77 @@ describe(town_bakery) {
     }
 }
 
+// A street, one 1-bed home and a bakery; time of day set by the caller
+static int SetupHomeAndBakery(int* bakery) {
+    int home = SetupStreetWithHome();
+    *bakery = TownAddLot(LOT_WORK, 20, 13, 30, 18, 1, NULL);
+    BuildEntrances();
+    BuildGraph();
+    townArrivalGH = 0.05f;
+    for (int t = 0; t < 600; t++) TownTick(1.0f);   // the newcomer arrives, gets home and job
+    return home;
+}
+
+describe(town_jobs) {
+    it("a resident takes a job at the bakery, as many jobs as stoves") {
+        int bakery;
+        SetupHomeAndBakery(&bakery);
+        expect(bakery >= 0);
+        expect(TownJobOf(0) == bakery);
+        expect(TownWorkers(bakery) == 1);
+        expect(TownFreeJobs() == townLots[bakery].beds - 1);
+        expect(TownUnemployed() == 0);
+    }
+    it("the bakery's stoves are for its workers while it is open; other workshops for anyone") {
+        int bakery;
+        SetupHomeAndBakery(&bakery);
+        int stove = -1;
+        for (int i = 0; i < townLots[bakery].wsCount; i++)
+            if (workshops[townLots[bakery].ws[i]].type == WORKSHOP_STOVE) stove = townLots[bakery].ws[i];
+        expect(stove >= 0);
+        townOpenHour = 7; townCloseHour = 17;
+        timeOfDay = 12.0f;
+        expect(TownMayCraftAt(stove, 0));
+        expect(!TownMayCraftAt(stove, 5));          // not a worker there
+        timeOfDay = 20.0f;
+        expect(!TownMayCraftAt(stove, 0));          // closed
+        townOpenHour = 22; townCloseHour = 6;       // open through midnight
+        timeOfDay = 23.0f;
+        expect(TownMayCraftAt(stove, 0));
+        timeOfDay = 12.0f;
+        expect(!TownMayCraftAt(stove, 0));
+        townOpenHour = 7; townCloseHour = 17;
+        int other = CreateWorkshop(35, 35, 1, WORKSHOP_STOVE);
+        expect(other >= 0 && TownMayCraftAt(other, 5));
+    }
+    it("the bakery bakes loaves in batches") {
+        int bakery;
+        SetupHomeAndBakery(&bakery);
+        const Workshop* w = &workshops[townLots[bakery].ws[0]];
+        const Recipe* r = &stoveRecipes[w->bills[0].recipeIdx];
+        expect(strcmp(r->name, "Bake Loaves") == 0);
+        expect(r->outputType == ITEM_BREAD && r->outputCount == 4 && r->inputCount == 4);
+    }
+    it("a newcomer brings groceries for the pantry") {
+        townGroceries = 2;
+        int bakery;
+        int home = SetupHomeAndBakery(&bakery);
+        const Furniture* f = &furniture[townLots[home].fridge];
+        int bread = 0;
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].type == ITEM_BREAD && (int)(items[i].x / CELL_SIZE) == f->x
+                && (int)(items[i].y / CELL_SIZE) == f->y) bread += items[i].stackCount;
+        expect(bread == 2);
+    }
+    it("closing the bakery puts its workers out of work") {
+        int bakery;
+        SetupHomeAndBakery(&bakery);
+        TownRemoveLot(bakery);
+        expect(TownJobOf(0) == -1);
+        expect(TownUnemployed() == 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -287,5 +359,6 @@ int main(int argc, char* argv[]) {
     test(town_lots);
     test(town_residents);
     test(town_bakery);
+    test(town_jobs);
     return summary();
 }

@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: steps 1-4 built on branch `town` (2026-11-25); next: jobs + opening hours (4b), then step 5. Game `town`.
+> Status: steps 1-4b on master (2026-11-25): roads, homes, bakeries, jobs, opening hours; save v113. Next: step 5 (overview, play it), the grain chain. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -120,6 +120,28 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
 - Known: a baker carries the whole flour stack (20) to their stove; the delivery then puts a new
   stack down. Flour in town stays bounded (one stack per stove + one at the spot), but it is
   generous.
+
+### Built (2026-11-25): step 4b, jobs and opening hours
+
+- Each bakery has a job per stove. Every 0.1 h a resident (with a home) without a job takes one,
+  at the bakery with the most free jobs (`townJob[]`, not saved: handed out again after a load).
+  Closing a bakery or a worker leaving frees the job.
+- Opening hours are a fact about the place (settings `townOpenHour` 7, `townCloseHour` 17;
+  before-the-opening-hour = open through midnight). `TownMayCraftAt` (jobs.c `WorkGiver_Craft`):
+  a town bakery's stoves take only its own workers, only while open. Other workshops: anyone.
+  The crafting phase tries every idle mover in a town (normally only as many as there are
+  workshops waiting: those first few may not be the bakery's workers).
+- Hauling stays open to everyone: whoever is idle carries bread home.
+- **Found by measuring: one loaf per 2 game hours (the stove's "Bake Bread") can't feed a town.**
+  A person eats about a loaf a day (hunger full to empty in 24 h, a loaf = 1.0). 4 bakers on
+  7-17 made ~11 loaves a day for 12 people: everyone starved. New stove recipe **"Bake Loaves"**
+  (4 flour -> 4 bread, 2 h, appended to `stoveRecipes`: indices unchanged); bakeries use it.
+  One baker on a 10-hour day now feeds ~20. It is also on every stove (survival included).
+- Newcomers bring `townGroceries` (setting, 2) loaves for their pantry: a new town doesn't
+  starve before the first bake.
+- Measured, 6 starter homes + bakery, 12 residents, 5 days, open 7-17: everyone Peckish or Full,
+  4 bakers (~5.7 h baking a day each), 8 without a job; open 0-24: the same hunger, more baking.
+  Describe: "Works at bakery #N (open/closed, 7-17 h)" / "No job".
 
 ### Save (v113)
 

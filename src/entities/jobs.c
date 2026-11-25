@@ -24,6 +24,7 @@
 #include "../simulation/farming.h"
 #include "throwing.h"
 #include <math.h>
+#include "town.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -4215,6 +4216,8 @@ static void AssignJobs_P2_Crafting(void) {
 
     if (workshopsNeedingCrafters > 0) {
         int moversToCheck = workshopsNeedingCrafters;
+        // Town workplaces take only their own workers: the first idle movers may not be them
+        if (townLotHighWater > 0) moversToCheck = idleMoverCount;
         if (moversToCheck > idleMoverCount) moversToCheck = idleMoverCount;
 
         int* idleCopy = (int*)malloc(moversToCheck * sizeof(int));
@@ -6783,6 +6786,7 @@ int WorkGiver_Craft(int moverIdx) {
         if (!ws->active) continue;
         if (workshopDefs[ws->type].passive) continue;  // Passive workshops don't use crafters
         if (ws->assignedCrafter >= 0) continue;  // Already has crafter
+        if (!TownMayCraftAt(w, moverIdx)) continue;  // town: its own workers, while open
         if (!JobInRange(moverIdx, ws->workTileX, ws->workTileY, ws->z)) continue;
 
         // Find first non-suspended bill that can run

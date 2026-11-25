@@ -22,9 +22,14 @@ int townLotHighWater = 0;
 float townArrivalGH = 0.5f;
 int townFlourDelivery = 20;
 int townStarter = 0;
+int townGroceries = 2;
+int townOpenHour = 7;
+int townCloseHour = 17;
 
 static short townFurnOwner[MAX_FURNITURE];   // TOWN_OWNER_* or a mover index (beds of homes)
 static short townHome[MAX_MOVERS];           // lot a mover lives in, -1 none
+static short townJob[MAX_MOVERS];            // lot a mover works at, -1 none (not saved: re-handed out)
+static short townWsLot[MAX_WORKSHOPS];       // lot a workshop belongs to, -1 none
 static float townHousekeepTimer = 0.0f;
 static float townArrivalTimer = 0.0f;
 
@@ -41,7 +46,8 @@ void ClearTown(void) {
     townLotHighWater = 0;
     memset(townLots, 0, sizeof(townLots));
     for (int i = 0; i < MAX_FURNITURE; i++) townFurnOwner[i] = TOWN_OWNER_PUBLIC;
-    for (int i = 0; i < MAX_MOVERS; i++) townHome[i] = -1;
+    for (int i = 0; i < MAX_MOVERS; i++) { townHome[i] = -1; townJob[i] = -1; }
+    for (int i = 0; i < MAX_WORKSHOPS; i++) townWsLot[i] = -1;
     townHousekeepTimer = 0.0f;
     townArrivalTimer = 0.0f;
 }
@@ -323,13 +329,14 @@ static void TownLotWorkshop(TownLot* L, int u, int v, WorkshopType type) {
     int ws = CreateWorkshop(x, y, L->z, type);
     if (ws < 0) return;
     L->ws[L->wsCount++] = ws;
+    townWsLot[ws] = (short)(L - townLots);
     if (type == WORKSHOP_STOVE) {
-        int r = TownRecipeIndex(WORKSHOP_STOVE, "Bake Bread");
+        int r = TownRecipeIndex(WORKSHOP_STOVE, "Bake Loaves");
         if (r >= 0) AddBill(ws, r, BILL_DO_FOREVER, 0);   // pauses by itself when no stockpile has room
     }
 }
 
-// Bakery: stoves and counters along the back wall (Bake Bread needs a prep surface within 2),
+// Bakery: stoves and counters along the back wall (Bake Loaves needs a prep surface within 2),
 // the flour delivery spot left of the door, a tap and a toilet on the right
 static void TownFurnishBakery(TownLot* L) {
     int w, d;
@@ -394,7 +401,10 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
 void TownRemoveLot(int lot) {
     if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return;
     TownLot* L = &townLots[lot];
-    for (int i = 0; i < MAX_MOVERS; i++) if (townHome[i] == lot) townHome[i] = -1;   // homeless now
+    for (int i = 0; i < MAX_MOVERS; i++) {
+        if (townHome[i] == lot) townHome[i] = -1;   // homeless now
+        if (townJob[i] == lot) townJob[i] = -1;     // out of work
+    }
     for (int i = 0; i < L->furnCount; i++) {
         int f = L->furn[i];
         townFurnOwner[f] = TOWN_OWNER_PUBLIC;
@@ -402,8 +412,10 @@ void TownRemoveLot(int lot) {
         if (furniture[f].occupant >= 0) ReleaseFurniture(f, furniture[f].occupant);
         RemoveFurniture(f);
     }
-    for (int i = 0; i < L->wsCount; i++)
+    for (int i = 0; i < L->wsCount; i++) {
+        townWsLot[L->ws[i]] = -1;
         if (workshops[L->ws[i]].active) DeleteWorkshop(L->ws[i]);
+    }
     if (L->stockpile >= 0 && stockpiles[L->stockpile].active) DeleteStockpile(L->stockpile);
     int z = L->z;
     for (int y = L->y1; y <= L->y2; y++)
@@ -516,6 +528,15 @@ static void TownSendHome(int moverIdx, int lot) {
     QueueCommandAt(moverIdx, x, y, L->z, false, said, sizeof(said));
 }
 
+// A newcomer brings a little food for the pantry: a new town doesn't starve before the first
+// bake (townGroceries loaves, put on the fridge; the pantry stockpile takes them in)
+static void TownBringGroceries(TownLot* L) {
+    if (townGroceries <= 0 || L->fridge < 0 || !furniture[L->fridge].active) return;
+    const Furniture* f = &furniture[L->fridge];
+    int idx = SpawnItem(f->x * CELL_SIZE + CELL_SIZE * 0.5f, f->y * CELL_SIZE + CELL_SIZE * 0.5f, (float)f->z, ITEM_BREAD);
+    if (idx >= 0) items[idx].stackCount = townGroceries;
+}
+
 // Spawning a newcomer: the game's SpawnMoverAt (names, looks: main.c sets the hook); the
 // tests, which don't build main.c, get a plain mover
 static void TownSpawnFallback(int x, int y, int z) {
@@ -535,7 +556,10 @@ static void TownArrive(void) {
     if (moverCount == before) return;
     int m = moverCount - 1;
     int lot = TownGiveHome(m);
-    if (lot >= 0) TownSendHome(m, lot);
+    if (lot >= 0) {
+        TownSendHome(m, lot);
+        TownBringGroceries(&townLots[lot]);
+    }
     EventLog("Town: mover %d arrives, home lot %d", m, lot);
 }
 
@@ -557,6 +581,66 @@ static void TownDeliverFlour(TownLot* L) {
     L->supplyItem = idx;
 }
 
+// ---------------------------------------------------------------------------
+// Jobs
+// ---------------------------------------------------------------------------
+
+int TownJobOf(int moverIdx) {
+    return (moverIdx >= 0 && moverIdx < MAX_MOVERS) ? townJob[moverIdx] : -1;
+}
+
+int TownWorkers(int lot) {
+    int n = 0;
+    for (int i = 0; i < moverCount; i++) n += townJob[i] == lot;
+    return n;
+}
+
+int TownFreeJobs(void) {
+    int n = 0;
+    for (int l = 0; l < townLotHighWater; l++)
+        if (townLots[l].active && townLots[l].kind == LOT_WORK) {
+            int free = townLots[l].beds - TownWorkers(l);
+            if (free > 0) n += free;
+        }
+    return n;
+}
+
+int TownUnemployed(void) {
+    int n = 0;
+    for (int i = 0; i < moverCount; i++) n += movers[i].active && townHome[i] >= 0 && townJob[i] < 0;
+    return n;
+}
+
+bool TownLotOpen(int lot) {
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return false;
+    float h = timeOfDay;
+    if (townOpenHour <= townCloseHour) return h >= townOpenHour && h < townCloseHour;
+    return h >= townOpenHour || h < townCloseHour;   // open through midnight
+}
+
+bool TownMayCraftAt(int workshopIdx, int moverIdx) {
+    if (townLotHighWater == 0 || workshopIdx < 0 || workshopIdx >= MAX_WORKSHOPS) return true;
+    int lot = townWsLot[workshopIdx];
+    if (lot < 0) return true;   // not a town workplace: anyone, any time
+    return moverIdx >= 0 && moverIdx < MAX_MOVERS && townJob[moverIdx] == lot && TownLotOpen(lot);
+}
+
+// Hand out jobs: residents without one take a free job, the workplace with the most room first
+static void TownHandOutJobs(void) {
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active || townHome[i] < 0 || townJob[i] >= 0) continue;
+        int best = -1, bestFree = 0;
+        for (int l = 0; l < townLotHighWater; l++) {
+            if (!townLots[l].active || townLots[l].kind != LOT_WORK) continue;
+            int free = townLots[l].beds - TownWorkers(l);
+            if (free > bestFree) { bestFree = free; best = l; }
+        }
+        if (best < 0) return;   // no free jobs left
+        townJob[i] = (short)best;
+        EventLog("Town: mover %d works at lot %d", i, best);
+    }
+}
+
 void TownTick(float dt) {
     if (townLotHighWater == 0) return;
     townArrivalTimer += dt;
@@ -576,6 +660,8 @@ void TownTick(float dt) {
             }
         }
     }
+    for (int i = 0; i < moverCount; i++)
+        if (townJob[i] >= 0 && !movers[i].active) townJob[i] = -1;   // gone: the job is free again
     // Homeless movers already in town take a free bed first, then newcomers arrive
     for (int i = 0; i < moverCount && TownFreeBeds() > 0; i++)
         if (movers[i].active && townHome[i] < 0) {
@@ -586,6 +672,7 @@ void TownTick(float dt) {
         townArrivalTimer = 0.0f;
         TownArrive();
     }
+    TownHandOutJobs();
     for (int l = 0; l < townLotHighWater; l++)
         if (townLots[l].active && townLots[l].kind == LOT_WORK) TownDeliverFlour(&townLots[l]);
 }
@@ -641,7 +728,10 @@ static void TownRelinkLot(TownLot* L) {
     L->wsCount = 0;
     for (int w = 0; w < MAX_WORKSHOPS && L->wsCount < TOWN_MAX_LOT_WS; w++)
         if (workshops[w].active && workshops[w].z == L->z && workshops[w].x >= L->x1 && workshops[w].x <= L->x2
-            && workshops[w].y >= L->y1 && workshops[w].y <= L->y2) L->ws[L->wsCount++] = w;
+            && workshops[w].y >= L->y1 && workshops[w].y <= L->y2) {
+            townWsLot[w] = (short)(L - townLots);
+            L->ws[L->wsCount++] = w;
+        }
     L->stockpile = -1;
     if (L->fridge >= 0) {
         const Furniture* fr = &furniture[L->fridge];
