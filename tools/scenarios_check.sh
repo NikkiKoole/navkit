@@ -47,6 +47,7 @@ done <<'EOF'
 300 | 0 | --scenario hallway
 216 | 0 | --scenario doorway
 160 | 0 | --scenario gathering
+75  | 0 | --scenario social-ties
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long

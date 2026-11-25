@@ -46,4 +46,14 @@ extern float passSlow;              // speed lost at full weight (0..1)
 // up to ~1) and a speed scale. Returns false when there is nobody to give way to.
 bool NoticePassSteer(int moverIdx, float hx, float hy, float* sideX, float* sideY, float* speedScale);
 
+// --- Friends and foes (relations.c) ---
+// Seek: an idle wanderer that noticed someone it likes (like >= 20) sometimes walks to a spot
+// near them instead of a random one. Avoid: a walker drifts sideways round someone it dislikes
+// (like <= -20) ahead near its line, walking or standing; a wanderer doesn't pick a goal near them.
+extern bool socialSeek, socialAvoid;
+bool NoticeSocialWanderGoal(int moverIdx, int* gx, int* gy, int* gz);   // a goal near a liked one
+bool NoticeGoalNearDisliked(int moverIdx, int gx, int gy, int gz);      // within 6 cells of a disliked one
+bool NoticeDislikedClose(int moverIdx);   // a disliked one it noticed is within 2.5 cells: time to leave
+bool NoticeAvoidSteer(int moverIdx, float hx, float hy, float* sideX, float* sideY);
+
 #endif

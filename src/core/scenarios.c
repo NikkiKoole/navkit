@@ -479,6 +479,56 @@ static bool GatheringCheck(char* why, int whyLen) {
     return true;
 }
 
+// social-ties: 12 movers on the plaza with relations set up front: two groups of four friends
+// (like 60), four strangers, and two pairs of enemies across the groups (like -60). Compare
+// socialSeek / socialAvoid on/off: how far apart friends, enemies and strangers stay.
+static double tiesFriendSum, tiesEnemySum, tiesStrangerSum;
+static long tiesFriendN, tiesEnemyN, tiesStrangerN, tiesEnemyClose, tiesTicks;
+static int tiesKind[16][16];   // 1 friends, -1 enemies, 0 strangers
+
+static void SetupSocialTies(void) {
+    tiesFriendSum = tiesEnemySum = tiesStrangerSum = 0.0;
+    tiesFriendN = tiesEnemyN = tiesStrangerN = tiesEnemyClose = tiesTicks = 0;
+    memset(tiesKind, 0, sizeof(tiesKind));
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    talkEnabled = true;
+    moverWanderPause = 3.0f;
+    for (int i = 0; i < 12; i++) SpawnMoverAt(4 + (i % 4) * 7, 4 + (i / 4) * 10, 1);
+    for (int g = 0; g < 2; g++)
+        for (int a = g * 4; a < g * 4 + 4; a++)
+            for (int b = a + 1; b < g * 4 + 4; b++) {
+                RelationSetPair(a, b, 60.0f, 80.0f);
+                tiesKind[a][b] = tiesKind[b][a] = 1;
+            }
+    RelationSetPair(0, 4, -60.0f, 60.0f); tiesKind[0][4] = tiesKind[4][0] = -1;
+    RelationSetPair(1, 5, -60.0f, 60.0f); tiesKind[1][5] = tiesKind[5][1] = -1;
+    currentViewZ = 1;
+    AddMessage("Social ties: two groups of friends (0-3, 4-7), strangers 8-11, enemies 0-4 and 1-5", GREEN);
+}
+
+static void SocialTiesTickStats(void) {
+    tiesTicks++;
+    for (int a = 0; a < 12 && a < moverCount; a++)
+        for (int b = a + 1; b < 12 && b < moverCount; b++) {
+            if (!movers[a].active || !movers[b].active) continue;
+            float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+            float d = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+            if (tiesKind[a][b] == 1) { tiesFriendSum += d; tiesFriendN++; }
+            else if (tiesKind[a][b] == -1) { tiesEnemySum += d; tiesEnemyN++; if (d < 1.5f) tiesEnemyClose++; }
+            else { tiesStrangerSum += d; tiesStrangerN++; }
+        }
+}
+
+static void SocialTiesPrintStats(void) {
+    printf("Seek friends: %s, avoid the disliked: %s\n", socialSeek ? "on" : "off", socialAvoid ? "on" : "off");
+    printf("Avg distance (cells): friends %.1f, strangers %.1f, enemies %.1f\n",
+           tiesFriendN ? tiesFriendSum / tiesFriendN : 0.0, tiesStrangerN ? tiesStrangerSum / tiesStrangerN : 0.0,
+           tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
+    printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
+    printf("Talks started: %ld\n", talkStartedCount);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3565,6 +3615,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"social-ties", "12 movers: two groups of friends, strangers, two enemy pairs: who stays near whom (socialSeek, socialAvoid)",
+                   NULL,        SetupSocialTies, SocialTiesTickStats, SocialTiesPrintStats, NULL, 0, 0},
     {"gathering",  "A performer on a plaza, 30 movers: onlookers stand in rings round it (settings watch*)",
                    NULL,        SetupGathering, GatheringTickStats, GatheringPrintStats, GatheringCheck, 0, 0},
     {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",

@@ -495,6 +495,55 @@ describe(relations) {
     }
 }
 
+describe(friends_and_foes) {
+    it("a wanderer picks a goal next to a friend it knows (within 12 cells, even out of view)") {
+        TalkSetup();
+        socialSeek = true;
+        int a = AddMover(2, 5, 1), f = AddMover(12, 5, 1);
+        for (int y = 0; y < H; y++) if (y != 1) GRID(7, y, 1) = CELL_WALL;   // out of sight
+        RelationAdd(a, f, 60.0f, 50.0f);
+        bool got = false;
+        int gx = 0, gy = 0, gz = 0;
+        for (int t = 0; t < 50 && !got; t++) got = NoticeSocialWanderGoal(a, &gx, &gy, &gz);
+        expect(got);
+        expect(abs(gx - 12) <= 2 && abs(gy - 5) <= 2 && !(gx == 12 && gy == 5));
+        RelationAdd(a, f, -50.0f, 0.0f);   // like 10: not enough
+        got = false;
+        for (int t = 0; t < 50 && !got; t++) got = NoticeSocialWanderGoal(a, &gx, &gy, &gz);
+        expect(!got);
+    }
+
+    it("no wander goal near someone it dislikes; leaves when one comes close") {
+        TalkSetup();
+        socialAvoid = true;
+        int a = AddMover(5, 5, 1), e = AddMover(7, 5, 1);
+        RelationAdd(a, e, -40.0f, 50.0f);
+        Look();
+        expect(NoticeGoalNearDisliked(a, 9, 5, 1));    // 2 cells from them
+        expect(!NoticeGoalNearDisliked(a, 20, 5, 1));  // far enough
+        expect(NoticeDislikedClose(a));                // 2 cells: time to go
+        expect(!NoticeDislikedClose(e));               // e has nothing against a
+    }
+
+    it("steers round someone disliked ahead, standing or walking; not round a friend") {
+        TalkSetup();
+        socialAvoid = true;
+        int a = AddMover(5, 5, 1), e = AddMover(7, 5, 1), f = AddMover(5, 8, 1);
+        (void)f;
+        RelationAdd(a, e, -60.0f, 50.0f);
+        Look();
+        float sx, sy;
+        expect(NoticeAvoidSteer(a, 1, 0, &sx, &sy));   // e dead ahead, standing
+        expect(sy > 0.0f);                             // goes round on its right
+        RelationAdd(a, e, 120.0f, 0.0f);               // now a friend (like 60)
+        expect(!NoticeAvoidSteer(a, 1, 0, &sx, &sy));
+        socialAvoid = false;
+        RelationAdd(a, e, -120.0f, 0.0f);
+        expect(!NoticeAvoidSteer(a, 1, 0, &sx, &sy));
+        socialAvoid = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -503,5 +552,6 @@ int main(int argc, char* argv[]) {
     test(stop_to_talk);
     test(gatherings);
     test(relations);
+    test(friends_and_foes);
     return summary();
 }

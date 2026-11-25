@@ -3,6 +3,8 @@
 #include "mover.h"
 #include "../core/time.h"
 #include "relations.h"
+#include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include <math.h>
 #include <string.h>
 
@@ -11,6 +13,8 @@ bool noticeEnabled = true;
 float noticeRadius = 6.0f;
 int noticeEveryTicks = 15;
 bool politePassing = true;
+bool socialSeek = true;
+bool socialAvoid = true;
 float passRadius = 4.0f;
 float passStrength = 1.0f;
 float passSlow = 0.0f;
@@ -162,4 +166,98 @@ bool NoticePassSteer(int i, float hx, float hy, float* sideX, float* sideY, floa
     *sideY = sy;
     *speedScale = 1.0f - passSlow * maxW;
     return true;
+}
+
+// --- Friends and foes ---
+#define LIKE_SEEK     20.0f   // like at or above: worth walking over to
+#define LIKE_AVOID   -20.0f   // like at or below: keep away
+#define SEEK_CHANCE   0.6f    // a wander goal near a liked one instead of a random one
+#define SEEK_RANGE   12.0f    // cells: friends it knows this close count (not only ones in view)
+#define AVOID_LOOK    3.0f    // cells ahead where a walker starts to steer round a disliked one
+#define AVOID_LANE    1.5f    // cells: ... if they're this close to its line
+#define AVOID_GOAL    6.0f    // cells: a wander goal this close to a disliked one is refused
+#define AVOID_LEAVE   2.5f    // cells: standing about and a disliked one comes this close: leave
+
+bool NoticeSocialWanderGoal(int i, int* gx, int* gy, int* gz) {
+    if (!socialSeek || !noticeEnabled) return false;
+    // The one it likes most among those it knows within SEEK_RANGE (you know roughly where your
+    // friends are; not only the ones in view)
+    const MoverRelations* mr = &moverRelations[i];
+    int best = -1;
+    float bestLike = LIKE_SEEK, range = SEEK_RANGE * CELL_SIZE;
+    for (int k = 0; k < mr->count; k++) {
+        int j = mr->r[k].other;
+        if (mr->r[k].like < bestLike || !RelationGet(i, j)) continue;
+        if ((int)movers[j].z != (int)movers[i].z) continue;
+        float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
+        if (dx * dx + dy * dy > range * range) continue;
+        bestLike = mr->r[k].like;
+        best = j;
+    }
+    if (best < 0 || GetRandomValue(0, 99) >= (int)(SEEK_CHANCE * 100.0f)) return false;
+    int bx = (int)(movers[best].x / CELL_SIZE), by = (int)(movers[best].y / CELL_SIZE), z = (int)movers[best].z;
+    for (int tries = 0; tries < 8; tries++) {   // a free walkable cell 1-2 cells from them
+        int x = bx + GetRandomValue(-2, 2), y = by + GetRandomValue(-2, 2);
+        if ((x == bx && y == by) || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+        if (!IsCellWalkableAt(z, y, x)) continue;
+        *gx = x; *gy = y; *gz = z;
+        return true;
+    }
+    return false;
+}
+
+bool NoticeGoalNearDisliked(int i, int gx, int gy, int gz) {
+    if (!socialAvoid || !noticeEnabled) return false;
+    const MoverNotice* n = &moverNotice[i];
+    float r = AVOID_GOAL * CELL_SIZE;
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active || (int)movers[j].z != gz) continue;
+        if (RelationLike(i, j) > LIKE_AVOID) continue;
+        float dx = (gx + 0.5f) * CELL_SIZE - movers[j].x, dy = (gy + 0.5f) * CELL_SIZE - movers[j].y;
+        if (dx * dx + dy * dy < r * r) return true;
+    }
+    return false;
+}
+
+bool NoticeDislikedClose(int i) {
+    if (!socialAvoid || !noticeEnabled) return false;
+    const MoverNotice* n = &moverNotice[i];
+    float r = AVOID_LEAVE * CELL_SIZE;
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active || (int)movers[j].z != (int)movers[i].z) continue;
+        if (RelationLike(i, j) > LIKE_AVOID) continue;
+        float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
+        if (dx * dx + dy * dy < r * r) return true;
+    }
+    return false;
+}
+
+bool NoticeAvoidSteer(int i, float hx, float hy, float* sideX, float* sideY) {
+    *sideX = *sideY = 0.0f;
+    if (!socialAvoid || !noticeEnabled) return false;
+    const Mover* m = &movers[i];
+    const MoverNotice* n = &moverNotice[i];
+    float look = AVOID_LOOK * CELL_SIZE, lane = AVOID_LANE * CELL_SIZE;
+    float rx = -hy, ry = hx;
+    bool any = false;
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active || (int)movers[j].z != (int)m->z) continue;
+        float like = RelationLike(i, j);
+        if (like > LIKE_AVOID) continue;
+        float dx = movers[j].x - m->x, dy = movers[j].y - m->y;
+        float ahead = dx * hx + dy * hy;
+        if (ahead <= 0.0f || ahead > look) continue;
+        float lateral = dx * rx + dy * ry;
+        if (fabsf(lateral) > lane) continue;
+        float w = (1.0f - ahead / look) * (1.0f - fabsf(lateral) / lane * 0.5f);
+        w *= fminf(1.0f, -like / 50.0f);           // the more disliked, the wider the berth
+        float side = lateral > PASS_CENTRED * CELL_SIZE ? -1.0f : 1.0f;
+        *sideX += side * rx * w;
+        *sideY += side * ry * w;
+        any = true;
+    }
+    return any;
 }

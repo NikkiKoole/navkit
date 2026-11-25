@@ -1500,8 +1500,11 @@ static void AssignNewMoverGoal(Mover* m) {
 
     // TODO: GetRandomReachableCell(cx, cy, cz) respects walls/rooms but disabled for testing
     bool hasZConnections = (ladderLinkCount > 0 || rampCount > 0);
+    int sgx, sgy, sgz;
     if (moverGoalPicker && moverGoalPicker((int)(m - movers), &newGoal)) {
         // scenario-chosen goal
+    } else if (NoticeSocialWanderGoal((int)(m - movers), &sgx, &sgy, &sgz)) {
+        newGoal = (Point){sgx, sgy, sgz};   // near someone it likes (notice.c)
     } else if (MoverWanderLocal()) {
         // big map: cross-map paths cost tens of ms each, wander nearby instead
         newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius,
@@ -1510,6 +1513,11 @@ static void AssignNewMoverGoal(Mover* m) {
         newGoal = GetRandomWalkableCellDifferentZ(cz);
     } else {
         newGoal = GetRandomWalkableCellOnZ(cz);
+    }
+    // Not near someone it dislikes (notice.c): try a couple of other random goals
+    for (int retry = 0; retry < 3 && NoticeGoalNearDisliked((int)(m - movers), newGoal.x, newGoal.y, newGoal.z); retry++) {
+        if (MoverWanderLocal()) newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius, false);
+        else newGoal = GetRandomWalkableCellOnZ(cz);
     }
     m->goal = newGoal;
 
@@ -1900,8 +1908,13 @@ void UpdateMovers(void) {
             if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
                 // Only assign random goals to idle movers without jobs or active needs
                 if (m->repathCooldown > 0) {
-                    m->repathCooldown--;
-                    continue;
+                    if (NoticeDislikedClose(i)) {   // someone it dislikes came close: leave now (notice.c)
+                        m->repathCooldown = 0;
+                        moverWanderRested[i] = true;
+                    } else {
+                        m->repathCooldown--;
+                        continue;
+                    }
                 }
                 // Stand a while at the goal before the next one (setting wanderPause)
                 if (moverWanderPause > 0.0f && !moverWanderRested[i]) {
@@ -2128,12 +2141,18 @@ void UpdateMovers(void) {
             float vy = lineFollow ? followVy : dyf * invDist * effectiveSpeed;
 
             // Social steering, sideways drifts: passing politely (notice.c: someone noticed coming
-            // at us) and giving a conversation room (talk.c: a talk's circle ahead)
+            // at us), giving a conversation room (talk.c: a talk's circle ahead), keeping away
+            // from someone disliked (notice.c)
             if (!lineFollow && target.z == (int)m->z) {
                 float sideX = 0.0f, sideY = 0.0f, passScale = 1.0f, roomX, roomY;
                 bool steer = politePassing &&
                              NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale);
                 if (TalkGiveRoomSteer(i, dxf * invDist, dyf * invDist, &roomX, &roomY)) {
+                    sideX += roomX;
+                    sideY += roomY;
+                    steer = true;
+                }
+                if (NoticeAvoidSteer(i, dxf * invDist, dyf * invDist, &roomX, &roomY)) {   // round someone disliked
                     sideX += roomX;
                     sideY += roomY;
                     steer = true;
