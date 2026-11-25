@@ -55,6 +55,7 @@ done <<'EOF'
 14  | 0 | --scenario campfire
 27  | 0 | --scenario follow-leader
 38  | 0 | --scenario crafting
+0   | 0 | --scenario explosions
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long
 60  | 0 | --set scenarioMovers 16 --scenario train-long

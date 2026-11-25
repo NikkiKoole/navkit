@@ -11,7 +11,7 @@
 
 #include <stdbool.h>
 
-#define CMD_MAX_ARGS 3
+#define CMD_MAX_ARGS 5
 
 typedef enum {
     CARG_INT,       // a whole number in lo..hi

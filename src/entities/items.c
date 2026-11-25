@@ -11,6 +11,7 @@
 #include "../simulation/temperature.h"  // for temperatureGrid
 #include "../simulation/balance.h"  // GameHoursToGameSeconds
 #include "../simulation/water.h"    // GetWaterFlow (drifting)
+#include "../simulation/explosion.h"  // ClearExplosions
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,7 @@ int itemCount = 0;
 int itemHighWaterMark = 0;  // Highest index + 1 ever active
 
 void ClearItems(void) {
+    ClearExplosions();   // flying items hold indices
     for (int i = 0; i < itemHighWaterMark; i++) {  // Only clear up to high water mark
         items[i].active = false;
         items[i].reservedBy = -1;

@@ -1,12 +1,50 @@
 # Explosions (and structural support)
 
-Status: **idea / investigation** (2026-11-25). No code yet. Nothing in `src/` knows about
-force, blasts or support; this doc maps what exists to build on, the gaps, and a proposed
-first slice. Open questions for the user at the bottom.
+Status: **partial** (2026-11-25). Slice 1 built (see "Built"): blasts break walls and floors
+(natural rock too: blast mining), throw loose items by weight, knock movers back. Not yet:
+structural support, gameplay sources (gunpowder, blast mining as a job), animals, visuals.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
 (`../vision/far future /gates-and-processors.md`), "no cave-ins" (`../vision/entropy-and-simulation/water-system-differences-with-df.md` §9).
+
+## Built (slice 1, 2026-11-25)
+
+`src/simulation/explosion.c` / `.h`, test `tests/test_explosion.c`, scenario `explosions`.
+
+- `Explode(x, y, z, power)`: power in cells (open air: power 6 reaches 6 cells). Flood over
+  the 26 neighbours, highest power first, -1 per cell of distance (diagonals 1.41 / 1.73).
+  A wall or a built floor over air costs its strength; with enough left it breaks and the rest
+  goes through. Diagonal steps can't squeeze past a wall the blast couldn't break, so walls
+  shelter what's behind them. A charge inside a wall (drilled in) breaks that cell for free.
+- Strength (`ExplosionCellStrength`, table in explosion.c, not in MaterialDef): soil/mud/cob 2,
+  wood 2.5, sandstone/brick 3, slate 3.5, granite 4, concrete 4.5, iron 8, glass/window 0.5,
+  floors half their material; bedrock, trees, doors: stop it, never break (yet).
+- Broken walls go through `CompleteMineDesignation` (drops, ramps, rooms, water, designations);
+  a broken cell over a hole the blast made keeps no floor. Floors: `CompleteRemoveFloorDesignation`.
+  Stockpile free slots are recounted after.
+- Items: push = 2.4 * power / (kg + 0.5)^0.25 cells/s (power where they lay *before* the ground
+  broke). Thrown at their height, slide along walls, land (and fall) when slower than 2 cells/s.
+  Rubble from broken walls flies too. Stored items leave their slot; an item reserved for a job
+  cancels that job; one reserved by a need (on the way to eat it) stays put.
+- Movers: push = 1.2 * power / sqrt(kg / 70) (carried weight counts), dazed 0.4 + 0.15 * speed s
+  (max 2.5), drawn blue like a fall; `ExplosionMoverTick` in the movement loop; landing over a
+  hole they fall, after the knock they repath. No harm (user: knockback only for now).
+- Fire on burnable cells within 2.5 of the charge, a puff of smoke, screen shake, event log.
+- Fuses: `ExplosionLightFuse(x, y, z, power, seconds)`. Fuses, flying items and knocked movers
+  are transient (not saved; cleared with movers / items).
+- Console: `explode [power] [x y z]` (mouse cell on the viewed level by default), `charge [power]
+  [fuse] [x y z]`. `CMD_MAX_ARGS` went 3 -> 5 for these.
+- Scenario `explosions` (in scenarios-check): field charge (power 6): leaves 3.1 cells, sticks
+  2.4, planks / log 0.5, rock 0.1; the open mover thrown 0.9 cells, the one behind granite not;
+  the oak fence breaks. Charge drilled into a granite hill (power 8): 26 granite cells out.
+
+Seen while building: a charge on open dirt makes a wide shallow crater (~3.5 cells, ~35 dirt
+items). Tune soil strength or blast coupling into the ground if that's too much.
+
+Next: structural support (column rule; walls and natural rock both, user's call), gameplay
+sources (gunpowder, blast mining job with a charge item), animals knocked too, a fuse sprite and
+a flash / debris particles.
 
 ## What exists to build on
 
@@ -111,9 +149,10 @@ otherwise mining on the island turns into constant cave-ins.
 Touches busy shared files (`items.c`, `designations.c`, `grid.c`, `mover.c`): keep the bulk in
 `explosion.c` with small hooks.
 
-## Open questions (user)
+## Decisions (user, 2026-11-25)
 
-- Which games get it? (survival + island natural, dollhouse probably not, sandbox for testing)
-- Can blasts kill, or only knock back / stun?
-- Collapses: built walls only, or natural rock too (real cave-ins)?
-- Tone: rare dramatic event, or a regular mining tool?
+- Movers: knockback only for now (no harm).
+- Walls and natural rock both break: blast mining wanted.
+
+Still open: which games get it; collapses for natural rock too (cave-ins) or built walls only;
+rare event or regular mining tool.

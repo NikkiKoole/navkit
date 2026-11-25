@@ -26,6 +26,7 @@
 #include <strings.h>
 #include "../entities/notice.h"
 #include "../simulation/fire.h"
+#include "../simulation/explosion.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
@@ -4085,6 +4086,134 @@ static bool RailingsCheck(char* why, int whyLen) {
     return true;
 }
 
+// explosions: a flat field with two lit charges. Left: a charge on open ground (power 6, 2 s)
+// with loose things round it at 3 cells (leaves, sticks, planks, a rock, a log), a mover in the
+// open, a mover behind a granite wall (sheltered), and a wooden fence 2 cells away (breaks).
+// Right: a granite hill (z1-3) with a charge drilled into its face (power 8, 4 s): blast mining.
+// Check: light things fly further than heavy ones, the open mover is knocked back, the sheltered
+// one isn't, the fence and some granite broke, the state audit is clean.
+#define BOOM_ITEMS 5
+static int boomItem[BOOM_ITEMS];
+static float boomItemX[BOOM_ITEMS], boomItemY[BOOM_ITEMS];
+static int boomOpenMover, boomShelteredMover;
+static bool boomKnocked[2];
+static float boomCalmX[2], boomCalmY[2], boomStartX[2], boomStartY[2], boomThrown[2];   // thrown: cells, when the knock ended
+static int boomGraniteBefore;
+
+static int BoomCountGranite(void) {
+    int n = 0;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 30; x <= 44; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == MAT_GRANITE) n++;
+    return n;
+}
+
+static void SetupExplosions(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;   // they stand where they are put
+    // Granite wall shielding the mover north of the field charge (2 high)
+    for (int x = 8; x <= 16; x++)
+        for (int z = 1; z <= 2; z++) { GRID(x, 12, z) = CELL_WALL; SetWallMaterial(x, 12, z, MAT_GRANITE); }
+    // Wooden fence 2 cells south of the charge
+    for (int x = 11; x <= 13; x++) { GRID(x, 18, 1) = CELL_WALL; SetWallMaterial(x, 18, 1, MAT_OAK); }
+    // Granite hill
+    for (int z = 1; z <= 3; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 30; x <= 44; x++) {
+                GRID(x, y, z) = CELL_WALL;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
+                SetWallNatural(x, y, z);
+            }
+    boomGraniteBefore = BoomCountGranite();
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+
+    // Loose things 3 cells from the charge at (12,16,1), each in its own direction
+    static const ItemType kinds[BOOM_ITEMS] = { ITEM_LEAVES, ITEM_STICKS, ITEM_PLANKS, ITEM_ROCK, ITEM_LOG };
+    static const int ix[BOOM_ITEMS] = { 9, 15, 9, 15, 12 }, iy[BOOM_ITEMS] = { 16, 16, 14, 14, 13 };
+    for (int i = 0; i < BOOM_ITEMS; i++) {
+        boomItemX[i] = (ix[i] + 0.5f) * CELL_SIZE;
+        boomItemY[i] = (iy[i] + 0.5f) * CELL_SIZE;
+        boomItem[i] = SpawnItemWithMaterial(boomItemX[i], boomItemY[i], 1.0f, kinds[i], DefaultMaterialForItemType(kinds[i]));
+    }
+    // The log at (12,13) lies against the shelter wall: the blast pushes it into the wall, it stays
+    // Movers: one in the open (3 cells east, 2 south), one behind the granite wall
+    boomOpenMover = moverCount;
+    SpawnMoverAt(14, 18, 1);
+    boomShelteredMover = moverCount;
+    SpawnMoverAt(12, 10, 1);
+    for (int k = 0; k < 2; k++) {
+        int m = k == 0 ? boomOpenMover : boomShelteredMover;
+        boomKnocked[k] = false;
+        boomThrown[k] = 0.0f;
+        boomCalmX[k] = boomStartX[k] = movers[m].x;
+        boomCalmY[k] = boomStartY[k] = movers[m].y;
+    }
+    ExplosionLightFuse(12, 16, 1, 6.0f, 2.0f);
+    ExplosionLightFuse(30, 16, 2, 8.0f, 4.0f);   // drilled into the hill's face
+    currentViewZ = 1;
+    AddMessage("Explosions: a charge in the field (2 s) and one drilled into the granite hill (4 s)", ORANGE);
+}
+
+static void ExplosionsTickStats(void) {
+    for (int k = 0; k < 2; k++) {
+        int m = k == 0 ? boomOpenMover : boomShelteredMover;
+        if (m >= moverCount || !movers[m].active) continue;
+        if (MoverKnocked(m)) {
+            if (!boomKnocked[k]) { boomStartX[k] = boomCalmX[k]; boomStartY[k] = boomCalmY[k]; }
+            boomKnocked[k] = true;
+            float dx = movers[m].x - boomStartX[k], dy = movers[m].y - boomStartY[k];
+            boomThrown[k] = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+        } else if (!boomKnocked[k]) { boomCalmX[k] = movers[m].x; boomCalmY[k] = movers[m].y; }
+    }
+}
+
+static float BoomItemMoved(int i) {
+    const Item* it = &items[boomItem[i]];
+    if (boomItem[i] < 0 || !it->active) return -1.0f;
+    float dx = it->x - boomItemX[i], dy = it->y - boomItemY[i];
+    return sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+}
+
+static float BoomMoverMoved(int k) { return boomThrown[k]; }
+
+static void ExplosionsPrintStats(void) {
+    static const char* names[BOOM_ITEMS] = { "leaves", "sticks", "planks", "rock", "log" };
+    printf("Explosions: items moved (cells):");
+    for (int i = 0; i < BOOM_ITEMS; i++) printf(" %s %.1f", names[i], BoomItemMoved(i));
+    printf("\n  open mover knocked %s (%.1f cells), sheltered mover knocked %s\n",
+           boomKnocked[0] ? "yes" : "no", BoomMoverMoved(0), boomKnocked[1] ? "yes" : "no");
+    int fence = 0;
+    for (int x = 11; x <= 13; x++) if (GRID(x, 18, 1) != CELL_WALL) fence++;
+    printf("  fence cells broken %d/3, granite cells blasted %d, fuses left %d\n",
+           fence, boomGraniteBefore - BoomCountGranite(), ExplosionFuseCount());
+}
+
+static bool ExplosionsCheck(char* why, int whyLen) {
+    if (ExplosionFuseCount() != 0) { snprintf(why, (size_t)whyLen, "a fuse never went off"); return false; }
+    float leaves = BoomItemMoved(0), rock = BoomItemMoved(3);
+    if (leaves < 0.0f || rock < 0.0f || leaves <= rock + 1.0f) {
+        snprintf(why, (size_t)whyLen, "leaves moved %.1f cells, rock %.1f (want leaves > rock + 1)", leaves, rock);
+        return false;
+    }
+    if (!boomKnocked[0] || BoomMoverMoved(0) < 0.5f) {
+        snprintf(why, (size_t)whyLen, "the open mover wasn't knocked back (%.1f cells)", BoomMoverMoved(0));
+        return false;
+    }
+    if (boomKnocked[1]) { snprintf(why, (size_t)whyLen, "the mover behind the granite wall was knocked"); return false; }
+    int fence = 0;
+    for (int x = 11; x <= 13; x++) if (GRID(x, 18, 1) != CELL_WALL) fence++;
+    if (fence == 0) { snprintf(why, (size_t)whyLen, "the wooden fence held"); return false; }
+    int blasted = boomGraniteBefore - BoomCountGranite();
+    if (blasted < 5) { snprintf(why, (size_t)whyLen, "only %d granite cells blasted (want >= 5)", blasted); return false; }
+    if (GRID(12, 12, 1) != CELL_WALL) { snprintf(why, (size_t)whyLen, "the granite shelter wall broke"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4176,6 +4305,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
+                   NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",

@@ -28,6 +28,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
+#include "../simulation/explosion.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
@@ -1167,6 +1168,7 @@ void ClearMovers(void) {
     ClearTalks();
     ClearRelations();
     ClearChase();
+    ClearExplosions();   // knocked movers, fuses, flying items (indices go stale)
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -1639,6 +1641,7 @@ void UpdateMovers(void) {
         if (!m->active) continue;
         if (ElevatorRiderTick(i, dt)) continue;   // in an elevator car: it carries the mover
         if (ElevatorQueueTick(i, dt)) continue;   // in the line at an elevator door
+        if (ExplosionMoverTick(i, dt)) continue;  // knocked back by a blast, dazed (explosion.c)
         if (TalkMoverTick(i, dt)) continue;       // standing in a conversation (talk.c)
         if (ChaseMoverTick(i, dt)) continue;      // tag: "it" counting to three (chase.c)
         

@@ -20,6 +20,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/explosion.h"
 #include "../core/time.h"
 #include "../core/sim_manager.h"
 #include "../world/designations.h"
@@ -553,6 +554,32 @@ static void RunStockpile(const CmdValue* v) {
 static const char* const balanceChoices[] = { "reset" };
 static void RunBalance(const CmdValue* v) { (void)v; InitBalance(); Say(GREEN, "Mover balance: defaults"); }
 
+// ---- explosions ----
+// Cell from x y z if given, else the mouse on the viewed level
+static bool ExplodeTarget(const CmdValue* v, int* x, int* y, int* z) {
+    if (v[0].given && v[1].given) { *x = v[0].i; *y = v[1].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); *x = (int)g.x; *y = (int)g.y; }
+    *z = v[2].given ? v[2].i : currentViewZ;
+    if (*x < 0 || *y < 0 || *z < 0 || *x >= gridWidth || *y >= gridHeight || *z >= gridDepth) {
+        Say(YELLOW, "Outside the map");
+        return false;
+    }
+    return true;
+}
+static void RunExplode(const CmdValue* v) {
+    int x, y, z;
+    if (!ExplodeTarget(v + 1, &x, &y, &z)) return;
+    ExplosionResult r = Explode(x, y, z, v[0].f);
+    Say(ORANGE, "Boom at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires",
+        x, y, z, v[0].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited);
+}
+static void RunCharge(const CmdValue* v) {
+    int x, y, z;
+    if (!ExplodeTarget(v + 2, &x, &y, &z)) return;
+    if (ExplosionLightFuse(x, y, z, v[0].f, v[1].f)) Say(ORANGE, "Fuse lit at %d,%d,%d: power %.0f in %.0fs", x, y, z, v[0].f, v[1].f);
+    else Say(YELLOW, "Too many lit fuses");
+}
+
 // ---- rendering toys ----
 static void RunCutscene(const CmdValue* v) { (void)v; PlayTestCutscene(); }
 static const char* const shakeChoices[] = { "small", "medium", "large" };
@@ -630,6 +657,19 @@ static const CommandDef commandTable[] = {
     { "stockpile", "Entities/Items", "Spawn a test stockpile: all, red, green or blue",
       1, { ARG_CHOICE("filter", stockpileChoices) }, RunStockpile, NULL },
     { "balance", "Mover Balance", "Mover balance back to its defaults", 1, { ARG_CHOICE("what", balanceChoices) }, RunBalance, NULL },
+    { "explode", "World/Explosions", "Blast at the mouse (or x y z): breaks walls and floors (rock too), pushes items by weight, knocks movers back",
+      4, { { .name = "power", .type = CARG_FLOAT, .optional = true, .lo = 1, .hi = EXPLOSION_MAX_POWER, .def = 6 },
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunExplode, NULL },
+    { "charge", "World/Explosions", "Lit charge at the mouse (or x y z): explodes after the fuse (game seconds)",
+      5, { { .name = "power", .type = CARG_FLOAT, .optional = true, .lo = 1, .hi = EXPLOSION_MAX_POWER, .def = 6 },
+           { .name = "fuse", .type = CARG_FLOAT, .optional = true, .lo = 0, .hi = 120, .def = 3 },
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunCharge, NULL },
     { "cutscene", "Rendering & Debug", "Play the test cutscene", 0, { { 0 } }, RunCutscene, NULL },
     { "shake", "Rendering & Debug", "Screen shake: small, medium, large", 1, { ARG_CHOICE("size", shakeChoices) }, RunShake, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",

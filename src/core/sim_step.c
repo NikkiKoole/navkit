@@ -13,6 +13,7 @@
 #include "../world/designations.h"
 #include "../simulation/needs.h"
 #include "../simulation/mood.h"
+#include "../simulation/explosion.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -22,6 +23,7 @@ void SimStep(float dt) {
 
     PROFILE_BEGIN(Items);
     ItemsTick(dt);
+    ExplosionsTick(dt);
     PROFILE_END(Items);
 
     PROFILE_BEGIN(Notice);
