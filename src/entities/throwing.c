@@ -7,6 +7,7 @@
 #include "stacking.h"
 #include "inventory.h"
 #include "stockpiles.h"
+#include "animals.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../simulation/water.h"
@@ -19,7 +20,7 @@ float throwGravity = 30.0f;
 float throwBounce = 0.35f;
 float throwSpread = 1.0f;
 float throwMaxWeight = 5.0f;
-long throwCount = 0, throwBounceCount = 0;
+long throwCount = 0, throwBounceCount = 0, throwHitCount = 0;
 
 #define THROW_RELEASE_HEIGHT 0.7f   // levels above the thrower's feet
 #define THROW_PI             3.14159265f
@@ -33,6 +34,10 @@ long throwCount = 0, throwBounceCount = 0;
 #define THROW_WINDUP         0.35f  // seconds the thrower winds up
 #define THROW_REPLAN         0.25f  // seconds between "can I throw from here?" checks
 #define THROW_AIM_TOLERANCE  1.0f   // cells: a planned throw comes down this close to the goal
+#define THROW_HIT_RADIUS     0.45f  // cells: an animal's body, seen from above
+#define THROW_HIT_HEIGHT     0.8f   // levels: how tall an animal is
+#define THROW_HIT_SPEED      3.0f   // cells/s: slower than this it just bumps into it (no scare)
+#define THROW_HIT_KEEP       0.25f  // speed kept bouncing off an animal
 
 // Job steps
 #define THROW_STEP_FETCH    0   // walking to the item
@@ -47,6 +52,8 @@ typedef struct {
     bool rolling;
     int thrower;
     int lastX, lastY, lastZ;   // last open cell it was in (landing falls back on it)
+    float fromX, fromY;   // cells: where it was let go (an animal hit runs from there)
+    int hitAnimal;        // the animal it hit (-1: none yet); one hit per throw
 } Flight;
 
 static Flight flights[THROW_MAX_FLIGHTS];
@@ -54,7 +61,7 @@ static int flightCount = 0;
 
 void ClearThrows(void) {
     flightCount = 0;
-    throwCount = throwBounceCount = 0;
+    throwCount = throwBounceCount = throwHitCount = 0;
 }
 
 int ThrowFlightCount(void) { return flightCount; }
@@ -332,7 +339,8 @@ void ThrowLaunch(int itemIdx, float x, float y, float h, ThrowAim aim, bool nois
     it->reservedBy = -1;
     it->x = x * CELL_SIZE; it->y = y * CELL_SIZE; it->z = floorf(h);
     flights[flightCount++] = (Flight){ .item = itemIdx, .x = x, .y = y, .h = h, .vx = vx, .vy = vy, .vz = vz,
-                                       .thrower = thrower, .lastX = (int)x, .lastY = (int)y, .lastZ = (int)h };
+                                       .thrower = thrower, .lastX = (int)x, .lastY = (int)y, .lastZ = (int)h,
+                                       .fromX = x, .fromY = y, .hitAnimal = -1 };
     throwCount++;
     EventLog("Throw: item %d (%s) by mover %d aimed at (%.1f,%.1f,%.0f), %.0f deg, %.1f cells/s",
              itemIdx, ItemName(it->type), thrower, tx, ty, aim.h, angle, sqrtf(vx * vx + vy * vy + vz * vz));
@@ -355,6 +363,46 @@ static void ThrowLand(Flight* f) {
     EventLog("Throw: item %d came to rest at (%d,%d,%d)", f->item, cx, cy, (int)it->z);
 }
 
+// Did the stone, moving from (x0,y0,h0) to where f is now, go through an animal? A hit scares
+// the animal (it runs from the thrower, or from where the stone was let go) and the stone
+// bounces off it, losing most of its speed.
+static void ThrowHitAnimals(Flight* f, float x0, float y0, float h0) {
+    if (f->hitAnimal >= 0) return;
+    float speed = sqrtf(f->vx * f->vx + f->vy * f->vy + f->vz * f->vz);
+    if (speed < THROW_HIT_SPEED) return;
+    float sx = f->x - x0, sy = f->y - y0, sh = f->h - h0;
+    float len2 = sx * sx + sy * sy;
+    for (int i = 0; i < animalCount; i++) {
+        const Animal* a = &animals[i];
+        if (!a->active) continue;
+        float ax = a->x / CELL_SIZE, ay = a->y / CELL_SIZE;
+        float t = len2 > 1e-6f ? ((ax - x0) * sx + (ay - y0) * sy) / len2 : 0.0f;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        float px = x0 + sx * t - ax, py = y0 + sy * t - ay, ph = h0 + sh * t - a->z;
+        if (px * px + py * py > THROW_HIT_RADIUS * THROW_HIT_RADIUS) continue;
+        if (ph < 0.0f || ph > THROW_HIT_HEIGHT) continue;
+        // Hit
+        float fromX = f->fromX * CELL_SIZE, fromY = f->fromY * CELL_SIZE;
+        if (f->thrower >= 0 && f->thrower < moverCount && movers[f->thrower].active) {
+            fromX = movers[f->thrower].x; fromY = movers[f->thrower].y;
+        }
+        ScareAnimal(i, fromX, fromY);
+        f->hitAnimal = i;
+        float hx = x0 + sx * t, hy = y0 + sy * t, hh = h0 + sh * t;   // where it struck
+        if (!ThrowCellBlocked((int)floorf(hx), (int)floorf(hy), (int)floorf(hh))) {
+            f->x = hx; f->y = hy; f->h = hh;
+        }
+        f->vx *= -THROW_HIT_KEEP; f->vy *= -THROW_HIT_KEEP;
+        if (f->vz > 0.0f) f->vz *= THROW_HIT_KEEP;
+        f->rolling = false;
+        throwHitCount++;
+        EventLog("Throw: item %d hit animal %d at (%.1f,%.1f,%.1f), %.1f cells/s: it runs",
+                 f->item, i, f->x, f->y, f->h, speed);
+        return;
+    }
+}
+
 void ThrowsTick(float dt) {
     if (flightCount == 0 || dt <= 0.0f) return;
     int w = 0;
@@ -365,8 +413,10 @@ void ThrowsTick(float dt) {
         bool hitGround = false;
         int bounces = 0;
         FlyState st = FLY_ON;
+        float x0 = f.x, y0 = f.y, h0 = f.h;
         ThrowStepFlight(&f, dt, &hitGround, &bounces, &st);
         throwBounceCount += bounces;
+        if (st == FLY_ON) ThrowHitAnimals(&f, x0, y0, h0);
         f.age += dt;
         if (st != FLY_ON || f.age > THROW_MAX_TIME) { ThrowLand(&f); continue; }
         int cz = (int)floorf(f.h);

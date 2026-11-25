@@ -62,4 +62,11 @@ int CountActiveAnimals(void);
 void KillAnimal(int animalIdx);  // Deactivates animal + spawns carcass at position
 int GetAnimalAtGrid(int x, int y, int z);  // Returns animal index at grid cell, or -1
 
+// Scared (a thrown stone hit it): it runs away from (fromX, fromY) (pixels) for animalScareHours
+// game hours (animal speeds scale with the day length, so it runs as far at any day length).
+// Transient, not saved. Grazers and predators both run; a predator drops its prey.
+extern float animalScareHours;
+void ScareAnimal(int animalIdx, float fromX, float fromY);
+bool AnimalScared(int animalIdx);
+
 #endif // ANIMALS_H

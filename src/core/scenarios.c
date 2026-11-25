@@ -4483,6 +4483,99 @@ static bool ThrowingCheck(char* why, int whyLen) {
     return true;
 }
 
+// throwscare: three movers each with a sharp stone and a grazer about 8 cells east of them. A
+// mover throws at the cell its grazer stands on; a hit scares it and it runs off east (away from
+// the thrower). Headless: the stone goes back to the thrower and it throws again at wherever the
+// grazer is now (out of range: it walks closer first). Prints throws, hits and how far the grazers
+// got; --check: stones hit, hit grazers ran, nothing in a wall, the state audit is clean.
+#define SCARE_LANES 3
+static int scareMover[SCARE_LANES], scareItem[SCARE_LANES], scareAnimal[SCARE_LANES];
+static int scareThrows[SCARE_LANES], scareHits[SCARE_LANES];
+static bool scareFlying[SCARE_LANES];
+static long scareHitsSeen;
+static float scareStartX[SCARE_LANES], scareFarthest[SCARE_LANES];
+static const int scareLaneY[SCARE_LANES] = { 6, 16, 26 };
+
+static void ScareOrder(int k) {
+    const Animal* a = &animals[scareAnimal[k]];
+    if (!a->active) return;
+    ThrowOrder(scareMover[k], scareItem[k], (int)(a->x / CELL_SIZE), (int)(a->y / CELL_SIZE), (int)a->z, NULL);
+}
+
+static void SetupThrowScare(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    animalRespawnEnabled = false;
+    for (int k = 0; k < SCARE_LANES; k++) {
+        int y = scareLaneY[k];
+        scareMover[k] = moverCount;
+        SpawnMoverAt(4, y, 1);
+        scareItem[k] = SpawnItemWithMaterial(4.5f * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 1.0f,
+                                             ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+        SpawnAnimal(ANIMAL_GRAZER, 1, BEHAVIOR_SIMPLE_GRAZER);
+        scareAnimal[k] = animalCount - 1;
+        Animal* a = &animals[scareAnimal[k]];
+        a->x = 12.5f * CELL_SIZE; a->y = (y + 0.5f) * CELL_SIZE; a->z = 1.0f;
+        a->targetCellX = 12; a->targetCellY = y;
+        a->state = ANIMAL_IDLE; a->stateTimer = 0.0f;
+        scareStartX[k] = scareFarthest[k] = 12.5f;
+        scareThrows[k] = scareHits[k] = 0;
+        scareFlying[k] = false;
+        ScareOrder(k);
+    }
+    scareHitsSeen = 0;
+    throwInWall = 0;
+    currentViewZ = 1;
+    AddMessage("Throwing at animals: a hit grazer runs away from the thrower", GREEN);
+}
+
+static void ThrowScareTickStats(void) {
+    for (int k = 0; k < SCARE_LANES; k++) {
+        int it = scareItem[k], m = scareMover[k];
+        const Animal* a = &animals[scareAnimal[k]];
+        if (a->active && a->x / CELL_SIZE > scareFarthest[k]) scareFarthest[k] = a->x / CELL_SIZE;
+        if (it < 0 || !items[it].active || !movers[m].active) continue;
+        if (items[it].state == ITEM_IN_FLIGHT) { scareFlying[k] = true; continue; }
+        if (scareFlying[k]) {
+            scareFlying[k] = false;
+            scareThrows[k]++;
+            if (AnimalScared(scareAnimal[k]) && throwHitCount > scareHitsSeen) scareHits[k]++;
+            scareHitsSeen = throwHitCount;
+            const Item* t = &items[it];
+            int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+            if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) throwInWall++;
+            items[it].x = movers[m].x; items[it].y = movers[m].y; items[it].z = movers[m].z;   // hand it back
+        }
+        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0 && !AnimalScared(scareAnimal[k])) ScareOrder(k);
+    }
+}
+
+static void ThrowScarePrintStats(void) {
+    printf("Throwing at animals: %ld throws, %ld hits, %d stones ended in a wall\n", throwCount, throwHitCount, throwInWall);
+    for (int k = 0; k < SCARE_LANES; k++)
+        printf("  lane %d: throws %3d  hits %3d  grazer ran from x %.1f to x %.1f\n",
+               k, scareThrows[k], scareHits[k], scareStartX[k], scareFarthest[k]);
+}
+
+static bool ThrowScareCheck(char* why, int whyLen) {
+    int hit = 0;
+    for (int k = 0; k < SCARE_LANES; k++) {
+        if (scareThrows[k] < 2) { snprintf(why, (size_t)whyLen, "lane %d threw only %d times", k, scareThrows[k]); return false; }
+        if (scareHits[k] > 0) {
+            hit++;
+            if (scareFarthest[k] < scareStartX[k] + 4.0f) {
+                snprintf(why, (size_t)whyLen, "lane %d: grazer hit but only got to x %.1f", k, scareFarthest[k]);
+                return false;
+            }
+        }
+    }
+    if (hit < 2) { snprintf(why, (size_t)whyLen, "only %d of %d grazers were hit", hit, SCARE_LANES); return false; }
+    if (throwInWall > 0) { snprintf(why, (size_t)whyLen, "%d stones came to rest inside a wall", throwInWall); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 // collapse: structural support. Three charges on fuses take the foot out of three structures:
 // a granite pillar with an arm at the top (2 s), a granite roof slab on one pillar with a
 // mover under it (3 s), a wooden deck on one post with a log on it (4 s). Each piece creaks
@@ -4674,6 +4767,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",
                    NULL,        SetupThrowing, ThrowingTickStats, ThrowingPrintStats, ThrowingCheck, 40, 32},
+    {"throwscare", "Three movers throw stones at grazers: a hit grazer runs away from the thrower",
+                   NULL,        SetupThrowScare, ThrowScareTickStats, ThrowScarePrintStats, ThrowScareCheck, 40, 32},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",

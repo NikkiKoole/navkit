@@ -10,10 +10,13 @@
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/throwing.h"
+#include "../src/entities/animals.h"
+#include "../src/simulation/balance.h"
 #include "../src/core/state_audit.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
 #include <math.h>
+#include <string.h>
 
 static bool test_verbose = false;
 
@@ -172,6 +175,96 @@ describe(throw_flight) {
     }
 }
 
+// One animal standing at (x, y) on level z, nothing else around
+static int PlaceAnimal(int x, int y, int z, AnimalType type, AnimalBehavior behavior) {
+    ClearAnimals();
+    animalRespawnEnabled = false;
+    Animal* a = &animals[0];
+    memset(a, 0, sizeof(*a));
+    a->x = (x + 0.5f) * CELL_SIZE; a->y = (y + 0.5f) * CELL_SIZE; a->z = (float)z;
+    a->type = type; a->behavior = behavior; a->active = true;
+    a->speed = type == ANIMAL_PREDATOR ? 80.0f : ANIMAL_SPEED;
+    a->state = ANIMAL_GRAZING;
+    a->targetCellX = x; a->targetCellY = y;
+    a->targetAnimalIdx = -1; a->reservedByHunter = -1;
+    animalCount = 1;
+    return 0;
+}
+
+// Throw a stone perfectly from (4, 10) at cell (gx, 10) and let it settle
+static int ThrowAtCell(int gx) {
+    int s = Spawn(4, 10, 1, ITEM_SHARP_STONE);
+    ThrowAim aim;
+    if (!ThrowPlan(s, 4.5f, 10.5f, 1.7f, gx, 10, 1, 1.0f, &aim)) return -1;
+    ThrowLaunch(s, 4.5f, 10.5f, 1.7f, aim, false, -1);
+    Settle();
+    return s;
+}
+
+static float AnimalX(int i) { return animals[i].x / CELL_SIZE; }
+
+static void RunAnimals(float seconds) {
+    for (float t = 0.0f; t < seconds; t += 1.0f / 60.0f) AnimalsTick(1.0f / 60.0f);
+}
+
+describe(throw_hit) {
+    it("a stone hitting a grazer scares it: it runs away from where the stone came from") {
+        FlatWorld();
+        int a = PlaceAnimal(11, 10, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        int s = ThrowAtCell(11);
+        expect(s >= 0);
+        expect(throwHitCount == 1);
+        expect(AnimalScared(a));
+        expect(items[s].state == ITEM_ON_GROUND);
+        expect(items[s].x / CELL_SIZE < 11.5f);   // bounced off it, didn't fly on through
+        float x0 = AnimalX(a);
+        RunAnimals(2.0f);
+        expect(AnimalX(a) > x0 + 3.0f);           // away from the thrower (at x 4)
+        RunAnimals(GameHoursToGameSeconds(animalScareHours));
+        expect(!AnimalScared(a));                 // calms down
+    }
+    it("a stone that lands well short of an animal doesn't scare it") {
+        FlatWorld();
+        int a = PlaceAnimal(16, 10, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        expect(ThrowAtCell(9) >= 0);
+        expect(throwHitCount == 0);
+        expect(!AnimalScared(a));
+    }
+    it("a stone passing beside an animal doesn't hit it") {
+        FlatWorld();
+        int a = PlaceAnimal(11, 12, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        expect(ThrowAtCell(11) >= 0);
+        expect(throwHitCount == 0);
+        expect(!AnimalScared(a));
+    }
+    it("a steering grazer runs too") {
+        FlatWorld();
+        int a = PlaceAnimal(11, 10, 1, ANIMAL_GRAZER, BEHAVIOR_STEERING_GRAZER);
+        expect(ThrowAtCell(11) >= 0);
+        expect(AnimalScared(a));
+        float x0 = AnimalX(a);
+        RunAnimals(2.0f);
+        expect(AnimalX(a) > x0 + 2.0f);
+    }
+    it("a predator hit stops hunting and runs") {
+        FlatWorld();
+        int p = PlaceAnimal(11, 10, 1, ANIMAL_PREDATOR, BEHAVIOR_PREDATOR);
+        animals[p].state = ANIMAL_HUNTING;
+        // prey on the thrower's side: unscared it would come toward it
+        Animal* prey = &animals[1];
+        *prey = animals[p];
+        prey->type = ANIMAL_GRAZER; prey->behavior = BEHAVIOR_SIMPLE_GRAZER;
+        prey->x = 7.5f * CELL_SIZE; prey->state = ANIMAL_BEING_HUNTED;   // stands still
+        animalCount = 2;
+        expect(ThrowAtCell(11) >= 0);
+        expect(AnimalScared(p));
+        float x0 = AnimalX(p);
+        RunAnimals(2.0f);
+        expect(AnimalX(p) > x0 + 2.0f);
+        expect(animals[1].active);   // not caught
+    }
+}
+
 describe(throw_job) {
     it("a mover fetches a stone and throws it at the goal") {
         InitTestGridFromAscii(
@@ -245,6 +338,7 @@ int main(int argc, char* argv[]) {
     InitJobPool();
     test(throw_what);
     test(throw_flight);
+    test(throw_hit);
     test(throw_job);
     return summary();
 }

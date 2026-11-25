@@ -11,6 +11,10 @@
 // a lob over a wall if needed), and the throw going a bit wrong (direction and strength, more
 // so far away). Beyond its range it falls short.
 //
+// Hitting: a stone flying (faster than a bump) through an animal's body scares it: it runs from
+// the thrower for animalScareHours game hours (animals.c) and the stone bounces off it. One hit per
+// throw. Movers aren't hit yet.
+//
 // Light and small enough: one unit of an item that isn't two-handed and weighs at most
 // throwMaxWeight kg (a stack: one unit is split off). An item in flight is ITEM_IN_FLIGHT: no
 // job takes it. Transient: the flight isn't saved, a load puts flying items on the ground.
@@ -28,7 +32,7 @@ extern float throwMaxWeight;   // kg per unit: heavier things aren't thrown
 #define THROW_MAX_FLIGHTS 256
 
 // Stats since ClearThrows (scenario checks)
-extern long throwCount, throwBounceCount;
+extern long throwCount, throwBounceCount, throwHitCount;
 
 bool ItemThrowable(int itemIdx);                 // light and small enough (one unit of it)
 float ThrowRange(int itemIdx);                   // cells on flat ground, flattest useful arc

@@ -1,7 +1,8 @@
 # Throwing (and later ranged attacks)
 
-Status: **experiment, slice 1 built** (2026-11-25). A mover throws a small item at a goal cell
-as a job; the item flies in 3D, bounces off walls and the ground, rolls to a stop.
+Status: **experiment, slice 2 built** (2026-11-25). A mover throws a small item at a goal cell
+as a job; the item flies in 3D, bounces off walls and the ground, rolls to a stop. A stone that
+hits an animal scares it off.
 
 ## Built (slice 1)
 
@@ -52,11 +53,36 @@ as a job; the item flies in 3D, bounces off walls and the ground, rolls to a sto
   bounce never ends inside, lob over a wall, out of range falls short, floors and edges, 200
   noisy throws in a walled room, load, the job, stack split, refusing).
 
+## Built (slice 2): hits scare animals
+
+- Each tick the flight's segment is tested against every animal (a body 0.45 cells round, 0.8
+  levels tall, standing on its level). Faster than 3 cells/s it's a hit: `ScareAnimal` and the
+  stone bounces back off it with a quarter of its speed. One hit per throw; slow rolling stones
+  just bump. Counted in `throwHitCount`, logged in the event log.
+- `ScareAnimal(idx, fromX, fromY)` (animals.c): for `animalScareHours` game hours (setting, 1.5
+  = ~9 cells of running at any day length) the animal runs from the thrower (or from where the
+  stone was let go). Simple grazers run straight away (like from a hunter, at any distance;
+  they now stop at walls and water instead of running through them, hunted ones too); steering
+  grazers panic (danger just behind them on the line to the thrower, interest a few cells the
+  other way); predators drop their prey and run. Transient beside the saved `Animal` struct
+  (not saved).
+- Movers are never hit.
+- Dev: in the game, select a mover, mouse on an animal, console `throw`.
+- **Scenario `throwscare`** (in scenarios-check): three movers each throw at a grazer ~8 cells
+  away, again and again at wherever it stands (headless loop). 3000 ticks: 64 throws, 19 hits
+  (the grazers keep moving; aiming is at the cell it stood on); hit grazers ran 9-20 cells.
+- Tests: `throw_hit` in `tests/test_throwing.c` (a hit grazer runs from the thrower and calms
+  down; a short throw and a throw passing beside don't scare; steering grazer; predator stops
+  hunting).
+
 ## Not yet / ideas
 
-- **Hitting things.** Flights ignore movers and animals; there is no health yet (see
-  `../world/explosions.md` "Gaps"). First step: a hit on an animal scares it (flee code in
-  `chase.c`); then ranged hunting (throw instead of chasing until adjacent).
+- **Ranged hunting:** the hunt job throws (aim leading a moving animal) instead of walking
+  up to it; a hit wounds (needs animal health), a scared animal is harder to get close to.
+- Near misses could startle too (a stone landing within a cell or two).
+
+- **Hitting movers.** No health yet (see `../world/explosions.md` "Gaps"); a hit mover could at
+  least flinch / be annoyed at the thrower (relations).
 - **The shadow** is hard to see on dark grass; maybe a ring or a lighter outline.
 - **Skill / tiredness / wind** in the spread (weather has a wind vector).
 - **Per-material bounce** (a stone on rock bounces, on mud it stops; a stick barely bounces).

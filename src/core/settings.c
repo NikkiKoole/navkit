@@ -654,6 +654,8 @@ static const Setting settings[] = {
       "How much a throw goes wrong (direction and strength, more far away). 0 = perfect.", NULL),
     SET_FLOAT("throwMaxWeight", "Throw: max weight (kg)", "Entities/Movers/Throwing", throwMaxWeight, 0.1f, 0.1f, 30.0f,
       "Heaviest unit a mover throws (two-handed things never).", NULL),
+    SET_FLOAT("animalScareHours", "Throw: animal scared (h)", "Entities/Movers/Throwing", animalScareHours, 0.1f, 0.0f, 12.0f,
+      "Game hours an animal hit by a thrown stone runs away from the thrower.", NULL),
     SET_FLOAT("chaseSpeed", "Chase: speed", "Entities/Movers/Noticing", chaseSpeed, 0.05f, 0.5f, 3.0f,
       "Running pace of a chaser, x walking speed.", NULL),
     SET_FLOAT("fleeSpeed", "Flee: speed", "Entities/Movers/Noticing", fleeSpeed, 0.05f, 0.5f, 3.0f,
