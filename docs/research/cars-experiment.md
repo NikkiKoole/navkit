@@ -773,6 +773,23 @@ meet the ring, at the ring's S and in the centre. No lights anywhere.
 - Bottlenecks: the inner junctions on the north-south road into the centre, the highway's
   westbound exit (a queue onto the slip road), the access road's roundabouts.
 
+### Drivers too shy at roundabouts ("ritsen", 2026-11-25)
+
+User: cars don't go onto the roundabout when they could. Entering asked for (1) fewer cars on the
+ring than it has ring lanes - 4 on a ring with room for ~25; (2) the last 2 slots of the ring lane
+arriving there empty; (3) room at the exit.
+- Ring capacity: two thirds of its ring slots (`SlRingRoom`; the exit-room rule is what keeps a
+  full ring from locking now).
+- The gap: only a ring car that would reach us counts - one standing at the ring junction (ring
+  cars ask first: if it can go, it goes) or leaving the ring right there (its indicator) doesn't.
+- The centre roundabout at radius 11 (not the smallest that fits, 9: 8 ring slots). 13 was too
+  big: the roads into it got so short (2-3 cars between the inner junctions and the ring) that
+  150 cars locked up across them.
+- `SL_RINGWHY`: per roundabout its arms, ring slots, room, cars on it, entries held and why.
+- Dutch town, 10 min: 120 cars 462 trips (mean over carCitySeed 1-4; 351 before at the default
+  seed), 150 cars 436 (348). Grid 565 (574: within the seeds' spread). 0 touches, 0 jumps.
+  What holds cars now is mostly no room at the exit (a queue beyond the roundabout).
+
 ## Slot traffic: smoother lane changes, anticipation (2026-11-25)
 
 User: a car that just turned into a road sometimes changes lanes right away (awkward; it should

@@ -3541,7 +3541,9 @@ static void BuildDutch(void) {
     int rb[7] = {tn, ts, ring[0], ring[2], ring[4], ring[6], c};
     for (int k = 0; k < 7; k++) {   // (as small as the roads' angles allow: every ring stretch long enough)
         bool made = false;
-        for (float r = 9; r <= 16 && !made; r += 1) made = RoadMakeRoundabout(rb[k], r * sx);
+        // (the centre's a big one: at the smallest that fit, 9, its ring held 8 slots - 4 cars - and
+        // drivers waited at the give-way line for one of them to leave)
+        for (float r = rb[k] == c ? 11 : 9; r <= 16 && !made; r += 1) made = RoadMakeRoundabout(rb[k], r * sx);
         if (!made) printf("cars-city (Dutch): no roundabout at node %d (%.0f,%.0f): roads too close in angle\n", rb[k], rdNodes[rb[k]].x / CELL_SIZE, rdNodes[rb[k]].y / CELL_SIZE);
     }
 }

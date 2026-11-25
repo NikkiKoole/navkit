@@ -54,7 +54,7 @@ static unsigned char* slCross = NULL;   // crossings: per cell, 0 / orient
 static int slCrossW = 0, slCrossH = 0, *slCrossList = NULL, slCrossN = 0, slCrossCap = 0;
 static long slPedSlows = 0, slPedJay = 0, slPedZebra = 0;
 static int *slYieldUntil = NULL, *slYieldCar = NULL;   // a slot held open for a merging car (until that step)
-static long slYields = 0, slYieldMerges = 0, slClassYields = 0, slRingExitWaits = 0;
+static long slYields = 0, slYieldMerges = 0, slClassYields = 0, slRingExitWaits = 0, slRingFullWaits = 0, slRingGapWaits = 0;
 static long slHwSteps = 0, slRampSteps = 0, slUseSteps = 0;   // car-steps on highways / slip roads, steps counted
 static int *slAntLead = NULL, *slAntFree = NULL;   // per car this step: the car it's held back by, free slots to it
 static unsigned char* slAntDawdle = NULL;
@@ -93,6 +93,7 @@ static int* slExitStamp = NULL;
 static int* slSegCount = NULL;          // cars on each segment at the step's start
 static int* slReqCars = NULL;
 static short* slRingLanes = NULL;
+static short* slRingSlots = NULL;   // per roundabout: slots on its ring lanes
 static short* slRingCount = NULL;
 static int* slExitNeed = NULL;   // per lane: cars on a roundabout that leave it into this lane (this step)
 // The lane a car leaves a roundabout into: the first lane in its route from q on that isn't a ring lane
@@ -155,7 +156,7 @@ void SlotsClear(void) {
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
     slPedSlows = slPedJay = slPedZebra = 0;
-    slYields = slYieldMerges = slClassYields = slRingExitWaits = 0;
+    slYields = slYieldMerges = slClassYields = slRingExitWaits = slRingFullWaits = slRingGapWaits = 0;
     slHwSteps = slRampSteps = slUseSteps = 0;
     slAntUsed = slStops = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
@@ -412,10 +413,13 @@ void SlotsBuild(void) {
     if (rdNodeCount > 0) {
         slRingLanes = realloc(slRingLanes, sizeof(short) * rdNodeCount);
         slRingCount = realloc(slRingCount, sizeof(short) * rdNodeCount);
+        slRingSlots = realloc(slRingSlots, sizeof(short) * rdNodeCount);
         memset(slRingLanes, 0, sizeof(short) * rdNodeCount);
+        memset(slRingSlots, 0, sizeof(short) * rdNodeCount);
         for (int i = 0; i < RoadLaneCount(); i++) {
-            const RdSeg* S = &rdSegs[RoadLaneAt(i)];
-            if (S->priority && rdNodes[S->to].ringOf >= 0) slRingLanes[rdNodes[S->to].ringOf]++;
+            int s = RoadLaneAt(i);
+            const RdSeg* S = &rdSegs[s];
+            if (S->priority && rdNodes[S->to].ringOf >= 0) { slRingLanes[rdNodes[S->to].ringOf]++; slRingSlots[rdNodes[S->to].ringOf] += (short)slSegN[s]; }
         }
     }
 }
@@ -976,6 +980,17 @@ static bool SlYieldToBigger(int i, int conn) {
     return false;
 }
 
+// Cars a roundabout takes at once: half its ring's slots (since entering needs room at the exit,
+// a full ring can't lock up; it was one car per ring lane - 4 on a ring with room for ~25, and
+// drivers stood at the give-way line with the ring nearly empty)
+static int SlRingRoom(int r) {
+    int room = slRingSlots[r] * 2 / 3;
+    return room > 1 ? room : 1;
+}
+// (diagnostic SL_RINGWHY) entries refused per roundabout and why: 0 ring full, 1 no gap, 2 no room at the exit
+static long slRingWhy[RD_MAX_NODES][3];
+static void SlRingWhy(int r, int why) { if (r >= 0 && r < RD_MAX_NODES) slRingWhy[r][why]++; }
+
 static void SlGrantCurves(void) {
     int nreq = 0;
     for (int i = 0; i < slotCarCount; i++) if (!slotCars[i].needRoute || slotCars[i].ri + 1 < slotCars[i].routeLen)
@@ -1009,15 +1024,26 @@ static void SlGrantCurves(void) {
         // entering a roundabout: room on the ring, and a gap in the ring traffic arriving here
         if (!rdSegs[C->from].priority && rdSegs[C->to].priority && N->ringOf >= 0) {
             int r = N->ringOf;
-            if (slRingCount[r] >= (slRingLanes[r] > 1 ? slRingLanes[r] : 1)) continue;
+            if (slRingCount[r] >= SlRingRoom(r)) { slRingFullWaits++; SlRingWhy(r, 0); continue; }
+            // a gap: no car coming round that would reach us - one standing, or leaving the ring
+            // right here (its indicator), doesn't count (ring cars ask first: one that can go, goes)
             bool gap = true;
             for (int e = 0; e < N->nEdge && gap; e++) {
                 const RdEdge* E = &rdEdges[N->edge[e]];
                 int in = E->b == C->node ? E->lane[0] : E->lane[1];
                 if (in < 0 || !rdSegs[in].priority) continue;
-                for (int k = slSegN[in] - 2; k < slSegN[in]; k++) if (k >= 0 && !SlFree(SlIdx(in, k))) gap = false;
+                for (int k = slSegN[in] - 3; k < slSegN[in]; k++) {
+                    if (k < 0) continue;
+                    int idx = SlIdx(in, k), o = slSlotCar[idx];
+                    if (o < 0) { if (!SlFree(idx)) gap = false; continue; }
+                    const SlotCar* oc = &slotCars[o];
+                    if (oc->v == 0 && k == slSegN[in] - 1) continue;   // standing at the ring junction
+                    int on = oc->ri + 1 < oc->routeLen ? oc->route[oc->ri + 1] : -1;
+                    if (on >= 0 && rdSegs[on].kind == RD_CONN && rdSegs[on].node == C->node && !rdSegs[rdSegs[on].to].priority) continue;   // leaving here
+                    if (SlBrakeDist(oc->v + 1, SlBrakeSlots()) >= slSegN[in] - k - 1 || k >= slSegN[in] - 2) gap = false;
+                }
             }
-            if (!gap) continue;
+            if (!gap) { slRingGapWaits++; SlRingWhy(r, 1); continue; }
             // and room where we leave it, past the cars already on the ring that leave there too
             // (else two roundabouts joined by a short road locked up: each ring full of cars
             // waiting to leave into the road full of cars waiting to enter the other)
@@ -1025,7 +1051,7 @@ static void SlGrantCurves(void) {
             if (ex >= 0) {
                 int fr = 0;
                 while (fr < slSegN[ex] && SlFree(SlIdx(ex, fr))) fr++;
-                if (fr <= slExitNeed[ex]) { slRingExitWaits++; continue; }
+                if (fr <= slExitNeed[ex]) { slRingExitWaits++; SlRingWhy(r, 2); continue; }
                 slExitNeed[ex]++;
             }
             slRingCount[r]++;
@@ -1948,7 +1974,7 @@ void SlotsPrintStats(void) {
         printf("  classes:");
         for (int k = RD_CLS_COUNT - 1; k >= 0; k--) if (lanes[k])
             printf(" %s %d lanes (limit %.0f, %d cars at %.1f)", nm[k], lanes[k], rdClassSpeed[k], cars[k], cars[k] ? (double)vs[k] / cars[k] * SL_SLOT_CELLS : 0.0);
-        printf(" [cells/s]; %ld curves held for the bigger road's traffic; %ld roundabout entries held (no room at the exit)\n", slClassYields, slRingExitWaits);
+        printf(" [cells/s]; %ld curves held for the bigger road's traffic\n", slClassYields);
         if (slHwSteps + slRampSteps > 0)
             printf("  highway use: %.1f cars on it on average, %.1f on the slip roads\n", (double)slHwSteps / (slUseSteps ? slUseSteps : 1), (double)slRampSteps / (slUseSteps ? slUseSteps : 1));
     }
@@ -1965,6 +1991,13 @@ void SlotsPrintStats(void) {
         printf("  anticipation: %ld speeds raised (the car ahead moving on); stop-and-go: %ld stands from moving, %.1f a trip\n",
                slAntUsed, slStops, trips ? (double)slStops / trips : 0.0);
     }
+    if (slRingFullWaits + slRingGapWaits + slRingExitWaits > 0)
+        printf("  roundabout entries held: %ld ring full, %ld no gap in the ring traffic, %ld no room at the exit\n", slRingFullWaits, slRingGapWaits, slRingExitWaits);
+    if (getenv("SL_RINGWHY"))
+        for (int r = 0; r < rdNodeCount && r < RD_MAX_NODES; r++)
+            if (slRingLanes && slRingLanes[r] > 0)
+                printf("  roundabout %d at (%.0f,%.0f): %d arms, %d ring slots (room %d, %d on it now); held: %ld full, %ld no gap, %ld no exit room\n", r,
+                       rdNodes[r].x / CELL_SIZE, rdNodes[r].y / CELL_SIZE, slRingLanes[r], slRingSlots[r], SlRingRoom(r), slRingCount[r], slRingWhy[r][0], slRingWhy[r][1], slRingWhy[r][2]);
     printf("  lane changes: %ld to overtake, %ld back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", slOvertakes, slKeepRights, slMerges, slMergeGiveUps);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }
