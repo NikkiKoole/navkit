@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 120
+#define CURRENT_SAVE_VERSION 121
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -137,6 +137,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // purses. Older saves: everyone 1 (plenty of company). Moodlets Lonely / Very lonely / Good
 // company appended (fixed-size moodlet slots: no size change).
 #define V120_SOCIAL 120
+// v121: shops (money.h): stockpileForSale (MAX_STOCKPILES bools) and stockpileTill (MAX_STOCKPILES
+// ints) right after the stockpiles. Older saves: nothing for sale, empty tills.
+#define V121_SHOPS 121
 #define V118_ITEM_TYPE_COUNT 85
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");

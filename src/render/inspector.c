@@ -16,6 +16,7 @@
 #include "../entities/animals.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
+#include "../entities/money.h"
 #include "../world/designations.h"
 
 Color DescToneColor(DescTone tone);   // tooltips.c
@@ -157,6 +158,7 @@ static void StockpileContent(bool draw, float x, float* y) {
     *y += INSPECTOR_BUTTON_H;
     bx = x;
     Stepper("Containers", sp->maxContainers, draw, x, *y, &bx, spIdx, StockpileAdjustContainers);
+    if (Button(stockpileForSale[spIdx] ? "Stop selling" : "Sell", draw, &bx, *y)) StockpileToggleForSale(spIdx);   // money.h
     *y += INSPECTOR_BUTTON_H + 4;
 
     // Filters: one row per category (toggle all / open), the open one lists its items

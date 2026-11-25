@@ -118,6 +118,8 @@ static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
 static int insp_moverCoins[MAX_MOVERS];   // purses (v119+, money.h)
+static bool insp_forSale[MAX_STOCKPILES];   // shops (v121+, money.h)
+static int insp_till[MAX_STOCKPILES];
 static float insp_moverSocial[MAX_MOVERS];   // the social need (v120+, social.h)
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
@@ -318,6 +320,7 @@ static void print_stockpile(int idx) {
     printf("Position: (%d, %d, z%d)\n", sp->x, sp->y, sp->z);
     printf("Size: %d x %d\n", sp->width, sp->height);
     printf("Priority: %d\n", sp->priority);
+    if (insp_forSale[idx]) printf("For sale: yes, till %d coins\n", insp_till[idx]);
     printf("Free slots: %d\n", sp->freeSlotCount);
     printf("Max stack: %d\n", sp->maxStackSize);
     printf("Allowed: ");
@@ -1507,6 +1510,13 @@ int InspectSaveFile(int argc, char** argv) {
         fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
         for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
     }
+    // Shops (v121+, money.h)
+    memset(insp_forSale, 0, sizeof(insp_forSale));
+    memset(insp_till, 0, sizeof(insp_till));
+    if (version >= V121_SHOPS) {
+        fread(insp_forSale, sizeof(bool), MAX_STOCKPILES, f);
+        fread(insp_till, sizeof(int), MAX_STOCKPILES, f);
+    }
 
     // Gather zones
     fread(&insp_gatherZoneCount, 4, 1, f);
@@ -2001,6 +2011,9 @@ int InspectSaveFile(int argc, char** argv) {
         itemHighWaterMark = insp_itemHWM;
         RebuildContainerLists();
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
+        memcpy(stockpileForSale, insp_forSale, sizeof(insp_forSale));
+        memcpy(stockpileTill, insp_till, sizeof(insp_till));
+        ShopRecount();
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
         memcpy(moverCoins, insp_moverCoins, sizeof(int) * insp_moverCount);

@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include "mover.h"
+#include "stockpiles.h"
 
 extern int moverCoins[MAX_MOVERS];
 
@@ -26,5 +27,24 @@ int SpawnCoins(float x, float y, float z, int coins);
 bool MoverPocketCoins(int moverIdx, int coinItem);
 // "3 coins", "1 coin"; buf at least 24
 const char* MoneyFormat(int coins, char* buf, int len);
+
+// ---------------------------------------------------------------------------
+// Shops (step 2): a stockpile can sell what lies in it. Taking a unit for yourself (eating,
+// drinking, picking it up) pays its price (ItemPrice, item_defs.c) into the stockpile's till.
+// Price 0 = free, and a stockpile that isn't for sale is free as before. Saved right after the
+// stockpiles (v121). Haulers and crafters still take from a shop for free (later).
+extern bool stockpileForSale[MAX_STOCKPILES];
+extern int stockpileTill[MAX_STOCKPILES];
+void ShopResetAll(void);                         // no shops, empty tills
+void ShopReset(int sp);                          // a new / deleted stockpile: not for sale, till empty
+void ShopSetForSale(int sp, bool forSale);
+int ShopCount(void);                             // stockpiles for sale (0: every lookup is skipped)
+void ShopRecount(void);                          // after writing stockpileForSale directly (a load)
+int ItemShop(int item);                          // the stockpile selling this item, -1 = not for sale
+int ItemShopPrice(int item);                     // what taking one unit costs (0 = free)
+bool MoverCanAfford(int moverIdx, int item);     // free, or the purse holds the price
+// Take one unit for yourself: free -> true; for sale -> pays into the till (true), or false
+// (nothing paid) when the purse is short
+bool MoverBuy(int moverIdx, int item);
 
 #endif

@@ -495,6 +495,8 @@ bool SaveWorld(const char* filename) {
     
     // Stockpiles
     fwrite(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    fwrite(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);   // v121: shops (money.h)
+    fwrite(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
     
     // Gather zones
     fwrite(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);
@@ -1120,6 +1122,13 @@ bool LoadWorld(const char* filename) {
         static StockpileV90 oldSp[MAX_STOCKPILES];
         fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
         for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
+    }
+    // Shops (v121+, money.h): older saves sell nothing
+    ShopResetAll();
+    if (version >= V121_SHOPS) {
+        fread(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);
+        fread(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
+        ShopRecount();
     }
 
     // Clear transient reservation counts (not meaningful across save/load)

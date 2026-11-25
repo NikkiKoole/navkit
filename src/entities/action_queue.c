@@ -184,6 +184,7 @@ static StepResult QStepPickUp(int moverIdx, MoverAction* a) {
         return STEP_DONE;
     }
     if (MoverFreeHands(moverIdx) < 1) return STEP_FAILED;
+    if (!MoverBuy(moverIdx, it)) return STEP_FAILED;   // a shop: pay first (money.h)
     // One unit: out of a stockpile slot (the rest stays), or off a stack on the ground
     int one = it;
     if (items[it].state == ITEM_IN_STOCKPILE) one = TakeFromStockpileSlot(it, 1);
@@ -581,6 +582,12 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
     } else {
         steps[n++] = ActWalkToCell(x, y, z, false);
         doing = TextFormat("go to %d,%d", x, y);
+    }
+    if (item >= 0 && !MoverCanAfford(moverIdx, item)) {
+        char mb[24];
+        snprintf(said, (size_t)saidLen, "%s: can't pay for the %s (%s)", who, ItemName(items[item].type),
+                 MoneyFormat(ItemShopPrice(item), mb, sizeof mb));
+        return false;
     }
     if (adding && q->count + n > MAX_MOVER_ACTIONS) { snprintf(said, (size_t)saidLen, "%s: queue is full", who); return false; }
 

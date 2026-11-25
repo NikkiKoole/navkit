@@ -59,6 +59,7 @@ void StockpileAdjustContainers(int spIdx, int delta);   // >= 0
 void StockpileToggleItem(int spIdx, int filterIdx);     // one STOCKPILE_FILTERS entry
 void StockpileToggleCategory(int spIdx, int category);  // all on unless all already on
 void StockpileToggleAll(int spIdx);                     // all off if any on, else all on
+void StockpileToggleForSale(int spIdx);                 // a shop or not (money.h)
 void StockpileToggleMaterial(int spIdx, int materialFilterIdx);   // STOCKPILE_MATERIAL_FILTERS
 // Items enabled / total in a filter category
 void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total);

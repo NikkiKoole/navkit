@@ -30,6 +30,17 @@ static const float itemVolumeL[ITEM_TYPE_COUNT] = {
     [ITEM_LEAVES] = 3.0f, [ITEM_GRASS] = 3.0f, [ITEM_DRIED_GRASS] = 3.0f,   // light but bulky
 };
 
+// Price in whole coins at a shop (money.h; 0 = free). A first guess for the city goods; the
+// empty can is its deposit (what a bottle machine pays, money step 3).
+static const int itemPrice[ITEM_TYPE_COUNT] = {
+    [ITEM_SODA] = 2, [ITEM_SNACK] = 3, [ITEM_BURGER] = 5, [ITEM_EMPTY_CAN] = 1,
+};
+
+int ItemPrice(int type) {
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return 0;
+    return itemPrice[type];
+}
+
 float ItemVolume(int type) {
     if (type < 0 || type >= ITEM_TYPE_COUNT) return 0.0f;
     if (itemVolumeL[type] > 0.0f) return itemVolumeL[type];

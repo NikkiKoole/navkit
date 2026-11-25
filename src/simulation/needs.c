@@ -12,6 +12,7 @@
 
 #include "../entities/chase.h"   // FREETIME_PLAY
 #include "needs.h"
+#include "../entities/money.h"
 #include "../entities/action_queue.h"
 #include "balance.h"
 #include "mood.h"
@@ -69,7 +70,8 @@ static bool NoWayThere(int moverIdx) {
     return moverRepathFails[moverIdx] >= NO_WAY_REPATHS;
 }
 
-static int FindNearestEdibleInStockpile(float x, float y, int z) {
+// moverIdx: who would eat it (food in a shop it can't pay for is skipped, money.h)
+static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
 
@@ -80,6 +82,7 @@ static int FindNearestEdibleInStockpile(float x, float y, int z) {
         if (!ItemIsEdible(items[i].type)) continue;
         if (items[i].condition == CONDITION_ROTTEN) continue;
         if (!NeedItemReachable(i)) continue;
+        if (!MoverCanAfford(moverIdx, i)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -262,7 +265,7 @@ static void StartFoodSearchBody(Mover* m, int moverIdx) {
     // the food in stockpiles (shops, stands) is not for it.
     int itemIdx = -1;
     PROFILE_ACCUM_BEGIN(FoodInStockpile);
-    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
+    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z);
     PROFILE_ACCUM_END(FoodInStockpile);
     if (itemIdx < 0) {
         PROFILE_ACCUM_BEGIN(FoodOnGround);
@@ -492,7 +495,8 @@ static void StartBladderSearchBody(Mover* m, int moverIdx) {
 // Find best drinkable item (prefers tea > juice > water)
 // Searches stockpiles first, then containers, then ground
 // Returns item index or -1
-static int FindBestDrinkableItem(float x, float y, int z) {
+// moverIdx: who would drink it (a drink in a shop it can't pay for is skipped, money.h)
+static int FindBestDrinkableItem(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestScore = -1.0f;
 
@@ -506,6 +510,7 @@ static int FindBestDrinkableItem(float x, float y, int z) {
             items[i].state != ITEM_IN_CONTAINER) continue;
         if (items[i].state == ITEM_IN_CONTAINER && !IsItemAccessible(i)) continue;
         if (!NeedItemReachable(i)) continue;
+        if (!MoverCanAfford(moverIdx, i)) continue;
 
         float hydration = GetItemHydration(items[i].type);
         float dx = items[i].x - x;
@@ -570,7 +575,7 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
 
 // Is there anything to drink for this mover (a stored drink, any tap on its level, natural water)?
 static bool DrinkAvailable(const Mover* m) {
-    if (FindBestDrinkableItem(m->x, m->y, (int)m->z) >= 0) return true;
+    if (FindBestDrinkableItem((int)(m - movers), m->x, m->y, (int)m->z) >= 0) return true;
     for (int i = 0; i < MAX_FURNITURE; i++)
         if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) return true;
     int wx, wy, wz, sx, sy, sz;
@@ -582,7 +587,7 @@ static void StartDrinkSearchBody(Mover* m, int moverIdx);
 static void StartDrinkSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(DrinkSearch); StartDrinkSearchBody(m, moverIdx); PROFILE_ACCUM_END(DrinkSearch); }
 static void StartDrinkSearchBody(Mover* m, int moverIdx) {
     // Try to find a drinkable item (in stockpile, container, or on ground)
-    int itemIdx = FindBestDrinkableItem(m->x, m->y, (int)m->z);
+    int itemIdx = FindBestDrinkableItem(moverIdx, m->x, m->y, (int)m->z);
 
     if (itemIdx >= 0) {
         if (!ReserveItem(itemIdx, moverIdx)) {
@@ -1219,8 +1224,15 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             // Check if arrived at food
             if (MoverCanReach(m, items[ti].x, items[ti].y, (int)items[ti].z)) {
                 // Arrived: with a free hand and a free seat nearby, take it there and sit down
-                // to eat (action_queue.c); otherwise eat here, standing
+                // to eat (action_queue.c, its pick-up pays at a shop); otherwise eat here, standing
                 if (QueueSitThenEat(moverIdx, ti)) break;
+                if (!MoverBuy(moverIdx, ti)) {   // a shop, and the purse is short now (money.h)
+                    ReleaseItemReservation(ti);
+                    m->freetimeState = FREETIME_NONE;
+                    m->needTarget = -1;
+                    m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+                    break;
+                }
                 m->freetimeState = FREETIME_EATING;
                 m->needProgress = 0.0f;
                 // Clear path so mover stops
@@ -1410,7 +1422,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             bool canLook = m->needSearchCooldown <= 0.0f;   // as at the start of this tick
             bool foodToEat = false;
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold && canLook) {
-                foodToEat = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z) >= 0 ||
+                foodToEat = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z) >= 0 ||
                             FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0 ||
                             FindForageBush(m, moverIdx) >= 0;
             }
@@ -1505,7 +1517,14 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
 
             // Check if arrived
             if (MoverCanReach(m, targetX, targetY, targetZ)) {
-                // Arrived — start drinking
+                // Arrived: pay at a shop (money.h), then start drinking
+                if (!MoverBuy(moverIdx, ti)) {
+                    ReleaseItemReservation(ti);
+                    m->freetimeState = FREETIME_NONE;
+                    m->needTarget = -1;
+                    m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                    break;
+                }
                 m->freetimeState = FREETIME_DRINKING;
                 m->needProgress = 0.0f;
                 m->pathLength = 0;

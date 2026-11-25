@@ -63,6 +63,7 @@ extern const ItemDef itemDefs[];
 float ItemSpoilageLimit(int type);
 // Litres one unit takes up. Set per type where it matters (item_defs.c itemVolumeL); others
 // default to 1.5 x their weight in kg (dense things small, light things bulky enough).
+int ItemPrice(int type);     // whole coins at a shop (money.h), 0 = free
 float ItemVolume(int type);  // game seconds at the current dayLength (spoilageTimer counts game seconds)
 
 // Hydration values for drinkable items (0.0 = not drinkable, 1.0 = full hydration)

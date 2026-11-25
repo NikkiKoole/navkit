@@ -694,6 +694,20 @@ static void RunDropMoney(const CmdValue* v) {
         MoneyFormat(MoverCoins(mi), mb2, sizeof mb2));
 }
 
+// forsale [stockpile]: a stockpile (number, else the selected one, else the one at the mouse)
+// sells what lies in it, or stops selling (money.h)
+static void RunForSale(const CmdValue* v) {
+    int sp = v[0].given ? v[0].i : (SelectionValid() && selection.kind == SEL_STOCKPILE ? selection.idx : -1);
+    if (sp < 0) {
+        Vector2 g = ScreenToGrid(GetMousePosition());
+        IsPositionInStockpile((g.x + 0.5f) * CELL_SIZE, (g.y + 0.5f) * CELL_SIZE, currentViewZ, &sp);
+    }
+    if (sp < 0 || sp >= MAX_STOCKPILES || !stockpiles[sp].active) { Say(YELLOW, "Which stockpile? Select one, point at one or give its number"); return; }
+    StockpileToggleForSale(sp);
+    char mb[24];
+    Say(GREEN, "Stockpile %d: %s (till %s)", sp, stockpileForSale[sp] ? "for sale" : "not for sale", MoneyFormat(stockpileTill[sp], mb, sizeof mb));
+}
+
 static void RunSupport(const CmdValue* v) {
     (void)v;
     int n = SupportCountUnsupported();
@@ -818,6 +832,8 @@ static const CommandDef commandTable[] = {
     { "dropmoney", "Entities/Movers", "A mover (number, else the selected one) drops coins from its purse at its feet",
       2, { { .name = "coins", .type = CARG_INT, .lo = 1, .hi = 100000 },
            { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 } }, RunDropMoney },
+    { "forsale", "Entities/Stockpiles", "A stockpile (number, else the selected one, else the one at the mouse) sells what lies in it, or stops selling: taking a unit costs its price in coins",
+      1, { { .name = "stockpile", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_STOCKPILES - 1 } }, RunForSale },
     { "throw", "Entities/Movers", "A mover (number, else the selected one) fetches something small (its hands, pockets, else the nearest) and throws it at the cell at the mouse (or x y z)",
       4, { { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 },
            { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },

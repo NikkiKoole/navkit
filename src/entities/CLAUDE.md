@@ -97,7 +97,12 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   `stackCount` = coins (`IF_MONEY`: no job hauls it; picked up via the queue it goes straight in
   the purse, `MoverPocketCoins`). Code that sums `stackCount` as units must treat money as one
   (describe.c does). Shown as "3 coins" (`MoneyFormat`). Console `money`, `dropmoney`.
-  Plan for prices, the stand and the bottle machine: `docs/vision/city-1999.md` "Money and exchange".
+- Shops: a stockpile for sale (`stockpileForSale[]`, till `stockpileTill[]`, v121) charges
+  `ItemPrice` (item_defs.c) when a mover takes a unit for itself: `MoverCanAfford` in a need
+  search, `MoverBuy` where the unit is taken (need arrival, the queue's pick-up). A new way for
+  a mover to take something out of a stockpile for itself must call `MoverBuy` too. Haulers and
+  crafters don't pay (yet).
+  Plan (bottle machine next): `docs/vision/city-1999.md` "Money and exchange".
 
 ## Social behaviour (`notice.c`, `talk.c`, `relations.c`, `chase.c`)
 

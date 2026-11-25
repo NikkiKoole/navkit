@@ -10,6 +10,7 @@
 #include "../world/construction.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
+#include "../entities/money.h"
 #include "../entities/elevators.h"
 #include "../world/cell_defs.h"
 #include <math.h>
@@ -293,6 +294,12 @@ void StockpileToggleAll(int spIdx) {
     AddMessage(!anyOn ? "All filters ON" : "All filters OFF", WHITE);
 }
 
+void StockpileToggleForSale(int spIdx) {
+    if (!ActiveStockpile(spIdx)) return;
+    ShopSetForSale(spIdx, !stockpileForSale[spIdx]);
+    AddMessage(stockpileForSale[spIdx] ? "For sale: taking from it costs its price (money)" : "Not for sale: free again", WHITE);
+}
+
 void StockpileToggleMaterial(int spIdx, int materialFilterIdx) {
     Stockpile* sp = ActiveStockpile(spIdx);
     if (!sp || materialFilterIdx < 0 || materialFilterIdx >= STOCKPILE_MATERIAL_FILTER_COUNT) return;
@@ -380,6 +387,7 @@ void InputMode_StartLinking(int wsIdx);   // input_mode.c: linking a workshop is
 
 static const char* FollowLabel(int i) { return followMoverIdx == i ? "Unfollow" : "Follow"; }
 static const char* DebugLabel(int i) { return debugMoverIdx == i ? "Debug off" : "Debug"; }
+static const char* SellLabel(int i) { return (i >= 0 && i < MAX_STOCKPILES && stockpileForSale[i]) ? "Stop selling" : "Sell"; }
 static const char* DraftLabel(int i) { return (i >= 0 && i < moverCount && movers[i].isDrafted) ? "Undraft" : "Draft"; }
 static const char* DeconstructLabel(int i) {
     return (i >= 0 && i < MAX_WORKSHOPS && workshops[i].markedForDeconstruct) ? "Cancel deconstruct" : "Deconstruct";
@@ -413,6 +421,7 @@ static const SelectionVerb selectionVerbs[] = {
     { SEL_STOCKPILE, "Containers -", NULL, KEY_LEFT_BRACKET, 0, true, true, false, VerbContainersDown },
     // X: all filters on/off, only at the top filter level (input.c, next to the category keys)
     { SEL_STOCKPILE, "All on/off", NULL, KEY_X, 0, false, false, false, StockpileToggleAll },   // drawn in the filters row
+    { SEL_STOCKPILE, "Sell", SellLabel, 0, 0, false, false, false, StockpileToggleForSale },   // drawn after the steppers
 };
 #define SELECTION_VERB_COUNT ((int)(sizeof(selectionVerbs) / sizeof(selectionVerbs[0])))
 

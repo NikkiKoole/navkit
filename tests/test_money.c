@@ -153,6 +153,144 @@ describe(money_save) {
     }
 }
 
+// A shop: a 2x1 stockpile at (10,2) for sale, `n` units of `type` in its first slot
+static int shop;
+static int StockShop(ItemType type, int n) {
+    shop = CreateStockpile(10, 2, 0, 2, 1);
+    ShopSetForSale(shop, true);
+    int it = SpawnItem(10.5f * CELL_SIZE, 2.5f * CELL_SIZE, 0.0f, type);
+    items[it].stackCount = n;
+    PlaceItemInStockpile(shop, 10, 2, it);
+    return it;
+}
+
+// Needs run until the mover's hunger went up (ate) or the time is up
+static bool RunUntilAte(int mi, int maxTicks) {
+    float before = movers[mi].hunger;
+    for (int t = 0; t < maxTicks; t++) {
+        Tick(); NeedsTick(); ProcessFreetimeNeeds();
+        if (movers[mi].hunger > before + 0.05f) return true;
+        before = movers[mi].hunger;
+    }
+    return false;
+}
+
+describe(shops) {
+    it("a stockpile for sale prices what lies in it; not for sale or no price is free") {
+        Setup();
+        int snack = StockShop(ITEM_SNACK, 5);
+        expect(ShopCount() == 1);
+        expect(ItemShop(snack) == shop && ItemShopPrice(snack) == 3);
+        expect(!MoverCanAfford(0, snack));
+        MoverAddCoins(0, 3);
+        expect(MoverCanAfford(0, snack));
+        ShopSetForSale(shop, false);
+        expect(ShopCount() == 0 && ItemShopPrice(snack) == 0 && MoverCanAfford(1, snack));
+        ShopSetForSale(shop, true);
+        int stone = SpawnItem(11.5f * CELL_SIZE, 2.5f * CELL_SIZE, 0.0f, ITEM_ROCK);
+        PlaceItemInStockpile(shop, 11, 2, stone);
+        expect(ItemShop(stone) == shop && ItemShopPrice(stone) == 0 && MoverCanAfford(1, stone));
+        int loose = SpawnItem(5.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_SNACK);
+        expect(ItemShop(loose) == -1 && ItemShopPrice(loose) == 0);
+    }
+
+    it("buying pays into the till; a short purse pays nothing") {
+        Setup();
+        int snack = StockShop(ITEM_SNACK, 5);
+        MoverAddCoins(0, 4);
+        expect(MoverBuy(0, snack));
+        expect(MoverCoins(0) == 1 && stockpileTill[shop] == 3);
+        expect(!MoverBuy(0, snack));
+        expect(MoverCoins(0) == 1 && stockpileTill[shop] == 3);
+    }
+
+    it("a hungry mover with money buys at the shop and eats; the till gets the price") {
+        Setup();
+        hungerEnabled = true;
+        StockShop(ITEM_SNACK, 5);
+        MoverAddCoins(0, 10);
+        movers[0].hunger = 0.2f;
+        expect(RunUntilAte(0, 20000));
+        expect(MoverCoins(0) == 7 && stockpileTill[shop] == 3);
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
+    it("without money it leaves the shop alone and eats free food on the ground instead") {
+        Setup();
+        hungerEnabled = true;
+        int snack = StockShop(ITEM_SNACK, 5);
+        int free = SpawnItem(4.5f * CELL_SIZE, 0.5f * CELL_SIZE, 0.0f, ITEM_BERRIES);
+        movers[0].hunger = 0.2f;
+        expect(RunUntilAte(0, 20000));
+        expect(!items[free].active);
+        expect(items[snack].active && items[snack].stackCount == 5 && stockpileTill[shop] == 0);
+    }
+
+    it("without money and no free food it doesn't even walk to the shop") {
+        Setup();
+        hungerEnabled = true;
+        int snack = StockShop(ITEM_SNACK, 5);
+        movers[0].hunger = 0.2f;
+        bool wentForIt = false;
+        for (int t = 0; t < 6000; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (movers[0].freetimeState == FREETIME_SEEKING_FOOD && movers[0].needTarget == snack) wentForIt = true;
+        }
+        expect(!wentForIt);
+        expect(items[snack].stackCount == 5 && items[snack].reservedBy == -1);
+    }
+
+    it("a thirsty mover pays for a soda") {
+        Setup();
+        thirstEnabled = true;
+        StockShop(ITEM_SODA, 5);
+        MoverAddCoins(0, 5);
+        movers[0].thirst = 0.2f;
+        float before = movers[0].thirst;
+        for (int t = 0; t < 20000 && movers[0].thirst <= before + 0.05f; t++) { Tick(); NeedsTick(); ProcessFreetimeNeeds(); }
+        expect(movers[0].thirst > before + 0.05f);
+        expect(MoverCoins(0) == 3 && stockpileTill[shop] == 2);
+    }
+
+    it("E on shop food: can't pay says so; with money it buys, then eats") {
+        Setup();
+        hungerEnabled = true;
+        movers[0].hunger = 0.5f;
+        int snack = StockShop(ITEM_SNACK, 5);
+        char said[128];
+        expect(!QueueCommandAt(0, 10, 2, 0, false, said, sizeof(said)));
+        expect(strstr(said, "can't pay") != NULL);
+        MoverAddCoins(0, 3);
+        expect(QueueCommandAt(0, 10, 2, 0, false, said, sizeof(said)));
+        for (int t = 0; t < 6000 && QueueBusy(0); t++) { Tick(); NeedsTick(); ProcessFreetimeNeeds(); }
+        expect(MoverCoins(0) == 0 && stockpileTill[shop] == 3);
+        expect(items[snack].stackCount == 4);
+    }
+
+    it("a new or deleted stockpile sells nothing; clearing resets every shop") {
+        Setup();
+        StockShop(ITEM_SNACK, 5);
+        stockpileTill[shop] = 9;
+        DeleteStockpile(shop);
+        expect(!stockpileForSale[shop] && stockpileTill[shop] == 0 && ShopCount() == 0);
+        int again = CreateStockpile(10, 2, 0, 2, 1);
+        expect(!stockpileForSale[again]);
+        ShopSetForSale(again, true);
+        ClearStockpiles();
+        expect(ShopCount() == 0 && !stockpileForSale[again]);
+    }
+
+    it("shops and tills survive a save and load (v121)") {
+        Setup();
+        StockShop(ITEM_SNACK, 5);
+        stockpileTill[shop] = 42;
+        expect(SaveWorld("/tmp/test_money_shop.bin"));
+        ClearStockpiles(); ClearItems(); ClearMovers();
+        expect(LoadWorld("/tmp/test_money_shop.bin"));
+        expect(stockpileForSale[shop] && stockpileTill[shop] == 42 && ShopCount() == 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -160,5 +298,6 @@ int main(int argc, char* argv[]) {
     test(coins_in_the_world);
     test(pick_up_order);
     test(money_save);
+    test(shops);
     return summary();
 }

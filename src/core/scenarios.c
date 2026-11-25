@@ -21,6 +21,7 @@
 #include "../simulation/tide.h"
 #include "state_audit.h"
 #include "../entities/inventory.h"
+#include "../entities/money.h"
 #include "../simulation/temperature.h"
 #include <string.h>
 #include <strings.h>
@@ -3994,6 +3995,7 @@ static const int trashBinX[3] = { 8, 18, 36 };
 // The stand: a 3x2 stockpile, top row `top`, bottom row `bottom`; an empty slot gets a full
 // stack (a delivery). Items go into the stockpile slots (in the shop), not on the ground.
 static int trashStand = -1;
+#define TRASH_START_COINS 200   // plenty for the scenario's days (a meal and a drink: 5 coins)
 static void StandRestock(ItemType top, ItemType bottom) {
     if (trashStand < 0 || !stockpiles[trashStand].active) return;
     for (int dy = 0; dy < 2; dy++)
@@ -4019,6 +4021,7 @@ static void SetupTrash(void) {
     balance.baseMoverSpeed = 600.0f;    // (before the movers spawn: they take it from here)
     endlessMoverMode = true;            // wander between meals: foot traffic
     trashStand = CreateStockpile(TRASH_STAND_X, TRASH_STAND_Y, 1, 3, 2);
+    ShopSetForSale(trashStand, true);   // money.h: a snack costs 3 coins, a soda 2
     TrashRestock();
     for (int b = 0; b < 3; b++)
         trashBins[b] = SpawnItem(trashBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, 11 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_TRASH_BIN);
@@ -4030,6 +4033,7 @@ static void SetupTrash(void) {
         m->thirst = 0.20f + 0.02f * i;
         if (i == 0) { m->traits[0] = TRAIT_SLOB; m->traits[1] = TRAIT_NONE; }
         if (i == 1) { m->traits[0] = TRAIT_TIDY; m->traits[1] = TRAIT_NONE; }
+        MoverAddCoins(moverCount - 1, TRASH_START_COINS);   // the passers-by have money to spend
     }
     currentViewZ = 1;
 }
@@ -4058,6 +4062,7 @@ static void TrashPrintStats(void) {
     for (int i = 0; i < moverCount; i++) if (movers[i].active && movers[i].heldTrash != ITEM_NONE) held++;
     printf("Trash: bin A (by the stand) %d, bin B (12 cells) %d, bin C (far end) %d, litter %d, in hand %d\n",
            TrashInBin(trashBins[0]), TrashInBin(trashBins[1]), TrashInBin(trashBins[2]), TrashLitter(), held);
+    if (trashStand >= 0) printf("Stand: till %d coins (snack 3, soda 2)\n", stockpileTill[trashStand]);
 }
 
 static bool TrashCheck(char* why, int whyLen) {

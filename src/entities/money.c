@@ -1,6 +1,8 @@
 // money.c - purses and coins on the ground (money.h)
 #include "money.h"
 #include "items.h"
+#include "item_defs.h"
+#include "stockpiles.h"
 #include "../core/event_log.h"
 #include <stdio.h>
 #include <string.h>
@@ -58,4 +60,67 @@ const char* MoneyFormat(int coins, char* buf, int len) {
     if (coins < 0) coins = 0;
     snprintf(buf, (size_t)len, "%d coin%s", coins, coins == 1 ? "" : "s");
     return buf;
+}
+
+// ---------------------------------------------------------------------------
+// Shops
+// ---------------------------------------------------------------------------
+
+bool stockpileForSale[MAX_STOCKPILES];
+int stockpileTill[MAX_STOCKPILES];
+static int shopsForSale;   // how many stockpiles are for sale: 0 skips every lookup (no game pays)
+
+void ShopRecount(void) {
+    shopsForSale = 0;
+    for (int i = 0; i < MAX_STOCKPILES; i++) if (stockpileForSale[i]) shopsForSale++;
+}
+
+void ShopResetAll(void) {
+    memset(stockpileForSale, 0, sizeof(stockpileForSale));
+    memset(stockpileTill, 0, sizeof(stockpileTill));
+    shopsForSale = 0;
+}
+
+void ShopReset(int sp) {
+    if (sp < 0 || sp >= MAX_STOCKPILES) return;
+    stockpileForSale[sp] = false;
+    stockpileTill[sp] = 0;
+    ShopRecount();
+}
+
+void ShopSetForSale(int sp, bool forSale) {
+    if (sp < 0 || sp >= MAX_STOCKPILES) return;
+    stockpileForSale[sp] = forSale;
+    ShopRecount();
+}
+
+int ShopCount(void) { return shopsForSale; }
+
+int ItemShop(int item) {
+    if (shopsForSale == 0) return -1;
+    if (item < 0 || item >= MAX_ITEMS || !items[item].active || items[item].state != ITEM_IN_STOCKPILE) return -1;
+    int sp = -1;
+    if (!IsPositionInStockpile(items[item].x, items[item].y, (int)items[item].z, &sp)) return -1;
+    return (sp >= 0 && stockpileForSale[sp]) ? sp : -1;
+}
+
+int ItemShopPrice(int item) {
+    if (ItemShop(item) < 0) return 0;
+    return ItemPrice(items[item].type);
+}
+
+bool MoverCanAfford(int moverIdx, int item) {
+    int price = ItemShopPrice(item);
+    return price <= 0 || MoverCoins(moverIdx) >= price;
+}
+
+bool MoverBuy(int moverIdx, int item) {
+    int sp = ItemShop(item);
+    if (sp < 0) return true;
+    int price = ItemPrice(items[item].type);
+    if (price <= 0) return true;
+    if (!MoverPay(moverIdx, price)) return false;
+    stockpileTill[sp] += price;
+    EventLog("Mover %d bought %s for %d coins at stockpile %d (till %d)", moverIdx, ItemName(items[item].type), price, sp, stockpileTill[sp]);
+    return true;
 }

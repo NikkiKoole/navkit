@@ -1,4 +1,5 @@
 #include "stockpiles.h"
+#include "money.h"
 #include "mover.h"
 #include "items.h"
 #include "stacking.h"
@@ -164,6 +165,7 @@ void ClearStockpiles(void) {
         stockpiles[i].active = false;
     }
     stockpileCount = 0;
+    ShopResetAll();   // money.h: no shops
 }
 
 // =============================================================================
@@ -345,6 +347,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) {
             Stockpile* sp = &stockpiles[i];
+            ShopReset(i);   // money.h: a new stockpile sells nothing
             sp->x = x;
             sp->y = y;
             sp->z = z;
@@ -406,6 +409,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
 void DeleteStockpile(int index) {
     if (index >= 0 && index < MAX_STOCKPILES && stockpiles[index].active) {
         Stockpile* sp = &stockpiles[index];
+        ShopReset(index);   // money.h
         
         // Spill container contents and drop all ITEM_IN_STOCKPILE items to ground
         int totalSlots = sp->width * sp->height;

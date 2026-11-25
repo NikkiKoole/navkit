@@ -1036,6 +1036,10 @@ void DescribeStockpile(int spIdx, DescLines* out) {
     }
 
     DescAdd(out, DESC_TITLE, "Stockpile #%d", spIdx);
+    if (stockpileForSale[spIdx]) {   // a shop (money.h)
+        char mb[24];
+        DescAdd(out, DESC_GOOD, "For sale, till: %s", MoneyFormat(stockpileTill[spIdx], mb, sizeof mb));
+    }
     DescAdd(out, DESC_NORMAL, "Priority: %d", sp->priority);
     DescAdd(out, DESC_NORMAL, "Stack size: %d", sp->maxStackSize);
     if (sp->maxContainers > 0)
