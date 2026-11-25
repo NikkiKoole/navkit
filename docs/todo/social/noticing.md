@@ -54,6 +54,7 @@ outdoors (`IsExposedToSky`).
 
 ## Next
 
+- **Joint activities** (`joint-activities.md`, spec): talks and games as one kind of thing (a table row per kind, one lifecycle, one busy state, several games at once), then games that start by themselves. Next up.
 - **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
   chase / hide from `chase.c`, wolves as a pack (pack hunt roles), herds (walk formation), freeze
   as a choice. Cover and a runner lying low are built; a lone wolf losing its prey would test the search alone. The cat first
