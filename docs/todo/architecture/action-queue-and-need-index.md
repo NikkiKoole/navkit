@@ -44,6 +44,27 @@ every item in the world (`FindNearestEdibleOnGround`, `FindNearestEdibleInStockp
 search every furniture slot, and hungry movers who find nothing search again each time their
 cooldown ends: movers x items, all at once when everyone gets hungry together.
 
+### Step 1, first finding (2026-11-25): it was the berry search
+
+Profiled per search (`--profile` now has summed sections per need search: FoodSearch,
+Forage, Scrounge, FoodInStockpile, FoodOnGround, DrinkSearch, RestSearch, BladderSearch,
+WarmthSearch, StaleReservations, FreetimeDecide, FreetimeStates). The plain item scans hardly
+show; nearly all of it was **foraging**: hungry movers with no food flood-search ~48 cells
+for a free ripe bush, and when none is free (all taken, none ripe) every search walks its
+whole budget, again after every cooldown. Fixes: count free ripe bushes once per tick and
+skip the flood at zero; who forages which bush is a claim table built once per tick (was:
+every bush check went through every mover). Same island run, built side by side on one
+commit (behaviour identical: 26984 arrivals both):
+
+| | before | after |
+|---|---|---|
+| Freetime avg | 1.80 ms | 0.55 ms |
+| Forage | 1.30 ms | 0.02 ms |
+| Freetime ticks over 5 ms | 6943 | 1202 |
+| whole run | 184 s | 122 s |
+
+Left: FreetimeStates (the ongoing states) 0.44 ms avg, 40 ms worst tick.
+
 ## What that means for the design
 
 1. **The queue itself scales**: per tick a mover looks at its current step (walk on, or count
