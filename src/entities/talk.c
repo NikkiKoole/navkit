@@ -1,6 +1,7 @@
 // talk.c - idle movers stop to talk (see talk.h)
 #include "talk.h"
 #include "notice.h"
+#include "relations.h"
 #include "mover.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -308,6 +309,19 @@ void TalkJoin(int t, int i) {
     talkJoinedCount++;
 }
 
+// How much more (or less) likely a talk between i and j is: people you know and like, more;
+// someone either of them dislikes: never (0)
+static float TalkAffinity(int i, int j) {
+    float likeIJ = RelationLike(i, j), likeJI = RelationLike(j, i);
+    if (likeIJ <= -20.0f || likeJI <= -20.0f) return 0.0f;
+    float f = (0.5f + RelationFamiliarity(i, j) / 100.0f) * (1.0f + likeIJ / 50.0f);
+    return f < 0.0f ? 0.0f : (f > 3.0f ? 3.0f : f);
+}
+
+static bool Roll(float chance) {
+    return GetRandomValue(0, 9999) < (int)(chance * 10000.0f);
+}
+
 static void TryStartTalk(int i) {
     if (!CanTalk(i)) return;
     const MoverNotice* n = &moverNotice[i];
@@ -322,14 +336,24 @@ static void TryStartTalk(int i) {
             float cx = talks[t].centerX - movers[i].x, cy = talks[t].centerY - movers[i].y;
             float reach = r + talks[t].radius;
             if (cx * cx + cy * cy > reach * reach) continue;
-            if (GetRandomValue(0, 9999) >= (int)(talkChance * 10000.0f)) return;
+            float aff = 0.0f;   // joining: how it gets on with the ones already there
+            bool refuse = false;
+            for (int q = 0; q < talks[t].count; q++) {
+                float a = TalkAffinity(i, talks[t].members[q]);
+                if (a <= 0.0f) refuse = true;
+                aff += a;
+            }
+            if (refuse) continue;
+            if (!Roll(talkChance * aff / (float)talks[t].count)) return;
             TalkJoin(t, i);
             return;
         }
         if (!CanTalk(j)) continue;
         float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
         if (dx * dx + dy * dy > r * r) continue;
-        if (GetRandomValue(0, 9999) >= (int)(talkChance * 10000.0f)) return;   // one roll per check
+        float aff = TalkAffinity(i, j);
+        if (aff <= 0.0f) continue;
+        if (!Roll(talkChance * aff)) return;   // one roll per check
         TalkStart(i, j);
         return;
     }
@@ -364,6 +388,14 @@ void TalkTick(float dt) {
         tk->age += dt;
         tk->timeLeft -= dt;
         if (tk->count < 2 || tk->timeLeft <= 0.0f || !talkEnabled) { EndTalk(t); continue; }
+        // Talking: they get to know each other; like follows the mood (happy: up, grumpy: down)
+        for (int a = 0; a < tk->count; a++)
+            for (int b = 0; b < tk->count; b++) {
+                if (a == b) continue;
+                int ma = tk->members[a];
+                float like = relTalkLikePerSec * (movers[ma].mood + 0.3f) * dt;
+                RelationAdd(ma, tk->members[b], like, relTalkFamiliarityPerSec * dt);
+            }
         tk->speakTimer -= dt;
         if (tk->speakTimer <= 0.0f) {
             tk->speaker = (tk->speaker + 1 + GetRandomValue(0, tk->count - 2)) % tk->count;

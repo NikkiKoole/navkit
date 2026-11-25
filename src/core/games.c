@@ -1,5 +1,6 @@
 // games.c - The games this engine hosts (see games.h)
 #include "../entities/talk.h"
+#include "../entities/relations.h"
 #include "games.h"
 #include "scenarios.h"
 #include "../game_state.h"
@@ -497,6 +498,7 @@ static void StartDollhouse(void) {
     ClearMovers();
     SpawnMoverAt(ox + 3, oy + 2, z);
     SpawnMoverAt(ox + 4, oy + 2, z);
+    RelationSetPair(moverCount - 2, moverCount - 1, 60.0f, 100.0f);   // they live together: partners
 
     // Food supplies: meat on the fridge, bread and water pots next to it
     float sx = (ox + 2) * CELL_SIZE + CELL_SIZE * 0.5f;

@@ -12,6 +12,7 @@
 #include "../entities/animals.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/relations.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -315,6 +316,35 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     }
 }
 
+// Who this mover knows: the 3 that matter most (player), all with numbers (debug)
+static void DescribeMoverRelations(int idx, DescDetail detail, DescLines* d) {
+    const MoverRelations* mr = &moverRelations[idx];
+    int order[MAX_RELATIONS], n = 0;
+    for (int k = 0; k < mr->count; k++)
+        if (RelationGet(idx, mr->r[k].other)) order[n++] = k;
+    if (n == 0) return;
+    for (int a = 1; a < n; a++)   // most important first: familiarity + strength of feeling
+        for (int b = a; b > 0; b--) {
+            const Relation* x = &mr->r[order[b]]; const Relation* y = &mr->r[order[b - 1]];
+            if (x->familiarity + fabsf(x->like) * 2.0f <= y->familiarity + fabsf(y->like) * 2.0f) break;
+            int t = order[b]; order[b] = order[b - 1]; order[b - 1] = t;
+        }
+    int show = detail == DESC_DEBUG ? n : (n < 3 ? n : 3);
+    char buf[256] = "";
+    size_t len = 0;
+    for (int s = 0; s < show && len < sizeof(buf); s++) {
+        const Relation* r = &mr->r[order[s]];
+        const char* name = movers[r->other].name[0] ? movers[r->other].name : "someone";
+        if (detail == DESC_DEBUG)
+            len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s (%+.0f, %.0f)", s ? ", " : "", name,
+                                    r->like, r->familiarity);
+        else
+            len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s (%s)", s ? ", " : "", name,
+                                    RelationLabel(r->like, r->familiarity));
+    }
+    DescAdd(d, DESC_INFO, "Knows: %s", buf);
+}
+
 // Who this mover noticed (debug): "Notices: Anna 3s, #4 0s" (docs/todo/social/noticing.md)
 static void DescribeMoverNotices(int idx, DescLines* d) {
     if (!noticeEnabled) return;
@@ -405,6 +435,7 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     DescAdd(out, job ? DESC_GOOD : DESC_MUTED, "Job: %s (step %d)",
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
     DescribeMoverGear(m, job, out);
+    DescribeMoverRelations(idx, detail, out);
     int partner = TalkPartner(idx);
     if (MoverIsPerforming(idx)) {
         DescAdd(out, DESC_INFO, "Performing for %d", talks[MoverTalk(idx)].count);

@@ -2,6 +2,7 @@
 #include "notice.h"
 #include "mover.h"
 #include "../core/time.h"
+#include "relations.h"
 #include <math.h>
 #include <string.h>
 
@@ -97,6 +98,8 @@ void NoticeMover(int i) {
                 const NoticeEntry* old = FindEntry(n, j);
                 float s = 1.0f - sqrtf(dSq) / radius;
                 if (old) s += NOTICE_STICKY_BONUS;
+                const Relation* rel = RelationGet(i, j);   // people you know (or feel strongly about) catch your eye
+                if (rel) s += rel->familiarity * 0.003f + fabsf(rel->like) * 0.003f;
                 if (HeadingToward(j, m->x, m->y)) s += NOTICE_APPROACH_BONUS;
 
                 // Insert into the top-N, most salient first
@@ -111,6 +114,9 @@ void NoticeMover(int i) {
         }
     }
     *n = fresh;
+    // Seeing someone makes them familiar, slowly
+    float seenSec = (noticeEveryTicks < 1 ? 1 : noticeEveryTicks) / (float)TICK_RATE;
+    for (int k = 0; k < n->count; k++) RelationAdd(i, n->e[k].mover, 0.0f, relSeenFamiliarityPerSec * seenSec);
 }
 
 void NoticeTick(void) {

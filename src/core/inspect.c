@@ -31,6 +31,7 @@
 #include "../simulation/plants.h"
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
+#include "../entities/relations.h"
 #include "../simulation/mood.h"
 #include "save_migrations.h"
 
@@ -1819,6 +1820,9 @@ int InspectSaveFile(int argc, char** argv) {
         fread(&insp_beltCount, sizeof(insp_beltCount), 1, f);
         if (insp_beltCount > 0) fseek(f, insp_beltCount * (int)sizeof(Belt), SEEK_CUR);
     }
+    // Relations (v111+): skipped (not inspected yet)
+    if (version >= V111_RELATIONS && insp_moverCount > 0)
+        fseek(f, insp_moverCount * (long)sizeof(MoverRelations), SEEK_CUR);
     
     fclose(f);
     

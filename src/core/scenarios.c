@@ -26,6 +26,7 @@
 #include <strings.h>
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/relations.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -270,6 +271,20 @@ static void SocialPrintStats(void) {
            socialTicks && active ? socialNoticedSum / (double)(socialTicks * active) : 0.0);
     printf("Attention switches per mover per minute: %.1f\n",
            minutes > 0 && active ? socialSwitches / (minutes * active) : 0.0);
+    {   // Relations after the run
+        int known = 0, familiar = 0, liked = 0, disliked = 0;
+        for (int i = 0; i < moverCount; i++)
+            for (int k = 0; k < moverRelations[i].count; k++) {
+                const Relation* r = RelationGet(i, moverRelations[i].r[k].other);
+                if (!r) continue;
+                known++;
+                if (r->familiarity >= 15.0f) familiar++;
+                if (r->like >= 20.0f) liked++;
+                if (r->like <= -20.0f) disliked++;
+            }
+        printf("Relations: %d known (%.1f per mover), %d familiar, %d liked, %d disliked\n", known,
+               active ? known / (double)active : 0.0, familiar, liked, disliked);
+    }
     printf("Talks started: %ld (%.1f per mover per minute), time spent talking: %.0f%%\n", talkStartedCount,
            minutes > 0 && active ? talkStartedCount / (minutes * active) : 0.0,
            socialTicks && active ? 100.0 * socialTalkTicks / (socialTicks * active) : 0.0);

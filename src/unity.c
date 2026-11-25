@@ -67,6 +67,7 @@
 #include "entities/mover.c"
 #include "entities/notice.c"
 #include "entities/talk.c"
+#include "entities/relations.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"
 #include "simulation/rooms.c"

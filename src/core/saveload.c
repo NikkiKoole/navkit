@@ -9,6 +9,7 @@ void RebuildPostLoadState(void);
 #include "../entities/furniture.h"
 #include "../entities/inventory.h"   // RecalcAllCarried
 #include "../entities/belts.h"
+#include "../entities/relations.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -541,6 +542,9 @@ bool SaveWorld(const char* filename) {
     // Conveyor belts (v98+); items riding them are saved as ITEM_ON_BELT with the items
     fwrite(&beltCount, sizeof(beltCount), 1, f);
     fwrite(belts, sizeof(Belt), beltCount, f);
+
+    // Relations (v111+): who knows whom, one MoverRelations per saved mover
+    fwrite(moverRelations, sizeof(MoverRelations), moverCount, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -1476,6 +1480,10 @@ bool LoadWorld(const char* filename) {
         if (beltCount > 0) fread(belts, sizeof(Belt), beltCount, f);
     }
     BeltsAfterLoad();
+
+    // Relations (v111+). Older saves: nobody knows anybody.
+    ClearRelations();
+    if (version >= V111_RELATIONS && moverCount > 0) fread(moverRelations, sizeof(MoverRelations), moverCount, f);
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);

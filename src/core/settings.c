@@ -29,6 +29,7 @@
 #include "../simulation/tide.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/relations.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -585,6 +586,12 @@ static const Setting settings[] = {
       "Longest conversation, seconds.", NULL),
     SET_FLOAT("talkCooldown", "Talk: cooldown (s)", "Entities/Movers/Noticing", talkCooldown, 1.0f, 0.0f, 600.0f,
       "Seconds after a talk before that mover may start another.", NULL),
+    SET_FLOAT("relSeen", "Relations: seen /s", "Entities/Movers/Noticing", relSeenFamiliarityPerSec, 0.05f, 0.0f, 10.0f,
+      "Familiarity (0-100) gained per second of seeing someone.", NULL),
+    SET_FLOAT("relTalkFam", "Relations: talk fam /s", "Entities/Movers/Noticing", relTalkFamiliarityPerSec, 0.1f, 0.0f, 20.0f,
+      "Familiarity gained per second of talking with someone.", NULL),
+    SET_FLOAT("relTalkLike", "Relations: talk like /s", "Entities/Movers/Noticing", relTalkLikePerSec, 0.05f, 0.0f, 10.0f,
+      "Like gained per second of talking, at mood +0.7 (scales with mood + 0.3: a grumpy talker likes the other less).", NULL),
     SET_BOOL("politePassing", "Polite Passing", "Entities/Movers/Noticing", politePassing,
       "Someone noticed coming at you: drift aside early (away from their side, else to the right) and slow a little. Needs Noticing."),
     SET_FLOAT("passRadius", "Pass: start (cells)", "Entities/Movers/Noticing", passRadius, 0.1f, 1.0f, 8.0f,

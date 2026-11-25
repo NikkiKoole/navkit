@@ -6,6 +6,7 @@
 #include "animals.h"
 #include "notice.h"
 #include "talk.h"
+#include "relations.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -469,10 +470,13 @@ static int UpcomingRouteCells(int i, Point* out, int maxCells) {
 
 static inline bool PointsEqual(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
 
-// Does mover a have priority over mover b? Busy (job) beats idle; then lower index.
+// Does mover a have priority over mover b? Busy (job) beats idle; then the one the other likes
+// more goes first (you let a friend through, relations.c); then lower index.
 static bool MoverHasPriority(int a, int b) {
     bool aBusy = movers[a].currentJobId >= 0, bBusy = movers[b].currentJobId >= 0;
     if (aBusy != bBusy) return aBusy;
+    float bLikesA = RelationLike(b, a), aLikesB = RelationLike(a, b);
+    if (fabsf(bLikesA - aLikesB) >= 10.0f) return bLikesA > aLikesB;
     return a < b;
 }
 
@@ -960,6 +964,7 @@ void StringPullPath(Point* pathArr, int* pathLen) {
 }
 
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
+    ClearMoverRelations((int)(m - movers));   // a new mover in this slot knows nobody
     m->x = x;
     m->y = y;
     m->z = z;
@@ -1156,6 +1161,7 @@ float MoverRouteCellsLeft(int i) {
 void ClearMovers(void) {
     ClearNotices();
     ClearTalks();
+    ClearRelations();
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -2098,6 +2104,8 @@ void UpdateMovers(void) {
                         if (ox * ox + oy * oy < (CELL_SIZE * 2.0f) * (CELL_SIZE * 2.0f)) {
                             moverNodTimer[i] = NOD_TIME;
                             moverThanksTimer[j] = NOD_TIME * 1.5f;
+                            RelationAdd(i, j, 1.0f, 1.0f);   // a small kindness, both ways
+                            RelationAdd(j, i, 1.0f, 1.0f);
                         }
                     }
                 }

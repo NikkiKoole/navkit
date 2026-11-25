@@ -2,11 +2,14 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 static bool test_verbose = false;
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 #include "../src/game_state.h"
 #include "../src/world/grid.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/notice.h"
 #include "../src/entities/talk.h"
+#include "../src/entities/relations.h"
 #include "../src/core/time.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
@@ -410,6 +413,88 @@ describe(gatherings) {
     }
 }
 
+describe(relations) {
+    it("seeing each other makes them familiar, slowly") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(8, 5, 1);
+        expect(RelationGet(a, b) == NULL);
+        for (int t = 0; t < 60 * TICK_RATE; t++) Look();   // a minute in sight
+        float f = RelationFamiliarity(a, b);
+        expect(f > 14.0f && f < 16.0f);                    // 0.25 per second
+        expect(RelationLike(a, b) == 0.0f);
+        expect(strcmp(RelationLabel(RelationLike(a, b), f), "familiar face") == 0 ||
+               strcmp(RelationLabel(RelationLike(a, b), f), "stranger") == 0);
+    }
+
+    it("talking: familiar fast; like goes up in a good mood, down in a bad one") {
+        TalkSetup();
+        talkMinSeconds = talkMaxSeconds = 60.0f;
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[a].mood = 0.8f;
+        movers[b].mood = -0.8f;
+        TalkStart(a, b);
+        RunTalk(10.0f);
+        expect(RelationFamiliarity(a, b) > 9.0f);
+        expect(RelationLike(a, b) > 2.0f);    // happy a likes b more
+        expect(RelationLike(b, a) < -1.0f);   // grumpy b likes a less
+    }
+
+    it("never starts a talk with someone it dislikes, and won't join their talk") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationAdd(a, b, -40.0f, 50.0f);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);
+        int c = AddMover(6, 7, 1);
+        RelationSetPair(b, c, 50.0f, 50.0f);
+        TalkStart(b, c);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);             // a dislikes b: stays out of b and c's talk
+    }
+
+    it("a mover slot reused by someone new: the old feelings don't carry over") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].appearanceSeed = 111;
+        RelationSetPair(a, b, 70.0f, 80.0f);
+        expect(RelationLike(a, b) == 70.0f);
+        movers[b].appearanceSeed = 222;       // someone else in that slot now
+        expect(RelationGet(a, b) == NULL);
+        expect(moverRelations[a].count == 0);
+    }
+
+    it("a full list: the least important one makes room") {
+        TalkSetup();
+        int a = AddMover(1, 1, 1);
+        int others[MAX_RELATIONS + 1];
+        for (int k = 0; k <= MAX_RELATIONS; k++) {
+            others[k] = AddMover(2 + k % 10, 2 + k / 10, 1);
+            movers[others[k]].appearanceSeed = 1000 + k;
+        }
+        for (int k = 0; k < MAX_RELATIONS; k++) RelationAdd(a, others[k], 0.0f, 10.0f + k);
+        RelationAdd(a, others[MAX_RELATIONS], 30.0f, 5.0f);   // new, strongly liked
+        expect(moverRelations[a].count == MAX_RELATIONS);
+        expect(RelationGet(a, others[0]) == NULL);            // least familiar, no feeling: gone
+        expect(RelationLike(a, others[MAX_RELATIONS]) == 30.0f);
+    }
+
+    it("survives save and load") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[a].appearanceSeed = 5; movers[b].appearanceSeed = 6;
+        RelationSetPair(a, b, 42.0f, 77.0f);
+        RelationAdd(b, a, -10.0f, 0.0f);
+        expect(SaveWorld("/tmp/test_relations_save.bin"));
+        ClearMovers();
+        expect(RelationGet(a, b) == NULL);
+        expect(LoadWorld("/tmp/test_relations_save.bin"));
+        expect(RelationLike(a, b) == 42.0f && RelationFamiliarity(a, b) == 77.0f);
+        expect(RelationLike(b, a) == 32.0f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -417,5 +502,6 @@ int main(int argc, char* argv[]) {
     test(polite_passing);
     test(stop_to_talk);
     test(gatherings);
+    test(relations);
     return summary();
 }
