@@ -590,6 +590,8 @@ static const Setting settings[] = {
       "Longest walk, seconds (it ends sooner when they arrive).", NULL),
     SET_FLOAT("walkPace", "Walk: pace", "Entities/Movers/Noticing", walkPace, 0.05f, 0.2f, 1.0f,
       "Strolling speed as a fraction of walking speed.", NULL),
+    SET_BOOL("autoGatherings", "Gatherings by themselves", "Entities/Movers/Noticing", autoGatherings,
+      "A game rule: people gather round a burning fire workshop, heat furniture (burning barrel) and someone cooking, by themselves."),
     SET_BOOL("mingle", "Mingle", "Entities/Movers/Noticing", mingleEnabled,
       "Someone in a talk or round a campfire now and then moves over to a group nearby it likes clearly better."),
     SET_FLOAT("mingleChance", "Mingle: chance", "Entities/Movers/Noticing", mingleChance, 0.005f, 0.0f, 1.0f,

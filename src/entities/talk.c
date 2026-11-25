@@ -5,6 +5,9 @@
 #include "chase.h"
 #include "action_queue.h"
 #include "furniture.h"
+#include "workshops.h"
+#include "jobs.h"
+#include "../simulation/fire.h"
 #include "../simulation/needs.h"
 #include "../simulation/weather.h"
 #include "mover.h"
@@ -36,6 +39,8 @@ float walkPace = 0.7f;
 long walkStartedCount = 0;
 long walkJoinedCount = 0;
 bool spotByFriends = true;
+bool autoGatherings = false;   // a game rule: the games switch it on
+long autoGatheringsStarted = 0;
 bool mingleEnabled = true;
 float mingleChance = 0.02f;   // per check (~4 checks a second) once a better group is there
 long mingleCount = 0;
@@ -48,6 +53,7 @@ static int talkHigh = 0;   // talks[] entries at or above this are all free
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
 static float moverTalkCooldown[MAX_MOVERS]; // sim seconds until it may talk again
 static unsigned int talkTickCounter = 0;
+static void ClearAutoGatherings(void);
 static int dinerTable[MAX_MOVERS];          // table it eats at, -1 (rebuilt every tick)
 static int tableSpeaker[MAX_FURNITURE];      // who talks at that table, -1
 static float tableSpeakTimer[MAX_FURNITURE];
@@ -89,6 +95,8 @@ void ClearTalks(void) {
     talkJoinedCount = 0;
     tableTalkTicks = 0;
     mingleCount = 0;
+    autoGatheringsStarted = 0;
+    ClearAutoGatherings();
     memset(groupTime, 0, sizeof(groupTime));
     memset(mingleTarget, 0, sizeof(mingleTarget));
     for (int i = 0; i < MAX_MOVERS; i++) dinerTable[i] = -1;
@@ -393,6 +401,18 @@ static void WatchJoin(int t, int i) {
     watchJoinedCount++;
 }
 
+// Can m see the middle of a gathering? (the middle may be a blocked cell, a burning barrel:
+// then a free cell next to it in sight will do)
+static bool CanSeeGathering(const Mover* m, const Talk* tk) {
+    int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
+    int cx = (int)(tk->centerX / CELL_SIZE), cy = (int)(tk->centerY / CELL_SIZE);
+    if (IsCellWalkableAt(tk->z, cy, cx)) return HasLineOfSight(mx, my, cx, cy, tk->z);
+    static const int nx[4] = {1, -1, 0, 0}, ny[4] = {0, 0, 1, -1};
+    for (int d = 0; d < 4; d++)
+        if (IsCellWalkableAt(tk->z, cy + ny[d], cx + nx[d]) && HasLineOfSight(mx, my, cx + nx[d], cy + ny[d], tk->z)) return true;
+    return false;
+}
+
 // An idle mover in range of a gathering it can see may come to watch
 static bool TryWatch(int i) {
     const Mover* m = &movers[i];
@@ -406,8 +426,7 @@ static bool TryWatch(int i) {
         float chance = watchChance * (nightDraw ? 3.0f : 1.0f);
         float dx = tk->centerX - m->x, dy = tk->centerY - m->y;
         if (dx * dx + dy * dy > reach * reach) continue;
-        if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE),
-                            (int)(tk->centerX / CELL_SIZE), (int)(tk->centerY / CELL_SIZE), tk->z)) continue;
+        if (!CanSeeGathering(m, tk)) continue;
         bool foe = false;   // someone it can't stand is there (or is the focus): not now
         for (int k = 0; k < tk->count && !foe; k++) foe = RelationLike(i, tk->members[k]) <= -20.0f;
         if (tk->focus >= 0 && RelationLike(i, tk->focus) <= -20.0f) foe = true;
@@ -594,6 +613,7 @@ static void MingleTo(int i, int t);
 
 void TalkTick(float dt) {
     TableTalkTick(dt);
+    AutoGatherTick(dt);
     MingleTick(dt);
     for (int i = 0; i < moverCount; i++)
         if (moverTalkCooldown[i] > 0.0f) moverTalkCooldown[i] -= dt;
@@ -1039,4 +1059,92 @@ static bool TryMingle(int i) {
     if (talks[t].kind == TALK_WATCH) WatchUpdateRadius(&talks[t]);
     MingleTo(i, g);
     return true;
+}
+
+// --- Gatherings the world starts by itself ---
+enum { AG_FIRE, AG_HEAT, AG_COOKING };
+typedef struct { int kind, idx, talk; bool seen; } AutoGather;
+#define AG_MAX 128
+static AutoGather autoGather[AG_MAX];
+static int autoGatherCount = 0;
+static float autoGatherTimer = 0.0f;
+
+static void ClearAutoGatherings(void) { autoGatherCount = 0; autoGatherTimer = 0.0f; }
+
+static bool IsFireWorkshop(WorkshopType t) {
+    return t == WORKSHOP_CAMPFIRE || t == WORKSHOP_GROUND_FIRE || t == WORKSHOP_HEARTH;
+}
+
+// Burning: fire on its fuel tile (a lit fire source), or its passive (fuelled) timer running
+static bool AgWorkshopBurning(const Workshop* ws) {
+    if (ws->fuelTileX >= 0 && (HasFire(ws->fuelTileX, ws->fuelTileY, ws->z) || IsFireSourceAt(ws->fuelTileX, ws->fuelTileY, ws->z)))
+        return true;
+    return ws->passiveBillIdx >= 0 && ws->passiveProgress > 0.0f;
+}
+
+// Someone at work at it (a craft job, at the working step): returns who, or -1
+static int WorkshopCook(int w) {
+    int c = workshops[w].assignedCrafter;
+    if (c < 0 || c >= moverCount || !movers[c].active || movers[c].currentJobId < 0) return -1;
+    const Job* job = GetJob(movers[c].currentJobId);
+    if (!job || job->type != JOBTYPE_CRAFT || job->targetWorkshop != w || job->step != CRAFT_STEP_WORKING) return -1;
+    return c;
+}
+
+// A place gathering already within a cell of (x, y)? (a scenario's own, or another source's)
+static bool GatheringNear(float x, float y, int z) {
+    for (int t = 0; t < talkHigh; t++) {
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->kind != TALK_WATCH || tk->focus >= 0 || tk->z != z) continue;
+        float dx = tk->centerX - x, dy = tk->centerY - y;
+        if (dx * dx + dy * dy < (float)(CELL_SIZE * CELL_SIZE)) return true;
+    }
+    return false;
+}
+
+static void AutoGatherEnsure(int kind, int idx, float x, float y, int z, const char* what, float stayMin, float stayMax) {
+    for (int k = 0; k < autoGatherCount; k++) {
+        AutoGather* g = &autoGather[k];
+        if (g->kind != kind || g->idx != idx) continue;
+        if (talks[g->talk].active && talks[g->talk].kind == TALK_WATCH) { g->seen = true; return; }
+        *g = autoGather[--autoGatherCount];   // its gathering is gone: start again below
+        break;
+    }
+    if (autoGatherCount >= AG_MAX || GatheringNear(x, y, z)) return;
+    int t = GatheringStartAt(x, y, z, 1e9f, what, stayMin, stayMax);
+    if (t < 0) return;
+    autoGather[autoGatherCount++] = (AutoGather){ kind, idx, t, true };
+    autoGatheringsStarted++;
+}
+
+void AutoGatherTick(float dt) {
+    if ((autoGatherTimer -= dt) > 0.0f) return;
+    autoGatherTimer = 1.0f;
+    for (int k = 0; k < autoGatherCount; k++) autoGather[k].seen = false;
+    if (autoGatherings && noticeEnabled) {
+        for (int w = 0; w < MAX_WORKSHOPS; w++) {
+            const Workshop* ws = &workshops[w];
+            if (!ws->active) continue;
+            if (IsFireWorkshop(ws->type) && AgWorkshopBurning(ws)) {
+                int fx = ws->fuelTileX >= 0 ? ws->fuelTileX : ws->x, fy = ws->fuelTileX >= 0 ? ws->fuelTileY : ws->y;
+                AutoGatherEnsure(AG_FIRE, w, (fx + 0.5f) * CELL_SIZE, (fy + 0.5f) * CELL_SIZE, ws->z, "the fire", 30.0f, 90.0f);
+                continue;
+            }
+            if (IsFireWorkshop(ws->type) || ws->type == WORKSHOP_STOVE) {
+                int cook = WorkshopCook(w);
+                if (cook >= 0)
+                    AutoGatherEnsure(AG_COOKING, w, movers[cook].x, movers[cook].y, (int)movers[cook].z, "the cooking", 10.0f, 30.0f);
+            }
+        }
+        for (int f = 0; f < MAX_FURNITURE; f++) {
+            if (!furniture[f].active || !(GetFurnitureDef(furniture[f].type)->capabilities & CAP_HEAT)) continue;
+            AutoGatherEnsure(AG_HEAT, f, (furniture[f].x + 0.5f) * CELL_SIZE, (furniture[f].y + 0.5f) * CELL_SIZE,
+                             furniture[f].z, "the warmth", 30.0f, 90.0f);
+        }
+    }
+    for (int k = autoGatherCount - 1; k >= 0; k--) {   // sources gone out: their gatherings end
+        if (autoGather[k].seen) continue;
+        if (talks[autoGather[k].talk].active) EndTalk(autoGather[k].talk);
+        autoGather[k] = autoGather[--autoGatherCount];
+    }
 }

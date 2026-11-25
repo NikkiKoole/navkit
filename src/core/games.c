@@ -197,6 +197,7 @@ static void SetSurvivalRules(void) {
     }
     gameMode = GAME_MODE_SURVIVAL;
     talkEnabled = false;      // idle movers stopping to chat: dollhouse only for now
+    autoGatherings = true;    // ... but settlers do gather round a burning fire
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
@@ -542,6 +543,7 @@ static void StartDollhouse(void) {
     }
     gameMode = GAME_MODE_SANDBOX;
     talkEnabled = true;       // the residents stop to chat (talk.c)
+    autoGatherings = true;    // and gather round the cooking, a fire, a heater
     hungerEnabled = true;
     energyEnabled = true;
     thirstEnabled = true;
@@ -564,6 +566,7 @@ static void StartSandbox(void) {
     balance.baseMoverSpeed = 200.0f;         // balance.c default (survival/dollhouse change it)
     gameMode = GAME_MODE_SANDBOX;
     talkEnabled = false;
+    autoGatherings = false;
     hungerEnabled = false;
     energyEnabled = false;
     thirstEnabled = false;

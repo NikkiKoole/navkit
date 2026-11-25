@@ -91,6 +91,14 @@ extern long tableTalkTicks;          // diner-ticks with someone to talk to at t
 int MoverDiningAt(int moverIdx);     // the table it eats at (furniture index), -1 if none
 void TableTalkTick(float dt);        // (TalkTick calls it)
 
+// --- Gatherings the world starts by itself (a game rule, autoGatherings): round a fire
+// workshop while it burns (campfire, fire pit, ground fire, hearth), round heat furniture
+// (burning barrel, heating grate), and round someone cooking (at work at a fire or stove).
+// Started when the source becomes active, ended when it stops; none where a gathering already is.
+extern bool autoGatherings;
+extern long autoGatheringsStarted;
+void AutoGatherTick(float dt);   // (TalkTick calls it)
+
 // --- Mingling: someone in a talk or round a place (a campfire) now and then moves over to a
 // group within 10 cells it likes clearly better (the one it likes most there, +15 over here; a
 // place counts +10 of its own), after 6 s at least; when a talk ends its members look for a

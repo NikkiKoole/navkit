@@ -37,7 +37,7 @@
 // needs + speed) don't leak into the next.
 // ---------------------------------------------------------------------------
 typedef struct {
-    bool hunger, thirst, energy, endless, preferDiffZ, mood, talk;
+    bool hunger, thirst, energy, endless, preferDiffZ, mood, talk, autoGather;
     float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
 } ScenarioSettings;
 
@@ -61,7 +61,7 @@ static void SpawnGroundCrowd(int n) {
 static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
-                                           endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled,
+                                           endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled, autoGatherings,
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed};
         haveSavedSettings = true;
@@ -74,6 +74,7 @@ static void SnapshotOrRestoreSettings(void) {
     preferDifferentZ = savedSettings.preferDiffZ;
     moodEnabled = savedSettings.mood;
     talkEnabled = savedSettings.talk;
+    autoGatherings = savedSettings.autoGather;
     moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
@@ -859,6 +860,49 @@ static void MinglePrintStats(void) {
            talkStartedCount);
     printf("Different people each guest talked with: %.1f on average; time in a group: %.0f%%\n",
            n ? partners / (double)n : 0.0, mgTicks && n ? 100.0 * mgInGroup / ((double)mgTicks * n) : 0.0);
+}
+
+// campfire: a ground fire burning for good and a burning barrel on a lawn, 12 wanderers: the
+// world starts gatherings round them by itself (game rule autoGatherings, talk.c).
+static long cfTicks, cfAtFire, cfAtBarrel;
+
+static void SetupCampfire(void) {
+    cfTicks = cfAtFire = cfAtBarrel = 0;
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    autoGatherings = true;
+    moverWanderPause = 3.0f;
+    for (int y = 10; y <= 18; y++)          // fuel-free ground round the fire
+        for (int x = 6; x <= 14; x++) { SetWallMaterial(x, y, 0, MAT_GRANITE); SetVegetation(x, y, 0, VEG_NONE); }
+    int ws = CreateWorkshop(10, 14, 1, WORKSHOP_GROUND_FIRE);
+    if (ws >= 0 && workshops[ws].fuelTileX >= 0)
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, true);
+    SpawnFurniture(24, 14, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int i = 0; i < 12; i++) SpawnMoverAt(4 + (i % 6) * 4, 4 + (i / 6) * 20, 1);
+    currentViewZ = 1;
+    AddMessage("Campfire: a fire and a burning barrel; people gather round them by themselves", GREEN);
+}
+
+static void CampfireTickStats(void) {
+    cfTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        int t = MoverTalk(i);
+        if (t < 0 || !MoverIsWatching(i)) continue;
+        if (talks[t].centerX < 17 * CELL_SIZE) cfAtFire++; else cfAtBarrel++;
+    }
+}
+
+static void CampfirePrintStats(void) {
+    printf("Gatherings started by the world: %ld; round the fire avg %.1f, round the barrel avg %.1f\n",
+           autoGatheringsStarted, cfTicks ? cfAtFire / (double)cfTicks : 0.0, cfTicks ? cfAtBarrel / (double)cfTicks : 0.0);
+}
+
+static bool CampfireCheck(char* why, int whyLen) {
+    if (autoGatheringsStarted < 2) { snprintf(why, (size_t)whyLen, "no gathering round the fire and the barrel"); return false; }
+    return true;
 }
 
 static void SetupLadders(void) {
@@ -4003,6 +4047,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",
+                   NULL,        SetupCampfire, CampfireTickStats, CampfirePrintStats, CampfireCheck, 0, 0},
     {"mingle",     "20 guests, two circles of friends and strangers: talks form, break up, people move between groups (setting mingle)",
                    NULL,        SetupMingle,   MingleTickStats, MinglePrintStats, NULL, 0, 0},
     {"hide-and-seek", "A yard with walls, huts and pillars, 8 players: hiding out of sight and seeking (setting hideSmart)",

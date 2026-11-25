@@ -13,6 +13,8 @@ bool LoadWorld(const char* filename);
 #include "../src/entities/chase.h"
 #include "../src/entities/action_queue.h"
 #include "../src/entities/furniture.h"
+#include "../src/simulation/fire.h"
+#include "../src/entities/workshops.h"
 #include "../src/core/time.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
@@ -963,6 +965,63 @@ describe(mingling) {
     }
 }
 
+static int CountWatchGatherings(void) {
+    int n = 0;
+    for (int t = 0; t < MAX_TALKS; t++) if (talks[t].active && talks[t].kind == TALK_WATCH) n++;
+    return n;
+}
+
+describe(auto_gatherings) {
+    it("a burning barrel: a gathering starts round it; the barrel gone: it ends; off: none") {
+        TalkSetup();
+        ClearFurniture();
+        autoGatherings = true;
+        int f = SpawnFurniture(10, 6, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 1);
+        expect(autoGatheringsStarted == 1);
+        furniture[f].active = false;
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);
+        autoGatherings = false;
+        furniture[f].active = true;
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);
+    }
+
+    it("a fire workshop only while it burns") {
+        TalkSetup();
+        ClearFurniture();
+        ClearWorkshops();
+        autoGatherings = true;
+        int ws = CreateWorkshop(10, 6, 1, WORKSHOP_GROUND_FIRE);
+        expect(ws >= 0);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);              // not lit
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, true);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 1);
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, false);
+        ExtinguishCell(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1);   // (no fire sim here to burn it down)
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);              // gone out
+        autoGatherings = false;
+    }
+
+    it("people come to it by themselves (the barrel blocks its own cell)") {
+        TalkSetup();
+        ClearFurniture();
+        autoGatherings = true;
+        watchChance = 1.0f;
+        SpawnFurniture(10, 6, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+        int a = AddMover(6, 6, 1);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverIsWatching(a));
+        autoGatherings = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -979,5 +1038,6 @@ int main(int argc, char* argv[]) {
     test(table_talk);
     test(spot_choice);
     test(mingling);
+    test(auto_gatherings);
     return summary();
 }
