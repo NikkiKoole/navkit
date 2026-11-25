@@ -19,10 +19,13 @@
 #define TOWN_LOT_MAX 24
 #define TOWN_MAX_LOT_FURN 32
 #define TOWN_MAX_LOT_WS 24
+#define TOWN_MAX_LOT_STORES 4
 
 typedef struct { int x1, y1, x2, y2, z; } TownRoad;   // z = the walking level on it
 
-typedef enum { LOT_HOME, LOT_WORK, LOT_KIND_COUNT } LotKind;
+// Saved as a number: append only. LOT_WORK is the bakery.
+typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_KIND_COUNT } LotKind;
+#define TownIsWorkplace(k) ((k) == LOT_WORK || (k) == LOT_MILL)   // has jobs, opening hours
 typedef enum { SIDE_N, SIDE_E, SIDE_S, SIDE_W } TownSide;
 
 typedef struct {
@@ -36,8 +39,9 @@ typedef struct {
     int fridge;              // homes: the fridge's furniture index (-1 none)
     int stockpile;           // homes: the bread stockpile on the fridge (-1 none)
     int ws[TOWN_MAX_LOT_WS], wsCount;   // work: the bakery's stoves and counters (workshops)
-    int supplyX, supplyY;    // work: where the flour from outside town is delivered
-    int supplyItem;          // work: the delivered flour stack (-1 none; checked before use)
+    int stores[TOWN_MAX_LOT_STORES], storeCount;   // bakery: flour store, mill: granary, farm: seed store
+    int supplyX, supplyY;    // bakery / mill: where flour / wheat from outside town is delivered
+    int supplyItem;          // the delivered stack (-1 none; checked before use)
 } TownLot;
 
 extern TownRoad townRoads[TOWN_MAX_ROADS];
@@ -62,6 +66,11 @@ int  TownLotAt(int x, int y, int z);                             // -1 = none
 int  TownLotCount(LotKind kind);                                  // active lots of a kind
 
 // ---------------------------------------------------------------------------
+// The grain chain (step 6): farm -> mill -> bakery -> pantries, all carried by the haul jobs.
+// A Farm lot is a wheat field (the farming designations) with a seed store; a Mill has querns
+// (Grind Wheat) and a granary. A bakery or mill that has run out imports a batch from outside
+// (counted in townImported[]): the town never locks up, and a weak chain shows in the count.
+//
 // Food (step 4): a Work lot is a bakery: stoves + counters bake bread ("Bake Bread", a bill
 // that runs until there's no room), flour arrives from outside town at its delivery spot.
 // Each home's fridge is a one-cell bread stockpile: the haul jobs carry bread home.
@@ -74,15 +83,25 @@ int  TownLotCount(LotKind kind);                                  // active lots
 #define TOWN_OWNER_NOBODY   -2   // a home's bed with no owner yet: kept for the next newcomer
 
 extern float townArrivalGH;      // game hours between newcomers (setting)
+extern int townBreadPerHome;     // bakeries bake until the pantries hold this many loaves per home (setting)
+extern int townFlourTarget;      // mills grind until the bakeries' stores hold this much flour (setting)
+extern bool townIrrigation;      // town farms are kept wet (stand-in for a well + watering; setting)
 extern int townGroceries;        // loaves a newcomer brings for the pantry (setting)
 extern int townOpenHour;         // bakeries open at this hour (setting) ...
 extern int townCloseHour;        // ... and close at this one
-extern int townFlourDelivery;    // flour kept at each bakery's delivery spot (setting; 0 = none)
+extern int townFlourDelivery;    // flour a bakery imports when it has run out (setting; 0 = never)
+extern int townWheatDelivery;    // wheat a mill imports when it has run out (setting; 0 = never)
 extern int townStarter;          // homes already standing when the town game starts (setting)
 
 extern void (*townSpawnMover)(int x, int y, int z);   // main.c: SpawnMoverAt
 
-void TownTick(float dt);                          // arrivals, leaving owners, flour deliveries
+void TownTick(float dt);
+void TownNoteHarvest(int x, int y, int z);        // jobs.c: a crop was harvested here
+bool TownMakesFlour(void);                        // a town mill has ground flour
+bool TownMakesWheat(void);                        // a town farm has harvested
+extern int townImported[];                        // emergency imports per item type (not saved)
+// One line for headless runs and the console: people, homes, jobs, stocks, imports
+void TownSummary(char* buf, int len);                          // arrivals, leaving owners, flour deliveries
 int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
 int  TownResidents(int lot);                      // movers who live there
 int  TownFreeBeds(void);                          // unowned beds in all homes

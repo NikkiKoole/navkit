@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: steps 1-4b on master (2026-11-25): roads, homes, bakeries, jobs, opening hours; save v113. Next: step 5 (overview, play it), the grain chain. Game `town`.
+> Status: steps 1-4b on master (2026-11-25); step 6 (the grain chain) on branch `town`. Next: overview / lot inspector, winter stores. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -142,6 +142,62 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
 - Measured, 6 starter homes + bakery, 12 residents, 5 days, open 7-17: everyone Peckish or Full,
   4 bakers (~5.7 h baking a day each), 8 without a job; open 0-24: the same hunger, more baking.
   Describe: "Works at bakery #N (open/closed, 7-17 h)" / "No job".
+
+### Built (2026-11-25): step 6, the grain chain (user: "lets do the grain chain")
+
+farm -> mill -> bakery -> pantries, everything carried by the existing haul jobs.
+
+- **Farm** lot (play HUD Boompje tab, dev Draw > City > Farm): no building. The road-side row is
+  a seed store (corner) and a **barn** (wheat store); every other cell is marked for wheat with
+  the existing farming designations (till, plant, tend, harvest: anyone idle does them). One
+  seed per field cell to start with; each harvest gives 4 wheat + 1 seed back.
+- **Mill** lot: querns along the back wall ("Grind Wheat", 2 wheat -> 1 flour, 1 h), a job per
+  quern, opening hours like the bakery, a granary left of the door.
+- **Bakery**: a flour store left of its delivery spot.
+- **Bills run until there is enough** (the existing "Do Until X", `docs/done/jobs/bill-modes.md`;
+  it counts every stockpile on the map): bakeries until the pantries hold `townBreadPerHome`
+  (8) loaves per home, mills until `townFlourTarget` (40) flour is in store. Before this they ran
+  forever: 137 bread piled up while the mill kept importing wheat.
+- **Emergency imports**: when the whole town has less than a batch of flour (4) or wheat (2),
+  a bakery / mill gets `townFlourDelivery` / `townWheatDelivery` (20) on its delivery spot,
+  counted in `townImported[]` (not saved). Without them a town that runs dry locks up for good:
+  starving haulers drop their jobs to look for food, so nothing reaches the bakery (seen: 12
+  starving, 97 flour lying at the mill). First version ("until the upstream produces") cut
+  the flour as soon as the mill had ground once and caused exactly that; second ("when the
+  lot's own store is empty") imported 4180 wheat a year while 626 lay in town.
+- **Climate**: the town is temperate (12 +- 10 C, day/night +-4): the default 15 +- 25 C gives
+  40 C summers where wheat grows at 0.3x. Saved and restored with the scenario settings, so it
+  doesn't leak into the next game (`ScenarioSettings` got the climate + `weatherEnabled`).
+- **No weather in the town**: rain on a flat map with no drainage filled the whole town with
+  water (7/7 everywhere after a week; people waded and could not reach their beds or food).
+- **Irrigated farms** (setting `townIrrigation`, on): town farm cells are kept wet, a stand-in
+  for a well and watering jobs (watering needs water items; the town has only taps). Dry soil
+  grows wheat at 0.3x.
+- **Why the barn**: a quern needs one stack of 2 wheat and a harvest drops single wheat, so
+  only stored wheat can be ground. With only the mill's 4-cell granary (40 wheat, stacks of 10)
+  most of the harvest lay loose on the field and the mill imported flour all year.
+- **Harvests drop one stack** (jobs.c `RunJob_HarvestCrop`, all games): 4 single wheat per
+  cell made 188 items a round, one haul trip each; the haulers fell behind and 272 wheat lay on
+  the field while the mill imported flour.
+- **A bread shelf in the bakery** (priority 3; pantries 7, so bread moves on home): bread used to
+  wait by the stoves for haulers busy with the harvest and a third of it rotted; rotten bread
+  isn't counted by "until N" nor taken by pantries, so the bakers kept baking (185 bread).
+- **Measured, starter town (12 people), one year (28 days), `--set townStarter 6`:**
+
+  | day | hunger (12 people) | wheat in town | flour imported (total) | wheat imported (total) |
+  |---|---|---|---|---|
+  | 7 | 8 Full, 4 Peckish | 150 | 60 | 160 (start-up) |
+  | 14 | 10 Full, 1 Peckish, 1 Hungry | 258 | 100 | 160 |
+  | 21 | 6 Full, 3 Peckish, 3 Hungry | 116 | 200 | 160 |
+  | 28 (end of winter) | 6 Full, 4 Peckish, 2 Hungry | 20 | 280 | 640 |
+
+  Bread stays at its target (40-48). Open: **winter** (no harvest for 7 days: 480 wheat
+  imported; a 12-person town needs ~170 wheat in store for it, and the barn + granary hold 110)
+  and **the mill** (still ~10 flour a day imported while wheat waits; 4 querns should grind 40).
+- Headless runs print a `Town:` line (people, homeless, jobless, stocks, imports, harvests);
+  console `town list` too. New option `--dump-events FILE` writes the event log after a run.
+- Starter street (`townStarter` > 0): bakery, mill (4 querns) and an 8x7 farm (barn row + 48
+  wheat cells) at the east end.
 
 ### Save (v113)
 

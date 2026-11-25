@@ -140,6 +140,8 @@ typedef enum {
     ACTION_DRAW_ROAD,           // Draw > Town: pave a road
     ACTION_DRAW_LOT_HOME,       // Draw > Town: a home lot, the house appears at once
     ACTION_DRAW_LOT_WORK,       // Draw > Town: a work lot, the workplace appears at once
+    ACTION_DRAW_LOT_MILL,       // Draw > Town: a mill (querns + granary)
+    ACTION_DRAW_LOT_FARM,       // Draw > Town: a wheat farm (field + seed store)
 } InputAction;
 
 // Current input state

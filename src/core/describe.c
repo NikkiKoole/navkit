@@ -436,7 +436,7 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
         else DescAdd(out, DESC_WARN, "Homeless");
         int job = TownJobOf(idx);
-        if (job >= 0) DescAdd(out, DESC_INFO, "Works at bakery #%d (%s, %d-%d h)", job,
+        if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)", townLots[job].kind == LOT_MILL ? "mill" : "bakery", job,
                               TownLotOpen(job) ? "open" : "closed", townOpenHour, townCloseHour);
         else if (home >= 0) DescAdd(out, DESC_MUTED, "No job");
     }

@@ -2176,9 +2176,9 @@ static void Tool_TownRemoveRoad(const ToolArgs* a) {
 }
 static void Tool_TownLot(const ToolArgs* a) {
     const char* why = NULL;
-    LotKind kind = a->param == 1 ? LOT_WORK : LOT_HOME;
+    LotKind kind = (LotKind)a->param;
     int lot = TownAddLot(kind, a->x1, a->y1, a->x2, a->y2, a->z, &why);
-    if (lot < 0) AddMessage(TextFormat("No %s: %s", kind == LOT_WORK ? "workplace" : "home", why), RED);
+    if (lot < 0) AddMessage(TextFormat("No %s: %s", TownLotKindName(kind), why), RED);
 }
 static void Tool_TownRemoveLot(const ToolArgs* a) {
     int n = TownRemoveLotsIn(a->x1, a->y1, a->x2, a->y2, a->z);
@@ -2227,8 +2227,10 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_DRAW_PLATFORM]      = PAIR(PlacePlatform, RemovePlatform),
     [ACTION_DRAW_TRAIN]         = PAIR(SpawnTrain, RemoveTrain),
     [ACTION_DRAW_ROAD]          = PAIR(TownRoad, TownRemoveRoad),
-    [ACTION_DRAW_LOT_HOME]      = {Tool_TownLot, Tool_TownRemoveLot, 0, NULL},
-    [ACTION_DRAW_LOT_WORK]      = {Tool_TownLot, Tool_TownRemoveLot, 1, NULL},
+    [ACTION_DRAW_LOT_HOME]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_HOME, NULL},
+    [ACTION_DRAW_LOT_WORK]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_WORK, NULL},
+    [ACTION_DRAW_LOT_MILL]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_MILL, NULL},
+    [ACTION_DRAW_LOT_FARM]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_FARM, NULL},
 
     // Work: designations and blueprints the movers carry out
     [ACTION_WORK_MINE]          = PAIR(ExecuteDesignateMine, ExecuteCancelMine),

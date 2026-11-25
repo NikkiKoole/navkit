@@ -1384,6 +1384,32 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_DRAW_LOT_MILL,
+        .hints = { "L-drag a mill lot along a road", "R-drag remove lots" },
+        .name = "MILL",
+        .barDisplayText = "Mill",
+        .barKey = 'm',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_FARM,
+        .hints = { "L-drag a wheat farm along a road", "R-drag remove lots" },
+        .name = "FARM",
+        .barDisplayText = "Farm",
+        .barKey = 'f',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
 
 };
 

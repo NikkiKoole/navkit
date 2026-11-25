@@ -263,6 +263,11 @@ static void print_item(int idx) {
     }
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
     if (item->stackCount > 1) printf("Stack count: %d\n", item->stackCount);
+    if (itemDefs[item->type].flags & IF_SPOILS) {
+        static const char* cond[] = {"fresh", "stale", "rotten"};
+        printf("Condition: %s (%.1f game hours old)\n", item->condition < 3 ? cond[item->condition] : "?",
+               item->spoilageTimer / GameHoursToGameSeconds(1.0f));
+    }
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");
     printf("Unreachable cooldown: %.2f\n", item->unreachableCooldown);

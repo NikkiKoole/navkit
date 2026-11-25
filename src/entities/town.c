@@ -9,6 +9,8 @@
 #include "items.h"
 #include "stockpiles.h"
 #include "workshops.h"
+#include "../simulation/farming.h"
+#include "../world/designations.h"
 #include "action_queue.h"
 #include "../simulation/balance.h"
 #include "../core/time.h"
@@ -21,8 +23,13 @@ TownLot townLots[TOWN_MAX_LOTS];
 int townLotHighWater = 0;
 float townArrivalGH = 0.5f;
 int townFlourDelivery = 20;
+int townImported[ITEM_TYPE_COUNT];
+int townWheatDelivery = 20;
 int townStarter = 0;
 int townGroceries = 2;
+int townBreadPerHome = 8;
+int townFlourTarget = 40;
+bool townIrrigation = true;
 int townOpenHour = 7;
 int townCloseHour = 17;
 
@@ -32,11 +39,14 @@ static short townJob[MAX_MOVERS];            // lot a mover works at, -1 none (n
 static short townWsLot[MAX_WORKSHOPS];       // lot a workshop belongs to, -1 none
 static float townHousekeepTimer = 0.0f;
 static float townArrivalTimer = 0.0f;
+static int townHarvests = 0;   // harvests on town farms (not saved: after a load the wheat import runs until the next)
 
 const char* TownLotKindName(LotKind k) {
     switch (k) {
         case LOT_HOME: return "Home";
-        case LOT_WORK: return "Work";
+        case LOT_WORK: return "Bakery";
+        case LOT_MILL: return "Mill";
+        case LOT_FARM: return "Farm";
         default: return "?";
     }
 }
@@ -50,6 +60,8 @@ void ClearTown(void) {
     for (int i = 0; i < MAX_WORKSHOPS; i++) townWsLot[i] = -1;
     townHousekeepTimer = 0.0f;
     townArrivalTimer = 0.0f;
+    townHarvests = 0;
+    memset(townImported, 0, sizeof(townImported));
 }
 
 static void TownNormRect(int* x1, int* y1, int* x2, int* y2) {
@@ -219,7 +231,7 @@ static void TownLotFurn(TownLot* L, int u, int v, FurnitureType type, uint8_t ma
 static void TownStampShell(TownLot* L) {
     int bx1, by1, bx2, by2, z = L->z;
     TownBuildingRect(L, &bx1, &by1, &bx2, &by2);
-    MaterialType wallMat = L->kind == LOT_HOME ? MAT_BRICK : MAT_CONCRETE;
+    MaterialType wallMat = L->kind == LOT_HOME ? MAT_BRICK : L->kind == LOT_MILL ? MAT_SANDSTONE : MAT_CONCRETE;
     for (int y = by1; y <= by2; y++)
         for (int x = bx1; x <= bx2; x++) {
             SET_FLOOR(x, y, z);
@@ -311,6 +323,7 @@ static void TownHomePantry(TownLot* L) {
     int sp = CreateStockpile(f->x, f->y, f->z, 1, 1);
     if (sp < 0) return;
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_BREAD);
+    SetStockpilePriority(sp, 7);   // above the bakery's shelf: bread moves on home
     L->stockpile = sp;
 }
 
@@ -319,6 +332,12 @@ static int TownRecipeIndex(WorkshopType type, const char* name) {
     for (int r = 0; r < def->recipeCount; r++)
         if (strcmp(def->recipes[r].name, name) == 0) return r;
     return -1;
+}
+
+// Bread the bakeries bake up to (counted in stockpiles: the pantries): townBreadPerHome per home
+static int TownBreadTarget(void) {
+    int t = TownLotCount(LOT_HOME) * townBreadPerHome;
+    return t > 0 ? t : townBreadPerHome;
 }
 
 static void TownLotWorkshop(TownLot* L, int u, int v, WorkshopType type) {
@@ -332,8 +351,21 @@ static void TownLotWorkshop(TownLot* L, int u, int v, WorkshopType type) {
     townWsLot[ws] = (short)(L - townLots);
     if (type == WORKSHOP_STOVE) {
         int r = TownRecipeIndex(WORKSHOP_STOVE, "Bake Loaves");
-        if (r >= 0) AddBill(ws, r, BILL_DO_FOREVER, 0);   // pauses by itself when no stockpile has room
+        if (r >= 0) AddBill(ws, r, BILL_DO_UNTIL_X, TownBreadTarget());   // until the pantries hold enough
     }
+}
+
+// A store inside a lot: a stockpile over local cells (u1,v1)-(u2,v2) that takes only one item type
+static void TownLotStore(TownLot* L, int u1, int v1, int u2, int v2, ItemType type) {
+    if (L->storeCount >= TOWN_MAX_LOT_STORES) return;
+    int ax, ay, bx, by;
+    TownLocalToWorld(L, u1, v1, &ax, &ay);
+    TownLocalToWorld(L, u2, v2, &bx, &by);
+    TownNormRect(&ax, &ay, &bx, &by);
+    int sp = CreateStockpile(ax, ay, L->z, bx - ax + 1, by - ay + 1);
+    if (sp < 0) return;
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == type);
+    L->stores[L->storeCount++] = sp;
 }
 
 // Bakery: stoves and counters along the back wall (Bake Loaves needs a prep surface within 2),
@@ -356,8 +388,86 @@ static void TownFurnishBakery(TownLot* L) {
     L->beds = stoves;
     int supplyU = doorU - 1 >= 0 ? doorU - 1 : doorU + 1;
     TownLocalToWorld(L, supplyU, 0, &L->supplyX, &L->supplyY);
-    TownLotFurn(L, doorU + 1 < w ? doorU + 1 : 0, 0, FURNITURE_TAP, MAT_GRANITE);
-    if (w >= 4) TownLotFurn(L, w - 1, 0, FURNITURE_TOILET, MAT_GRANITE);
+    if (doorU - 2 >= 0) TownLotStore(L, 0, 0, doorU - 2, 0, ITEM_FLOUR);   // the flour store, left of the delivery spot
+    // The bread shelf right of the door: bread goes a few cells, not across town, before it can
+    // rot by the stoves (it did: a third of the bread rotted there in autumn, when the harvest kept
+    // every hauler busy). It counts for the bakers' "until N"; the pantries rank higher, so bread
+    // moves on from the shelf to the homes.
+    if (doorU + 1 < w) {
+        int before = L->storeCount;
+        TownLotStore(L, doorU + 1, 0, w - 1, 0, ITEM_BREAD);
+        if (L->storeCount > before) SetStockpilePriority(L->stores[L->storeCount - 1], 3);
+    }
+}
+
+// Mill: querns along the back wall (Grind Wheat: 2 wheat -> 1 flour), a granary in the front
+// half left of the door, the wheat delivery spot right of the door
+static void TownFurnishMill(TownLot* L) {
+    int w, d;
+    TownInsideSize(L, &w, &d);
+    int doorU = w / 2, querns = 0;
+    int r = TownRecipeIndex(WORKSHOP_QUERN, "Grind Wheat");
+    for (int u = 0; u < w; u++) {
+        if (u == doorU) continue;
+        int before = L->wsCount;
+        TownLotWorkshop(L, u, d - 1, WORKSHOP_QUERN);
+        if (L->wsCount > before) {
+            if (r >= 0) AddBill(L->ws[L->wsCount - 1], r, BILL_DO_UNTIL_X, townFlourTarget);   // until the bakeries hold enough
+            querns++;
+        }
+    }
+    L->beds = querns;
+    if (doorU - 1 >= 0) TownLotStore(L, 0, 0, doorU - 1, d >= 3 ? d - 2 : 0, ITEM_WHEAT);
+    int supplyU = doorU + 1 < w ? doorU + 1 : doorU - 1;
+    TownLocalToWorld(L, supplyU, 0, &L->supplyX, &L->supplyY);
+}
+
+// The cell of a farm's front row at its corner (where the seed store goes)
+static void TownFarmCorner(const TownLot* L, int* x, int* y) {
+    switch (L->front) {
+        case SIDE_N: *x = L->x1; *y = L->y1; break;
+        case SIDE_S: *x = L->x1; *y = L->y2; break;
+        case SIDE_W: *x = L->x1; *y = L->y1; break;
+        case SIDE_E: default: *x = L->x2; *y = L->y1; break;
+    }
+}
+
+// Farm: a wheat field (the farming designations: till, plant, tend, harvest) behind a barn row
+// along the road, a seed store in the front corner with a seed per field cell to start with
+static void TownFurnishFarm(TownLot* L) {
+    int sx, sy, fields = 0;
+    TownFarmCorner(L, &sx, &sy);
+    L->doorX = sx; L->doorY = sy;
+    int sp = CreateStockpile(sx, sy, L->z, 1, 1);
+    if (sp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_WHEAT_SEEDS);
+        L->stores[L->storeCount++] = sp;
+    }
+    // The barn: the rest of the road-side row stores the harvest. A quern grinds from a stack
+    // of 2, and a harvest drops single wheat: only stored wheat stacks, so the barn feeds the mill
+    bool frontNS = L->front == SIDE_N || L->front == SIDE_S;
+    int bx1 = frontNS ? L->x1 + 1 : sx, bx2 = frontNS ? L->x2 : sx;
+    int by1 = frontNS ? sy : L->y1 + 1, by2 = frontNS ? sy : L->y2;
+    if (L->front == SIDE_E) { by1 = L->y1 + 1; by2 = L->y2; }
+    int barn = CreateStockpile(bx1, by1, L->z, bx2 - bx1 + 1, by2 - by1 + 1);
+    if (barn >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(barn, (ItemType)t, t == ITEM_WHEAT);
+        L->stores[L->storeCount++] = barn;
+    }
+    for (int y = L->y1; y <= L->y2; y++)
+        for (int x = L->x1; x <= L->x2; x++) {
+            if (x >= bx1 && x <= bx2 && y >= by1 && y <= by2) continue;   // barn
+            if (x == sx && y == sy) continue;                               // seed store
+            if (!DesignateFarm(x, y, L->z)) continue;
+            FarmCell* fc = GetFarmCell(x, y, L->z);
+            if (fc) fc->desiredCropType = CROP_WHEAT;
+            fields++;
+        }
+    L->beds = 0;   // no jobs yet: whoever is idle farms
+    for (int left = fields; left > 0; left -= ItemMaxStack(ITEM_WHEAT_SEEDS)) {
+        int idx = SpawnItem(sx * CELL_SIZE + CELL_SIZE * 0.5f, sy * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, ITEM_WHEAT_SEEDS);
+        if (idx >= 0) items[idx].stackCount = left < ItemMaxStack(ITEM_WHEAT_SEEDS) ? left : ItemMaxStack(ITEM_WHEAT_SEEDS);
+    }
 }
 
 int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char** why) {
@@ -372,6 +482,7 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
             if (TownIsRoad(x, y, z)) { *why = "a road is in the way"; return -1; }
             if (TownLotAt(x, y, z) >= 0) { *why = "another lot is in the way"; return -1; }
             if (!TownGroundOk(x, y, z)) { *why = "not flat open ground"; return -1; }
+            if (kind == LOT_FARM && !IsFarmableSoil(x, y, z)) { *why = "not farmable soil"; return -1; }
         }
     if (TownMoverIn(x1, y1, x2, y2, z)) { *why = "someone is standing there"; return -1; }
     // Front: the side with the most road along it
@@ -392,9 +503,11 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
     memset(L, 0, sizeof(*L));
     *L = (TownLot){ .active = true, .kind = kind, .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .z = z, .front = best,
                     .fridge = -1, .stockpile = -1, .supplyItem = -1 };
-    TownStampShell(L);
+    if (kind != LOT_FARM) TownStampShell(L);
     if (kind == LOT_HOME) { TownFurnishHome(L); TownHomePantry(L); }
-    else TownFurnishBakery(L);
+    else if (kind == LOT_WORK) TownFurnishBakery(L);
+    else if (kind == LOT_MILL) TownFurnishMill(L);
+    else TownFurnishFarm(L);
     return slot;
 }
 
@@ -417,7 +530,18 @@ void TownRemoveLot(int lot) {
         if (workshops[L->ws[i]].active) DeleteWorkshop(L->ws[i]);
     }
     if (L->stockpile >= 0 && stockpiles[L->stockpile].active) DeleteStockpile(L->stockpile);
+    for (int i = 0; i < L->storeCount; i++)
+        if (stockpiles[L->stores[i]].active) DeleteStockpile(L->stores[i]);
     int z = L->z;
+    if (L->kind == LOT_FARM)   // the field goes back to grass: no designations, no farm state
+        for (int y = L->y1; y <= L->y2; y++)
+            for (int x = L->x1; x <= L->x2; x++) {
+                if (HasFarmDesignation(x, y, z)) CancelDesignation(x, y, z);
+                FarmCell fc = FARM(x, y, z);
+                if (!fc.tilled && !fc.desiredCropType && !fc.cropType) continue;
+                if (fc.tilled && farmActiveCells > 0) farmActiveCells--;
+                memset(&FARM_MUT(x, y, z), 0, sizeof(FarmCell));
+            }
     for (int y = L->y1; y <= L->y2; y++)
         for (int x = L->x1; x <= L->x2; x++) {
             if (GRID(x, y, z) != CELL_AIR || HAS_FLOOR(x, y, z)) {
@@ -563,22 +687,63 @@ static void TownArrive(void) {
     EventLog("Town: mover %d arrives, home lot %d", m, lot);
 }
 
-// Flour from outside town (stand-in for a mill and farms: docs/vision/town.md), kept on the
-// bakery's delivery spot: topped up to townFlourDelivery once half is used
-static void TownDeliverFlour(TownLot* L) {
-    int want = townFlourDelivery;
+// Emergency imports from outside town: when the town has run out of flour (for a bakery) or wheat
+// (for a mill), a
+// batch of `want` is put on its delivery spot. Counted in townImported[]: a working chain keeps
+// that near 0, a broken one (too small a farm, winter) shows. Without them a town that runs dry
+// locks up: starving haulers drop their jobs to look for food, so nothing reaches the bakery.
+
+static int TownStockAll(ItemType type);
+
+static void TownDeliver(TownLot* L, ItemType type, int want, int runOutBelow) {
     if (want <= 0 || L->wsCount == 0) return;
-    if (L->supplyItem >= 0) {
-        const Item* it = &items[L->supplyItem];
-        bool still = it->active && it->type == ITEM_FLOUR && it->state == ITEM_ON_GROUND && (int)it->z == L->z
-                  && (int)(it->x / CELL_SIZE) == L->supplyX && (int)(it->y / CELL_SIZE) == L->supplyY;
-        if (still && it->stackCount * 2 > want) return;
-        if (still && it->reservedBy < 0) { items[L->supplyItem].stackCount = want; return; }
-        if (still) return;   // a baker is taking from it: next time
-    }
-    int idx = SpawnItem(L->supplyX * CELL_SIZE + CELL_SIZE * 0.5f, L->supplyY * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, ITEM_FLOUR);
-    if (idx >= 0) items[idx].stackCount = want;
+    if (TownStockAll(type) >= runOutBelow) return;   // the town still has some (anywhere: fields, mills, carried)
+    int idx = SpawnItem(L->supplyX * CELL_SIZE + CELL_SIZE * 0.5f, L->supplyY * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, type);
+    if (idx < 0) return;
+    items[idx].stackCount = want;
     L->supplyItem = idx;
+    townImported[type] += want;
+    EventLog("Town: %d %s imported for lot %d", want, ItemName(type), (int)(L - townLots));
+}
+
+// Imports run until the town makes the thing itself: flour once a mill has ground some (the
+// quern bills' counts are saved), wheat once a town farm has harvested
+bool TownMakesFlour(void) {
+    for (int l = 0; l < townLotHighWater; l++) {
+        const TownLot* L = &townLots[l];
+        if (!L->active || L->kind != LOT_MILL) continue;
+        for (int i = 0; i < L->wsCount; i++) {
+            const Workshop* w = &workshops[L->ws[i]];
+            if (w->active && w->billCount > 0 && w->bills[0].completedCount > 0) return true;
+        }
+    }
+    return false;
+}
+
+static int TownStockAll(ItemType type) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == type) n += items[i].stackCount;
+    return n;
+}
+
+void TownSummary(char* buf, int len) {
+    int people = 0;
+    for (int i = 0; i < moverCount; i++) people += movers[i].active;
+    snprintf(buf, len, "Town: %d people (%d homeless, %d without a job, %d free jobs, %d free beds); "
+             "stock: %d wheat, %d flour, %d bread; imported: %d wheat, %d flour; %d harvests",
+             people, TownHomeless(), TownUnemployed(), TownFreeJobs(), TownFreeBeds(),
+             TownStockAll(ITEM_WHEAT), TownStockAll(ITEM_FLOUR), TownStockAll(ITEM_BREAD),
+             townImported[ITEM_WHEAT], townImported[ITEM_FLOUR], townHarvests);
+}
+
+bool TownMakesWheat(void) {
+    return townHarvests > 0 && TownLotCount(LOT_FARM) > 0;
+}
+
+void TownNoteHarvest(int x, int y, int z) {
+    int lot = TownLotAt(x, y, z);
+    if (lot >= 0 && townLots[lot].kind == LOT_FARM) townHarvests++;
 }
 
 // ---------------------------------------------------------------------------
@@ -598,7 +763,7 @@ int TownWorkers(int lot) {
 int TownFreeJobs(void) {
     int n = 0;
     for (int l = 0; l < townLotHighWater; l++)
-        if (townLots[l].active && townLots[l].kind == LOT_WORK) {
+        if (townLots[l].active && TownIsWorkplace(townLots[l].kind)) {
             int free = townLots[l].beds - TownWorkers(l);
             if (free > 0) n += free;
         }
@@ -631,7 +796,7 @@ static void TownHandOutJobs(void) {
         if (!movers[i].active || townHome[i] < 0 || townJob[i] >= 0) continue;
         int best = -1, bestFree = 0;
         for (int l = 0; l < townLotHighWater; l++) {
-            if (!townLots[l].active || townLots[l].kind != LOT_WORK) continue;
+            if (!townLots[l].active || !TownIsWorkplace(townLots[l].kind)) continue;
             int free = townLots[l].beds - TownWorkers(l);
             if (free > bestFree) { bestFree = free; best = l; }
         }
@@ -673,8 +838,28 @@ void TownTick(float dt) {
         TownArrive();
     }
     TownHandOutJobs();
-    for (int l = 0; l < townLotHighWater; l++)
-        if (townLots[l].active && townLots[l].kind == LOT_WORK) TownDeliverFlour(&townLots[l]);
+    // Bakeries' targets follow the number of homes; irrigated farms stay wet (a stand-in for a
+    // well and watering: rain alone leaves the soil dry, wheat then grows at a third of its pace)
+    int breadTarget = TownBreadTarget();
+    for (int l = 0; l < townLotHighWater; l++) {
+        TownLot* L = &townLots[l];
+        if (!L->active) continue;
+        if (L->kind == LOT_WORK || L->kind == LOT_MILL)
+            for (int i = 0; i < L->wsCount; i++) {
+                Workshop* w = &workshops[L->ws[i]];
+                if (!w->active || w->billCount == 0 || w->bills[0].mode != BILL_DO_UNTIL_X) continue;
+                w->bills[0].targetCount = L->kind == LOT_WORK ? breadTarget : townFlourTarget;
+            }
+        if (L->kind == LOT_FARM && townIrrigation)
+            for (int y = L->y1; y <= L->y2; y++)
+                for (int x = L->x1; x <= L->x2; x++)
+                    if (FARM(x, y, L->z).tilled && GET_CELL_WETNESS(x, y, L->z) < 2) SET_CELL_WETNESS(x, y, L->z, 2);
+    }
+    for (int l = 0; l < townLotHighWater; l++) {
+        if (!townLots[l].active) continue;
+        if (townLots[l].kind == LOT_WORK) TownDeliver(&townLots[l], ITEM_FLOUR, townFlourDelivery, 4);   // a batch: Bake Loaves
+        if (townLots[l].kind == LOT_MILL) TownDeliver(&townLots[l], ITEM_WHEAT, townWheatDelivery, 2);   // Grind Wheat
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -732,6 +917,13 @@ static void TownRelinkLot(TownLot* L) {
             townWsLot[w] = (short)(L - townLots);
             L->ws[L->wsCount++] = w;
         }
+    L->storeCount = 0;
+    for (int sp = 0; sp < MAX_STOCKPILES && L->storeCount < TOWN_MAX_LOT_STORES; sp++) {
+        const Stockpile* st = &stockpiles[sp];
+        if (!st->active || st->z != L->z || st->x < L->x1 || st->x > L->x2 || st->y < L->y1 || st->y > L->y2) continue;
+        if (L->kind == LOT_HOME) continue;   // a home's only stockpile is the pantry (below)
+        L->stores[L->storeCount++] = sp;
+    }
     L->stockpile = -1;
     if (L->fridge >= 0) {
         const Furniture* fr = &furniture[L->fridge];
@@ -740,9 +932,10 @@ static void TownRelinkLot(TownLot* L) {
                 { L->stockpile = sp; break; }
     }
     L->supplyItem = -1;
-    if (L->kind == LOT_WORK)
+    ItemType supplyType = L->kind == LOT_WORK ? ITEM_FLOUR : ITEM_WHEAT;
+    if (TownIsWorkplace(L->kind))
         for (int i = 0; i < itemHighWaterMark; i++)
-            if (items[i].active && items[i].type == ITEM_FLOUR && items[i].state == ITEM_ON_GROUND && (int)items[i].z == L->z
+            if (items[i].active && items[i].type == supplyType && items[i].state == ITEM_ON_GROUND && (int)items[i].z == L->z
                 && (int)(items[i].x / CELL_SIZE) == L->supplyX && (int)(items[i].y / CELL_SIZE) == L->supplyY)
                 { L->supplyItem = i; break; }
 }

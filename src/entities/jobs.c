@@ -3394,9 +3394,11 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
                     break;
             }
 
-            // Spawn yield
-            for (int i = 0; i < yieldCount; i++) {
-                SpawnItem(px, py, (float)tz, yieldType);
+            // Spawn yield as one stack: one haul trip instead of one per grain (a town farm's
+            // 188 single wheat a round outran its haulers), and a quern can grind a stack of 2+
+            if (yieldCount > 0) {
+                int yIdx = SpawnItem(px, py, (float)tz, yieldType);
+                if (yIdx >= 0) items[yIdx].stackCount = yieldCount;
             }
             // Always spawn 1 seed (self-sustaining)
             if (seedType != ITEM_NONE) {
@@ -3416,6 +3418,7 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
             fc->frostDamaged = 0;
 
             EventLog("Harvested crop %d at (%d,%d,z%d) yield=%d frost=%d", crop, tx, ty, tz, yieldCount, frost);
+            TownNoteHarvest(tx, ty, tz);   // a town farm's first harvest ends the wheat import
         }
         return r;
     }

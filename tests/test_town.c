@@ -20,6 +20,8 @@ static bool test_verbose = false;
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
 #include "../src/core/time.h"
+#include "../src/simulation/farming.h"
+#include "../src/world/designations.h"
 #include <stdlib.h>
 #include "test_helpers.h"
 #include <string.h>
@@ -219,7 +221,7 @@ describe(town_residents) {
 }
 
 describe(town_bakery) {
-    it("a bakery gets stoves that bake bread forever, each with a counter within 2") {
+    it("a bakery gets stoves that bake until the pantries are stocked, each with a counter within 2") {
         SetupTown();
         ClearItems();
         ClearStockpiles();
@@ -234,7 +236,7 @@ describe(town_bakery) {
             if (w->type == WORKSHOP_COUNTER) counters++;
             if (w->type != WORKSHOP_STOVE) continue;
             stoves++;
-            expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_FOREVER);
+            expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_UNTIL_X && w->bills[0].targetCount > 0);
             expect(strcmp(stoveRecipes[w->bills[0].recipeIdx].name, "Bake Loaves") == 0);
             bool near = false;
             for (int j = 0; j < L->wsCount; j++) {
@@ -247,11 +249,8 @@ describe(town_bakery) {
         expect(counters >= stoves - 1);
         expect(L->beds == stoves);
     }
-    it("flour from outside town is delivered to the bakery and topped up") {
+    it("flour is imported only when the whole town has run out, and counted") {
         SetupTown();
-        ClearItems();
-        ClearStockpiles();
-        ClearWorkshops();
         TownAddRoad(0, 10, 39, 12, 1, NULL);
         int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
         townFlourDelivery = 20;
@@ -260,9 +259,18 @@ describe(town_bakery) {
         int fl = townLots[lot].supplyItem;
         expect(fl >= 0 && items[fl].type == ITEM_FLOUR && items[fl].stackCount == 20);
         expect((int)(items[fl].x / CELL_SIZE) == townLots[lot].supplyX);
-        items[fl].stackCount = 5;
+        expect(townImported[ITEM_FLOUR] == 20);
+        items[fl].stackCount = 5;                      // used, but the town still has 5: no import
         for (int t = 0; t < 60; t++) TownTick(1.0f);
-        expect(items[townLots[lot].supplyItem].stackCount == 20);
+        expect(townImported[ITEM_FLOUR] == 20);
+        items[fl].stackCount = 2;                      // less than a batch (4) anywhere: import
+        int elsewhere = SpawnItem(35 * CELL_SIZE, 35 * CELL_SIZE, 1, ITEM_FLOUR);   // flour across town counts
+        items[elsewhere].stackCount = 3;
+        for (int t = 0; t < 60; t++) TownTick(1.0f);
+        expect(townImported[ITEM_FLOUR] == 20);
+        DeleteItem(elsewhere);
+        for (int t = 0; t < 60; t++) TownTick(1.0f);
+        expect(townImported[ITEM_FLOUR] == 40);
     }
     it("removing a bakery removes its stoves and counters") {
         SetupTown();
@@ -278,6 +286,77 @@ describe(town_bakery) {
         int active = 0;
         for (int i = 0; i < MAX_WORKSHOPS; i++) active += workshops[i].active;
         expect(active == 0);
+    }
+}
+
+describe(town_grain) {
+    it("a mill gets querns that grind until N flour is in store, a granary, a job per quern") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_MILL, 2, 13, 9, 18, 1, NULL);
+        expect(lot >= 0);
+        const TownLot* L = &townLots[lot];
+        int querns = 0;
+        for (int i = 0; i < L->wsCount; i++) {
+            const Workshop* w = &workshops[L->ws[i]];
+            expect(w->type == WORKSHOP_QUERN);
+            expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_UNTIL_X);
+            expect(strcmp(quernRecipes[w->bills[0].recipeIdx].name, "Grind Wheat") == 0);
+            querns++;
+        }
+        expect(querns >= 2 && L->beds == querns);
+        expect(L->storeCount == 1);
+        const Stockpile* g = &stockpiles[L->stores[0]];
+        expect(g->allowedTypes[ITEM_WHEAT] && !g->allowedTypes[ITEM_FLOUR]);
+        expect(TownIsWorkplace(L->kind));
+    }
+    it("a farm marks its field for wheat, a barn row and a seed store with a seed per field cell") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_FARM, 2, 13, 8, 17, 1, NULL);   // 7x5 = 35 cells
+        expect(lot >= 0);
+        const TownLot* L = &townLots[lot];
+        int marked = 0;
+        for (int y = L->y1; y <= L->y2; y++)
+            for (int x = L->x1; x <= L->x2; x++)
+                if (HasFarmDesignation(x, y, 1)) {
+                    marked++;
+                    expect(FARM(x, y, 1).desiredCropType == CROP_WHEAT);
+                }
+        expect(marked == 28);   // every cell but the road-side row (seed store + barn)
+        int seeds = 0;
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].type == ITEM_WHEAT_SEEDS) seeds += items[i].stackCount;
+        expect(seeds == 28);
+        expect(L->storeCount == 2 && stockpiles[L->stores[0]].allowedTypes[ITEM_WHEAT_SEEDS]);
+        const Stockpile* barn = &stockpiles[L->stores[1]];
+        expect(barn->allowedTypes[ITEM_WHEAT] && barn->width * barn->height == 6);
+        expect(GRID(L->x1 + 3, L->y1 + 2, 1) == CELL_AIR);   // no building on a farm
+        expect(!TownIsWorkplace(L->kind));
+    }
+    it("removing a farm takes its field back to grass") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_FARM, 2, 13, 8, 17, 1, NULL);
+        int store = townLots[lot].stores[0], barn = townLots[lot].stores[1];
+        TownRemoveLot(lot);
+        expect(!stockpiles[barn].active);
+        bool clean = true;
+        for (int y = 13; y <= 17; y++)
+            for (int x = 2; x <= 8; x++)
+                if (HasFarmDesignation(x, y, 1) || FARM(x, y, 1).desiredCropType) clean = false;
+        expect(clean);
+        expect(!stockpiles[store].active);
+    }
+    it("a town farm's harvest is noted; harvests elsewhere are not") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_FARM, 2, 13, 8, 17, 1, NULL);
+        expect(!TownMakesWheat());
+        TownNoteHarvest(30, 30, 1);
+        expect(!TownMakesWheat());
+        TownNoteHarvest(townLots[lot].x1 + 2, townLots[lot].y1 + 2, 1);
+        expect(TownMakesWheat());
     }
 }
 
@@ -360,5 +439,6 @@ int main(int argc, char* argv[]) {
     test(town_residents);
     test(town_bakery);
     test(town_jobs);
+    test(town_grain);
     return summary();
 }

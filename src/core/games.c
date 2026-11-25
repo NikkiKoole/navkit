@@ -572,19 +572,30 @@ static void StartTown(void) {
     ResetTime();
     // A main street in from the west edge: where newcomers will arrive
     int midY = TOWN_SIZE / 2;
-    TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 8, midY + 1, 1, NULL);
+    TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 34, midY + 1, 1, NULL);
     // Starter homes (setting townStarter): 7x6 lots along the street, alternating sides
     for (int i = 0; i < townStarter; i++) {
         int x = 6 + (i / 2) * 9;
         if (i % 2 == 0) TownAddLot(LOT_HOME, x, midY - 7, x + 6, midY - 2, 1, NULL);
         else            TownAddLot(LOT_HOME, x, midY + 2, x + 6, midY + 7, 1, NULL);
     }
-    if (townStarter > 0) TownAddLot(LOT_WORK, 59, midY - 8, 70, midY - 2, 1, NULL);   // and a bakery
+    if (townStarter > 0) {   // and the grain chain at the east end: bakery, mill, farm
+        TownAddLot(LOT_WORK, 59, midY - 8, 70, midY - 2, 1, NULL);
+        TownAddLot(LOT_MILL, 59, midY + 2, 65, midY + 7, 1, NULL);    // 2 querns
+        TownAddLot(LOT_FARM, 74, midY - 8, 81, midY - 2, 1, NULL);    // barn row + 48 wheat cells for 12 people
+    }
     BuildEntrances();
     BuildGraph();
 
     dayLength = 360.0f;               // 6-minute day, walking 3x: as the dollhouse
     balance.baseMoverSpeed = 900.0f;
+    // A temperate climate: no 40 C summers for the wheat (the default 15 +- 25 C is survival's
+    // harsh one). Winter still stops it. No weather: rain on a flat map with no drainage floods
+    // the whole town (water 7/7 everywhere after a week); irrigated farms get their water anyway.
+    weatherEnabled = false;
+    baseSurfaceTemp = 12;
+    seasonalAmplitude = 10;
+    diurnalAmplitude = 4;
     gameMode = GAME_MODE_SANDBOX;     // nobody dies
     talkEnabled = true;
     autoGatherings = true;
@@ -695,6 +706,8 @@ static const GameTool townTools[] = {
     {HUD_TAB_BUILD, "Road", ACTION_DRAW_ROAD,     -1, NULL},
     {HUD_TAB_BUILD, "Home", ACTION_DRAW_LOT_HOME, -1, NULL},
     {HUD_TAB_BUILD, "Bakery", ACTION_DRAW_LOT_WORK, -1, NULL},
+    {HUD_TAB_BUILD, "Mill",   ACTION_DRAW_LOT_MILL, -1, NULL},
+    {HUD_TAB_NATURE, "Farm",  ACTION_DRAW_LOT_FARM, -1, NULL},
 };
 #undef BASIC_TOOLS
 #define TOOLS(list) list, (int)(sizeof(list) / sizeof(list[0]))

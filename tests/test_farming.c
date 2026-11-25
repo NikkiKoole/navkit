@@ -508,7 +508,7 @@ describe(farming) {
         int wheatCount = 0, seedCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (!items[i].active) continue;
-            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT) wheatCount += items[i].stackCount;   // one stack since 2026-11-25
             if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
         }
         expect(wheatCount == 4);  // Normal wheat yield
@@ -556,7 +556,7 @@ describe(farming) {
         int wheatCount = 0, seedCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (!items[i].active) continue;
-            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT) wheatCount += items[i].stackCount;   // one stack since 2026-11-25
             if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
         }
         expect(wheatCount == 2);  // Frost halves: 4 -> 2

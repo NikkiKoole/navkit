@@ -45,6 +45,8 @@ typedef struct {
     float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
     bool support;
     float animalFlee; bool huntThrow, animalRespawn;
+    int baseTemp, seasonAmp, dayAmp;   // climate (town sets a mild one)
+    bool weather;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -70,7 +72,8 @@ static void SnapshotOrRestoreSettings(void) {
                                            endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled, autoGatherings,
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
-                                           animalRespawnEnabled};
+                                           animalRespawnEnabled,
+                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, weatherEnabled};
         haveSavedSettings = true;
         return;
     }
@@ -91,6 +94,10 @@ static void SnapshotOrRestoreSettings(void) {
     animalFleeSpeed = savedSettings.animalFlee;
     huntThrowStones = savedSettings.huntThrow;
     animalRespawnEnabled = savedSettings.animalRespawn;
+    baseSurfaceTemp = savedSettings.baseTemp;
+    seasonalAmplitude = savedSettings.seasonAmp;
+    diurnalAmplitude = savedSettings.dayAmp;
+    weatherEnabled = savedSettings.weather;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).

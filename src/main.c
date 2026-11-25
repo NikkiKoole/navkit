@@ -1063,6 +1063,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
     }
     
+    // --dump-events FILE: the event log (core/event_log.c) after the run
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--dump-events") == 0) EventLogDump(argv[i + 1]);
+
     // --describe-mover N|all: the mover as the game describes it (same lines as
     // the hover tooltip, src/core/describe.c), after the run. --ticks 0 = as loaded.
     for (int i = 1; i + 1 < argc; i++) {
@@ -1116,6 +1120,11 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("Stuck (no progress > 2s): %d\n", stuckAfter);
     printf("Arrivals (reached goal): %d (%.1f per mover per game-minute)\n", arrivals,
            activeMovers > 0 && ticks > 0 ? arrivals / (double)activeMovers / (ticks * TICK_DT / 60.0) : 0.0);
+    if (townLotHighWater > 0) {
+        char townLine[256];
+        TownSummary(townLine, sizeof(townLine));
+        printf("%s\n", townLine);
+    }
     printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each)\n",
            findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0);
     if (trainChoicesConsidered > 0 || trainDecisions > 0)
