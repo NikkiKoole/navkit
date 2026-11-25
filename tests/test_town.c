@@ -263,12 +263,12 @@ describe(town_bakery) {
         items[fl].stackCount = 5;                      // used, but the town still has 5: no import
         for (int t = 0; t < 60; t++) TownTick(1.0f);
         expect(townImported[ITEM_FLOUR] == 20);
-        items[fl].stackCount = 2;                      // less than a batch (4) anywhere: import
-        int elsewhere = SpawnItem(35 * CELL_SIZE, 35 * CELL_SIZE, 1, ITEM_FLOUR);   // flour across town counts
-        items[elsewhere].stackCount = 3;
+        items[fl].stackCount = 2;                      // a stack too small for a batch (4) ...
+        int elsewhere = SpawnItem(35 * CELL_SIZE, 35 * CELL_SIZE, 1, ITEM_FLOUR);   // ... but a usable one across town
+        items[elsewhere].stackCount = 5;
         for (int t = 0; t < 60; t++) TownTick(1.0f);
         expect(townImported[ITEM_FLOUR] == 20);
-        DeleteItem(elsewhere);
+        items[elsewhere].stackCount = 3;               // two stacks (2 + 3), neither enough for a batch: import
         for (int t = 0; t < 60; t++) TownTick(1.0f);
         expect(townImported[ITEM_FLOUR] == 40);
     }
@@ -286,6 +286,28 @@ describe(town_bakery) {
         int active = 0;
         for (int i = 0; i < MAX_WORKSHOPS; i++) active += workshops[i].active;
         expect(active == 0);
+    }
+}
+
+describe(town_waste) {
+    it("rotten food in a town lot is thrown out and counted; elsewhere it stays") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        townFlourDelivery = 0;
+        townArrivalGH = 24.0f;
+        const TownLot* L = &townLots[lot];
+        int in = SpawnItem((L->x1 + 3) * CELL_SIZE + 16, (L->y1 + 3) * CELL_SIZE + 16, 1, ITEM_BREAD);
+        int out = SpawnItem(35 * CELL_SIZE + 16, 35 * CELL_SIZE + 16, 1, ITEM_BREAD);
+        int fresh = SpawnItem((L->x1 + 4) * CELL_SIZE + 16, (L->y1 + 3) * CELL_SIZE + 16, 1, ITEM_BREAD);
+        items[in].stackCount = 4;
+        items[in].condition = CONDITION_ROTTEN;
+        items[out].condition = CONDITION_ROTTEN;
+        for (int t = 0; t < 60; t++) TownTick(1.0f);
+        expect(!items[in].active);
+        expect(items[out].active);
+        expect(items[fresh].active);
+        expect(townWasted[ITEM_BREAD] == 4);
     }
 }
 
@@ -440,5 +462,6 @@ int main(int argc, char* argv[]) {
     test(town_bakery);
     test(town_jobs);
     test(town_grain);
+    test(town_waste);
     return summary();
 }

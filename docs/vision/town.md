@@ -199,6 +199,54 @@ farm -> mill -> bakery -> pantries, everything carried by the existing haul jobs
 - Starter street (`townStarter` > 0): bakery, mill (4 querns) and an 8x7 farm (barn row + 48
   wheat cells) at the east end.
 
+### The mill (2026-11-25, user: "look at mill next")
+
+Measured on one summer day (load a day-10 save, run a day): the 4 querns ground **12-13 flour
+of a possible 40**. What the millers did, from the event log:
+- **They walked home to drink**, 35 game minutes each way, in the middle of a shift: the mill
+  had no tap (the bakery lost its tap to the bread shelf). Everyone drinks 4-5 times a day.
+- **The wheat sat in the farm's barn**: haulers put a harvest in the nearest store, so the mill's
+  granary rarely got any and every grind started with a walk to the farm.
+- A rule "on shift, only work inside your workplace" (`TownJobAllowed` in `JobInRange`, which
+  every WorkGiver calls) changed nothing by itself (12 grinds), but it is what having a job means
+  (off shift and jobless: any work), so it stays.
+
+Fixed: **workplaces get a tap and a toilet** for the staff (one row in, right of the door), and
+**store priorities pull goods toward their users**: the mill's granary and the bakery's flour
+store 7, the farm's barn 4, the bread shelf 3, the pantries 7 (the existing stockpile
+maintenance moves goods to higher-ranked stores). The summer day: **19 grinds**; by day 10,
+140 (was 107).
+
+Then winter starved everyone (day 28: 12 starving, "49 bread in stock"): all 49 loaves were
+**rotten, in the pantries**. Rotten food filled every pantry slot (it only leaves for a refuse
+pile; the town has none) and "Do Until X" counted it, so the bakers stopped at 48 rotten loaves.
+Starving millers then dropped every job each 15 minutes (a critical need takes the job, the food
+search finds nothing, the job comes back): nothing worked. Fixed:
+- **Rotten food in a town lot is thrown out** (housekeeping, counted in `townWasted[]`, in the
+  `Town:` line): a stand-in for bins and a garbage truck (City 1999).
+- **Imports count usable stock only**: not rotten, in stacks big enough to use (20 single grains
+  had blocked the wheat import while the mill stood still).
+
+Also found and reported (fixed by navkit-e0, v118): `dayLength` was not saved, so after any load
+days ran 6x fast (60 s default); every game that sets a 6-minute day starved after a load.
+New: `--inspect --item` shows food condition; `--inspect --workshop` shows completions of
+"until" bills.
+
+**A year now** (`--set townStarter 6`, 12 people):
+
+| day | hunger | wheat in town | flour imported | wheat imported | bread wasted |
+|---|---|---|---|---|---|
+| 7 | 6 Full, 6 Peckish | 142 | 100 | 400 (start-up) | 0 |
+| 14 | 12 Full | 148 | 120 | 400 | 0 |
+| 21 | 7 Full, 4 Peckish, 1 Hungry | 20 | 180 | 660 | 45 |
+| 28 (winter) | 6 Full, 4 Peckish, 2 Hungry | 20 | 340 | 1500 | 45 |
+
+Summer is self-sufficient but for ~3 flour a day. Open, and a design call: **autumn and winter**.
+The farm (48 cells) can't build a winter stock: wheat runs out in autumn (season 0.8x, the mill
+now grinds what there is), and winter has no harvest at all (840 wheat imported). Options: a
+bigger farm, granaries big enough for 7 days (~170 wheat for 12 people), food that keeps
+(bread spoils in 5 days; flour and wheat don't), or winter imports as a cost once there's money.
+
 ### Save (v113)
 
 After the relations: the road rectangles, then per lot its geometry and the owners of its

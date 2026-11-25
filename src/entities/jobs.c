@@ -238,6 +238,7 @@ static float JobDistance(int moverIdx, int x, int y, int z) {
 }
 
 static bool JobInRange(int moverIdx, int x, int y, int z) {
+    if (!TownJobAllowed(moverIdx, x, y, z)) return false;   // a town worker on shift works at their workplace
     if (jobRangeLimit < 0.0f) return true;
     if (JobDistance(moverIdx, x, y, z) <= jobRangeLimit) return true;
     jobRangeSkipped = true;

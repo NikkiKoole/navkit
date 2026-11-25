@@ -416,7 +416,7 @@ static void print_workshop(int idx) {
         if (bill->mode == BILL_DO_X_TIMES) {
             printf(" (%d/%d)", bill->completedCount, bill->targetCount);
         } else if (bill->mode == BILL_DO_UNTIL_X) {
-            printf(" (until %d)", bill->targetCount);
+            printf(" (until %d, completed: %d)", bill->targetCount, bill->completedCount);
         } else {
             printf(" (completed: %d)", bill->completedCount);
         }

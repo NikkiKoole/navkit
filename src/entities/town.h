@@ -100,6 +100,7 @@ void TownNoteHarvest(int x, int y, int z);        // jobs.c: a crop was harveste
 bool TownMakesFlour(void);                        // a town mill has ground flour
 bool TownMakesWheat(void);                        // a town farm has harvested
 extern int townImported[];                        // emergency imports per item type (not saved)
+extern int townWasted[];                          // rotten food thrown out per item type (not saved)
 // One line for headless runs and the console: people, homes, jobs, stocks, imports
 void TownSummary(char* buf, int len);                          // arrivals, leaving owners, flour deliveries
 int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
@@ -122,6 +123,10 @@ int  TownUnemployed(void);                        // residents (with a home) wit
 bool TownLotOpen(int lot);                        // a workplace's opening hours, now
 // May this mover take a craft job at this workshop? (jobs.c WorkGiver_Craft). Cheap when no town.
 bool TownMayCraftAt(int workshopIdx, int moverIdx);
+// May this mover take a job whose target is this cell? (jobs.c JobInRange, which every WorkGiver
+// calls). A worker on shift (their workplace open) only works inside their workplace; off shift,
+// and anyone without a job, anywhere. Cheap when no town.
+bool TownJobAllowed(int moverIdx, int x, int y, int z);
 
 // May this mover rest on / use this furniture? (needs.c bed search). Cheap when no town.
 bool TownMayUseFurniture(int furnIdx, int moverIdx);
