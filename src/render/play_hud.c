@@ -9,6 +9,8 @@
 // Layout() runs twice per frame, like the inspector panel: from main.c before
 // input (draw == false) to know which screen area to keep clicks out of, and
 // from DrawPlayerHUD to draw and handle clicks.
+#include "../core/describe.h"
+#include "../entities/town.h"
 #include "play_hud.h"
 #include "../game_state.h"
 #include "../core/games.h"
@@ -225,6 +227,19 @@ static Rectangle Layout(bool draw) {
 Rectangle PlayHudRect(void) {
     if (devUI) return (Rectangle){0, 0, 0, 0};
     return Layout(false);
+}
+
+// The town at a glance, top centre: people, homeless, jobless, food in store, imports
+// (describe.c DescribeTownOverview). Click a building for its own panel.
+void DrawTownOverview(void) {
+    if (townLotHighWater == 0) return;
+    char line[256];
+    DescribeTownOverview(line, sizeof(line));
+    int w = MeasureTextUI(line, HUD_FONT) + HUD_PAD * 2;
+    Rectangle r = {(GetScreenWidth() - w) / 2.0f, 6, (float)w, HUD_FONT + 10.0f};
+    DrawRectangleRec(r, (Color){20, 22, 32, 220});
+    DrawRectangleLinesEx(r, 1, (Color){110, 110, 160, 255});
+    DrawTextShadow(line, (int)(r.x + HUD_PAD), (int)(r.y + 5), HUD_FONT, RAYWHITE);
 }
 
 void DrawPlayHudTabs(void) {

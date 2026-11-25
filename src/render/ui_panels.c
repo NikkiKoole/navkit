@@ -224,6 +224,7 @@ static void DrawPlayerHUD(void) {
 
     // Tools and the mover roster: tab bar bottom left (src/render/play_hud.c)
     DrawPlayHudTabs();
+    DrawTownOverview();   // town games: the town in one line, top centre
     y += 4;
 
     // New game: one button per game (src/core/games.c)

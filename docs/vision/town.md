@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: steps 1-4b on master (2026-11-25); step 6 (the grain chain) on branch `town`. Next: overview / lot inspector, winter stores. Game `town`.
+> Status (2026-11-25): steps 1-6, the mill, winter granary, overview and lot inspector on master. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -280,6 +280,25 @@ bigger farm, granaries big enough for 7 days (~170 wheat for 12 people), food th
   99-cell farm doesn't grow enough surplus to fill the granary (550 room, 98 + seed in it at
   winter). Levers: a bigger farm (the player can draw one), two farms. Also slowly falling:
   fertility (wheat takes 20 a harvest; 128 -> 88 after a year: growth 0.63x -> 0.5x).
+
+### Overview and lot inspector (2026-11-25, step 5)
+
+- **Click inside a lot** (play mode): the lot is selected (a mover or animal standing there
+  still wins; the lot comes before its own stoves and stores) and outlined; the inspector panel
+  shows `DescribeLot` (describe.c):
+  - Home: beds (free), each resident with hunger and at home / out, bread in the pantry.
+  - Bakery / mill: open or closed and the hours, jobs filled, each worker (at work / out), flour
+    in store and bread on the shelf / wheat in the granary, batches baked / flour ground so far.
+  - Farm: field cells growing / ripe / waiting / not tilled yet, average fertility (tilled cells),
+    heavy weeds, "Winter: nothing grows" / "Too late to sow before winter", seed and barn, irrigation.
+  - Granary: wheat and flour held, a fill meter.
+  Lot stock counts everything lying in the lot (stored or not).
+- **Town overview bar**, top centre of the play HUD when there is a town
+  (`DescribeTownOverview`): people, homeless, without a job, bread / flour / wheat (store room),
+  imports.
+- Headless: `--describe-lot N|all` prints the same lines after the run.
+- Seen with it at day 12: 86 of the farm's 96 cells had heavy weeds (growth 0.5x): tending
+  doesn't keep up, likely part of why the farm can't build a winter surplus.
 
 ### Save (v113)
 

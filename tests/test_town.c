@@ -20,6 +20,8 @@ static bool test_verbose = false;
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
 #include "../src/core/time.h"
+#include "../src/core/describe.h"
+#include "../src/core/selection.h"
 #include "../src/simulation/farming.h"
 #include "../src/world/designations.h"
 #include <stdlib.h>
@@ -474,6 +476,55 @@ describe(town_jobs) {
     }
 }
 
+static bool DescHas(const DescLines* d, const char* text) {
+    for (int i = 0; i < d->count; i++) if (strstr(d->lines[i].text, text)) return true;
+    return false;
+}
+
+describe(town_inspector) {
+    it("a click inside a lot selects the lot, even on its stove or store") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        const Workshop* w = &workshops[townLots[lot].ws[0]];
+        Selection sel = PickSelectionAt(w->x * CELL_SIZE + 16, w->y * CELL_SIZE + 16, 1);
+        expect(sel.kind == SEL_LOT && sel.idx == lot);
+        sel = PickSelectionAt(30 * CELL_SIZE + 16, 30 * CELL_SIZE + 16, 1);   // open ground
+        expect(sel.kind == SEL_NONE);
+    }
+    it("describes a home: beds, who lives there, the pantry") {
+        int lot = SetupStreetWithHome();
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        DescLines d;
+        DescribeLot(lot, &d);
+        expect(DescHas(&d, "Home #"));
+        expect(DescHas(&d, "Beds: 1 (0 free)"));
+        expect(DescHas(&d, "Pantry:"));
+        expect(d.count >= 5);   // title, size, beds, one resident, pantry
+    }
+    it("describes a bakery, a mill, a farm and a granary") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int bakery = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        int mill = TownAddLot(LOT_MILL, 14, 13, 20, 18, 1, NULL);
+        int farm = TownAddLot(LOT_FARM, 22, 13, 28, 17, 1, NULL);
+        int granary = TownAddLot(LOT_GRANARY, 2, 0, 10, 9, 1, NULL);
+        DescLines d;
+        DescribeLot(bakery, &d);
+        expect(DescHas(&d, "Bakery #") && DescHas(&d, "Jobs: 0 of") && DescHas(&d, "Flour in store"));
+        DescribeLot(mill, &d);
+        expect(DescHas(&d, "Mill #") && DescHas(&d, "Wheat in the granary"));
+        DescribeLot(farm, &d);
+        expect(DescHas(&d, "Farm #") && DescHas(&d, "Field: 28 cells") && DescHas(&d, "Seed: 28"));
+        DescribeLot(granary, &d);
+        expect(DescHas(&d, "Granary #") && DescHas(&d, "Holds 0 wheat, 0 flour"));
+        char line[256];
+        DescribeTownOverview(line, sizeof(line));
+        expect(strstr(line, "people") != NULL && strstr(line, "imported") != NULL);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -484,5 +535,6 @@ int main(int argc, char* argv[]) {
     test(town_jobs);
     test(town_grain);
     test(town_waste);
+    test(town_inspector);
     return summary();
 }

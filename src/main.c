@@ -1096,6 +1096,20 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         printf("Event log (%d entries) written to %s\n", EventLogCount(), argv[i + 1]);
     }
 
+    // --describe-lot N|all: a town lot as the inspector describes it (src/core/describe.c), after the run
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--describe-lot") != 0) continue;
+        bool all = strcmp(argv[i + 1], "all") == 0;
+        int only = all ? -1 : atoi(argv[i + 1]);
+        for (int l = 0; l < townLotHighWater; l++) {
+            if ((!all && l != only) || !townLots[l].active) continue;
+            DescLines d;
+            DescribeLot(l, &d);
+            printf("\n");
+            for (int k = 0; k < d.count; k++) printf("%s\n", d.lines[k].text);
+        }
+    }
+
     // --describe-cell X,Y,Z: the cell as the game describes it (room, materials, ...), after
     // the run. Repeatable.
     for (int i = 1; i + 1 < argc; i++) {

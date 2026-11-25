@@ -107,7 +107,13 @@ extern int townImported[];                        // emergency imports per item 
 extern int townWasted[];                          // rotten food thrown out per item type (not saved)
 // One line for headless runs and the console: people, homes, jobs, stocks, imports
 void TownSummary(char* buf, int len);
-int  TownStoreCapacity(void);                     // wheat + flour the town's stores can hold                          // arrivals, leaving owners, flour deliveries
+int  TownStoreCapacity(void);                     // wheat + flour the town's stores can hold
+// For the lot inspector (describe.c DescribeLot)
+int  TownLotStock(int lot, int itemType);         // units of a type in the lot's stores (and pantry)
+int  TownLotStoreRoom(int lot);                   // units the lot's stores hold when full
+typedef struct { int fields, tilled, waiting, growing, ripe, fertilitySum, heavyWeeds; } TownFarmStats;
+TownFarmStats TownFarmStatsOf(int lot);
+int  TownTotalStock(int itemType);                // units of a type anywhere in town                          // arrivals, leaving owners, flour deliveries
 int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
 int  TownResidents(int lot);                      // movers who live there
 int  TownFreeBeds(void);                          // unowned beds in all homes

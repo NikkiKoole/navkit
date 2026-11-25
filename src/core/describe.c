@@ -1048,6 +1048,97 @@ void DescribeStockpile(int spIdx, DescLines* out) {
 }
 
 // ---------------------------------------------------------------------------
+// Town lot
+// ---------------------------------------------------------------------------
+
+// One person in a lot's list: name, hunger, and for a worker whether they are at work now
+static void DescribeLotPerson(int m, int lot, bool worker, DescLines* out) {
+    DescTone tone;
+    const char* hunger = HungerLabel(movers[m].hunger, &tone);
+    const TownLot* L = &townLots[lot];
+    int mx = (int)(movers[m].x / CELL_SIZE), my = (int)(movers[m].y / CELL_SIZE);
+    bool here = (int)movers[m].z == L->z && mx >= L->x1 && mx <= L->x2 && my >= L->y1 && my <= L->y2;
+    const char* where = here ? (worker ? "at work" : "at home") : "out";
+    DescAdd(out, tone == DESC_GOOD || tone == DESC_GREAT ? DESC_NORMAL : tone, "  %s: %s, %s", MoverDisplayName(m), hunger, where);
+}
+
+void DescribeLot(int lot, DescLines* out) {
+    out->count = 0;
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return;
+    const TownLot* L = &townLots[lot];
+    DescAdd(out, DESC_TITLE, "%s #%d", TownLotKindName(L->kind), lot);
+    DescAdd(out, DESC_MUTED, "%dx%d lot", L->x2 - L->x1 + 1, L->y2 - L->y1 + 1);
+    switch (L->kind) {
+        case LOT_HOME: {
+            int people = TownResidents(lot);
+            DescAdd(out, people < L->beds ? DESC_INFO : DESC_NORMAL, "Beds: %d (%d free)", L->beds, L->beds - people);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownHomeOf(m) == lot) DescribeLotPerson(m, lot, false, out);
+            int bread = TownLotStock(lot, ITEM_BREAD);
+            DescAdd(out, bread == 0 ? DESC_WARN : DESC_NORMAL, "Pantry: %d bread", bread);
+            break;
+        }
+        case LOT_WORK:
+        case LOT_MILL: {
+            bool open = TownLotOpen(lot);
+            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            int workers = TownWorkers(lot);
+            DescAdd(out, workers < L->beds ? DESC_WARN : DESC_NORMAL, "Jobs: %d of %d filled", workers, L->beds);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownJobOf(m) == lot) DescribeLotPerson(m, lot, true, out);
+            int made = 0;
+            for (int i = 0; i < L->wsCount; i++) {
+                const Workshop* w = &workshops[L->ws[i]];
+                if (w->active && w->billCount > 0) made += w->bills[0].completedCount;
+            }
+            if (L->kind == LOT_WORK) {
+                DescAdd(out, DESC_NORMAL, "Flour in store: %d", TownLotStock(lot, ITEM_FLOUR));
+                DescAdd(out, DESC_NORMAL, "Bread on the shelf: %d", TownLotStock(lot, ITEM_BREAD));
+                DescAdd(out, DESC_INFO, "Baked so far: %d batches (%d loaves)", made, made * 4);
+            } else {
+                DescAdd(out, DESC_NORMAL, "Wheat in the granary: %d", TownLotStock(lot, ITEM_WHEAT));
+                DescAdd(out, DESC_INFO, "Ground so far: %d flour", made);
+            }
+            break;
+        }
+        case LOT_FARM: {
+            TownFarmStats st = TownFarmStatsOf(lot);
+            DescAdd(out, DESC_NORMAL, "Field: %d cells", st.fields);
+            DescAdd(out, DESC_GOOD, "  growing %d, ripe %d", st.growing, st.ripe);
+            DescAdd(out, st.waiting > st.fields / 2 ? DESC_WARN : DESC_MUTED, "  waiting to be planted %d", st.waiting);
+            if (st.tilled < st.fields) DescAdd(out, DESC_MUTED, "  not tilled yet %d", st.fields - st.tilled);
+            if (st.tilled > 0) {
+                int fert = st.fertilitySum / st.tilled;
+                DescAdd(out, fert < FERTILITY_LOW ? DESC_WARN : DESC_NORMAL, "Fertility: %d/255", fert);
+            }
+            if (st.heavyWeeds > 0) DescAdd(out, DESC_WARN, "Heavy weeds: %d cells", st.heavyWeeds);
+            if (CropSeasonModifier(CROP_WHEAT, (int)GetCurrentSeason()) <= 0.0f) DescAdd(out, DESC_COLD, "Winter: nothing grows");
+            else if (!CropWorthPlantingNow(CROP_WHEAT)) DescAdd(out, DESC_INFO, "Too late to sow before winter");
+            DescAdd(out, DESC_NORMAL, "Seed: %d, barn: %d wheat", TownLotStock(lot, ITEM_WHEAT_SEEDS), TownLotStock(lot, ITEM_WHEAT));
+            DescAdd(out, DESC_INFO, "Irrigated: %s", townIrrigation ? "yes" : "no (rain only)");
+            break;
+        }
+        case LOT_GRANARY: {
+            int wheat = TownLotStock(lot, ITEM_WHEAT), flour = TownLotStock(lot, ITEM_FLOUR), room = TownLotStoreRoom(lot);
+            DescAdd(out, DESC_NORMAL, "Holds %d wheat, %d flour", wheat, flour);
+            char meter[48];
+            DescFillMeter(meter, sizeof(meter), room > 0 ? (float)(wheat + flour) / room : 0.0f, 10);
+            DescAdd(out, DESC_NORMAL, "Full: %s (%d of %d)", meter, wheat + flour, room);
+            break;
+        }
+        default: break;
+    }
+}
+
+void DescribeTownOverview(char* buf, int len) {
+    int people = 0;
+    for (int i = 0; i < moverCount; i++) people += movers[i].active;
+    snprintf(buf, len, "%d people   %d homeless   %d without a job   bread %d   flour %d   wheat %d (stores %d)   imported %d wheat, %d flour",
+             people, TownHomeless(), TownUnemployed(), TownTotalStock(ITEM_BREAD), TownTotalStock(ITEM_FLOUR),
+             TownTotalStock(ITEM_WHEAT), TownStoreCapacity(), townImported[ITEM_WHEAT], townImported[ITEM_FLOUR]);
+}
+
+// ---------------------------------------------------------------------------
 // Train station
 // ---------------------------------------------------------------------------
 

@@ -400,6 +400,55 @@ static void TownFurnishGranary(TownLot* L) {
     L->beds = 0;   // no jobs: the haulers fill and empty it
 }
 
+// Everything of a type lying in the lot, stored or not (new seed waits on its store's cell
+// until someone carries it in)
+int TownLotStock(int lot, int itemType) {
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return 0;
+    const TownLot* L = &townLots[lot];
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        const Item* it = &items[i];
+        if (!it->active || it->type != itemType || (int)it->z != L->z) continue;
+        if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) continue;
+        int x = (int)(it->x / CELL_SIZE), y = (int)(it->y / CELL_SIZE);
+        if (x >= L->x1 && x <= L->x2 && y >= L->y1 && y <= L->y2) n += it->stackCount;
+    }
+    return n;
+}
+
+int TownLotStoreRoom(int lot) {
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return 0;
+    const TownLot* L = &townLots[lot];
+    int n = 0;
+    if (L->stockpile >= 0 && stockpiles[L->stockpile].active) n += stockpiles[L->stockpile].maxStackSize;
+    for (int i = 0; i < L->storeCount; i++) {
+        const Stockpile* s = &stockpiles[L->stores[i]];
+        if (s->active) n += s->width * s->height * s->maxStackSize;
+    }
+    return n;
+}
+
+TownFarmStats TownFarmStatsOf(int lot) {
+    TownFarmStats st = {0};
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active || townLots[lot].kind != LOT_FARM) return st;
+    const TownLot* L = &townLots[lot];
+    for (int y = L->y1; y <= L->y2; y++)
+        for (int x = L->x1; x <= L->x2; x++) {
+            FarmCell fc = FARM(x, y, L->z);
+            if (fc.desiredCropType == CROP_NONE && !HasFarmDesignation(x, y, L->z)) continue;
+            st.fields++;
+            if (fc.tilled) { st.tilled++; st.fertilitySum += fc.fertility; }
+            if (fc.weedLevel >= WEED_THRESHOLD) st.heavyWeeds++;
+            if (fc.cropType == CROP_NONE) st.waiting++;
+            else if (fc.growthStage == CROP_STAGE_RIPE) st.ripe++;
+            else st.growing++;
+        }
+    return st;
+}
+
+static int TownStockAll(ItemType type);
+int TownTotalStock(int itemType) { return TownStockAll((ItemType)itemType); }
+
 // Wheat and flour a town's stores can hold (barns, granaries, the mill's and bakeries' stores)
 int TownStoreCapacity(void) {
     int n = 0;

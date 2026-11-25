@@ -1,4 +1,5 @@
 // selection.c - What the player has clicked on (see selection.h)
+#include "../entities/town.h"
 #include "selection.h"
 #include "../game_state.h"
 #include "../entities/mover.h"
@@ -34,6 +35,7 @@ bool SelectionValid(void) {
         case SEL_BLUEPRINT: ok = selection.idx >= 0 && selection.idx < MAX_BLUEPRINTS && blueprints[selection.idx].active; break;
         case SEL_WORKSHOP:  ok = selection.idx >= 0 && selection.idx < MAX_WORKSHOPS && workshops[selection.idx].active; break;
         case SEL_STOCKPILE: ok = selection.idx >= 0 && selection.idx < MAX_STOCKPILES && stockpiles[selection.idx].active; break;
+        case SEL_LOT:       ok = selection.idx >= 0 && selection.idx < townLotHighWater && townLots[selection.idx].active; break;
     }
     if (!ok) ClearSelection();
     return ok;
@@ -100,6 +102,8 @@ Selection PickSelectionAt(float wx, float wy, int z) {
     if (a >= 0) return (Selection){SEL_ANIMAL, a};
     int cx = (int)floorf(wx / CELL_SIZE), cy = (int)floorf(wy / CELL_SIZE);
     if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight && z >= 0 && z < gridDepth) {
+        int lot = TownLotAt(cx, cy, z);   // the lot is what a town player means (it lists its stores)
+        if (lot >= 0) return (Selection){SEL_LOT, lot};
         int ws = FindWorkshopAt(cx, cy, z);
         if (ws >= 0) return (Selection){SEL_WORKSHOP, ws};
         int sp = GetStockpileAtGrid(cx, cy, z);
