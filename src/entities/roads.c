@@ -10,6 +10,8 @@
 
 float rdSetback = 7.0f;
 bool rdLaneRules = true;
+bool rdClasses = false;
+float rdClassSpeed[RD_CLS_COUNT] = {6.0f, 9.0f, 12.0f, 15.0f};
 RdNode rdNodes[RD_MAX_NODES];
 RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
@@ -46,6 +48,7 @@ static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 
 void RoadsClear(void) {
     rdNodeCount = rdEdgeCount = rdSegCount = rdPtCount = rdLaneCount = rdBayCount = 0;
+    rdClasses = false;
     memset(rdSegExtra, 0, sizeof(rdSegExtra));
 }
 
@@ -69,6 +72,7 @@ int RoadAddEdge(int a, int b, float bendCells) {
     e->a = a; e->b = b; e->bend = bendCells;
     e->lane[0] = e->lane[1] = e->lane2[0] = e->lane2[1] = -1;
     e->lanesPerDir = 1;
+    e->cls = RD_CLS_STREET;
     rdNodes[a].edge[rdNodes[a].nEdge++] = rdEdgeCount;
     rdNodes[b].edge[rdNodes[b].nEdge++] = rdEdgeCount;
     return rdEdgeCount++;
@@ -77,7 +81,20 @@ int RoadAddEdge(int a, int b, float bendCells) {
 void RoadSetLifted(int edge) { if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lifted = true; }
 
 void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lanes its way
-    if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lanesPerDir = 2;
+    if (edge >= 0 && edge < rdEdgeCount) { rdEdges[edge].lanesPerDir = 2; if (rdEdges[edge].cls < RD_CLS_ARTERIAL) rdEdges[edge].cls = RD_CLS_ARTERIAL; }
+}
+void RoadSetClass(int edge, int cls) { if (edge >= 0 && edge < rdEdgeCount && cls >= 0 && cls < RD_CLS_COUNT) rdEdges[edge].cls = cls; }
+int RoadSegClass(int seg) {
+    const RdSeg* S = &rdSegs[seg];
+    if (S->kind == RD_LANE) return rdEdges[S->edge].cls;
+    if (S->kind == RD_CONN) { int a = RoadSegClass(S->from), b = RoadSegClass(S->to); return a < b ? a : b; }
+    return RD_CLS_STREET;   // (bays)
+}
+float RoadSegSpeed(int seg) { return rdClassSpeed[rdClasses ? RoadSegClass(seg) : RD_CLS_STREET]; }
+int RoadNodeClass(int node) {
+    int c = RD_CLS_LANE;
+    for (int k = 0; k < rdNodes[node].nEdge; k++) if (rdEdges[rdNodes[node].edge[k]].cls > c) c = rdEdges[rdNodes[node].edge[k]].cls;
+    return c;
 }
 
 // ---------------------------------------------------------------------------
@@ -726,13 +743,19 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
     // heap it's the best route)
     const RdSeg* G = &rdSegs[toLane];
     float gx = rdX[G->p0 + G->n - 1], gy = rdY[G->p0 + G->n - 1];
-#define RD_GUESS(l) sqrtf((rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) * (rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) + \
+    // (classes: costs are times, as street px - a lane's length x street speed / its speed;
+    // the guess at the fastest class's speed so it stays a lower bound)
+    float vSt = rdClassSpeed[RD_CLS_STREET], vTop = vSt;
+    if (rdClasses) for (int k = 0; k < RD_CLS_COUNT; k++) if (rdClassSpeed[k] > vTop) vTop = rdClassSpeed[k];
+    float guessK = vSt / vTop;
+#define RD_LEN(l) (rdClasses ? rdSegs[l].len * vSt / RoadSegSpeed(l) : rdSegs[l].len)
+#define RD_GUESS(l) guessK * sqrtf((rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) * (rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) + \
                           (rdY[rdSegs[l].p0 + rdSegs[l].n - 1] - gy) * (rdY[rdSegs[l].p0 + rdSegs[l].n - 1] - gy))
     // Start: the lanes reachable from fromLane's end (fromLane itself only by a loop)
     const RdSeg* f = &rdSegs[fromLane];
     for (int k = 0; k < f->nOut; k++) {
         int c = f->out[k], l = rdSegs[c].to;
-        float d = rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
+        float d = rdSegs[c].len + RD_LEN(l) + rdSegExtra[l];
         if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
     }
     if (rdLaneRules && f->parallel >= 0) {   // changing to the lane beside us (prevConn -2: a lane change, no curve)
@@ -750,7 +773,7 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
         const RdSeg* b = &rdSegs[best];
         for (int k = 0; k < b->nOut; k++) {
             int c = b->out[k], l = rdSegs[c].to;
-            float d = dist[best] + rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
+            float d = dist[best] + rdSegs[c].len + RD_LEN(l) + rdSegExtra[l];
             if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
         }
         if (rdLaneRules && b->parallel >= 0) {
@@ -760,6 +783,7 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
         }
     }
 #undef RD_GUESS
+#undef RD_LEN
     // Walk back: toLane, conn, lane, ..., fromLane (stop when we reach fromLane the first time
     // we walk off the start's successors; fromLane == toLane loops round once)
     static RdSegId rev[RD_ROUTE_TMP];

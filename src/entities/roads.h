@@ -30,6 +30,11 @@
 #define RD_SETBACK rdSetback  // cells: lanes stop this far from a junction's centre (room for the turns)
 extern float rdSetback;       // (default 7; the scenario sets it from carCitySetback)
 extern bool rdLaneRules;      // lane connections (turns only from their lane) + routes that change lanes
+// Road classes (FHWA / OSM): the bigger road is faster, goes first at a junction without lights,
+// and gets the lights (arterial and up). Off (rdClasses false): every road a street.
+typedef enum { RD_CLS_LANE, RD_CLS_STREET, RD_CLS_ARTERIAL, RD_CLS_HIGHWAY, RD_CLS_COUNT } RdClass;
+extern bool rdClasses;        // speed limits / route costs / priority by class (RoadsClear: off)
+extern float rdClassSpeed[RD_CLS_COUNT];   // cells/s: lane, street, arterial, highway
 
 typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
 typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)
@@ -62,6 +67,7 @@ typedef struct {
     int lanesPerDir;   // 1, or 2 on an avenue (12 cells wide)
     bool oneWay;       // one lane, a -> b, on the centre line
     bool arc;          // an arc round (arcX, arcY) at radius arcR px, angle decreasing (roundabouts)
+    int cls;           // RdClass (RoadAddEdge: street; RoadSetAvenue: arterial)
     bool lifted;       // passes over the roads and junctions it crosses (RoadSetLifted): no junction there
     int nLift;         // ... where it must be a level up: centre arc length s0..s1 (px), at level z
     float liftS0[32], liftS1[32], liftZ[32];
@@ -105,7 +111,11 @@ int RoadConnTurn(int conn);   // a junction curve: -1 turns left, 0 straight on,
 void RoadCarveDisc(float cellX, float cellY, float rCells, int z);   // open ground (air) in a disc
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
-void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild)
+void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild); an arterial
+void RoadSetClass(int edge, int cls);     // (RdClass)
+int RoadSegClass(int seg);                // a lane's road's class; a connector: the smaller of its lanes'
+float RoadSegSpeed(int seg);              // cells/s: its class's speed limit (rdClasses off: a street's)
+int RoadNodeClass(int node);              // the biggest class of the roads at a junction
 // Heights: a lifted road passes a level over every road and junction it crosses (no shared
 // junction = grade separated), ramping at RD_RAMP_CELLS per level and back to its junctions'
 // level at both ends. RoadsCarve carves each point at its level and lays a deck (floor) where the

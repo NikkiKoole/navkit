@@ -696,6 +696,32 @@ ramps 14 cells a level.)
 - Seen in screenshots: the deck uses the pavements' concrete (looks the same); pedestrians inside a
   car 63 samples vs 37 (not looked into).
 
+### Phase 2 built: road classes (2026-11-25)
+
+- `RdEdge.cls` (`RdClass`): lane / street / arterial / highway. `RoadAddEdge` makes a street,
+  `RoadSetAvenue` an arterial, `RoadSetClass` anything. `rdClasses` (off after `RoadsClear`; the
+  city turns it on in slot mode, setting `carCityClasses`) switches the rest on:
+  - **Speed limits** `rdClassSpeed` 6 / 9 / 12 / 15 cells/s (a street = the old top speed). Slot
+    cars: `SlSegV` per segment (a curve: the smaller road's), so a car slows before a smaller
+    road the way it slows for a curve.
+  - **Routes by time**: a lane costs its length x street speed / its speed; the A* guess is
+    scaled by the fastest class so it stays a lower bound.
+  - **Priority to the bigger road** where there are no lights: requests sorted by class (after
+    roundabout traffic), and a car from a smaller road isn't given its curve while a car on a
+    bigger road is within its stopping distance + 2 slots of the line for a crossing curve
+    (`SlYieldToBigger`).
+  - **Lights only where an arterial or bigger meets** (`TrafficSetupLights`): the grid's
+    street x street junctions have none now.
+- The flyover is a highway, still one lane each way: two lanes (12 cells) arriving at a street
+  corner at ~25 degrees overlapped the corner's streets for ~20 cells (touches; a longer setback
+  didn't fix it). Its ends want interchanges (phase 3).
+- 250 cars, 10 min, slot mode: grid (flyover + hill) 599 trips (485 without classes), 0 touches,
+  0 jumps; grid without the flyover 548 (523). Manhattan 573 (589 without): its streets all meet
+  avenues, so only speeds and routes change. The avenues fill up (routes by time pull traffic onto
+  them: arterial cars ~1 cell/s now).
+- Not done: pedestrians kept off highways (the flyover is up a level, nobody reaches it; an
+  at-grade highway would need it); steered cars ignore classes (`rdClasses` only in slot mode).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

@@ -121,6 +121,7 @@ void TrafficSetupLights(bool on) {
     for (int nd = 0; nd < rdNodeCount; nd++) {
         const RdNode* N = &rdNodes[nd];
         if (N->nEdge != 4) continue;
+        if (rdClasses && RoadNodeClass(nd) < RD_CLS_ARTERIAL) continue;   // streets: the bigger road first, no lights
         // roads by their direction from here; opposite ones (0,2) and (1,3) after sorting
         int idx[4]; float ang[4];
         for (int k = 0; k < 4; k++) {

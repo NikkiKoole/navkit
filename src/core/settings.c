@@ -723,6 +723,8 @@ static const Setting settings[] = {
       "Slot traffic: right turns only from the right-hand lane, left turns only from the left lane, cars get into lane in time (like Trafficity). Steered cars keep the old rules for now (with these they deadlock - work to do). Restart the scenario to apply."),
     SET_FLOAT("carCityWalkSpeed", "City Walking Speed (slot traffic)", "Experiments/Cars", carCityWalkSpeed, 0.05f, 0.3f, 6.0f,
       "cars-city slot traffic: how fast the pedestrians walk, cells/s (a real person ~0.6, colony movers ~5 - next to cars that average ~2-3 across town nobody would drive). Restart the scenario to apply.", NULL),
+    SET_BOOL("carCityClasses", "City Road Classes (slot traffic)", "Experiments/Cars", carCityClasses,
+      "cars-city slot traffic: road classes - highway (the flyover, 15 cells/s), arterial (the avenues, 12), street (9), lane (6). Routes go by time, the bigger road goes first at a junction without lights, and lights only where an arterial or bigger meets. Restart the scenario to apply."),
     SET_BOOL("carCityFlyover", "City Flyover (slot traffic)", "Experiments/Cars", carCityFlyover,
       "cars-city slot traffic, grid layout: an elevated road from the top-left junction to the bottom-right one, passing a level over every road and junction between (ramps ~14 cells a level, a deck where it's over open space). Restart the scenario to apply."),
     SET_BOOL("carCityHill", "City Hill (slot traffic)", "Experiments/Cars", carCityHill,

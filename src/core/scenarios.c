@@ -3744,9 +3744,12 @@ static void SetupCarsCity(void) {
         // A flyover: corner to corner, a level over every road and junction it crosses
         if (carCitySlots && carCityFlyover) {
             int fe = RoadAddEdge(0, nodes - 1, 0);
-            if (fe >= 0) RoadSetLifted(fe);
+            // (a highway, one lane each way: two would overlap the corner's streets for ~20 cells,
+            // arriving at ~25 degrees - its ends want interchanges, not a street corner)
+            if (fe >= 0) { RoadSetLifted(fe); RoadSetClass(fe, RD_CLS_HIGHWAY); }
         }
     }
+    rdClasses = carCitySlots && carCityClasses;   // (RoadsClear turned it off)
     RoadsBuild(carLatAccel);
     // A hill (two levels) over part of the grid city: the roads already there go through it
     if (carCitySlots && carCityHill && carCityLayout == 0) {

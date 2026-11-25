@@ -47,6 +47,7 @@ int carCityPeds = 80;
 int carCityDrivers = 20;
 float carCityWalkSpeed = 1.2f;
 bool carCityFlyover = true;
+bool carCityClasses = true;
 bool carCityHill = true;
 bool carCityGreenWave = true;
 float carCitySetback = 4.0f;   // compact junctions (with near-square angles even steered 2x2 cars fit; 7 for jittery cities)

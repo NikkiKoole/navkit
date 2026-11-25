@@ -50,7 +50,7 @@ static float *slCX = NULL, *slCY = NULL, *slCH = NULL, *slHalf = NULL, *slCZ = N
 static int* slSlotSeg = NULL;
 static int* slPedStamp = NULL;
 static int *slYieldUntil = NULL, *slYieldCar = NULL;   // a slot held open for a merging car (until that step)
-static long slYields = 0, slYieldMerges = 0;
+static long slYields = 0, slYieldMerges = 0, slClassYields = 0;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
 static long slDrives = 0, slDrivesDone = 0, slDriveFails = 0;
@@ -117,7 +117,7 @@ void SlotsClear(void) {
     slTouchMax = 0;
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
-    slYields = slYieldMerges = 0;
+    slYields = slYieldMerges = slClassYields = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
     slChoseDrive = slChoseWalk = 0;
@@ -127,8 +127,19 @@ void SlotsClear(void) {
 }
 
 static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
-static int SlVmax(const SlotCar* c) {    // top speed, slots per step
+// a segment's top speed, slots per step (its class's limit; a street: SL_VMAX)
+static int SlSegV(int seg) {
+    if (!rdClasses) return SL_VMAX;
+    int v = (int)(RoadSegSpeed(seg) * SL_STEP / SL_SLOT_CELLS + 0.5f);
+    return v < 1 ? 1 : v;
+}
+static int SlVmaxAny(void) {   // the fastest class's
     int v = SL_VMAX;
+    if (rdClasses) for (int k = 0; k < RD_CLS_COUNT; k++) { int w = (int)(rdClassSpeed[k] * SL_STEP / SL_SLOT_CELLS + 0.5f); if (w > v) v = w; }
+    return v;
+}
+static int SlVmax(const SlotCar* c) {    // top speed, slots per step
+    int v = SlSegV(c->route[c->ri]);
     if (c->temper == SL_SPEEDER) v++;
     else if (c->temper == SL_SLOW && v > 1) v--;
     return v;
@@ -524,7 +535,8 @@ static int SlBrakeDist(int v, int D) {   // slots needed to stop from v
 static int SlCurveV(int conn) {           // top speed on a curve, slots per step
     int v = (int)(rdSegs[conn].vmax * SL_STEP / SL_SLOT_CELLS);
     if (v < 1) v = 1;
-    return v > SL_VMAX ? SL_VMAX : v;
+    int top = SlSegV(conn);   // (the smaller road's limit)
+    return v > top ? top : v;
 }
 // Will this curve probably be granted when we get there? (green or no light, no crossing curve
 // in use, room past it) - then drive at it at its curve speed, else brake for its stop line
@@ -656,7 +668,7 @@ static void SlKerbMoves(void) {
         int back = 0, kk = k - 1;
         while (kk >= 0 && SlFree(SlIdx(L, kk)) && back < 16) { back++; kk--; }
         if (kk >= 0 && back < 16 && SlTooClose(SlCarV(SlIdx(L, kk)), back, c)) { slPullOutWaits++; continue; }
-        if (kk < 0 && back < SlBrakeDist(SL_VMAX + 1, D)) {   // near the lane's start: nobody coming off the junction
+        if (kk < 0 && back < SlBrakeDist(SlVmaxAny() + 1, D)) {   // near the lane's start: nobody coming off the junction
             const RdNode* Nd = &rdNodes[rdSegs[L].from];
             bool coming = false;
             for (int q = 0; q < Nd->nConn && !coming; q++)
@@ -841,7 +853,41 @@ static int SlReqCompare(const void* a, const void* b) {
     const SlotCar* cb = &slotCars[*(const int*)b];
     bool pa = rdSegs[ca->route[ca->ri]].priority, pb = rdSegs[cb->route[cb->ri]].priority;
     if (pa != pb) return pa ? -1 : 1;                    // roundabout traffic first
+    if (rdClasses) {                                     // then the bigger road's
+        int ka = RoadSegClass(ca->route[ca->ri]), kb = RoadSegClass(cb->route[cb->ri]);
+        if (ka != kb) return kb - ka;
+    }
     return cb->waitSteps - ca->waitSteps;                // then the longest waiting
+}
+
+// No lights, classes: someone on a bigger road coming up to this junction (within its stopping
+// distance + 2 slots of the line) for a curve that crosses ours goes first
+static bool SlYieldToBigger(int i, int conn) {
+    if (!rdClasses) return false;
+    const RdSeg* C = &rdSegs[conn];
+    const RdNode* N = &rdNodes[C->node];
+    int mine = RoadSegClass(C->from), D = SlBrakeSlots();
+    for (int e = 0; e < N->nEdge; e++) {
+        const RdEdge* E = &rdEdges[N->edge[e]];
+        if (E->cls <= mine) continue;
+        int d = E->b == C->node ? 0 : 1;
+        int ins[2] = {E->lane[d], E->lane2[d]};
+        for (int q = 0; q < 2; q++) {
+            int in = ins[q];
+            if (in < 0 || rdSegs[in].to != C->node) continue;
+            int reach = SlBrakeDist(SlSegV(in), D) + 2;
+            for (int k = slSegN[in] - 1, back = 0; k >= 0 && back < reach; k--, back++) {
+                int o = slSlotCar[SlIdx(in, k)];
+                if (o < 0 || o == i) continue;
+                const SlotCar* oc = &slotCars[o];
+                if (oc->kerb || oc->route[oc->ri] != in || oc->ri + 1 >= oc->routeLen) continue;
+                int oconn = oc->route[oc->ri + 1];
+                if (rdSegs[oconn].kind != RD_CONN || rdSegs[oconn].node != C->node) continue;
+                if (oconn == conn || N->conflict[C->ci][rdSegs[oconn].ci]) return true;
+            }
+        }
+    }
+    return false;
 }
 
 static void SlGrantCurves(void) {
@@ -873,6 +919,7 @@ static void SlGrantCurves(void) {
             if (slSegCount[other] > 0 || slConnStamp[other] == slStep) clash = true;
         }
         if (clash) continue;
+        if (light < 0 && SlYieldToBigger(i, conn)) { slClassYields++; continue; }
         // entering a roundabout: room on the ring, and a gap in the ring traffic arriving here
         if (!rdSegs[C->from].priority && rdSegs[C->to].priority && N->ringOf >= 0) {
             int r = N->ringOf;
@@ -1115,7 +1162,7 @@ static void CheckJumps(float dt) {
     static int cap = 0;
     if (slotCarCount > cap) { cap = slotCarCount; jumpX = realloc(jumpX, sizeof(float) * cap); jumpY = realloc(jumpY, sizeof(float) * cap);
                               for (int i = 0; i < cap; i++) jumpX[i] = -1; }
-    float limit = 2.0f * (SL_VMAX + 1) * SL_SLOT_CELLS * CELL_SIZE / SL_STEP * dt + 2.0f;
+    float limit = 2.0f * (SlVmaxAny() + 1) * SL_SLOT_CELLS * CELL_SIZE / SL_STEP * dt + 2.0f;
     for (int i = 0; i < slotCarCount; i++) {
         float x, y, h, st;
         SlotCarDrawPose(i, &x, &y, &h, &st);
@@ -1689,6 +1736,17 @@ void SlotsPrintStats(void) {
                n[0], n[0] ? (double)tr[0] / n[0] : 0.0, n[0] ? (double)vs[0] / n[0] * SL_SLOT_CELLS : 0.0,
                n[1], n[1] ? (double)tr[1] / n[1] : 0.0, n[1] ? (double)vs[1] / n[1] * SL_SLOT_CELLS : 0.0,
                n[2], n[2] ? (double)tr[2] / n[2] : 0.0, n[2] ? (double)vs[2] / n[2] * SL_SLOT_CELLS : 0.0, slYields, slYieldMerges);
+    }
+    if (rdClasses) {   // road classes: lanes, their cars' speed now, yields to the bigger road
+        static const char* nm[RD_CLS_COUNT] = {"lane", "street", "arterial", "highway"};
+        int lanes[RD_CLS_COUNT] = {0}, cars[RD_CLS_COUNT] = {0}; long vs[RD_CLS_COUNT] = {0};
+        for (int sg = 0; sg < rdSegCount; sg++) if (rdSegs[sg].kind == RD_LANE) lanes[RoadSegClass(sg)]++;
+        for (int i = 0; i < slotCarCount; i++) { const SlotCar* c = &slotCars[i]; if (c->kerb || rdSegs[c->route[c->ri]].kind != RD_LANE) continue;
+            int k = RoadSegClass(c->route[c->ri]); cars[k]++; vs[k] += c->v; }
+        printf("  classes:");
+        for (int k = RD_CLS_COUNT - 1; k >= 0; k--) if (lanes[k])
+            printf(" %s %d lanes (limit %.0f, %d cars at %.1f)", nm[k], lanes[k], rdClassSpeed[k], cars[k], cars[k] ? (double)vs[k] / cars[k] * SL_SLOT_CELLS : 0.0);
+        printf(" [cells/s]; %ld curves held for the bigger road's traffic\n", slClassYields);
     }
     {   // heights: lifted roads, how much of them is up a level
         int lifted = 0, up = 0, pts = 0;
