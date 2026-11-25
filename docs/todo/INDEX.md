@@ -118,7 +118,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `world/explosions.md` — (partial: blasts, structural support, blast mining, water, landslides, craters, dynamite, fuel vapour flash fires, room blow-outs, firedamp built) Explosions: blast spread, wall breaking by strength, items scattered by weight, knockback; unsupported pieces fall as walls; gunpowder chain + blast-mining job; next: animals, visuals
 - `board-for-parallel-sessions.md` — A work board for the parallel sessions, modelled on fp.engine.new's file-backed kanban (cards, claims with leases; `ready` not human-only here); three C-flavoured ways (shell, small C tool, raylib view); not built
 - `endgame-village-vision.md` — 20th-century village destination picture: systems inventory, daily life, economy, social, housing
-- `../vision/city-1999.md` — Homeless in a 1999 city: ownership, keys/locks, Cataclysm-style inventory (pockets, bags, cart), trash/bin/deposit loop, coins, city stations, missing systems, item cap analysis, two milestones
+- `../vision/city-1999.md` — Homeless in a 1999 city (partial): ownership, keys/locks, Cataclysm-style inventory (built), trash/bin loop (built), coins + shops + bottle machine (built 2026-11-25), gameplay (three layers of steering, the arc to a can empire), city stations, missing systems, item cap analysis, two milestones; current state in "Where we are"
 - `sims-inspired-priorities.md` — What makes The Sims work; reorder next sessions for "Sims feel"
 - `naked-in-the-grass.md` — Gap analysis: 8/10 survival features complete, what's next
 - `naked-in-the-grass-details.md` — Deep dive on tool qualities and animals design
