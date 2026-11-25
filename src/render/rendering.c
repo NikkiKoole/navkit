@@ -106,6 +106,21 @@ static Color MaterialTint(MaterialType mat) {
     }
 }
 
+// The rail-* sprites are white: every material needs a colour (MaterialTint leaves stone
+// and metal white, their wall sprites carry the colour)
+static Color RailingTint(MaterialType mat) {
+    switch (mat) {
+        case MAT_IRON:    return (Color){120, 125, 135, 255};
+        case MAT_GRANITE: return (Color){165, 160, 155, 255};
+        case MAT_BRICK:   return (Color){170, 85, 60, 255};
+        case MAT_NONE:    return WHITE;
+        default: {
+            Color t = MaterialTint(mat);
+            return (t.r == 255 && t.g == 255 && t.b == 255) ? (Color){200, 200, 200, 255} : t;
+        }
+    }
+}
+
 // Sprite and tint per furniture type (top-down and side views). New types without art yet
 // get an existing sprite and a tint, so each still reads as itself.
 static int FurnitureSprite(FurnitureType type) {
@@ -530,7 +545,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                 CellType cellHere = GRID(x, y, z);
 
                 // Draw floor from below if the cell below is solid and current is air/walkable
-                if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                if (CellIsSolid(cellBelow) && !IsCutawayWall(cellHere)) {   // a railing shows the ground round it
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                     Rectangle src = SpriteGetRect(sprite);
@@ -545,7 +560,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                     }
                 }
                 // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
-                else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !IsCutawayWall(cellHere)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                     Rectangle src = SpriteGetRect(sprite);
@@ -703,6 +718,7 @@ static void DrawCellGrid(void) {
             if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
+            if (cell == CELL_RAILING) tint = MultiplyColor(tint, RailingTint(GetWallMaterial(x, y, z)));
             if (cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
             }
