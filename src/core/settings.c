@@ -715,6 +715,8 @@ static const Setting settings[] = {
       "Slot traffic: on two-lane roads cars overtake slow or standing cars (cabs at a fare) and keep right, moving diagonally into the lane beside."),
     SET_BOOL("carSlotKerbs", "Slot Traffic: Kerb Spots", "Experiments/Cars", carSlotKerbs,
       "Slot traffic: spots at the kerb beside every second slot of the right-hand lane (not near junctions). Cabs stop there for fares and cars park there (City Parking), out of the lane. Off: cabs stop in the lane, nobody parks. Restart the scenario to apply."),
+    SET_BOOL("carSlotTempers", "Slot Traffic: Drivers' Characters", "Experiments/Cars", carSlotTempers,
+      "Slot traffic: 20% speeders (a slot per step faster, take smaller gaps, overtake more, go on amber; most cabs), 20% slow drivers (a slot slower, dawdle, want big gaps, never overtake). Normal and slow drivers hold a gap open for a car indicating to merge (the zipper). Restart the scenario to apply."),
     SET_BOOL("carSlotReal", "Slot Traffic: Real Cars in View", "Experiments/Cars", carSlotReal,
       "Slot traffic: cars in the camera view also get a physical car (real steering, smooth speed) chasing their slot's position; elsewhere only slots."),
     SET_BOOL("carCityLaneRules", "City Lane Rules (slot traffic)", "Experiments/Cars", carCityLaneRules,

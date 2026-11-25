@@ -602,6 +602,23 @@ cars average across town (~2 with lights), so nobody drove: the city sets the wa
 speed 2.7 cells/s. 250 cars: the jams bring the drive speed to ~0.5 cells/s and the owners walk
 (30 drove, 34 walked, fewer as it drops) - traffic decides.
 
+## Slot traffic: drivers' characters, letting merging cars in (2026-11-25)
+
+Setting `carSlotTempers` (on). Per car: 60% normal, 20% speeders, 20% slow (cabs 60% speeders).
+- Speeders: top speed one slot per step more (~12 cells/s at 3-cell slots), dawdle 5%, take a gap
+  one slot smaller, overtake anything slower within 3 slots, go on amber.
+- Slow: one slot per step less, dawdle 35%, want a gap two slots bigger, never overtake.
+- Gap checks (`SlTooClose`): a standing car behind is never too close (a slow driver's margin
+  made it wait forever beside a held gap).
+- Merging into the lane a turn needs: standing or crawling (v <= 1), straight sideways into the
+  slot beside - the zipper in a queue (it had to move diagonally, needing two free slots side by
+  side: in a queue never). Courtesy: the first car behind the gap, not a speeder, holds it open
+  for a step or two (`slYieldUntil`); with sideways merges it's rarely needed.
+
+250 cars, 10 minutes (tempers off and diagonal merges before): grid 415 -> 523 trips, merges
+given up 13 -> 3; Manhattan 490 -> 589, given up 231 -> 94; 0 touches, 0 jumps. Speeders make the
+most trips (grid 2.34 each vs 2.09 normal, 1.75 slow).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

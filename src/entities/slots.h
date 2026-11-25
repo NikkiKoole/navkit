@@ -24,6 +24,12 @@
 #define SL_DAWDLE 0.2f       // chance a moving car is a slot slower this step
 #define SL_MAX_ROUTE 256
 
+// Drivers' characters (carSlotTempers): speeders go a slot per step faster, hardly dawdle, take
+// smaller gaps, overtake more and go on amber; slow drivers a slot slower, dawdle more, want
+// bigger gaps, never overtake. Normal and slow drivers let a car indicating to merge in.
+enum { SL_NORMAL, SL_SPEEDER, SL_SLOW };
+extern bool carSlotTempers;
+
 typedef struct {
     int ri;                  // route step (index into route)
     int slot;                // slot on route[ri]
@@ -39,6 +45,7 @@ typedef struct {
     int lcCool;              // steps before it may change lanes again
     int mergeWait;           // steps waiting to get into the lane a turn needs
     bool cab;                // a yellow cab: stands a few steps at each fare
+    int temper;              // SL_NORMAL / SL_SPEEDER / SL_SLOW: the driver's character
     int stopSteps;           // cab: steps left at a fare; parked: steps left parked
     bool kerb;               // standing in the kerb slot beside slot `slot` of its lane (not in the lane)
     bool wantKerb;           // arrived: pulls in to the kerb this step if it can
