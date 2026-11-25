@@ -4550,6 +4550,7 @@ static bool IsItemHaulable(Item* item, int itemIdx) {
     if (item->unreachableCooldown > 0.0f) return false;
     if (!ItemTypeIsValidForJobs(item->type)) return false;
     if (ItemIsFixed(item->type)) return false;   // a trash bin stays where it stands
+    if (ItemIsMoney(item->type)) return false;   // coins: whoever picks them up keeps them (money.h)
     if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
     int cellX = (int)(item->x / CELL_SIZE);
     int cellY = (int)(item->y / CELL_SIZE);

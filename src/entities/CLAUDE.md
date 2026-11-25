@@ -90,6 +90,15 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   (`QueueSitThenEat`, setting `sitToEat`). Plan and what's next (more freetime states onto it,
   player commands): `docs/todo/architecture/action-queue-and-need-index.md`.
 
+## Money (`money.c`, City 1999)
+
+- Money is a number on whoever holds it: `moverCents[i]` (whole cents, saved after the action
+  queues, v119). It becomes an item only when it lies in the world: `ITEM_COIN` with
+  `stackCount` = cents (`IF_MONEY`: no job hauls it; picked up via the queue it goes straight in
+  the purse, `MoverPocketCoins`). Code that sums `stackCount` as units must treat money as one
+  (describe.c does). Shown as "fl 3,25" (`MoneyFormat`). Console `money`, `dropmoney`.
+  Plan for prices, the stand and the bottle machine: `docs/vision/city-1999.md` "Money and exchange".
+
 ## Social behaviour (`notice.c`, `talk.c`, `relations.c`, `chase.c`)
 
 Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built").

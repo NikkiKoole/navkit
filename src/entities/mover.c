@@ -1,5 +1,6 @@
 #include "mover.h"
 #include "action_queue.h"
+#include "money.h"
 #include "inventory.h"
 #include "trains.h"
 #include "elevators.h"
@@ -976,6 +977,7 @@ void StringPullPath(Point* pathArr, int* pathLen) {
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     ClearMoverRelations((int)(m - movers));   // a new mover in this slot knows nobody
     QueueReset((int)(m - movers));            // ... and has nothing queued (action_queue.h)
+    moverCents[m - movers] = 0;               // ... and an empty purse (money.h)
     m->x = x;
     m->y = y;
     m->z = z;
@@ -1171,6 +1173,7 @@ float MoverRouteCellsLeft(int i) {
 
 void ClearMovers(void) {
     QueueResetAll();
+    MoneyResetAll();
     ClearNotices();
     ClearTalks();
     ClearRelations();

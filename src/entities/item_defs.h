@@ -19,6 +19,7 @@
 #define IF_FIXED          (1 << 10) // Stays where it is placed: no job hauls it (trash bin)
 #define IF_TWO_HANDED     (1 << 11) // Held, it takes both hands (log, crate, carcass)
 #define IF_WORN_BACK      (1 << 12) // Worn on the back (backpack)
+#define IF_MONEY          (1 << 13) // Coins (money.h): stackCount = cents; no job hauls them, picked up they go in the purse
 
 typedef struct {
     const char* name;     // Display name for tooltips
@@ -54,6 +55,7 @@ extern const ItemDef itemDefs[];
 #define ItemIsFixed(t)        (itemDefs[t].flags & IF_FIXED)
 #define ItemIsTwoHanded(t)    (itemDefs[t].flags & IF_TWO_HANDED)
 #define ItemIsWornOnBack(t)   (itemDefs[t].flags & IF_WORN_BACK)
+#define ItemIsMoney(t)        (itemDefs[t].flags & IF_MONEY)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)

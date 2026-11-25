@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 118
+#define CURRENT_SAVE_VERSION 119
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -129,8 +129,14 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v118: dayLength (game seconds per day) after beltSpeed. Older saves: 360 (the games' pace) if
 // they ran a game or survival rules, else the session's value.
 #define V118_DAY_LENGTH 118
+// v119: money (money.h): ITEM_COIN appended (stockpile allowedTypes grows from
+// V118_ITEM_TYPE_COUNT) and one int per saved mover (moverCents, the purse) right after the
+// action queues. Older saves: empty purses.
+#define V119_MONEY 119
+#define V118_ITEM_TYPE_COUNT 85
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
+_Static_assert(ITEM_COIN == V118_ITEM_TYPE_COUNT, "v119 item types start where v118's ended");
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)
 _Static_assert(offsetof(Mover, setAside) == MOVER_V108_SIZE, "Mover v108 layout must be a prefix of Mover");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
@@ -465,6 +471,28 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV113;
+
+// V118 Stockpile struct (v114-v118: allowedTypes V118_ITEM_TYPE_COUNT)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V118_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V105_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV118;
 
 // Copy an old stockpile (StockpileV90 / V103 / V104) into a Stockpile; item types the old
 // save didn't know are not allowed, materials it didn't know are

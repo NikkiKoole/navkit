@@ -117,6 +117,7 @@ static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
+static int insp_moverCents[MAX_MOVERS];   // purses (v119+, money.h)
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -213,6 +214,7 @@ static void print_mover(int idx) {
     printf("Thirst: %.1f%%\n", m->thirst * 100.0f);
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
     printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
+    { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCents[m - insp_movers], mb, sizeof mb)); }
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
@@ -1465,8 +1467,13 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= V114_GUNPOWDER) {
+    if (version >= V119_MONEY) {
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V114_GUNPOWDER) {
+        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
+        static StockpileV118 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V107_SCROUNGE) {
         // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
         static StockpileV113 oldSp[MAX_STOCKPILES];
@@ -1738,6 +1745,9 @@ int InspectSaveFile(int argc, char** argv) {
 
     // Action queues (v112+): not shown yet, skipped
     if (version >= V112_ACTION_QUEUE) fseek(f, (long)sizeof(MoverQueue) * insp_moverCount, SEEK_CUR);
+    // Purses (v119+)
+    memset(insp_moverCents, 0, sizeof(insp_moverCents));
+    if (version >= V119_MONEY) fread(insp_moverCents, sizeof(int), insp_moverCount, f);
 
     // Animals
     fread(&insp_animalCount, 4, 1, f);
@@ -1988,6 +1998,7 @@ int InspectSaveFile(int argc, char** argv) {
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
+        memcpy(moverCents, insp_moverCents, sizeof(int) * insp_moverCount);
         moverCount = insp_moverCount;
         // Init job pool (allocates activeJobList) then copy data
         InitJobPool();

@@ -512,6 +512,7 @@ bool SaveWorld(const char* filename) {
         fwrite(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
     }
     fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
+    fwrite(moverCents, sizeof(int), moverCount, f);           // v119: purses (money.h)
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1080,8 +1081,13 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= V114_GUNPOWDER) {
+    if (version >= V119_MONEY) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V114_GUNPOWDER) {
+        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
+        static StockpileV118 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V107_SCROUNGE) {
         // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
         static StockpileV113 oldSp[MAX_STOCKPILES];
@@ -1370,6 +1376,9 @@ bool LoadWorld(const char* filename) {
     // Action queues (v112+), after the mover block; older saves: all empty
     QueueResetAll();
     if (version >= V112_ACTION_QUEUE) fread(moverQueues, sizeof(MoverQueue), moverCount, f);
+    // Purses (v119+), after the queues; older saves: empty
+    MoneyResetAll();
+    if (version >= V119_MONEY) fread(moverCents, sizeof(int), moverCount, f);
 
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);

@@ -1,5 +1,6 @@
 // action_queue.c - a mover's queue of small steps (see action_queue.h)
 #include "action_queue.h"
+#include "money.h"
 #include "talk.h"
 #include "items.h"
 #include "item_defs.h"
@@ -176,7 +177,13 @@ static StepResult QStepPickUp(int moverIdx, MoverAction* a) {
     if (!QItemValid(it)) return STEP_FAILED;
     if (ItemInMoverHands(moverIdx, it)) { q->heldItem = it; return STEP_DONE; }
     if (items[it].reservedBy != -1 && items[it].reservedBy != moverIdx) return STEP_FAILED;
-    if (!QItemWithinReach(m, it) || MoverFreeHands(moverIdx) < 1) return STEP_FAILED;
+    if (!QItemWithinReach(m, it)) return STEP_FAILED;
+    if (ItemIsMoney(items[it].type)) {   // coins go in the purse, all of them, no hand needed (money.h)
+        MoverPocketCoins(moverIdx, it);
+        a->target = -1;
+        return STEP_DONE;
+    }
+    if (MoverFreeHands(moverIdx) < 1) return STEP_FAILED;
     // One unit: out of a stockpile slot (the rest stays), or off a stack on the ground
     int one = it;
     if (items[it].state == ITEM_IN_STOCKPILE) one = TakeFromStockpileSlot(it, 1);
@@ -556,6 +563,11 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
         steps[n++] = ActPickUp(item, false);
         steps[n++] = ActEatHeld();
         doing = TextFormat("eat %s", ItemName(items[item].type));
+    } else if (item >= 0 && ItemIsMoney(items[item].type)) {
+        char mb[24];
+        steps[n++] = ActWalkToItem(item, false);
+        steps[n++] = ActPickUp(item, false);   // straight into the purse
+        doing = TextFormat("pick up %s", MoneyFormat(items[item].stackCount, mb, sizeof mb));
     } else if (item >= 0) {
         steps[n++] = ActWalkToItem(item, false);
         steps[n++] = ActPickUp(item, false);
