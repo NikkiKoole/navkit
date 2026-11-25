@@ -25,6 +25,7 @@
 #include <string.h>
 #include <strings.h>
 #include "../entities/notice.h"
+#include "../simulation/fire.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 
@@ -527,6 +528,100 @@ static void SocialTiesPrintStats(void) {
            tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
     printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
     printf("Talks started: %ld\n", talkStartedCount);
+}
+
+// garden-party: a lawn with a stone patio, a campfire in the middle, two tables with chairs and a
+// buffet (food stockpile). 14 guests who know each other (four couples, a trio of friends,
+// acquaintances, one feud): they get hungry and eat at the buffet, talk, seek their friends,
+// keep away from the one they fell out with, and gather round the fire.
+#define GP_FIRE_X 16
+#define GP_FIRE_Y 16
+static long gpTicks, gpAtFireSum, gpAtFireMax, gpTalkSum, gpMeals, gpDarkTicks, gpDarkFireSum;
+static float gpPrevHunger[MAX_MOVERS];
+
+static void SetupGardenParty(void) {
+    gpTicks = gpAtFireSum = gpAtFireMax = gpTalkSum = gpMeals = gpDarkTicks = gpDarkFireSum = 0;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
+    balance.baseMoverSpeed = 600.0f;    // (before the guests spawn: they take it from here)
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = socialSeek = socialAvoid = true;
+    moverWanderPause = 4.0f;
+    // Patio: stone ground, no grass (nothing for the fire to catch on) round the fire
+    for (int y = GP_FIRE_Y - 5; y <= GP_FIRE_Y + 5; y++)
+        for (int x = GP_FIRE_X - 5; x <= GP_FIRE_X + 5; x++) {
+            SetWallMaterial(x, y, 0, MAT_GRANITE);
+            SetVegetation(x, y, 0, VEG_NONE);
+        }
+    CreateWorkshop(GP_FIRE_X, GP_FIRE_Y, 1, WORKSHOP_GROUND_FIRE);   // the campfire (its sprite)...
+    SetFireSource(GP_FIRE_X, GP_FIRE_Y, 1, true);                      // ...burning for good
+    // Two tables with chairs on the lawn, a buffet (food stockpile) between them
+    SpawnFurniture(6, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+    SpawnFurniture(7, 6, 1, FURNITURE_TABLE, MAT_OAK);
+    SpawnFurniture(8, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+    SpawnFurniture(23, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+    SpawnFurniture(24, 6, 1, FURNITURE_TABLE, MAT_OAK);
+    SpawnFurniture(25, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+    CreateStockpile(13, 5, 1, 6, 1);
+    for (int i = 0; i < 6; i++) {
+        int idx = SpawnItem((13 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1,
+                            i % 2 ? ITEM_BREAD : ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int i = 0; i < 14; i++) SpawnMoverAt(4 + (i % 7) * 4, 24 + (i / 7) * 3, 1);
+    for (int i = 0; i < moverCount; i++) {
+        movers[i].hunger = 0.35f + 0.3f * (i % 5) / 4.0f;   // some peckish already
+        gpPrevHunger[i] = movers[i].hunger;
+    }
+    for (int i = 0; i < moverCount; i++)            // everyone has met
+        for (int j = i + 1; j < moverCount; j++) RelationSetPair(i, j, 10.0f, 30.0f);
+    for (int c = 0; c < 8; c += 2) RelationSetPair(c, c + 1, 70.0f, 100.0f);   // four couples
+    RelationSetPair(8, 9, 45.0f, 80.0f); RelationSetPair(8, 10, 45.0f, 80.0f); RelationSetPair(9, 10, 45.0f, 80.0f);
+    RelationSetPair(0, 2, 35.0f, 70.0f); RelationSetPair(4, 6, 35.0f, 70.0f);   // couples who are friends
+    RelationSetPair(3, 8, -45.0f, 60.0f);                                       // the feud
+    GatheringStartAt((GP_FIRE_X + 0.5f) * CELL_SIZE, (GP_FIRE_Y + 0.5f) * CELL_SIZE, 1, 1e9f, "the fire", 30.0f, 90.0f);
+    currentViewZ = 1;
+    AddMessage("Garden party: a campfire, two tables, a buffet, 14 guests (4 couples, a trio, a feud: 3 and 8)", GREEN);
+}
+
+static void GardenPartyTickStats(void) {
+    gpTicks++;
+    int atFire = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (MoverIsWatching(i)) atFire++;
+        if (MoverTalk(i) >= 0 && !MoverIsWatching(i)) gpTalkSum++;
+        if (movers[i].hunger > gpPrevHunger[i] + 0.05f) gpMeals++;
+        gpPrevHunger[i] = movers[i].hunger;
+    }
+    gpAtFireSum += atFire;
+    if (IsSkyDark()) { gpDarkTicks++; gpDarkFireSum += atFire; }
+    if (atFire > gpAtFireMax) gpAtFireMax = atFire;
+}
+
+static void GardenPartyPrintStats(void) {
+    int active = CountActiveMovers();
+    printf("At the fire: avg %.1f, most %ld; in a chat (not the fire): %.0f%% of the time; meals: %ld\n",
+           gpTicks ? gpAtFireSum / (double)gpTicks : 0.0, gpAtFireMax,
+           gpTicks && active ? 100.0 * gpTalkSum / ((double)gpTicks * active) : 0.0, gpMeals);
+    printf("At the fire by day: avg %.1f, after dark: avg %.1f\n",
+           gpTicks > gpDarkTicks ? (gpAtFireSum - gpDarkFireSum) / (double)(gpTicks - gpDarkTicks) : 0.0,
+           gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
+    printf("Talks started: %ld, joined: %ld\n", talkStartedCount, talkJoinedCount);
+    int fuel = 0;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) fuel += GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 0) + GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 1);
+    printf("Fuel round the fire (should be 0 apart from the fire itself): %d\n", fuel);
+}
+
+static bool GardenPartyCheck(char* why, int whyLen) {
+    if (gpMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    if (gpAtFireMax == 0) { snprintf(why, (size_t)whyLen, "nobody came to the fire"); return false; }
+    return true;
 }
 
 static void SetupLadders(void) {
@@ -3615,6 +3710,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"garden-party", "A lawn, a campfire, tables, a buffet, 14 guests who know each other: eating, talking, gathering round the fire",
+                   NULL,        SetupGardenParty, GardenPartyTickStats, GardenPartyPrintStats, GardenPartyCheck, 0, 0},
     {"social-ties", "12 movers: two groups of friends, strangers, two enemy pairs: who stays near whom (socialSeek, socialAvoid)",
                    NULL,        SetupSocialTies, SocialTiesTickStats, SocialTiesPrintStats, NULL, 0, 0},
     {"gathering",  "A performer on a plaza, 30 movers: onlookers stand in rings round it (settings watch*)",

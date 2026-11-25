@@ -2,6 +2,7 @@
 #include "talk.h"
 #include "notice.h"
 #include "relations.h"
+#include "../simulation/needs.h"
 #include "mover.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -74,7 +75,8 @@ bool MoverIsWatching(int i) {
 bool MoverIsSpeaking(int i) {
     int t = MoverTalk(i);
     if (t < 0) return false;
-    if (talks[t].kind == TALK_WATCH) return talks[t].focus == i;   // the performer sings
+    if (talks[t].kind == TALK_WATCH && talks[t].focus >= 0) return talks[t].focus == i;   // the performer sings
+    if (talks[t].kind == TALK_WATCH && talks[t].count < 2) return false;   // round a place: they chat
     return talks[t].members[talks[t].speaker] == i;
 }
 
@@ -218,8 +220,7 @@ static int WatchPickSpot(const Talk* tk, const Mover* m) {
     return -1;
 }
 
-int GatheringStart(int focus, float seconds) {
-    if (focus < 0 || focus >= moverCount || !movers[focus].active || moverTalkIdx[focus]) return -1;
+int GatheringStartAt(float x, float y, int z, float seconds, const char* what, float stayMin, float stayMax) {
     int t = -1;
     for (int k = 0; k < MAX_TALKS; k++) if (!talks[k].active) { t = k; break; }
     if (t < 0) return -1;
@@ -227,15 +228,26 @@ int GatheringStart(int focus, float seconds) {
     memset(tk, 0, sizeof(*tk));
     tk->active = true;
     tk->kind = TALK_WATCH;
-    tk->focus = focus;
-    tk->z = (int)movers[focus].z;
-    tk->centerX = movers[focus].x;
-    tk->centerY = movers[focus].y;
+    tk->focus = -1;
+    tk->z = z;
+    tk->centerX = x;
+    tk->centerY = y;
     tk->timeLeft = seconds;
+    tk->what = what;
+    tk->stayMin = stayMin;
+    tk->stayMax = stayMax;
     WatchUpdateRadius(tk);
+    if (t + 1 > talkHigh) talkHigh = t + 1;
+    return t;
+}
+
+int GatheringStart(int focus, float seconds) {
+    if (focus < 0 || focus >= moverCount || !movers[focus].active || moverTalkIdx[focus]) return -1;
+    int t = GatheringStartAt(movers[focus].x, movers[focus].y, (int)movers[focus].z, seconds, NULL, 0.0f, 0.0f);
+    if (t < 0) return -1;
+    talks[t].focus = focus;
     moverTalkIdx[focus] = t + 1;
     StopWalking(focus);
-    if (t + 1 > talkHigh) talkHigh = t + 1;
     return t;
 }
 
@@ -247,7 +259,7 @@ static void WatchJoin(int t, int i) {
     int k = tk->count++;
     tk->members[k] = i;
     tk->spot[k] = spot;
-    tk->stay[k] = RandRange(watchMinSeconds, watchMaxSeconds);
+    tk->stay[k] = tk->stayMax > 0.0f ? RandRange(tk->stayMin, tk->stayMax) : RandRange(watchMinSeconds, watchMaxSeconds);
     WatchSpotPos(tk, spot, &tk->slotX[k], &tk->slotY[k]);
     WatchUpdateRadius(tk);
     moverTalkIdx[i] = t + 1;
@@ -258,15 +270,23 @@ static void WatchJoin(int t, int i) {
 // An idle mover in range of a gathering it can see may come to watch
 static bool TryWatch(int i) {
     const Mover* m = &movers[i];
-    float reach = watchRadius * CELL_SIZE;
+    bool dark = IsSkyDark();
     for (int t = 0; t < talkHigh; t++) {
         Talk* tk = &talks[t];
         if (!tk->active || tk->kind != TALK_WATCH || tk->z != (int)m->z || tk->count >= TALK_SLOTS) continue;
+        // A place (a campfire) pulls harder after dark: further and more often
+        bool nightDraw = dark && tk->focus < 0;
+        float reach = watchRadius * CELL_SIZE * (nightDraw ? 1.5f : 1.0f);
+        float chance = watchChance * (nightDraw ? 3.0f : 1.0f);
         float dx = tk->centerX - m->x, dy = tk->centerY - m->y;
         if (dx * dx + dy * dy > reach * reach) continue;
         if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE),
                             (int)(tk->centerX / CELL_SIZE), (int)(tk->centerY / CELL_SIZE), tk->z)) continue;
-        if (GetRandomValue(0, 9999) < (int)(watchChance * 10000.0f)) WatchJoin(t, i);
+        bool foe = false;   // someone it can't stand is there (or is the focus): not now
+        for (int k = 0; k < tk->count && !foe; k++) foe = RelationLike(i, tk->members[k]) <= -20.0f;
+        if (tk->focus >= 0 && RelationLike(i, tk->focus) <= -20.0f) foe = true;
+        if (foe) continue;
+        if (GetRandomValue(0, 9999) < (int)(chance * 10000.0f)) WatchJoin(t, i);
         return true;   // one roll per check
     }
     return false;
@@ -369,16 +389,35 @@ void TalkTick(float dt) {
         if (!tk->active) continue;
         high = t + 1;
         if (tk->kind == TALK_WATCH) {
-            int f = tk->focus;
-            if (f < 0 || f >= moverCount || !CanStayInTalk(f) || (tk->timeLeft -= dt) <= 0.0f) { EndTalk(t); continue; }
-            tk->centerX = movers[f].x;
-            tk->centerY = movers[f].y;
+            int f = tk->focus;   // a performer (follows it) or -1: a place (stays put)
+            bool focusGone = f >= 0 && (f >= moverCount || !CanStayInTalk(f));
+            if (focusGone || (tk->timeLeft -= dt) <= 0.0f) { EndTalk(t); continue; }
+            if (f >= 0) {
+                tk->centerX = movers[f].x;
+                tk->centerY = movers[f].y;
+            }
             tk->age += dt;
             for (int k = tk->count - 1; k >= 0; k--) {
                 tk->stay[k] -= dt;
                 if (tk->stay[k] <= 0.0f || !CanStayInTalk(tk->members[k])) LeaveTalk(t, k);
             }
             WatchUpdateRadius(tk);
+            if (f < 0 && tk->count >= 2) {   // round a place (a campfire): they chat, turn by turn
+                if (tk->speaker >= tk->count) tk->speaker = 0;
+                tk->speakTimer -= dt;
+                if (tk->speakTimer <= 0.0f) {
+                    tk->speaker = (tk->speaker + 1 + GetRandomValue(0, tk->count - 2)) % tk->count;
+                    tk->speakTimer = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
+                }
+                // ... and get to know each other, at half a conversation's rate (the circle can be big)
+                for (int a = 0; a < tk->count && tk->count <= 16; a++)
+                    for (int b = 0; b < tk->count; b++) {
+                        if (a == b) continue;
+                        int ma = tk->members[a];
+                        float like = relTalkLikePerSec * (movers[ma].mood + 0.3f) * dt * 0.5f;
+                        RelationAdd(ma, tk->members[b], like, relTalkFamiliarityPerSec * dt * 0.5f);
+                    }
+            }
             continue;
         }
         int before = tk->count;

@@ -394,6 +394,34 @@ describe(gatherings) {
         expect(MoverIsPerforming(p));
     }
 
+    it("round a place (a campfire): they gather, take turns talking, and get to know each other") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int a = AddMover(9, 6, 1), b = AddMover(15, 6, 1);
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        expect(t >= 0 && talks[t].focus == -1);
+        RunTalk(4.0f);
+        expect(MoverIsWatching(a) && MoverIsWatching(b));
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));   // one of them talks
+        expect(RelationFamiliarity(a, b) > 1.0f);
+        expect(strcmp(talks[t].what, "the fire") == 0);
+    }
+
+    it("doesn't join a gathering while someone it can't stand is there") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int a = AddMover(9, 6, 1), foe = AddMover(15, 6, 1);
+        RelationAdd(a, foe, -40.0f, 50.0f);
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        (void)t;
+        movers[a].currentJobId = 0;       // a busy for now: the foe gets there first
+        RunTalk(1.0f);
+        expect(MoverIsWatching(foe));
+        movers[a].currentJobId = -1;      // now a is free, but the foe is at the fire
+        RunTalk(2.0f);
+        expect(!MoverIsWatching(a));
+    }
+
     it("a full first ring: the next one goes to the second ring") {
         TalkSetup();
         watchChance = 1.0f;

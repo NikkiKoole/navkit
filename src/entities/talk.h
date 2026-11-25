@@ -32,6 +32,8 @@ typedef struct {
     int speaker;              // index into members[]
     float speakTimer;         // sim seconds until the turn passes
     float age;                // sim seconds since it started
+    const char* what;         // TALK_WATCH round a place: what it is ("the fire"), for describe
+    float stayMin, stayMax;   // TALK_WATCH: how long onlookers stay (0 = watchMin/watchMax)
 } Talk;
 
 extern Talk talks[MAX_TALKS];
@@ -62,6 +64,9 @@ extern float watchChance;       // chance per check that an idle mover in range 
 extern float watchMinSeconds, watchMaxSeconds;
 extern long watchJoinedCount;
 int GatheringStart(int focusMover, float seconds);   // -1 if none free
+// A gathering round a place (a campfire): people stand in the rings and face it; what = how
+// describe names it ("the fire"); stay 0 = watchMin/watchMax
+int GatheringStartAt(float x, float y, int z, float seconds, const char* what, float stayMin, float stayMax);
 bool MoverIsWatching(int moverIdx);                  // an onlooker (not the performer)
 bool MoverIsPerforming(int moverIdx);
 

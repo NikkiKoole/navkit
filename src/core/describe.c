@@ -439,6 +439,9 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     int partner = TalkPartner(idx);
     if (MoverIsPerforming(idx)) {
         DescAdd(out, DESC_INFO, "Performing for %d", talks[MoverTalk(idx)].count);
+    } else if (MoverIsWatching(idx) && partner < 0) {   // round a place
+        const char* what = talks[MoverTalk(idx)].what;
+        DescAdd(out, DESC_INFO, "Gathered round %s", what ? what : "something");
     } else if (MoverIsWatching(idx) && partner >= 0) {
         if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Watching %s", movers[partner].name);
         else DescAdd(out, DESC_INFO, "Watching #%d", partner);
