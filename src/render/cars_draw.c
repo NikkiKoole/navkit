@@ -175,6 +175,8 @@ static void DrawSlotCars(void) {
         Vector2 sc = CarScreen(x, y);
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
         Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        bool driven = SlotCarDriven(i);   // a mover is driving it: marked (a ring far out, the driver's head close up)
+        if (driven && carPx < 8) DrawCircleLinesV(sc, fmaxf(4.0f, L * 0.8f * zoom), WHITE);
         if (carPx < 3) { DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col); continue; }
         if (carPx < 8) {
             Rectangle r = {sc.x, sc.y, (L - 2) * zoom, (W - 4) * zoom};
@@ -182,6 +184,14 @@ static void DrawSlotCars(void) {
             continue;
         }
         DrawCarSpriteAt(x, y, h, col);
+        if (driven) {   // the driver: a head in the front left seat, and a white ring round the car
+            float ch = cosf(h), sh = sinf(h), u = L * 0.08f, v = -W * 0.22f;
+            Vector2 hp = CarScreen(x + ch * u - sh * v, y + sh * u + ch * v);
+            float r = fmaxf(2.0f, CELL_SIZE * 0.32f * zoom);
+            DrawCircleV(hp, r + 1.0f, (Color){40, 25, 20, 255});
+            DrawCircleV(hp, r, (Color){235, 190, 150, 255});
+            DrawCircleLinesV(sc, L * 0.85f * zoom, (Color){255, 255, 255, 160});
+        }
         // indicators (amber, blinking) and brake lights
         int sig = SlotCarSignals(i);
         float fu = L * 0.5f - 1.5f, ru = -L * 0.5f + 1.5f, sv = W * 0.5f - 1.5f, lamp = fmaxf(2.0f, CELL_SIZE * 0.22f);
