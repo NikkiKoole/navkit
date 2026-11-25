@@ -16,6 +16,8 @@
 #include "action_registry.h"
 #include "pie_menu.h"
 #include "selection.h"
+#include "global_keys.h"
+#include "../ui/commands.h"
 #include "../entities/elevators.h"
 #include "../entities/belts.h"
 
@@ -2762,18 +2764,12 @@ void HandleInput(void) {
     // Global controls (always active)
     // ========================================================================
 
-    // Follow mover (F) - toggles follow for hovered mover (paused)
-    // Only in normal mode to avoid consuming draw/work/sandbox action keys.
-    if (inputMode == MODE_NORMAL && IsKeyPressed(KEY_F)) {
-        // Hovered mover, else the selected one (src/core/selection.c)
-        int target = (hoveredMover >= 0 && hoveredMover < moverCount) ? hoveredMover
-                   : (selection.kind == SEL_MOVER && SelectionValid()) ? selection.idx : -1;
-        if (target >= 0) {
-            ToggleMoverFollow(target);
-        } else if (followMoverIdx >= 0) {
-            followMoverIdx = -1;
-            AddMessage("Follow: off", GRAY);
-        }
+    // The global keys (src/core/global_keys.c): each runs a command line (src/ui/commands.c):
+    // F follow (normal mode only: the tools use F), , . level, Tab overlay, Space pause, F5-F8
+    for (int i = 0; i < GlobalKeyCount(); i++) {
+        const GlobalKey* gk = GlobalKeyAt(i);
+        if (!gk->key || !gk->line || (gk->normalOnly && inputMode != MODE_NORMAL)) continue;
+        if (IsKeyPressed(gk->key)) CommandRunLine(gk->line);
     }
 
     // Click-to-move for drafted movers (right-click while following a drafted mover)
@@ -2822,10 +2818,6 @@ void HandleInput(void) {
     //     offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     // }
 
-    // Z-level
-    if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;
-    if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
-
     // Front view mode toggle (no keybind — toggled via UI only)
     // frontViewMode can still be set programmatically or via inspector
     // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
@@ -2837,62 +2829,6 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_LEFT_BRACKET) && frontViewDepth > 1) frontViewDepth--;
     }
 
-    // Toggle the dev overlay. It sits on top of whatever game runs and does not
-    // change its rules (src/core/games.h); a new game is started from the games list.
-    if (IsKeyPressed(KEY_TAB)) {
-        devUI = !devUI;
-        if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
-    }
-
-    // Pause
-    if (IsKeyPressed(KEY_SPACE)) paused = !paused;
-
-    // Save/Load
-    if (IsKeyPressed(KEY_F5)) {
-        system("mkdir -p saves");
-        if (SaveWorld("saves/debug_save.bin")) {
-            AddMessage("World saved", GREEN);
-            time_t now = time(NULL);
-            struct tm* t = localtime(&now);
-            char cmd[256];
-            char timestamp[32];
-            snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d-%02d-%02d",
-                t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-            snprintf(cmd, sizeof(cmd), "gzip -c saves/debug_save.bin > saves/%s.bin.gz", timestamp);
-            system(cmd);
-            // Dump event log alongside save
-            char logPath[128];
-            snprintf(logPath, sizeof(logPath), "saves/%s.events.log", timestamp);
-            EventLogDump(logPath);
-            // Auto-audit: warn if violations found
-            int violations = RunStateAudit(true);
-            if (violations > 0) {
-                char auditMsg[64];
-                snprintf(auditMsg, sizeof(auditMsg), "Audit: %d violations (see console)", violations);
-                AddMessage(auditMsg, RED);
-            }
-        }
-    }
-    if (IsKeyPressed(KEY_F6)) {
-        if (LoadWorld("saves/debug_save.bin")) {
-            InputMode_Reset();
-            AddMessage("World loaded", GREEN);
-        }
-    }
-
-    // Audit / Event log
-    if (IsKeyPressed(KEY_F7)) {
-        int violations = RunStateAudit(true);
-        if (violations == 0) {
-            AddMessage("Audit: 0 violations", GREEN);
-        }
-    }
-    if (IsKeyPressed(KEY_F8)) {
-        EventLogDump("navkit_events.log");
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Event log dumped (%d entries)", EventLogCount());
-        AddMessage(msg, GREEN);
-    }
 
     // ========================================================================
     // Navigation: ESC, re-tap mode key
@@ -3281,23 +3217,6 @@ void HandleInput(void) {
 // The tools' keys show in the bar (registry + tool options), commands in the console's help.
 // ============================================================================
 
-static const struct { const char* keys; const char* help; } globalKeyHelp[] = {
-    { NULL,          "--- View ---" },
-    { "Esc",         "Back / exit menu" },
-    { ", / .",       "Level down / up" },
-    { "Scroll",      "Zoom in / out" },
-    { "Middle-drag", "Pan view" },
-    { "Space",       "Pause / resume" },
-    { "F",           "Follow the hovered (or selected) mover" },
-    { NULL,          "--- General ---" },
-    { "L-click",     "Select a mover, animal, workshop, stockpile" },
-    { "Tab",         "Dev overlay (tools, settings)" },
-    { "`",           "Console (type help)" },
-    { "I",           "Build tools: instant / by order (Work bar)" },
-    { "F5 / F6",     "Quick save / quick load" },
-    { "F7",          "State audit" },
-    { "F8",          "Dump the event log" },
-};
 
 static const char* HelpKeyName(int key) {
     if (key >= KEY_A && key <= KEY_Z) { static char b[2][2]; static int k; k ^= 1; b[k][0] = (char)('A' + (key - KEY_A)); b[k][1] = 0; return b[k]; }
@@ -3314,9 +3233,10 @@ static const char* HelpKeyName(int key) {
 
 int InputHelpLines(char lines[][64], int max) {
     int n = 0;
-    for (int i = 0; i < (int)(sizeof(globalKeyHelp) / sizeof(globalKeyHelp[0])) && n < max; i++) {
-        if (globalKeyHelp[i].keys) snprintf(lines[n++], 64, "%-13s %s", globalKeyHelp[i].keys, globalKeyHelp[i].help);
-        else snprintf(lines[n++], 64, "%s", globalKeyHelp[i].help);
+    for (int i = 0; i < GlobalKeyCount() && n < max; i++) {   // src/core/global_keys.c
+        const GlobalKey* gk = GlobalKeyAt(i);
+        if (gk->label) snprintf(lines[n++], 64, "%-13s %s", gk->label, gk->help);
+        else snprintf(lines[n++], 64, "%s", gk->help);
     }
     static const struct { SelectionKind kind; const char* title; } kinds[] = {
         { SEL_MOVER, "--- Hovering a mover ---" },

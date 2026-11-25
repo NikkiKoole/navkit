@@ -197,7 +197,9 @@ Console commands live in one table in `src/ui/commands.c` (name, group, help, ty
 from `src/core/command_args.h`: int / float range, choice, item by name, name from another
 table; plus a run function). One row gives you a console command with parsing, usage text and
 error messages made from its spec. Dev sidebar buttons that do a command run the line through
-the table (`CommandButton(x, y, "Clear Water", "clear water")`). **Add new commands as a row
+the table (`CommandButton(x, y, "Clear Water", "clear water")`). Global keys (F5-F8, Space, Tab, , . F)
+are rows in `src/core/global_keys.c` that run a command line: add a key there, not as an
+`IsKeyPressed` block in input.c. **Add new commands as a row
 there**, not with `Console_RegisterCmd` + strcmp parsing. Every command, tool, setting, verb, item, scenario
 and game is also a row in the find index (`src/core/find_index.c`, filled by `src/ui/find.c`;
 console `find <text>`, `find /<path>`; in game `/` opens the find palette, `src/ui/palette.c`): new

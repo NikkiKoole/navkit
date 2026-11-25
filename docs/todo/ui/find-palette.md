@@ -90,7 +90,7 @@ The palette works end to end (`/` in game). In order:
      `ui_add_block_rect`; the dev sidebar sits left of the window so it doesn't bite yet);
    - mouse wheel sets the item brush count (now: 1, Shift 10);
    - settings remember the last typed value too (commands already do).
-4. **Fill the gaps in find**: what is still hand-written becomes rows: speed, the spawn-movers
+4. **Fill the gaps in find**: done 2026-11-25 (see Done so far). Original plan: what is still hand-written becomes rows: speed, the spawn-movers
    stepper, stockpile spawns, cutscene / shake as command rows; the global keys (input.c) as
    data with a key-clash test (step 5 of the data tidying). Then everything in the dev sidebar
    is also in find.
@@ -105,6 +105,16 @@ Recommended: 1, then 2 with 3 alongside.
 
 ## Done so far
 
+- 2026-11-25: **the gaps filled (step 4; data tidying step 5).** Every dev sidebar button now runs
+  a command row: speed (pause / resume / toggle / 1-50), daylength, graph, findpath, seed, regen,
+  fillwalls, copymap, animal, agents, scatter, stockpile, balance reset, cutscene, shake, game,
+  scenario (plus the earlier clear / rain / weather / season / grid / spawnmovers). The global
+  keys are a table (`src/core/global_keys.c`): key, label, help, the command line it runs
+  (F5 `save`, F6 `load`, F7 `audit`, F8 `events`, Space `speed toggle`, Tab `overlay`, , . `level`,
+  F `follow` in normal mode); input.c runs them in one loop, the `?` panel lists the table, the
+  find palette shows a command's key ("save  F5"). Tested: no key twice, none of D W S I, no
+  clash with a hover verb. Small changes: the dev sidebar's speed buttons now unpause (like the
+  player HUD's), its Pause pauses instead of setting speed 0.
 - 2026-11-25: **palette polish.** Pins and recent survive a restart: `navkit_find.txt` in the
   working directory (git-ignored), rows named by path + label (`FindRowKey` / `FindRowByKey`),
   loaded on the first `/`, saved when a pin changes and when the palette closes. While the

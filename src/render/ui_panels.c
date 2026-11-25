@@ -216,15 +216,10 @@ static void DrawPlayerHUD(void) {
     // Speed controls top-left, below FPS
     float y = 30;
     float bx = 10;
-    bool clicked = false;
-    bx += PushButtonInline(bx, y, paused ? ">>" : "||", &clicked);
-    if (clicked) paused = !paused;
-    bx += 4;
-    clicked = false; bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) { gameSpeed = 1.0f; paused = false; }
-    bx += 4;
-    clicked = false; bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) { gameSpeed = 2.0f; paused = false; }
-    bx += 4;
-    clicked = false; bx += PushButtonInline(bx, y, "3x", &clicked); if (clicked) { gameSpeed = 3.0f; paused = false; }
+    bx += CommandButtonInline(bx, y, paused ? ">>" : "||", "speed toggle") + 4;
+    bx += CommandButtonInline(bx, y, "1x", "speed 1") + 4;
+    bx += CommandButtonInline(bx, y, "2x", "speed 2") + 4;
+    CommandButtonInline(bx, y, "3x", "speed 3");
     y += 22;
 
     // Tools and the mover roster: tab bar bottom left (src/render/play_hud.c)
@@ -236,7 +231,7 @@ static void DrawPlayerHUD(void) {
         const GameDef* g = GameAt(gi);
         Rectangle r = {10, y, (float)MeasureTextUI(TextFormat("[%s]", g->label), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
         if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(g->description);
-        if (PushButton(10, y, g->label)) StartGame(g->name);
+        CommandButton(10, y, g->label, TextFormat("game %s", g->name));
         y += 22;
     }
 
@@ -301,25 +296,9 @@ void DrawUI(void) {
         y += 18;
         DrawSettingsGroup("Pathfinding", x, &y);   // Algo, Dir (src/core/settings.c)
         y += 22;
-        if (PushButton(x, y, "Build HPA Graph")) {
-            BuildEntrances();
-            BuildGraph();
-        }
+        CommandButton(x, y, "Build HPA Graph", "graph");
         y += 22;
-        if (PushButton(x, y, "Find Path")) {
-            if (pathAlgorithm == 1) {
-                if (graphEdgeCount == 0) {
-                    BuildEntrances();
-                    BuildGraph();
-                } else if (needsRebuild) {
-                    UpdateDirtyChunks();
-                }
-            }
-            switch (pathAlgorithm) {
-                case 0: RunAStar(); break;
-                case 1: RunHPAStar(); break;
-            }
-        }
+        CommandButton(x, y, "Find Path", "findpath");
     }
     y += 22;
 
@@ -352,31 +331,9 @@ void DrawUI(void) {
                 DrawTextShadow(biomePresets[selectedBiome].description, ix, y, 11, GRAY);
                 y += 16;
             }
-            if (PushButton(ix, y, "Randomize Seed")) {
-                worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
-                AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);
-            }
+            CommandButton(ix, y, "Randomize Seed", "seed random");
             y += 22;
-            if (PushButton(ix, y, "Generate Terrain")) {
-                InitPlants();
-                ClearFarming();
-                InitDesignations();   // before generating: some generators place designations (CraftTest)
-                GenerateCurrentTerrain();
-                InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-                InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-                RebuildSimActivityCounts();
-                InitFire();
-                InitSmoke();
-                InitSteam();
-                InitTemperature();
-                InitGroundWear();
-                InitFloorDirt();
-                InitSnow();
-                InvalidateLighting();
-                BuildEntrances();
-                BuildGraph();
-                AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
-            }
+            CommandButton(ix, y, "Generate Terrain", "regen");
             y += 22;
             // Games (src/core/games.c): start one, description on hover
             DrawTextShadow("Games:", ix, y, 14, GRAY);
@@ -385,7 +342,7 @@ void DrawUI(void) {
                 const GameDef* g = GameAt(gi);
                 Rectangle r = {(float)ix, (float)y, (float)MeasureTextUI(TextFormat("[%s]", g->name), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
                 if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(g->description);
-                if (PushButton(ix, y, g->name)) StartGame(g->name);
+                CommandButton(ix, y, g->name, TextFormat("game %s", g->name));
                 y += 22;
             }
             // Scenarios (src/core/scenarios.c): one button each, description on hover
@@ -395,7 +352,7 @@ void DrawUI(void) {
                 const Scenario* sc = ScenarioAt(si);
                 Rectangle r = {(float)ix, (float)y, (float)MeasureTextUI(TextFormat("[%s]", sc->name), UI_FONT_MEDIUM) + 10, (float)(UI_FONT_MEDIUM + 2)};
                 if (CheckCollisionPointRec(GetMousePosition(), r)) ui_set_tooltip(sc->description);
-                if (PushButton(ix, y, sc->name)) RunScenario(sc->name);
+                CommandButton(ix, y, sc->name, TextFormat("scenario %s", sc->name));
                 y += 22;
             }
             // Grid size buttons — inline row
@@ -409,57 +366,9 @@ void DrawUI(void) {
                 CommandButtonInline(bx, y, "256x256", "grid 256");
             }
             y += 22;
-            if (PushButton(ix, y, "Fill with Walls")) {
-                for (int gy = 0; gy < gridHeight; gy++) {
-                    for (int gx = 0; gx < gridWidth; gx++) {
-                        GRID(gx, gy, currentViewZ) = CELL_WALL;
-                        SetWaterLevel(gx, gy, currentViewZ, 0);
-                        SetWaterSource(gx, gy, currentViewZ, false);
-                        SetWaterDrain(gx, gy, currentViewZ, false);
-                    }
-                }
-                for (int cy = 0; cy < chunksY; cy++) {
-                    for (int cx = 0; cx < chunksX; cx++) {
-                        MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
-                    }
-                }
-                BuildEntrances();
-                BuildGraph();
-                InitDesignations();
-                AddMessage(TextFormat("Filled z=%d with walls", currentViewZ), GREEN);
-            }
+            CommandButton(ix, y, "Fill with Walls", "fillwalls");
             y += 22;
-            if (PushButton(ix, y, "Copy Map ASCII")) {
-                int floorDataSize = gridWidth * gridHeight + gridHeight;
-                int bufferSize = gridDepth * (16 + floorDataSize) + 1;
-                char* buffer = malloc(bufferSize);
-                if (!buffer) {
-                    AddMessage("Failed to allocate clipboard buffer", RED);
-                } else {
-                    int idx = 0;
-                    for (int z = 0; z < gridDepth; z++) {
-                        idx += snprintf(buffer + idx, bufferSize - idx, "floor:%d\n", z);
-                        for (int row = 0; row < gridHeight; row++) {
-                            for (int col = 0; col < gridWidth; col++) {
-                                char c;
-                                switch (GRID(col, row, z)) {
-                                    case CELL_WALL:        c = '#'; break;
-                                    case CELL_LADDER_UP:   c = '<'; break;
-                                    case CELL_LADDER_DOWN: c = '>'; break;
-                                    case CELL_LADDER_BOTH: c = 'X'; break;
-                                    default:               c = '.'; break;
-                                }
-                                buffer[idx++] = c;
-                            }
-                            buffer[idx++] = '\n';
-                        }
-                    }
-                    buffer[idx] = '\0';
-                    SetClipboardText(buffer);
-                    free(buffer);
-                    AddMessage(TextFormat("Map copied to clipboard (%d floors)", gridDepth), ORANGE);
-                }
-            }
+            CommandButton(ix, y, "Copy Map ASCII", "copymap");
         }
         y += 22;
 
@@ -505,16 +414,12 @@ void DrawUI(void) {
         y += 18;
 
         // --- Movers ---
-        if (PushButton(ix + 140, y, "+")) {
-            AddMoversDemo(moverCountSetting);
-        }
+        CommandButton(ix + 140, y, "+", TextFormat("spawnmovers %d add", moverCountSetting));
         if (SectionHeader(ix, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
             y += 18;
             DraggableIntLog(ix, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
             y += 22;
-            if (PushButton(ix, y, "Spawn Movers")) {
-                SpawnMoversDemo(moverCountSetting);
-            }
+            CommandButton(ix, y, "Spawn Movers", TextFormat("spawnmovers %d", moverCountSetting));
             y += 22;
             CommandButton(ix, y, "Clear Movers", "clear movers");
             y += 22;
@@ -548,16 +453,9 @@ void DrawUI(void) {
         DrawTextShadow(TextFormat("Animals (%d)", CountActiveAnimals()), ix, y, 14, GRAY);
         {
             float bx = ix + 80;
-            bool clicked = false;
-            bx += PushButtonInline(bx, y, "+", &clicked);
-            if (clicked) SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER);
-            clicked = false;
-            bx += PushButtonInline(bx, y, "+S", &clicked);
-            if (clicked) SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER);
-            clicked = false;
-            bx += PushButtonInline(bx, y, "+W", &clicked);
-            if (clicked) SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR);
-            clicked = false;
+            bx += CommandButtonInline(bx, y, "+", "animal grazer");
+            bx += CommandButtonInline(bx, y, "+S", "animal steering");
+            bx += CommandButtonInline(bx, y, "+W", "animal predator");
             CommandButtonInline(bx, y, "Clear", "clear animals");
         }
         y += 22;
@@ -571,18 +469,8 @@ void DrawUI(void) {
         y += 22;
         {
             float bx = ix;
-            bool clicked = false;
-            bx += PushButtonInline(bx, y, "Spawn", &clicked);
-            if (clicked) {
-                if (graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
-                SpawnAgents(agentCountSetting);
-            }
-            clicked = false;
-            PushButtonInline(bx, y, "Repath", &clicked);
-            if (clicked) {
-                if (pathAlgorithm == 1 && graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
-                RepathAgents();
-            }
+            bx += CommandButtonInline(bx, y, "Spawn", TextFormat("agents spawn %d", agentCountSetting));
+            CommandButtonInline(bx, y, "Repath", "agents repath");
         }
         y += 22;
 
@@ -628,26 +516,8 @@ void DrawUI(void) {
                 int spawnDefCount = sizeof(spawnDefs) / sizeof(spawnDefs[0]);
                 float bx = (float)ix;
                 for (int d = 0; d < spawnDefCount; d++) {
-                    bool clicked = false;
-                    float w = PushButtonInline(bx, (float)y, spawnDefs[d].label, &clicked);
-                    if (clicked) {
-                        for (int i = 0; i < itemCountSetting; i++) {
-                            int attempts = 100;
-                            while (attempts-- > 0) {
-                                int gx = GetRandomValue(0, gridWidth - 1);
-                                int gy = GetRandomValue(0, gridHeight - 1);
-                                if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                                    float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                                    float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                                    if (spawnDefs[d].mat != MAT_NONE)
-                                        SpawnItemWithMaterial(px, py, (float)currentViewZ, spawnDefs[d].type, spawnDefs[d].mat);
-                                    else
-                                        SpawnItem(px, py, (float)currentViewZ, spawnDefs[d].type);
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    float w = CommandButtonInline(bx, (float)y, spawnDefs[d].label,
+                                                  TextFormat("scatter %d %s", itemCountSetting, itemDefs[spawnDefs[d].type].name));
                     bx += w;
                     if (bx > ix + 170) { bx = (float)ix; y += 22; }
                 }
@@ -656,13 +526,13 @@ void DrawUI(void) {
 
             CommandButton(ix, y, "Clear Items", "clear items");
             y += 22;
-            if (PushButton(ix, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
+            CommandButton(ix, y, "Stockpile: All", "stockpile all");
             y += 22;
-            if (PushButton(ix, y, "Stockpile: Red"))   SpawnStockpileWithFilters(true, false, false);
+            CommandButton(ix, y, "Stockpile: Red", "stockpile red");
             y += 22;
-            if (PushButton(ix, y, "Stockpile: Green")) SpawnStockpileWithFilters(false, true, false);
+            CommandButton(ix, y, "Stockpile: Green", "stockpile green");
             y += 22;
-            if (PushButton(ix, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
+            CommandButton(ix, y, "Stockpile: Blue", "stockpile blue");
             y += 22;
             CommandButton(ix, y, "Clear Stockpiles", "clear stockpiles");
         }
@@ -834,25 +704,18 @@ void DrawUI(void) {
 
             // Speed presets — compact: Pause + speeds on 2 rows
             {
-                bool clicked = false;
                 float bx = ix;
-                bx += PushButtonInline(bx, y, "Pause", &clicked); if (clicked) gameSpeed = 0.0f;
-                clicked = false;
-                bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) gameSpeed = 1.0f;
-                clicked = false;
-                bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) gameSpeed = 2.0f;
-                clicked = false;
-                PushButtonInline(bx, y, "3x", &clicked); if (clicked) gameSpeed = 3.0f;
+                bx += CommandButtonInline(bx, y, "Pause", "speed pause");
+                bx += CommandButtonInline(bx, y, "1x", "speed 1");
+                bx += CommandButtonInline(bx, y, "2x", "speed 2");
+                CommandButtonInline(bx, y, "3x", "speed 3");
             }
             y += 22;
             {
-                bool clicked = false;
                 float bx = ix;
-                bx += PushButtonInline(bx, y, "5x", &clicked); if (clicked) gameSpeed = 5.0f;
-                clicked = false;
-                bx += PushButtonInline(bx, y, "10x", &clicked); if (clicked) gameSpeed = 10.0f;
-                clicked = false;
-                PushButtonInline(bx, y, "50x", &clicked); if (clicked) gameSpeed = 50.0f;
+                bx += CommandButtonInline(bx, y, "5x", "speed 5");
+                bx += CommandButtonInline(bx, y, "10x", "speed 10");
+                CommandButtonInline(bx, y, "50x", "speed 50");
             }
             y += 22;
 
@@ -860,12 +723,9 @@ void DrawUI(void) {
             DrawTextShadow("Day presets:", ix, y, 14, GRAY);
             {
                 float bx = ix + 76;
-                bool clicked = false;
-                bx += PushButtonInline(bx, y, "Fast", &clicked); if (clicked) dayLength = 120.0f;
-                clicked = false;
-                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 360.0f;
-                clicked = false;
-                PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 1080.0f;
+                bx += CommandButtonInline(bx, y, "Fast", "daylength fast");
+                bx += CommandButtonInline(bx, y, "Normal", "daylength normal");
+                CommandButtonInline(bx, y, "Slow", "daylength slow");
             }
             y += 22;
 
@@ -940,11 +800,7 @@ void DrawUI(void) {
             y += 22;
 
             // Reset button
-            {
-                bool clicked = false;
-                PushButtonInline(ix, y, "Reset Defaults", &clicked);
-                if (clicked) InitBalance();
-            }
+            CommandButton(ix, y, "Reset Defaults", "balance reset");
             y += 22;
         }
         y += 22;
@@ -962,14 +818,10 @@ void DrawUI(void) {
         DrawTextShadow("View:", ix, y, 14, GRAY);
         {
             float bx = ix + 34;
-            bool clicked = false;
-            bx += PushButtonInline(bx, y, "Cutscene", &clicked); if (clicked) PlayTestCutscene();
-            clicked = false;
-            bx += PushButtonInline(bx, y, "Shk S", &clicked); if (clicked) TriggerScreenShake(2.0f, 0.2f);
-            clicked = false;
-            bx += PushButtonInline(bx, y, "Shk M", &clicked); if (clicked) TriggerScreenShake(4.0f, 0.4f);
-            clicked = false;
-            PushButtonInline(bx, y, "Shk L", &clicked); if (clicked) TriggerScreenShake(8.0f, 0.6f);
+            bx += CommandButtonInline(bx, y, "Cutscene", "cutscene");
+            bx += CommandButtonInline(bx, y, "Shk S", "shake small");
+            bx += CommandButtonInline(bx, y, "Shk M", "shake medium");
+            CommandButtonInline(bx, y, "Shk L", "shake large");
         }
         y += 22;
 

@@ -87,6 +87,7 @@
 #include "core/games.c"
 #include "core/settings.c"
 #include "core/command_args.c"
+#include "core/global_keys.c"
 #include "core/find_index.c"
 #include "core/describe.c"
 #include "core/sim_step.c"

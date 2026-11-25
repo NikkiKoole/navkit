@@ -25,6 +25,16 @@
 #include "../world/designations.h"
 #include "../core/scenarios.h"
 #include "../core/games.h"
+#include "../core/input_mode.h"
+#include "../core/selection.h"
+#include "../core/state_audit.h"
+#include "../core/event_log.h"
+#include "../simulation/plants.h"
+#include "../simulation/farming.h"
+#include "../simulation/balance.h"
+#include "../world/pathfinding.h"
+#include <stdlib.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -32,6 +42,13 @@
 
 void SpawnMoversDemo(int count);   // main.c
 void AddMoversDemo(int count);     // main.c
+void SpawnAgents(int count);       // main.c
+void RepathAgents(void);           // main.c
+void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);   // main.c
+void TriggerScreenShake(float intensity, float duration);                         // main.c
+void PlayTestCutscene(void);       // ui/cutscene.c
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 
 // Feedback: always in the console log; on screen too when the console is closed (a sidebar
 // button pressed, a command run from elsewhere)
@@ -300,6 +317,223 @@ static void RunOneWay(const CmdValue* v) {
     Say(GREEN, "Ladder at %d,%d: %s (%d pieces)", x, y, oneWayChoices[v[0].choice], n);
 }
 
+// ---- time: speed, daylength ----
+static const char* const speedChoices[] = { "pause", "resume", "toggle" };
+static void RunSpeed(const CmdValue* v) {
+    switch (v[0].choice) {
+        case 0: paused = true; break;
+        case 1: paused = false; break;
+        case 2: paused = !paused; break;
+        default: gameSpeed = (float)v[0].i; paused = false; Say(GREEN, "Speed %dx", v[0].i); break;
+    }
+}
+static const char* const dayChoices[] = { "fast", "normal", "slow" };
+static void RunDayLength(const CmdValue* v) {
+    static const float lengths[] = { 120.0f, 360.0f, 1080.0f };
+    dayLength = lengths[v[0].choice];
+    Say(GREEN, "Day length: %s (%.0f s)", dayChoices[v[0].choice], dayLength);
+}
+
+// ---- save / load / audit / events (F5-F8) ----
+static void RunSave(const CmdValue* v) {
+    (void)v;
+    if (system("mkdir -p saves") != 0) { Say(RED, "Could not make saves/"); return; }
+    if (!SaveWorld("saves/debug_save.bin")) return;
+    Say(GREEN, "World saved");
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    char cmd[256], timestamp[32], logPath[128];
+    snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d-%02d-%02d",
+             t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+    snprintf(cmd, sizeof(cmd), "gzip -c saves/debug_save.bin > saves/%s.bin.gz", timestamp);
+    if (system(cmd) != 0) Say(YELLOW, "gzip copy failed");
+    snprintf(logPath, sizeof(logPath), "saves/%s.events.log", timestamp);   // event log alongside
+    EventLogDump(logPath);
+    int violations = RunStateAudit(true);   // auto-audit: warn if violations found
+    if (violations > 0) Say(RED, "Audit: %d violations (see console)", violations);
+}
+static void RunLoad(const CmdValue* v) {
+    (void)v;
+    if (LoadWorld("saves/debug_save.bin")) { InputMode_Reset(); Say(GREEN, "World loaded"); }
+}
+static void RunAudit(const CmdValue* v) {
+    (void)v;
+    int violations = RunStateAudit(true);
+    if (violations == 0) Say(GREEN, "Audit: 0 violations");
+    else Say(RED, "Audit: %d violations (see console)", violations);
+}
+static void RunEvents(const CmdValue* v) {
+    (void)v;
+    EventLogDump("navkit_events.log");
+    Say(GREEN, "Event log dumped (%d entries)", EventLogCount());
+}
+
+// ---- view: level, overlay, follow ----
+static const char* const levelChoices[] = { "up", "down" };
+static void RunLevel(const CmdValue* v) {
+    if (v[0].choice == 0 && currentViewZ < gridDepth - 1) currentViewZ++;
+    else if (v[0].choice == 1 && currentViewZ > 0) currentViewZ--;
+    else if (v[0].choice < 0 && v[0].i >= 0 && v[0].i < gridDepth) currentViewZ = v[0].i;
+}
+static void RunOverlay(const CmdValue* v) {
+    (void)v;
+    devUI = !devUI;
+    if (!devUI) InputMode_ExitToNormal();   // the dev overlay sits on top of any game (games.h)
+}
+static void RunFollow(const CmdValue* v) {
+    (void)v;
+    // The hovered mover, else the selected one; nothing there: follow off
+    int target = (hoveredMover >= 0 && hoveredMover < moverCount) ? hoveredMover
+               : (selection.kind == SEL_MOVER && SelectionValid()) ? selection.idx : -1;
+    if (target >= 0) ToggleMoverFollow(target);
+    else if (followMoverIdx >= 0) { followMoverIdx = -1; Say(GRAY, "Follow: off"); }
+}
+
+// ---- world editing ----
+static void RunGraph(const CmdValue* v) {
+    (void)v;
+    BuildEntrances();
+    BuildGraph();
+    Say(GREEN, "HPA graph built (%d edges)", graphEdgeCount);
+}
+static void RunFindPath(const CmdValue* v) {
+    (void)v;
+    if (pathAlgorithm == 1) {
+        if (graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
+        else if (needsRebuild) UpdateDirtyChunks();
+    }
+    switch (pathAlgorithm) {
+        case 0: RunAStar(); break;
+        case 1: RunHPAStar(); break;
+    }
+}
+static const char* const seedChoices[] = { "random" };
+static void RunSeed(const CmdValue* v) {
+    if (v[0].choice == 0) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+    else worldSeed = (uint64_t)v[0].i;
+    Say(GREEN, "New seed: %llu", (unsigned long long)worldSeed);
+}
+static void RunRegen(const CmdValue* v) {
+    (void)v;
+    InitPlants();
+    ClearFarming();
+    InitDesignations();   // before generating: some generators place designations (CraftTest)
+    GenerateCurrentTerrain();
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    RebuildSimActivityCounts();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InvalidateLighting();
+    BuildEntrances();
+    BuildGraph();
+    Say(GREEN, "Generated terrain: %s", terrainNames[currentTerrain]);
+}
+static void RunFillWalls(const CmdValue* v) {
+    (void)v;
+    for (int gy = 0; gy < gridHeight; gy++)
+        for (int gx = 0; gx < gridWidth; gx++) {
+            GRID(gx, gy, currentViewZ) = CELL_WALL;
+            SetWaterLevel(gx, gy, currentViewZ, 0);
+            SetWaterSource(gx, gy, currentViewZ, false);
+            SetWaterDrain(gx, gy, currentViewZ, false);
+        }
+    for (int cy = 0; cy < chunksY; cy++)
+        for (int cx = 0; cx < chunksX; cx++) MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
+    BuildEntrances();
+    BuildGraph();
+    InitDesignations();
+    Say(GREEN, "Filled z=%d with walls", currentViewZ);
+}
+static void RunCopyMap(const CmdValue* v) {
+    (void)v;
+    int floorDataSize = gridWidth * gridHeight + gridHeight;
+    int bufferSize = gridDepth * (16 + floorDataSize) + 1;
+    char* buffer = malloc((size_t)bufferSize);
+    if (!buffer) { Say(RED, "Failed to allocate clipboard buffer"); return; }
+    int idx = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        idx += snprintf(buffer + idx, (size_t)(bufferSize - idx), "floor:%d\n", z);
+        for (int row = 0; row < gridHeight; row++) {
+            for (int col = 0; col < gridWidth; col++) {
+                char c;
+                switch (GRID(col, row, z)) {
+                    case CELL_WALL:        c = '#'; break;
+                    case CELL_LADDER_UP:   c = '<'; break;
+                    case CELL_LADDER_DOWN: c = '>'; break;
+                    case CELL_LADDER_BOTH: c = 'X'; break;
+                    default:               c = '.'; break;
+                }
+                buffer[idx++] = c;
+            }
+            buffer[idx++] = '\n';
+        }
+    }
+    buffer[idx] = '\0';
+    SetClipboardText(buffer);
+    free(buffer);
+    Say(ORANGE, "Map copied to clipboard (%d floors)", gridDepth);
+}
+
+// ---- entities: animals, agents, scattered items, stockpiles ----
+static const char* const animalChoices[] = { "grazer", "steering", "predator" };
+static void RunAnimal(const CmdValue* v) {
+    int n = v[1].given ? v[1].i : 1;
+    for (int i = 0; i < n; i++) {
+        switch (v[0].choice) {
+            case 0: SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER); break;
+            case 1: SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER); break;
+            case 2: SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR); break;
+        }
+    }
+}
+static const char* const agentChoices[] = { "spawn", "repath" };
+static void RunAgents(const CmdValue* v) {
+    if (v[0].choice == 0) {
+        if (graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
+        SpawnAgents(v[1].given ? v[1].i : 10);
+    } else {
+        if (pathAlgorithm == 1 && graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
+        RepathAgents();
+    }
+}
+// scatter <count> <item>: on random walkable cells of the viewed level
+static void RunScatter(const CmdValue* v) {
+    ItemType type = (ItemType)v[1].i;
+    int placed = 0;
+    for (int i = 0; i < v[0].i; i++) {
+        for (int attempts = 100; attempts > 0; attempts--) {
+            int gx = GetRandomValue(0, gridWidth - 1), gy = GetRandomValue(0, gridHeight - 1);
+            if (!IsCellWalkableAt(currentViewZ, gy, gx)) continue;
+            SpawnItemWithMaterial(gx * CELL_SIZE + CELL_SIZE * 0.5f, gy * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  (float)currentViewZ, type, DefaultMaterialForItemType(type));
+            placed++;
+            break;
+        }
+    }
+    Say(GREEN, "Scattered %d %s", placed, itemDefs[type].name);
+}
+static const char* const stockpileChoices[] = { "all", "red", "green", "blue" };
+static void RunStockpile(const CmdValue* v) {
+    int c = v[0].choice;
+    SpawnStockpileWithFilters(c == 0 || c == 1, c == 0 || c == 2, c == 0 || c == 3);
+}
+static const char* const balanceChoices[] = { "reset" };
+static void RunBalance(const CmdValue* v) { (void)v; InitBalance(); Say(GREEN, "Mover balance: defaults"); }
+
+// ---- rendering toys ----
+static void RunCutscene(const CmdValue* v) { (void)v; PlayTestCutscene(); }
+static const char* const shakeChoices[] = { "small", "medium", "large" };
+static void RunShake(const CmdValue* v) {
+    static const float strength[] = { 2.0f, 4.0f, 8.0f }, duration[] = { 0.2f, 0.4f, 0.6f };
+    TriggerScreenShake(strength[v[0].choice], duration[v[0].choice]);
+}
+
 #define ARG_CHOICE(n, arr) { .name = (n), .type = CARG_CHOICE, .choices = (arr), .choiceCount = (int)(sizeof(arr) / sizeof((arr)[0])) }
 #define ARG_NAME(n, cnt, at) { .name = (n), .type = CARG_NAME, .nameCount = (cnt), .nameAt = (at) }
 
@@ -334,6 +568,43 @@ static const CommandDef commandTable[] = {
       1, { ARG_NAME("scenario", ScenarioNameCount, ScenarioNameAt) }, RunScenarioCmd, ScenarioList },
     { "game", "Games", "Start a game",
       1, { ARG_NAME("game", GameNameCount, GameNameAt) }, RunGameCmd, GameList },
+    { "speed", "Time", "Game speed: pause, resume, toggle or a multiplier 1-50",
+      1, { { .name = "x", .type = CARG_CHOICE, .choices = speedChoices, .choiceCount = 3, .lo = 1, .hi = 50 } },
+      RunSpeed, NULL },
+    { "daylength", "Time", "How long a day takes: fast 2 min, normal 6 min, slow 18 min",
+      1, { ARG_CHOICE("length", dayChoices) }, RunDayLength, NULL },
+    { "save", "Save", "Quick save (saves/debug_save.bin, a dated .gz copy, the event log, an audit)",
+      0, { { 0 } }, RunSave, NULL },
+    { "load", "Save", "Quick load (saves/debug_save.bin)", 0, { { 0 } }, RunLoad, NULL },
+    { "audit", "Save", "Run the state audit (consistency checks, see the console)", 0, { { 0 } }, RunAudit, NULL },
+    { "events", "Save", "Dump the event log to navkit_events.log", 0, { { 0 } }, RunEvents, NULL },
+    { "level", "View", "View level up, down or a number",
+      1, { { .name = "z", .type = CARG_CHOICE, .choices = levelChoices, .choiceCount = 2, .lo = 0, .hi = 255 } },
+      RunLevel, NULL },
+    { "overlay", "View", "Dev overlay on / off (tools, settings; the game's rules stay)", 0, { { 0 } }, RunOverlay, NULL },
+    { "follow", "View", "Camera follows the hovered (or selected) mover; again: off", 0, { { 0 } }, RunFollow, NULL },
+    { "graph", "Pathfinding", "Build the HPA* graph", 0, { { 0 } }, RunGraph, NULL },
+    { "findpath", "Pathfinding", "Find a path start -> goal with the current algorithm", 0, { { 0 } }, RunFindPath, NULL },
+    { "seed", "World/Terrain", "World seed: random or a number",
+      1, { { .name = "seed", .type = CARG_CHOICE, .choices = seedChoices, .choiceCount = 1, .lo = 0, .hi = 2000000000 } },
+      RunSeed, NULL },
+    { "regen", "World/Terrain", "Generate the current terrain again (with the current seed)", 0, { { 0 } }, RunRegen, NULL },
+    { "fillwalls", "World/Map Editing", "Fill the viewed level with walls", 0, { { 0 } }, RunFillWalls, NULL },
+    { "copymap", "World/Map Editing", "Copy the map as ASCII to the clipboard", 0, { { 0 } }, RunCopyMap, NULL },
+    { "animal", "Entities/Animals", "Spawn animals: grazer, steering (grazer), predator",
+      2, { ARG_CHOICE("kind", animalChoices), { .name = "n", .type = CARG_INT, .optional = true, .lo = 1, .hi = 500 } },
+      RunAnimal, NULL },
+    { "agents", "Entities/Agents", "Steering agents: spawn [n] or repath",
+      2, { ARG_CHOICE("what", agentChoices), { .name = "n", .type = CARG_INT, .optional = true, .lo = 1, .hi = 10000 } },
+      RunAgents, NULL },
+    { "scatter", "Entities/Items", "Spawn items on random walkable cells of the viewed level",
+      2, { { .name = "count", .type = CARG_INT, .lo = 1, .hi = 10000 }, { .name = "item", .type = CARG_ITEM } },
+      RunScatter, NULL },
+    { "stockpile", "Entities/Items", "Spawn a test stockpile: all, red, green or blue",
+      1, { ARG_CHOICE("filter", stockpileChoices) }, RunStockpile, NULL },
+    { "balance", "Mover Balance", "Mover balance back to its defaults", 1, { ARG_CHOICE("what", balanceChoices) }, RunBalance, NULL },
+    { "cutscene", "Rendering & Debug", "Play the test cutscene", 0, { { 0 } }, RunCutscene, NULL },
+    { "shake", "Rendering & Debug", "Screen shake: small, medium, large", 1, { ARG_CHOICE("size", shakeChoices) }, RunShake, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
       1, { { .name = "text", .type = CARG_TEXT, .optional = true } }, RunFind, NULL },
     { "spawnmovers", "Entities/Movers", "Replace all movers with N wandering ones (add: keep the current ones)",
