@@ -3453,8 +3453,9 @@ static bool CarsTrafficCheck(char* why, int whyLen) {
 // ---------------------------------------------------------------------------
 // Cars city: a road network (src/entities/roads.h) with lanes and reserved junctions,
 // carCityCount cars (default 100) driving trip after trip (src/entities/traffic.h).
-// 330x260 cells: a 9x7 grid of junctions ~36 cells apart, jittered; ~30% of the roads
-// bend; ~12% are left out (T-junctions), keeping every junction reachable. Roads 6 wide.
+// 330x260 cells: a grid of junctions carCitySpacingX x Y apart (default 72 x 40: long
+// straights east-west), jittered by carCityJitter, carCityBends of the roads bend; ~12% are
+// left out (T-junctions), keeping every junction reachable. Roads 6 wide.
 // ---------------------------------------------------------------------------
 static unsigned int cityRng;
 static int CityRand(int n) { cityRng = cityRng * 1103515245u + 12345u; return (int)((cityRng >> 16) % (unsigned)n); }
@@ -3494,20 +3495,22 @@ static void SetupCarsCity(void) {
 
     cityRng = (unsigned int)carCitySeed;
     // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
-    const float spacing = 36, origin = 20;
-    int cols = (int)((gridWidth - 2 * origin) / spacing) + 1, rows = (int)((gridHeight - 2 * origin) / spacing) + 1;
+    const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
+    int J = carCityJitter;
+    rdSetback = carCitySetback;
+    int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin) / sy) + 1;
     if (cols < 3) cols = 3;
     if (rows < 3) rows = 3;
     if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
     RoadsClear();
     for (int j = 0; j < rows; j++)
         for (int i = 0; i < cols; i++)
-            RoadAddNode(origin + spacing * i + (CityRand(11) - 5), origin + spacing * j + (CityRand(11) - 5));
+            RoadAddNode(origin + sx * i + (CityRand(2 * J + 1) - J), origin + sy * j + (CityRand(2 * J + 1) - J));
     for (int j = 0; j < rows; j++)
         for (int i = 0; i < cols; i++) {
-            float bend = CityRand(10) < 3 ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+            float bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
             if (i + 1 < cols) RoadAddEdge(j * cols + i, j * cols + i + 1, bend);
-            bend = CityRand(10) < 3 ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
+            bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
             if (j + 1 < rows) RoadAddEdge(j * cols + i, (j + 1) * cols + i, bend);
         }
     // Leave ~12% of the roads out: never a dead end, everything stays connected

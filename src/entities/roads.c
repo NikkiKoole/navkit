@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+float rdSetback = 7.0f;
 RdNode rdNodes[RD_MAX_NODES];
 RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
@@ -469,12 +470,13 @@ static void BuildAll(float latAccel) {
             for (int j = 0; j < nd->nConn; j++)
                 nd->conflict[i][j] = (i != j) && ConnectorsConflict(nd->conn[i], nd->conn[j]);
     }
-    // Parking bays: one on a lane of 18+ cells, two on 32+ (between the lane's ends)
+    // Parking bays: one per 16 cells of lane (18+ cells), up to 4, spread between its ends
     for (int i = 0; i < rdLaneCount; i++) {
         int l = rdLanes[i];
         if (rdSegs[l].laneIdx != 0) continue;   // only along the right-hand lane
         float len = rdSegs[l].len / CELL_SIZE;
-        int nb = len >= 32 ? 2 : (len >= 18 ? 1 : 0);
+        int nb = len < 18 ? 0 : (int)((len - 2) / 16);   // one per 16 cells of lane (long roads: more parking), up to 4
+        if (nb > 4) nb = 4;
         for (int b = 0; b < nb; b++) {
             float mid = len * (b + 1) / (nb + 1);
             BuildBay(l, (mid - RD_BAY_LEN * 0.5f) * CELL_SIZE);

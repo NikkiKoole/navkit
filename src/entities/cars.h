@@ -118,6 +118,10 @@ extern bool carCityAvenues;    // middle row + column: two lanes each way, overt
 extern bool carCityParking;    // cars park in bays between trips (off: they just drive)
 extern bool carCitySlots;      // the abstract slot traffic (slots.h) instead of steered cars
 extern float carGapCells;      // road cars: standstill gap to the car ahead (cells)
+extern float carCitySpacingX, carCitySpacingY;   // cars-city: cells between junctions
+extern int carCityJitter;      // cars-city: junctions moved up to this many cells at random
+extern float carCityBends;     // cars-city: share of roads with a bend
+extern float carCitySetback;   // cars-city: lanes stop this far from a junction's centre
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance

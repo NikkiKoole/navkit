@@ -27,7 +27,8 @@
 #define RD_MAX_OUT 6         // connectors leaving one lane
 #define RD_ROAD_WIDTH 6.0f   // cells
 #define RD_LANE_OFF 1.5f     // cells: lane centre from the road's centre line
-#define RD_SETBACK 7.0f      // cells: lanes stop this far from a junction's centre (room for the turns)
+#define RD_SETBACK rdSetback  // cells: lanes stop this far from a junction's centre (room for the turns)
+extern float rdSetback;       // (default 7; the scenario sets it from carCitySetback)
 
 typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
 typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)

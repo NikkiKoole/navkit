@@ -385,6 +385,22 @@ full sim's "find another way round a full exit" gridlock loops never broke.
 Not done yet: real (steered) cars in the watched area with a hand-over; parking in slot mode;
 the slot sim gridlocks at ~50000 cars on the 2048 city (a full network).
 
+## City shape and compact junctions (2026-11-25)
+
+The user: roads should have longer straights; junctions leave a big empty square. Settings now:
+`carCitySpacingX/Y` (default 72 x 40: long blocks east-west), `carCityJitter` (2), `carCityBends`
+(0.1), `carCitySetback` (lanes stop this far from a junction's centre: default 4, was 7).
+Bays: one per 16 cells of lane, up to 4 (long roads have more parking; with one or two per lane
+the long-block city had only as many bays as cars, and parked cars never found a free one).
+
+With near-square junctions even steered 2x2 cars fit setback 4 (cramped junctions are still
+pushed back as needed): 5 layouts x 100/128 cars, 0 touches, 0 wall contacts, junction waits
+<= 61 s, more trips than at 7. Slot traffic (250 cars, 2-cell slots): 398 trips at setback 4,
+314 at 7. The old city: spacing 36/36, jitter 5, bends 0.3, setback 7.
+
+Long blocks mean less road per area (34 junctions / 104 lanes instead of 63 / 226 on the test
+map): fewer alternative routes, busier junctions.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
