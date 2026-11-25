@@ -79,7 +79,7 @@ prey and walk in while it's dazed.
 ## Built (slice 3): hits daze, near misses scare, hunters throw (user's calls)
 
 - **Every hit dazes** (`DazeAnimal`): the animal stands still for `animalDazeHours` game hours
-  (1.5), head down, three yellow stars circling over it; its description says "Dazed". Then it
+  (1.5), head down (no stars or particles: the user's call); its description says "Dazed". Then it
   comes to and runs (`ScareAnimal`, from the thrower). A dazed predator drops its prey.
 - **A miss that comes down within 1.5 cells** of an animal (first ground touch) scares it: it
   runs (`throwStartleCount`).

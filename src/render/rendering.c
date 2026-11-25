@@ -2090,17 +2090,6 @@ static void DrawAnimals(void) {
         Rectangle headDest = { headX, headY, headSize, headSize };
         FastSprite(atlas, headSrc, headDest, animalColor);
 
-        // Dazed (a thrown stone hit it): stars circling over it
-        if (dazed) {
-            Rectangle dotSrc = SpriteGetRect(SPRITE_middle_dot);
-            float r = animalSize * 0.45f, dot = animalSize * 0.35f;
-            for (int k = 0; k < 3; k++) {
-                float ang = (float)gameTime * 4.0f + k * (2.0f * PI / 3.0f);
-                float stx = sx + cosf(ang) * r, sty = sy - animalSize * 0.6f + sinf(ang) * r * 0.35f;
-                FastSprite(atlas, dotSrc, (Rectangle){ stx - dot / 2, sty - dot / 2, dot, dot }, (Color){ 255, 230, 80, 255 });
-            }
-        }
-
         // Hunt designation overlay: red X mark
         if (a->markedForHunt) {
             Color huntColor = (Color){ 255, 50, 50, 200 };
