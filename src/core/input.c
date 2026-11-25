@@ -2393,6 +2393,16 @@ static int* OptRecipeVar(int category) {
         default: return NULL;
     }
 }
+void SelectBuildRecipe(int recipeIndex) {
+    const ConstructionRecipe* r = GetConstructionRecipe(recipeIndex);
+    int* var = r ? OptRecipeVar(r->buildCategory) : NULL;
+    if (var) *var = recipeIndex;
+}
+bool IsBuildRecipeSelected(int recipeIndex) {
+    const ConstructionRecipe* r = GetConstructionRecipe(recipeIndex);
+    int* var = r ? OptRecipeVar(r->buildCategory) : NULL;
+    return var && *var == recipeIndex;
+}
 static const char* OptRecipeCategoryLabel(int category) {
     switch (category) {
         case BUILD_WALL: return "Wall";

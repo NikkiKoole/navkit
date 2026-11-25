@@ -107,7 +107,7 @@ static Rectangle Place(RowLayout* L, float w) {
 
 static bool ToolActive(const GameTool* tool) {
     return inputAction == (InputAction)tool->action &&
-           (tool->furnitureRecipe < 0 || GetSelectedFurnitureRecipe() == tool->furnitureRecipe);
+           (tool->recipe < 0 || IsBuildRecipeSelected(tool->recipe));
 }
 
 // Returns the screen area the HUD covers
@@ -192,7 +192,7 @@ static Rectangle Layout(bool draw) {
                 if (active) {
                     InputMode_ExitToNormal();
                 } else {
-                    if (tool->furnitureRecipe >= 0) SetSelectedFurnitureRecipe(tool->furnitureRecipe);
+                    if (tool->recipe >= 0) SelectBuildRecipe(tool->recipe);
                     InputMode_SelectAction((InputAction)tool->action);
                 }
             }

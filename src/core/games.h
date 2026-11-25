@@ -21,7 +21,7 @@
 // What the play HUD knows about the world when deciding which tools to show.
 // Filled once per frame by GameToolContextNow().
 typedef struct {
-    bool hasItems, hasGrass, hasLeaves, hasRocks, hasPlanks, hasSticks, hasClay, hasGunpowder;
+    bool hasItems, hasGrass, hasLeaves, hasRocks, hasPlanks, hasSticks, hasClay, hasGunpowder, hasLogs;
 } GameToolContext;
 
 // The play HUD's tabs (bottom left): what things are, not which mode makes them.
@@ -37,7 +37,7 @@ typedef struct {
     HudTab tab;                                // which tab it sits in
     const char* label;                         // button text, e.g. "Knap Stone"
     int action;                                // InputAction it selects
-    int furnitureRecipe;                       // for ACTION_WORK_FURNITURE: recipe to select, else -1
+    int recipe;                                // construction recipe the tool selects (CONSTRUCTION_*), else -1
     bool (*available)(const GameToolContext*); // NULL = always shown; else progressive unlock
 } GameTool;
 

@@ -142,6 +142,8 @@ Recipe tailorRecipes[] = {
     { "Sew Flax Tunic",   ITEM_LINEN, 2,   ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_FLAX_TUNIC, 1,   ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Sew Leather Vest", ITEM_LEATHER, 2,  ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_LEATHER_VEST, 1, ITEM_NONE, 0, 2.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Sew Leather Coat", ITEM_LEATHER, 2,  ITEM_CLOTH, 1, ITEM_NONE, 0, ITEM_LEATHER_COAT, 1, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Clothing with pockets (a small container, inventory.c): worn like a tunic. Append only: bills store the index
+    { "Sew Pocket Jacket", ITEM_CLOTH, 3,  ITEM_CORDAGE, 1, ITEM_NONE, 0, ITEM_POCKET_JACKET, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int tailorRecipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]);
 

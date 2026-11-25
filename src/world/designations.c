@@ -2766,6 +2766,14 @@ void CompleteBlueprint(int blueprintIdx) {
                 SetWallSourceItem(x, y, z, ITEM_GLASS);
                 ClearWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_SMOOTH);
+            } else if (bp->recipeIndex == CONSTRUCTION_RAILING) {
+                // Stops walking only: light, sight, air and water pass (rooms flood through it)
+                GRID(x, y, z) = CELL_RAILING;
+                SetWallMaterial(x, y, z, finalMat);
+                SetWallSourceItem(x, y, z, finalSource);
+                ClearWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_SMOOTH);
+                InvalidateRooms();
             } else if (finalMat == MAT_DIRT) {
                 GRID(x, y, z) = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);

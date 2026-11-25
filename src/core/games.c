@@ -639,9 +639,9 @@ static void StartSandbox(void) {
 // ---------------------------------------------------------------------------
 
 GameToolContext GameToolContextNow(void) {
-    GameToolContext c = {itemCount > 0, false, false, false, false, false, false, false};
+    GameToolContext c = {itemCount > 0, false, false, false, false, false, false, false, false};
     for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks || !c.hasPlanks ||
-                                              !c.hasSticks || !c.hasClay || !c.hasGunpowder); i++) {
+                                              !c.hasSticks || !c.hasClay || !c.hasGunpowder || !c.hasLogs); i++) {
         if (!items[i].active) continue;
         if (items[i].type == ITEM_GRASS) c.hasGrass = true;
         if (items[i].type == ITEM_LEAVES) c.hasLeaves = true;
@@ -650,6 +650,7 @@ GameToolContext GameToolContextNow(void) {
         if (items[i].type == ITEM_STICKS) c.hasSticks = true;
         if (items[i].type == ITEM_CLAY) c.hasClay = true;
         if (items[i].type == ITEM_GUNPOWDER) c.hasGunpowder = true;
+        if (items[i].type == ITEM_LOG) c.hasLogs = true;
     }
     return c;
 }
@@ -662,6 +663,8 @@ static bool HasPlanks(const GameToolContext* c) { return c->hasPlanks; }
 static bool HasSticks(const GameToolContext* c) { return c->hasSticks; }
 static bool HasPlanksOrClay(const GameToolContext* c) { return c->hasPlanks || c->hasClay; }
 static bool HasGunpowder(const GameToolContext* c) { return c->hasGunpowder; }
+static bool HasLogsOrPlanks(const GameToolContext* c) { return c->hasLogs || c->hasPlanks; }
+static bool HasSticksOrPlanks(const GameToolContext* c) { return c->hasSticks || c->hasPlanks; }
 
 // The early-game designations every game offers in its play HUD
 #define BASIC_TOOLS \
@@ -676,6 +679,8 @@ static bool HasGunpowder(const GameToolContext* c) { return c->hasGunpowder; }
     {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}, \
     {HUD_TAB_BUILD,  "Build Pit Latrine", ACTION_WORK_FURNITURE, CONSTRUCTION_PIT_LATRINE, HasSticks}, \
     {HUD_TAB_BUILD,  "Build Toilet",     ACTION_WORK_FURNITURE, CONSTRUCTION_TOILET,      HasPlanksOrClay}, \
+    {HUD_TAB_BUILD,  "Build Ladder",     ACTION_WORK_LADDER,    CONSTRUCTION_LADDER,      HasLogsOrPlanks}, \
+    {HUD_TAB_BUILD,  "Build Railing",    ACTION_WORK_CONSTRUCT, CONSTRUCTION_RAILING,     HasSticksOrPlanks}, \
     {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}
 

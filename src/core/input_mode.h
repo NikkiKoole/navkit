@@ -200,6 +200,8 @@ void InputMode_FlipHow(void);                      // I: flip buildNow and the c
 void InputMode_StartLinking(int wsIdx);
 
 void SetSelectedFurnitureRecipe(int recipeIndex);
+void SelectBuildRecipe(int recipeIndex);       // selects it in its category (wall, ladder, furniture, ...)
+bool IsBuildRecipeSelected(int recipeIndex);    // the selected one in its category
 int GetSelectedFurnitureRecipe(void);
 
 // Get display strings for input bar

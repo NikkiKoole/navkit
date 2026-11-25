@@ -1197,6 +1197,24 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_RAILING] = {
+        .name = "Railing",
+        .buildCategory = BUILD_WALL,   // placed like a wall; completion makes a CELL_RAILING
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_STICKS }, { .itemType = ITEM_PLANKS }},
+                .altCount = 2,
+                .count = 2,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 0.5f,   // posts and a rail
+        }},
+        .resultMaterial = MAT_NONE,    // the wood it was made of
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

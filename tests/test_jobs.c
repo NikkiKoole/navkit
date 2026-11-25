@@ -5105,6 +5105,34 @@ describe(building_job_execution) {
         expect(manhattan == 1);
     }
 
+    it("a railing is built from sticks like a wall and stops walking only") {
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        Mover* m = &movers[0];
+        Point goal = {0, 1, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STICKS);
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STICKS);
+        expect(CreateRecipeBlueprint(5, 1, 0, CONSTRUCTION_RAILING) >= 0);
+        for (int i = 0; i < 6000 && GRID(5, 1, 0) != CELL_RAILING; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        expect(GRID(5, 1, 0) == CELL_RAILING);
+        expect(!IsCellWalkableAt(0, 1, 5));
+        expect(CountBlueprints() == 0);
+    }
+
     it("should cancel haul job when blueprint is cancelled") {
         InitTestGridFromAscii(
             "......\n"
