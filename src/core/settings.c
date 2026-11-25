@@ -645,6 +645,8 @@ static const Setting settings[] = {
       "Follow the leader: each follows the route the one ahead took. Off: straight at the one ahead (cuts corners)."),
     SET_BOOL("packTactics", "Pack: tactics", "Entities/Movers/Noticing", packTactics,
       "Pack hunt: one drives, one cuts the runner off where it's going, the others flank. Off: all straight at it."),
+    SET_BOOL("packStealth", "Pack: only by sight", "Entities/Movers/Noticing", packStealth,
+      "Pack hunt: the hunters only know where one of them last saw the runner; out of their sight it ducks behind cover (railing, bush, table) and they search. Lost 30 s: it got away. Off: they always know where it is."),
     SET_FLOAT("packSpeed", "Pack: speed", "Entities/Movers/Noticing", packSpeed, 0.05f, 0.5f, 3.0f,
       "Hunters' running pace, x walking speed (the runner: Flee speed, slower when worn out).", NULL),
     SET_BOOL("fleeSmart", "Flee: smart", "Entities/Movers/Noticing", fleeSmart,

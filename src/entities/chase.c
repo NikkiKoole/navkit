@@ -153,6 +153,10 @@ static float SegDist(float px, float py, float ax, float ay, float bx, float by)
 // Flee from one or more threats: candidate spots round the "away" direction (away from all,
 // the nearest weighing most), the best = far from the nearest threat, open round it, a straight
 // run that doesn't pass close by a threat
+// > 0: a spot out of the threats' sight is worth this much more (a runner that can hide); it may
+// then also run round a corner to get there
+static float fleeBreakSight = 0.0f;
+
 static void FleeRunFrom(int i, const int* threats, int n) {
     const Mover* m = &movers[i];
     int z = (int)m->z;
@@ -177,7 +181,8 @@ static void FleeRunFrom(int i, const int* threats, int n) {
         float a = base + ChaseRandRange(-1.75f, 1.75f), d = ChaseRandRange(FLEE_MIN, FLEE_MAX);
         int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
-        if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z)) continue;   // a straight run
+        bool straight = HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z);
+        if (!straight && fleeBreakSight <= 0.0f) continue;   // a straight run
         float px = (cx + 0.5f) * CELL_SIZE, py = (cy + 0.5f) * CELL_SIZE;
         float nearest = 1e9f, pass = 1e9f;
         for (int k = 0; k < n; k++) {
@@ -193,6 +198,14 @@ static void FleeRunFrom(int i, const int* threats, int n) {
                 if ((ox || oy) && IsCellWalkableAt(z, cy + oy, cx + ox)) open++;
         float score = nearest / CELL_SIZE + open * 0.5f;
         if (pass < 1.5f * CELL_SIZE) score -= 10.0f;   // runs right past a hunter
+        if (fleeBreakSight > 0.0f) {   // out of their sight there
+            int hidden = 0;
+            for (int k = 0; k < n; k++) {
+                const Mover* t = &movers[threats[k]];
+                if (!CanSeeCell((int)(t->x / CELL_SIZE), (int)(t->y / CELL_SIZE), cx, cy, z)) hidden++;
+            }
+            score += fleeBreakSight * hidden / (float)n;
+        }
         if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
     }
     if (bestX < 0 || !PathTo(i, bestX, bestY, z)) {   // nothing in the open: straight away
@@ -288,6 +301,13 @@ static bool FollowMoverTick(int i, float dt);
 bool ChaseMoverTick(int i, float dt) {
     if (FollowMoverTick(i, dt)) return true;
     if (HideMoverTick(i)) return true;
+    if (PackIsDucking(i)) {   // crouched behind cover: still
+        Mover* m = &movers[i];
+        m->timeWithoutProgress = 0.0f;
+        m->lastX = m->x;
+        m->lastY = m->y;
+        return true;
+    }
     if (i != ChaseIt() || tagFreeze <= 0.0f) return false;
     Mover* m = &movers[i];   // counting to three
     m->pathLength = 0;
@@ -337,7 +357,8 @@ bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i !
 static bool FollowControls(int i);
 static bool PackControls(int i);
 bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i) || PackControls(i); }
-bool MoverCrouching(int i) { return HideIsHidden(i); }
+bool PackIsDucking(int i);
+bool MoverCrouching(int i) { return HideIsHidden(i) || PackIsDucking(i); }
 bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
 
 static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
@@ -689,11 +710,28 @@ double packCatchSecondsSum = 0.0;
 #define PACK_CUT_AHEAD 5.0f    // cells: where it's going, when it has no goal yet
 #define PACK_RESPAWN   10.0f   // cells from every hunter
 
+#define PACK_SIGHT     12.0f   // cells: how far a hunter sees the runner (in the open)
+#define PACK_HEADED    2.0f    // seconds lost: first to where it was heading, then search
+#define PACK_GIVE_UP   30.0f   // seconds lost: it got away (a new round)
+#define PACK_FLUSH     2.5f    // cells: a hunter this close flushes a ducked runner out
+#define DUCK_RANGE     4.0f    // cells: how far the runner looks for cover to duck behind (further: seen getting there)
+#define GLIMPSE        0.4f    // seconds: out of sight this long before it ducks; seen this long and it's spotted
+
+bool packStealth = true;
+long packEscapes = 0, packDucks = 0, packFlushed = 0;
+double packDuckSecondsSum = 0.0;
+
 static int packHunters[PACK_MAX], packN = 0, packTarget = -1;
 static int packRole[PACK_MAX];
 static float packReplan[PACK_MAX], packTime = 0.0f, packTargetReplan = 0.0f;
+static float packLastX, packLastY, packLastHX, packLastHY, packLost = 0.0f;   // where the pack last saw it
+static bool packDucked = false;   // the runner is going to / crouching in a spot behind cover
+static float packSeenFor = 0.0f;      // seconds the pack has had it in sight without a break
 
-static void ClearPack(void) { packN = 0; packTarget = -1; packCatches = 0; packCatchSecondsSum = 0.0; }
+static void ClearPack(void) {
+    packN = 0; packTarget = -1; packCatches = 0; packCatchSecondsSum = 0.0;
+    packEscapes = packDucks = packFlushed = 0; packDuckSecondsSum = 0.0; packDucked = false; packLost = 0.0f;
+}
 int PackTarget(void) { return packTarget >= 0 && packTarget < moverCount && movers[packTarget].active ? packTarget : -1; }
 
 static int PackSlot(int i) {
@@ -701,7 +739,10 @@ static int PackSlot(int i) {
     return -1;
 }
 int PackRole(int i) { int k = PackSlot(i); return k >= 0 && PackTarget() >= 0 ? packRole[k] : -1; }
-static bool PackControls(int i) { return PackTarget() >= 0 && PackSlot(i) >= 0; }   // (the runner wanders when calm)
+// (the runner wanders when calm; ducked, it stays put)
+static bool PackControls(int i) { return PackTarget() >= 0 && (PackSlot(i) >= 0 || (i == packTarget && packDucked)); }
+bool PackIsDucking(int i) { return PackTarget() >= 0 && i == packTarget && packDucked && movers[i].pathIndex < 0; }
+bool PackLost(float* seconds) { if (PackTarget() < 0 || packLost <= 0.0f) return false; if (seconds) *seconds = packLost; return true; }
 
 static float PackSpeedScale(int i) {
     if (PackTarget() < 0) return 0.0f;
@@ -723,6 +764,10 @@ void PackHuntStart(const int* hunters, int n, int target) {
     stamina[target] = 1.0f;
     fleeing[target] = false;
     packTime = 0.0f;
+    packDucked = false;
+    packLost = 0.0f;
+    packLastX = movers[target].x; packLastY = movers[target].y;
+    packLastHX = packLastHY = 0.0f;
 }
 
 // A walkable cell near (x, y) (pixels), searching outwards a little; false if none
@@ -762,6 +807,136 @@ static void PackAssignRoles(float ex, float ey, float gx, float gy) {
     (void)ex; (void)ey;
 }
 
+// Caught or got away: the runner turns up again far from the pack (a new round)
+static void PackRespawn(int tgt) {
+    Mover* T = &movers[tgt];
+    packTime = 0.0f;
+    for (int tries = 0; tries < 60; tries++) {
+        int x = GetRandomValue(1, gridWidth - 2), y = GetRandomValue(1, gridHeight - 2), z = (int)T->z;
+        if (!IsCellWalkableAt(z, y, x)) continue;
+        bool far = true;
+        for (int q = 0; q < packN; q++) {
+            float dx = (x + 0.5f) * CELL_SIZE - movers[packHunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[packHunters[q]].y;
+            if (dx * dx + dy * dy < (PACK_RESPAWN * CELL_SIZE) * (PACK_RESPAWN * CELL_SIZE)) far = false;
+        }
+        if (!far) continue;
+        T->x = (x + 0.5f) * CELL_SIZE; T->y = (y + 0.5f) * CELL_SIZE;
+        T->pathLength = 0; T->pathIndex = -1;
+        moverRouteLen[tgt] = 0;
+        break;
+    }
+    stamina[tgt] = 1.0f;
+    fleeing[tgt] = false;
+    packDucked = false;
+    packLost = 0.0f;
+    packLastX = T->x; packLastY = T->y; packLastHX = packLastHY = 0.0f;
+}
+
+// Can hunter h see the runner (in range, in sight, not crouched behind cover)?
+static bool HunterSees(int h, int tgt) {
+    return Dist(h, tgt) <= PACK_SIGHT * CELL_SIZE && CanSeeMover(h, tgt);
+}
+
+// Would the runner, crouched at (x, y), be out of every hunter's sight?
+static bool HiddenFromPack(int x, int y, int z) {
+    for (int k = 0; k < packN; k++) {
+        const Mover* h = &movers[packHunters[k]];
+        int hx = (int)(h->x / CELL_SIZE), hy = (int)(h->y / CELL_SIZE);
+        float dx = (float)(x - hx), dy = (float)(y - hy);
+        if (dx * dx + dy * dy <= (PACK_FLUSH + 1.0f) * (PACK_FLUSH + 1.0f)) return false;   // too near one
+        if (dx * dx + dy * dy > PACK_SIGHT * PACK_SIGHT || !CanSeeCell(hx, hy, x, y, z)) continue;
+        if (!CoverBetween(hx, hy, x, y, z)) return false;
+    }
+    return true;
+}
+
+// Out of their sight: a spot near by, next to cover (or in a bush), hidden from all of them
+static bool RunnerDuck(int tgt) {
+    const Mover* T = &movers[tgt];
+    int z = (int)T->z, tx = (int)(T->x / CELL_SIZE), ty = (int)(T->y / CELL_SIZE);
+    int r = (int)DUCK_RANGE, bestX = -1, bestY = -1;
+    float best = -1e9f;
+    for (int dy = -r; dy <= r; dy++)
+        for (int dx = -r; dx <= r; dx++) {
+            int x = tx + dx, y = ty + dy;
+            if (dx * dx + dy * dy > r * r || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
+            if (!IsCellWalkableAt(z, y, x)) continue;
+            bool cover = GRID(x, y, z) == CELL_BUSH;
+            for (int oy = -1; oy <= 1 && !cover; oy++)
+                for (int ox = -1; ox <= 1 && !cover; ox++) if ((ox || oy) && IsLowCover(x + ox, y + oy, z)) cover = true;
+            if (!cover || !HiddenFromPack(x, y, z)) continue;
+            float nearest = 1e9f;   // far from the nearest hunter, not far to go
+            for (int k = 0; k < packN; k++) {
+                float hx = movers[packHunters[k]].x / CELL_SIZE - x, hy = movers[packHunters[k]].y / CELL_SIZE - y;
+                float d = sqrtf(hx * hx + hy * hy);
+                if (d < nearest) nearest = d;
+            }
+            float score = nearest - sqrtf((float)(dx * dx + dy * dy)) * 1.5f;
+            if (GRID(x, y, z) == CELL_BUSH) score += 3.0f;   // hidden from every side
+            // they'll come to where it was last seen, then where it was heading: hidden from both,
+            // and off that line
+            int lx = (int)(packLastX / CELL_SIZE), ly = (int)(packLastY / CELL_SIZE);
+            int px = (int)((packLastX + packLastHX * 3.0f * CELL_SIZE) / CELL_SIZE), py = (int)((packLastY + packLastHY * 3.0f * CELL_SIZE) / CELL_SIZE);
+            bool fromLast = CanSeeCell(lx, ly, x, y, z) && !CoverBetween(lx, ly, x, y, z);
+            bool fromHead = CanSeeCell(px, py, x, y, z) && !CoverBetween(px, py, x, y, z);
+            float hd = sqrtf((float)((x - px) * (x - px) + (y - py) * (y - py)));
+            if (fromHead || hd < PACK_FLUSH + 1.0f) continue;
+            if (!fromLast) score += 3.0f;
+            if (score > best) { best = score; bestX = x; bestY = y; }
+        }
+    if (bestX < 0) return false;
+    if (bestX == tx && bestY == ty) {   // right here: just get down
+        Mover* m = &movers[tgt];
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        return true;
+    }
+    return PathTo(tgt, bestX, bestY, z);
+}
+
+// Lost it: go to where it was heading, then search round where it was last seen, at spots
+// next to cover none of them can see now (they know the runner hides)
+static void HunterSearch(int k) {
+    int h = packHunters[k];
+    int z = (int)movers[h].z, lx = (int)(packLastX / CELL_SIZE), ly = (int)(packLastY / CELL_SIZE);
+    if (packLost < PACK_HEADED) {
+        int ox, oy;
+        float px = packLastX + packLastHX * 3.0f * CELL_SIZE, py = packLastY + packLastHY * 3.0f * CELL_SIZE;
+        if (NearWalkable(px, py, z, &ox, &oy) && PathTo(h, ox, oy, z)) return;
+    }
+    float radius = 2.0f + packLost * 0.4f;
+    if (radius > 9.0f) radius = 9.0f;
+    int bestX = -1, bestY = -1;
+    float best = -1e9f;
+    for (int c = 0; c < 24; c++) {
+        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(0.0f, radius);
+        int x = lx + (int)(cosf(a) * d), y = ly + (int)(sinf(a) * d);
+        if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || !IsCellWalkableAt(z, y, x)) continue;
+        float score = ChaseRandRange(0.0f, 1.0f);
+        if (GRID(x, y, z) == CELL_BUSH) score += 3.0f;
+        for (int oy = -1; oy <= 1; oy++)
+            for (int ox = -1; ox <= 1; ox++)
+                if ((ox || oy) && (IsLowCover(x + ox, y + oy, z) || !IsCellWalkableAt(z, y + oy, x + ox))) score += 1.0f;
+        bool inView = false;   // a spot one of them can see right now isn't worth checking
+        for (int q = 0; q < packN && !inView; q++) {
+            const Mover* o = &movers[packHunters[q]];
+            int ox = (int)(o->x / CELL_SIZE), oy = (int)(o->y / CELL_SIZE);
+            float ddx = (float)(x - ox), ddy = (float)(y - oy);
+            if (ddx * ddx + ddy * ddy < 6.0f * 6.0f && CanSeeCell(ox, oy, x, y, z) && !CoverBetween(ox, oy, x, y, z)) inView = true;
+        }
+        if (inView) score -= 4.0f;
+        for (int q = 0; q < packN; q++) {   // spread out: not where another one is going
+            if (q == k) continue;
+            const Mover* o = &movers[packHunters[q]];
+            float gx = (float)(o->goal.x - x), gy = (float)(o->goal.y - y);
+            if (gx * gx + gy * gy < 9.0f) score -= 3.0f;
+        }
+        score -= sqrtf((movers[h].x / CELL_SIZE - x) * (movers[h].x / CELL_SIZE - x) + (movers[h].y / CELL_SIZE - y) * (movers[h].y / CELL_SIZE - y)) * 0.15f;
+        if (score > best) { best = score; bestX = x; bestY = y; }
+    }
+    if (bestX >= 0) PathTo(h, bestX, bestY, z);
+}
+
 static void PackTick(float dt) {
     int tgt = PackTarget();
     if (tgt < 0 || packN == 0) return;
@@ -773,38 +948,74 @@ static void PackTick(float dt) {
         if ((h->x - T->x) * (h->x - T->x) + (h->y - T->y) * (h->y - T->y) > (CATCH_DIST * CELL_SIZE) * (CATCH_DIST * CELL_SIZE)) continue;
         packCatches++;
         packCatchSecondsSum += packTime;
-        packTime = 0.0f;
-        for (int tries = 0; tries < 60; tries++) {   // the runner turns up again far from the pack
-            int x = GetRandomValue(1, gridWidth - 2), y = GetRandomValue(1, gridHeight - 2), z = (int)T->z;
-            if (!IsCellWalkableAt(z, y, x)) continue;
-            bool far = true;
-            for (int q = 0; q < packN; q++) {
-                float dx = (x + 0.5f) * CELL_SIZE - movers[packHunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[packHunters[q]].y;
-                if (dx * dx + dy * dy < (PACK_RESPAWN * CELL_SIZE) * (PACK_RESPAWN * CELL_SIZE)) far = false;
-            }
-            if (!far) continue;
-            T->x = (x + 0.5f) * CELL_SIZE; T->y = (y + 0.5f) * CELL_SIZE;
-            T->pathLength = 0; T->pathIndex = -1;
-            moverRouteLen[tgt] = 0;
-            break;
-        }
-        stamina[tgt] = 1.0f;
-        fleeing[tgt] = false;
+        PackRespawn(tgt);
         return;
     }
-    // the runner: flee from the pack when one is close (noticed, or very close), get tired
+    // what the pack knows: where one of them last saw it (packStealth off: always where it is)
+    bool seen = !packStealth;
+    for (int k = 0; k < packN && !seen; k++) seen = HunterSees(packHunters[k], tgt);
+    if (seen) {
+        float hx = 0.0f, hy = 0.0f;
+        Heading(tgt, &hx, &hy);
+        packLastX = T->x; packLastY = T->y; packLastHX = hx; packLastHY = hy;
+        packLost = 0.0f;
+        packSeenFor += dt;
+    } else if (packSeenFor = 0.0f, (packLost += dt) > PACK_GIVE_UP) {   // got away
+        packEscapes++;
+        PackRespawn(tgt);
+        return;
+    }
+    // the runner: flee from the pack when one is close (noticed, or very close), get tired;
+    // out of their sight, duck behind cover and get its breath back
     bool threat = false;
     for (int k = 0; k < packN && !threat; k++) threat = ThreatClose(tgt, packHunters[k]);
     if (fleeing[tgt]) { stamina[tgt] -= STAMINA_DRAIN * dt; if (stamina[tgt] < 0.0f) stamina[tgt] = 0.0f; }
     else { stamina[tgt] += STAMINA_REST * dt; if (stamina[tgt] > 1.0f) stamina[tgt] = 1.0f; }
-    if (threat) {
-        packTargetReplan -= dt;
-        if (!fleeing[tgt] || T->pathIndex < 0 || packTargetReplan <= 0.0f) {
-            FleeRunFrom(tgt, packHunters, packN);
-            packTargetReplan = CHASE_REPLAN;
+    if (packDucked) {
+        bool near = false;
+        for (int k = 0; k < packN && !near; k++) near = Dist(packHunters[k], tgt) < PACK_FLUSH * CELL_SIZE;
+        if (packSeenFor >= GLIMPSE || near) {   // spotted (a glimpse isn't enough), or one right there: run again
+            packDucked = false;
+            packFlushed++;
+            packTargetReplan = 0.0f;
+        } else {
+            fleeing[tgt] = T->pathIndex >= 0;   // running to the spot; there: still, resting
+            if (T->pathIndex < 0) packDuckSecondsSum += dt;
         }
     }
-    fleeing[tgt] = threat;
+    if (!packDucked) {
+        static float duckTry = 0.0f;   // (a look round for cover twice a second)
+        // out of their sight (they're hunting it): lie low behind cover. (Making for cover while
+        // they watch doesn't work - by the time it's there they've moved round and see it, tried:
+        // 0.3 s; nor only right after a chase - with four on it, it never breaks sight then.)
+        bool chance = packLost >= GLIMPSE;
+        if (packStealth && chance && (duckTry -= dt) <= 0.0f && (duckTry = 0.5f, RunnerDuck(tgt))) {
+            packDucked = true;
+            packDucks++;
+        } else {
+            if (threat) {
+                packTargetReplan -= dt;
+                if (!fleeing[tgt] || T->pathIndex < 0 || packTargetReplan <= 0.0f) {
+                    fleeBreakSight = packStealth ? 12.0f : 0.0f;   // it can hide: run where they can't see it
+                    FleeRunFrom(tgt, packHunters, packN);
+                    fleeBreakSight = 0.0f;
+                    packTargetReplan = CHASE_REPLAN;
+                }
+            }
+            fleeing[tgt] = threat;
+        }
+    }
+    if (!seen) {   // the hunters: lost it, search
+        for (int k = 0; k < packN; k++) {
+            packRole[k] = 3;
+            packReplan[k] -= dt;
+            if (movers[packHunters[k]].pathIndex >= 0 && packReplan[k] > 0.0f &&
+                !(packLost <= dt * 1.5f)) continue;   // (just lost it: re-aim at once)
+            packReplan[k] = 3.0f;
+            HunterSearch(k);
+        }
+        return;
+    }
     // where it's going: its goal if running, else away from the pack's middle
     float cx = 0.0f, cy = 0.0f;
     for (int k = 0; k < packN; k++) { cx += movers[packHunters[k]].x; cy += movers[packHunters[k]].y; }

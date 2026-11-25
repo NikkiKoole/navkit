@@ -54,6 +54,7 @@ done <<'EOF'
 127 | 0 | --scenario pack-hunt
 33  | 0 | --scenario cover
 103 | 0 | --scenario personal-space
+143 | 0 | --scenario hunt-cover
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
 0   | 0 | --scenario collapse

@@ -40,6 +40,7 @@ Entities/Movers/Walls for doorways).
 | Hide and seek | cover search (out of sight, tucked in, apart); seeker remembers where it looked | `hideSmart` | `hide-and-seek` | found after 18 s vs 7 s |
 | Follow the leader | the line walks the leader's exact route (trails) | `followTrail` | `follow-leader` | 0.05 cells off the route vs 0.27 |
 | Pack hunt | 4 hunters on 1 runner: the nearest drives, one cuts it off where it's going, two flank; the runner flees from all of them (not past one), tires | `packTactics`, `packSpeed` | `pack-hunt` | catch in 9.3 s vs 15.4 s all-straight (38.5 s at equal speed) |
+| Pack hunt: only by sight | the pack knows only where one of them last saw the runner; the runner flees toward spots they can't see, and out of their sight for 0.4 s it lies low next to cover / in a bush (hidden from them and from where they'll look), crouched; seen 0.4 s or a hunter within 2.5 cells: it runs again. Lost, the hunters go where it was heading, then search round the last-seen spot (next to cover, out of their view, spread out); 30 s lost: it got away | `packStealth` | `hunt-cover` | 16 ducks of 1.5 s, out of sight 16% of the time; catch in 11.8 s vs 10.8 s off; nobody got away (four searchers find it) |
 | Sight | `CanSeeCell`: walls block, railings (half height) and windows don't; noticing, gatherings, hide and seek use it (walking straight stays `HasLineOfSight`) | | `pack-hunt` (railings) | |
 | Cover | a crouching mover (a hider in its spot) behind low cover is out of sight from the far side: railings, bushes (from every side), tables, desks, sofas, tills, baths, fridges; within 2 cells you look over it. Hiders pick spots behind cover, the seeker goes to look behind it; drawn smaller and darker | `cover` | `cover` | found after 8.8 s vs 6.6 s (12 players: 11.8 vs 5.5) |
 | Personal space | how close two stand and pass by how they feel (`PersonalSpaceScale`, relations.c): friends 0.75x (closer and they overlap), known 1x, strangers 1.25x, disliked up to 1.5x; talk circles, walking side by side (only wider: 0.8 cells is already close), polite passing (friends pass closer; never a wider berth than normal: that pushed walkers through one-way doors) | `personalSpace` | `personal-space` | talking pair: friends 1.14 cells apart, strangers 1.80 (off: 1.5 both) |
@@ -52,7 +53,7 @@ outdoors (`IsExposedToSky`).
 
 - **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
   chase / hide from `chase.c`, wolves as a pack (pack hunt roles), herds (walk formation), freeze
-  as a choice. Cover (crouching behind low things) is built for hide and seek; a runner breaking sight and ducking is next. The cat first
+  as a choice. Cover and a runner lying low are built; a lone wolf losing its prey would test the search alone. The cat first
   (dollhouse): hides, comes to the kitchen, follows its favourite, a gathering source, petting
   as an interaction.
 - **Showing what a talk is about**: topic icons from real state, a heart or cloud at the end.

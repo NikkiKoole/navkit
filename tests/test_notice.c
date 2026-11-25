@@ -1235,6 +1235,67 @@ describe(personal_space) {
     }
 }
 
+describe(pack_stealth) {
+    it("out of sight behind a wall: the pack loses it and searches; the runner lies low in a bush") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) GRID(8, y, 1) = CELL_WALL;   // a wall between them
+        GRID(14, 6, 1) = CELL_BUSH;
+        int h[2] = { AddMover(3, 5, 1), AddMover(3, 7, 1) };
+        int t = AddMover(6, 6, 1);                       // seen here first ...
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(h[1], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 2, t);
+        RunChase(0.2f);
+        movers[t].x = 14.5f * CELL_SIZE;                 // ... then gone behind the wall, into a bush
+        RunChase(1.0f);
+        float lost = 0.0f;
+        expect(PackLost(&lost) && lost > 0.5f);
+        expect(PackRole(h[0]) == 3 && PackRole(h[1]) == 3);   // searching
+        expect(packDucks == 1);
+        expect(PackIsDucking(t) && MoverCrouching(t));
+    }
+
+    it("crouched in a bush it isn't seen from afar, but a hunter close by flushes it out") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) if (y != 6) GRID(8, y, 1) = CELL_WALL;   // a wall with a gap
+        GRID(14, 6, 1) = CELL_BUSH;
+        int h[1] = { AddMover(3, 2, 1) };
+        int t = AddMover(5, 2, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(0.2f);
+        movers[t].x = 14.5f * CELL_SIZE; movers[t].y = 6.5f * CELL_SIZE;   // into the bush behind the wall
+        RunChase(1.0f);
+        expect(PackIsDucking(t));
+        movers[h[0]].x = 9.5f * CELL_SIZE; movers[h[0]].y = 6.5f * CELL_SIZE;   // in the gap: a clear line, 5 cells
+        RunChase(1.0f);
+        expect(PackIsDucking(t));                     // in a bush: not seen from there
+        expect(PackLost(NULL));
+        movers[h[0]].x = 12.5f * CELL_SIZE;           // 2 cells off: close enough
+        RunChase(0.5f);
+        expect(!PackIsDucking(t));
+        expect(packFlushed == 1);
+    }
+
+    it("lost for 30 s: it got away, a new round; off: they always know where it is") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) GRID(8, y, 1) = CELL_WALL;
+        int h[1] = { AddMover(3, 6, 1) };
+        int t = AddMover(14, 6, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(31.0f);
+        expect(packEscapes >= 1);
+        packStealth = false;
+        PackHuntStart(h, 1, t);
+        RunChase(1.0f);
+        expect(!PackLost(NULL));
+        packStealth = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1256,5 +1317,6 @@ int main(int argc, char* argv[]) {
     test(pack_hunt);
     test(cover);
     test(personal_space);
+    test(pack_stealth);
     return summary();
 }

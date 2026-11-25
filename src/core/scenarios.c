@@ -1053,6 +1053,8 @@ static void SetupPackHunt(void) {
 static void PackHuntPrintStats(void) {
     printf("Pack tactics: %s; catches: %ld, a catch takes %.1f s on average\n", packTactics ? "on" : "off",
            packCatches, packCatches ? packCatchSecondsSum / packCatches : 0.0);
+    printf("Only by sight: %s; got away: %ld; ducked behind cover: %ld (crouched %.1f s each), flushed out: %ld\n",
+           packStealth ? "on" : "off", packEscapes, packDucks, packDucks ? packDuckSecondsSum / packDucks : 0.0, packFlushed);
 }
 
 static bool PackHuntCheck(char* why, int whyLen) {
@@ -1114,6 +1116,52 @@ static void CoverPrintStats(void) {
     printf("Seeker in range with a clear line: %.1f%% of hidden time; of that, behind cover: %.0f%%\n",
            cvHiddenTicks ? 100.0 * cvInSightTicks / cvHiddenTicks : 0.0,
            cvInSightTicks ? 100.0 * cvCoveredTicks / cvInSightTicks : 0.0);
+}
+
+// hunt-cover: the pack hunt in an overgrown garden: wall pieces to break sight, bush clumps,
+// railings and tables to duck behind. Compare packStealth on/off: catches, how long a catch
+// takes, how often the runner ducks, is flushed out, gets away.
+static long hcTicks, hcLost;
+static void HuntCoverTickStats(void) {
+    hcTicks++;
+    if (PackLost(NULL)) hcLost++;
+}
+
+static void HuntCoverPrintStats(void) {
+    PackHuntPrintStats();
+    printf("Out of the pack's sight: %.1f%% of the time\n", hcTicks ? 100.0 * hcLost / hcTicks : 0.0);
+}
+
+static void SetupHuntCover(void) {
+    hcTicks = hcLost = 0;
+    PhWall(6, 6, 6, 10, CELL_WALL);    PhWall(25, 21, 25, 25, CELL_WALL);
+    PhWall(12, 14, 16, 14, CELL_WALL); PhWall(17, 19, 21, 19, CELL_WALL);
+    PhWall(21, 5, 25, 5, CELL_WALL);   PhWall(6, 26, 10, 26, CELL_WALL);   // wall pieces
+    PhWall(10, 9, 13, 9, CELL_RAILING); PhWall(19, 24, 22, 24, CELL_RAILING);
+    PhWall(27, 11, 27, 15, CELL_RAILING); PhWall(3, 17, 3, 21, CELL_RAILING);   // railings
+    static const int bushes[][2] = {{8, 8}, {9, 8}, {8, 9}, {23, 7}, {24, 7}, {23, 8},
+                                    {7, 23}, {8, 23}, {8, 24}, {23, 22}, {23, 23}, {22, 23},
+                                    {15, 16}, {16, 17}, {16, 16}, {4, 12}, {28, 19}, {14, 28}, {18, 3}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    for (int k = 0; k < 6; k++) {   // hedges along the wall pieces
+        GRID(7, 6 + k, 1) = CELL_BUSH;  GRID(24, 20 + k, 1) = CELL_BUSH;
+        GRID(11 + k, 15, 1) = CELL_BUSH; GRID(16 + k, 18, 1) = CELL_BUSH;
+    }
+    BuildEntrances();
+    BuildGraph();
+    SpawnFurniture(12, 21, 1, FURNITURE_TABLE, MAT_OAK); SpawnFurniture(20, 11, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int hunters[4];
+    for (int k = 0; k < 4; k++) { SpawnMoverAt(2 + k, 2, 1); hunters[k] = moverCount - 1; }
+    SpawnMoverAt(16, 12, 1);
+    for (int k = 0; k < 4; k++) ChaseSetPlayer(hunters[k], true);
+    ChaseSetPlayer(moverCount - 1, true);
+    PackHuntStart(hunters, 4, moverCount - 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hunt in cover: 4 hunters (0-3) on 1 runner (4), only by sight %s", packStealth ? "on" : "off"), GREEN);
 }
 
 static void SetupLadders(void) {
@@ -4784,6 +4832,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupPersonalSpace, PersonalSpaceTickStats, PersonalSpacePrintStats, NULL, 0, 0},
     {"cover",      "Hide and seek with only low cover (railings, bushes, tables): hiders crouch behind it (setting cover)",
                    NULL,        SetupCover,    CoverTickStats, CoverPrintStats, HideAndSeekCheck, 0, 0},
+    {"hunt-cover", "The pack hunt in an overgrown garden: the runner breaks sight and ducks behind cover, the pack searches (setting packStealth)",
+                   NULL,        SetupHuntCover, HuntCoverTickStats, HuntCoverPrintStats, PackHuntCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
                    NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",
