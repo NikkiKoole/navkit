@@ -215,6 +215,14 @@ same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels (
 "Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
 call its describe function** rather than formatting fields again. Done: movers, animals, items, cells, water, blueprints, designations, stations, workshops, stockpiles.
 
+## Social behaviour
+
+Movers notice each other (`src/entities/notice.c`) and act on it: polite passing, talks and
+gatherings (also round fires by themselves), walks, greetings, doorway manners, relations
+(saved), mingling, and games (tag, hide and seek, follow the leader in `chase.c`). What's built,
+settings, scenarios and next steps: `docs/todo/social/noticing.md`; code patterns:
+`src/entities/CLAUDE.md` "Social behaviour".
+
 ## Selection and the inspector panel
 
 Left-click in normal mode selects a mover, animal, workshop, stockpile or blueprint (`src/core/selection.c`);

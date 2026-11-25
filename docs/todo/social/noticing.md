@@ -1,6 +1,7 @@
 # Noticing: agents that see each other and do something with it
 
-> Status: partial (2026-11-25): noticing layer, mover faces, polite passing, stop to talk (pairs) built. First place: the dollhouse.
+> Status: partial (2026-11-25): people side built (noticing, faces, steering, talks, gatherings,
+> relations, walks, games); animals and the cat not yet. Summary below, original design after it.
 
 One loop for every agent, person or animal: **notice → judge → respond**. Social behaviour
 (talking in a circle, walking together, giving way, avoiding someone) and animal behaviour
@@ -9,6 +10,55 @@ One loop for every agent, person or animal: **notice → judge → respond**. So
 Skills are out of scope here (see `../10-personality-and-skills.md`).
 
 ---
+
+## Built (2026-11-25)
+
+Code: `src/entities/notice.c` (noticing, passing, glances/greetings, friends and foes),
+`talk.c` (talks, gatherings, walks, table talk, mingling, spot choice, auto gatherings),
+`relations.c` (who knows whom, saved), `chase.c` (tag, hide and seek, follow the leader), faces
+in `src/render/rendering.c` (`MoverFaceView`, `MoverMouth`, `DrawMoverFace`). Tests:
+`tests/test_notice.c`. Every tunable is a settings row under Entities/Movers/Noticing (and
+Entities/Movers/Walls for doorways).
+
+| Part | What it does | Setting(s) | Scenario | Measured |
+|---|---|---|---|---|
+| Faces | head looks where it heads (left/right/up/down/front built in code from the front faces: the inside shifted 1 px), mouth from mood / talking / greeting, eyes shut asleep | `moverFaces` | `faces` | |
+| Noticing | each mover keeps the ~4 most salient others in sight on its level (staggered, 4x/s); standing still it looks at the top one | `notice`, `noticeRadius`, `noticeEveryTicks` | `social` | 1 noticed per mover |
+| Polite passing | someone coming at you: drift aside early (never towards a drop) | `politePassing`, `passRadius`, `passStrength`, `passSlow` | `hallway` | close contacts -77%, arrivals -1.6% |
+| Talks | idle movers stop, face their middle, take turns speaking; up to 4, circle re-forms; walkers steer round | `talk` (game rule), `talkRadius/Chance/Min/Max/Cooldown`, `talkGiveRoom` | `social` | walkers through a circle -87..98% |
+| Doorways | wait until the one you let out has passed (not in a crowd); patience by trait; "after you" nod, smile back | `yieldLetPass` | `doorway` | bumps 82 -> 11 (8 movers) |
+| Gatherings | rings round a performer or a place (campfire): spot on your side, 2nd ring when full; round a place they chat, more after dark | `watchRadius/Chance/Min/Max` | `gathering`, `garden-party` | |
+| Gatherings by themselves | round a burning fire workshop, heat furniture (burning barrel), someone cooking | `autoGatherings` (game rule) | `campfire` | 5 at the fire, 4 at the barrel |
+| Relations | up to 16 known others: like, familiarity; grow from seeing, talking (by mood), "after you"; saved v111 | `relSeen`, `relTalkFam`, `relTalkLike` | `social` | |
+| Friends and foes | seek liked ones you know (12 cells); steer round / refuse goals near / leave the disliked | `socialSeek`, `socialAvoid` | `social-ties` | enemies close -70% |
+| Glances and greetings | glance at people you notice; acquaintances nod, friends say hi, once per meeting; look away from foes | `glances`, `greetings` | `garden-party` | 90 greetings / 3 days |
+| Walks | friends outdoors stroll, up to 6, formation (single file at doors), chat (look ahead, glance over) | `walkChance/MinLike/Max/Pace` | `social-ties`, `garden-party` | followers 0.33 cells from their spot |
+| Table talk | diners at the same table (sit-then-eat + linger, navkit-3a's action queue) talk | | `garden-party` | 98 of 100 meals seated |
+| Spot choice | seats / ring spots next to friends, not next to strangers, away from foes (`SpotPreference`, used by the queue's seat finder) | `spotByFriends` | `garden-party` | |
+| Mingling | move to a group you like clearly better; after a talk, go to a friend's group | `mingle`, `mingleChance` | `mingle` | more different talk partners |
+| Tag | chase aims where the target is going; flee to open spots along paths; stamina | `fleeSmart`, `chaseSpeed`, `fleeSpeed`, `fleeRadius` | `tag` | a chase 27 s smart vs 6 s straight away |
+| Hide and seek | cover search (out of sight, tucked in, apart); seeker remembers where it looked | `hideSmart` | `hide-and-seek` | found after 18 s vs 7 s |
+| Follow the leader | the line walks the leader's exact route (trails) | `followTrail` | `follow-leader` | 0.05 cells off the route vs 0.27 |
+
+Game rules: `talkEnabled` on in the dollhouse only (talks cut walking throughput in the
+pathfinding scenarios); `autoGatherings` on in survival, island and dollhouse. Walks only
+outdoors (`IsExposedToSky`).
+
+## Next
+
+- **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
+  chase / hide from `chase.c`, herds (walk formation), freeze as a choice. The cat first
+  (dollhouse): hides, comes to the kitchen, follows its favourite, a gathering source, petting
+  as an interaction.
+- **Showing what a talk is about**: topic icons from real state, a heart or cloud at the end.
+- Smaller: personal space by relation, decay of unused relations, friendship pace (a talk at
+  neutral mood is +1 like), noticing across levels (v2), cooking gatherings seen in a running game.
+- Known, not ours: on the island a mover sometimes clips a cliff-edge air cell when a
+  string-pulled path cuts a corner (path smoothing).
+
+---
+
+## Design (2026-11-24, the plan this grew from)
 
 ## Why
 
@@ -157,24 +207,12 @@ residents, which only gives pairs, so it gets:
 
 ### Steps
 
-1. ~~**Noticing layer**~~ **done 2026-11-25 (8b754a84)**: `src/entities/notice.c`, settings `notice`, `noticeRadius` (6), `noticeEveryTicks` (15), `wanderPause`; the face looks at the top noticed mover when standing still. Scenario `social` (10 wanderers, wanderPause 3 s, 3600 ticks): 0.98 noticed per mover, 13.4 attention switches per mover per minute (2.0 back to the one before), standing movers look at someone 68% of the time. No overlay yet (describe line only). Original plan: `noticed[]` per mover, staggered update, line of sight,
-   attention budget. Show it: describe lines (DESC_DEBUG: "notices: Anna (friend, 2 s)") and a
-   debug overlay of who notices whom. Scenario `social` (a plaza, ~10 movers, preset friends
-   and feuds) for counting things headless.
-2. *Done 2026-11-25 (b3bc9b53, `src/entities/relations.c`, save v111):* up to 16 known others per mover (like -100..100, familiarity 0..100, one-way, appearanceSeed guards reused slots). Grows from seeing (familiarity 0.25/s), talking (familiarity 1/s, like by mood), 'after you' (+1 like). Used by talk start/join (affinity; never with the disliked), noticing salience, doorway priority; describe 'Knows: ...'; dollhouse partners start at like 60. Friends and foes (35688d6c): wanderers seek a liked one they know within 12 cells (goal 1-2 cells from them, 60%); steer round a disliked one ahead, refuse goals within 6 cells of one, leave when one comes within 2.5 cells (`socialSeek`, `socialAvoid`; scenario `social-ties`: friends ~2.5 cells closer than strangers, enemies close -70%). Open: friendship is slow at neutral mood (many talks); personal space by relation; decay of unused relations. Original plan: **Relations**: per-pair like/familiarity, familiarity grows from noticing. Start the two
-   residents as partners.
-3. *Partly done 2026-11-25:* **polite passing** (49d414de, `NoticePassSteer`): oncoming movers drift aside early; scenario `hallway` close contacts -77%, arrivals -1.6%. Slowing down while passing cost throughput and was dropped (`passSlow` 0). Doorways (53b83c14, on top of the existing tunnel yielding in `mover.c`): wait until the one you let out has got past you (`yieldLetPass`, not in a crowd), look at them while waiting; scenario `doorway`: bumping them 82 -> 11 with 8 movers, -30..-100% at all sizes, arrivals -2..+1%. Stepping aside while waiting was tried and dropped (no fewer bumps, denser crowd). Still open: per-pair personal space, drift toward a liked one, who goes first by relation. Original plan: **Ambient responses**: per-pair personal space, drift toward a liked one when idle, yield in
-   doorways. The hall and kitchen should already feel different.
-4. *Pair version done 2026-11-25 (cdf05b4f, `src/entities/talk.c`):* idle movers who noticed each other within 3 cells stop, stand 1.5 cells apart facing their middle, take turns speaking (mouth open/small) for 6-15 s, 30 s cooldown; a job or need ends it. A per-game rule (`talkEnabled`): dollhouse on, others off (it cut walking throughput in the pathfinding scenarios). Groups (dd4c7d2e): a third and fourth join, members stand evenly on a circle (~1.5 cells from neighbours), re-formed on join/leave; walkers steer round a talk's circle (`talkGiveRoom`: walkers inside a circle -87..98% in `social` with 20-40 movers, arrivals +-2%). Gatherings (5e3b5ba4): onlookers in rings round a focus (`GatheringStart`, talk kind TALK_WATCH): each takes the free spot nearest its side on the innermost ring (1.5 cells, ~1 cell apart; full -> next ring), smiles, stays 10-30 s; walkers steer round the crowd; scenario `gathering` (performer + 30: 7 onlookers avg, 12 max; walkers inside -85%). Round a place (9e41a4d0, `GatheringStartAt`): a campfire; onlookers chat in turns and get to know each other, more come after dark, nobody joins while a foe is there; scenario `garden-party` (campfire, buffet, tables, 14 guests with couples, friends and a feud). Gatherings the world starts by itself (fbad9a54, game rule `autoGatherings`: survival, island, dollhouse): round a burning fire workshop, heat furniture (burning barrel), someone cooking; scenario `campfire`. Cooking gatherings are only unit-level checked (no scenario cooks yet). Sitting down to eat: done by navkit-3a's sit-then-eat. Still open: the cat as a gathering source. Not yet: relation/mood effects. Original plan: **Conversation**: two idle residents who like each other stop, face each other, talk for a
-   while (mood + relation up). Passers-by go around.
-5. **Animal movement on nav** (paths, levels, doors) behind the existing animal API.
-6. **The cat**: relations (owner, startled-by), responses approach / follow / hide / flee,
-   cover search.
-7. **Outdoor animals** (grazers, predators) moved to rows; the old behaviour functions removed.
-8. *Done 2026-11-25 (11243f9a, `talk.c` TALK_WALK):* **Walking together**: friends outdoors (like >= 30) go for a stroll (also after half of their talks): the leader walks its own path leg after leg at 0.7 pace, slowing for the other; the other keeps a spot at its right (behind in narrow places); they chat on the way. Pair 0.88 cells apart, side by side 70%. Indoors no walks. Chase/flee (58569411, `src/entities/chase.c`): chase aims where the target is going; flee scores spots 5-9 cells away (away, open, straight run) and runs there along a path; stamina (worn out: 0.85x). Tag scenario: smart fleeing 27 s per chase vs 6 s straight-away. Spot choice (81b0ce0a): seats and ring spots next to friends, not right next to strangers, away from foes (`SpotPreference`, used by action_queue.c's seat finder). Mingling (65d431c7, scenario `mingle`): people move over to a group they like clearly better; more different talk partners. Group outings (de11ec2a): walks for up to 6 in formation (beside, pairs behind; single file where there's no room), friends join walking groups, talks of friends turn into group walks; followers 0.33 cells from their spot. Garden party: guests eat seated (navkit-3a's sit-then-eat + linger) and talk with table neighbours (c84a37ca). Glances and greetings (989fe231): walkers glance at people they notice (always known ones, 30% strangers), look away from the disliked; acquaintances nod, friends say hi, once per meeting (holds while in sight + 3 minutes). Garden party: 90 greetings in 3 days. Follow the leader (scenario `follow-leader`): a line walking the leader's exact route via trails (0.05 cells off vs 0.27 aiming straight at the one ahead); the leader rotates every 60 s. Hide and seek (aab48e55): the cover search (spots out of the seeker's sight, tucked in by walls, apart from other hiders) and a seeker that remembers where it has looked; smart hiders 0% in sight of home, found after 18 s vs 7 s for any spot. Next in this line: animals on these blocks (paths, flee/chase, hiding), the cat.
+Steps 1-4 and 8 are built (see "Built" above). Left: 5. animal movement on nav (paths, levels,
+doors) behind the existing animal API; 6. the cat; 7. outdoor animals (grazers, predators) on
+the same rows, the old behaviour functions removed.
 
-Save impact: noticed lists are transient (rebuilt after load); relations are saved (new mover
-data, save bump at step 2); animal path state probably transient.
+Save impact: noticing, talks, gatherings, walks, games, greetings are transient (a load ends
+them); relations are saved (v111, a block after the belts). Animal path state probably transient.
 
 ---
 
@@ -189,7 +227,10 @@ data, save bump at step 2); animal path state probably transient.
 
 ## Facing and showing interactions
 
-Today every mover is one symmetric front-view face sprite (`head`, tinted), no facing stored.
+Built: the faces are made in code from the front faces (`head_front_<mouth>` + the blank
+`head_back`, the inside shifted 1 px toward the look); facing is computed when drawing (not
+stored): talk/doorway/glance target, else the next waypoint, else who it noticed most. Below:
+the options as discussed.
 
 ### Facing
 
@@ -218,8 +259,7 @@ Ideas to try, cheapest first:
 
 ## Open questions
 
-- Pick the facing drawing (variants vs eye shift) and the conversation look: sketch a few in
-  a mock image before building.
+- Conversation look beyond placement, facing and mouths: topic icons? turn-taking pips?
 
 ## Related
 

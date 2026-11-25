@@ -90,6 +90,26 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   (`QueueSitThenEat`, setting `sitToEat`). Plan and what's next (more freetime states onto it,
   player commands): `docs/todo/architecture/action-queue-and-need-index.md`.
 
+## Social behaviour (`notice.c`, `talk.c`, `relations.c`, `chase.c`)
+
+Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built").
+- Ticks: `NoticeTick` → `TalkTick` → `ChaseTick` in `sim_step.c` after movement. The mover loop
+  hands a mover over at its top while it's in a talk/gathering/walk (`TalkMoverTick`) or a game
+  (`ChaseMoverTick`), like the elevator hooks. Walking pace: `TalkWalkSpeedScale * ChaseSpeedScale`.
+- Sideways drifts (polite passing, room round talks, round disliked movers) are summed in one
+  block of the movement step and dropped when they point at a drop (walking into air = falling).
+- "Free to socialise" = `CanTalk` in talk.c: no job, `FREETIME_NONE`, not drafted / travelling,
+  no suspended action queue, not in a game. A new busy state must make this false.
+- In the idle branch, `HideControls(i)` (games give the goals) comes before the deactivate-else.
+- Game rules `talkEnabled`, `autoGatherings`: each game's start sets them; scenarios restore them
+  (`ScenarioSettings` snapshot): add new social toggles there too.
+- Transient (a load ends them): noticing, talks, gatherings, walks, games, greetings. Saved:
+  relations (v111, after the belts; `appearanceSeed` guards a reused mover slot).
+- Faces are decided when drawing (`MoverFaceView`/`MoverMouth` in rendering.c), from these
+  modules' getters; nothing about facing is stored.
+- Unity build: static helpers share one namespace (`RandRange`, `WorkshopBurning` clashed):
+  prefix new ones.
+
 ## Mover Needs & Death
 
 - **Starvation**: `mover.starvationTimer` tracks game-seconds at hunger==0, resets when hunger > 0
