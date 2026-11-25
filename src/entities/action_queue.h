@@ -23,6 +23,9 @@ typedef enum {            // append only: saves store the number
     ACT_WAIT,             // duration game seconds
     ACT_LINGER,           // stay seated after a meal while someone at the same table still eats
                           // (at most duration game seconds; ends at once with nobody else eating)
+    ACT_PUT_TRASH_IN,     // the wrapper / can / leftovers in hand into the target container (a bin);
+                          // not within reach: dropped where it stands
+    ACT_DROP_TRASH,       // the wrapper / can / leftovers in hand onto the ground here
     ACT_TYPE_COUNT
 } ActionType;
 
@@ -54,7 +57,7 @@ typedef struct {
     uint8_t count;        // steps in the queue
     uint8_t current;      // the step being done
     uint8_t source;       // QueueSource
-    uint8_t pad;
+    uint8_t suspended;    // put aside for a critical need: freetime handles the need, then it resumes
     int heldItem;         // what ACT_PICK_UP took (ACT_EAT eats it), -1 = none
     int seat;             // furniture this queue reserved (released at the end), -1 = none
 } MoverQueue;
@@ -64,10 +67,22 @@ extern MoverQueue moverQueues[MAX_MOVERS];
 void QueueResetAll(void);                         // new world / old save: every queue empty
 void QueueReset(int moverIdx);                    // empty, nothing held or reserved (no releases)
 bool QueuePush(int moverIdx, MoverAction a);      // false: full
+// Insert n steps at position pos (current + 1 = right after the step being done: a follow-up,
+// like throwing the wrapper away after eating). False: they don't all fit (nothing inserted).
+bool QueueInsert(int moverIdx, int pos, const MoverAction* steps, int n);
 bool QueueBusy(int moverIdx);                     // a queue is running (freetimeState == FREETIME_QUEUE)
 void QueueStart(int moverIdx, QueueSource src);   // run it: the mover's freetime state becomes FREETIME_QUEUE
 void QueueEnd(int moverIdx);                      // stop: release the seat and reserved items, freetime NONE
 void QueueTick(int moverIdx);                     // do the current step (needs.c, FREETIME_QUEUE)
+// Interrupt and resume (needs.c): a critical need puts a running queue aside (QueueSuspend:
+// freetime NONE, the need is handled as usual); once the mover is free again it carries on
+// with the step it was on (QueueResume). setting queueYieldsToNeeds (default on).
+bool QueueSuspended(int moverIdx);
+void QueueSuspend(int moverIdx);
+void QueueResume(int moverIdx);
+bool QueueWantsInterrupt(int moverIdx);          // running, and a critical need may interrupt it
+bool QueueReadyToResume(int moverIdx);           // put aside, and the need is handled (or can't be now)
+extern bool queueYieldsToNeeds;
 const char* QueueStepName(int moverIdx);          // "Walking to Chair", NULL when idle (describe)
 
 // Step builders
@@ -94,6 +109,12 @@ static inline MoverAction ActLinger(float maxGameSeconds) {
     return (MoverAction){ .type = ACT_LINGER, .duration = maxGameSeconds, .target = -1, .optional = 1 };
 }
 #define LINGER_MAX_GH 0.5f   // longest a diner lingers for a slow eater (game hours)
+static inline MoverAction ActPutTrashIn(int container) {
+    return (MoverAction){ .type = ACT_PUT_TRASH_IN, .targetKind = ATGT_ITEM, .target = container };
+}
+static inline MoverAction ActDropTrash(void) {
+    return (MoverAction){ .type = ACT_DROP_TRASH, .target = -1 };
+}
 static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
 }

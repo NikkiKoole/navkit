@@ -21,6 +21,7 @@
 
 MoverQueue moverQueues[MAX_MOVERS];
 bool sitToEat = true;
+bool queueYieldsToNeeds = true;
 
 #define QUEUE_WALK_SLACK      3.0f   // a walk may take 3x the straight line (detours, stairs)
 #define QUEUE_WALK_MIN_GH     0.5f   // ... and at least this long before it gives up
@@ -44,6 +45,22 @@ bool QueuePush(int moverIdx, MoverAction a) {
     a.started = 0;
     a.progress = 0;
     q->steps[q->count++] = a;
+    return true;
+}
+
+bool QueueInsert(int moverIdx, int pos, const MoverAction* steps, int n) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    if (n <= 0) return true;
+    if (q->count + n > MAX_MOVER_ACTIONS) return false;
+    if (pos < q->current) pos = q->current;
+    if (pos > q->count) pos = q->count;
+    memmove(&q->steps[pos + n], &q->steps[pos], sizeof(MoverAction) * (size_t)(q->count - pos));
+    for (int i = 0; i < n; i++) {
+        q->steps[pos + i] = steps[i];
+        q->steps[pos + i].started = 0;
+        q->steps[pos + i].progress = 0;
+    }
+    q->count = (uint8_t)(q->count + n);
     return true;
 }
 
@@ -209,6 +226,32 @@ static StepResult QStepEat(int moverIdx, MoverAction* a) {
     m->needTarget = -1;
     QStopWalking(m);
     if (q->heldItem == it) q->heldItem = -1;
+    // What it left (a wrapper, a can) goes away next, as steps of this queue (a follow-up, as a
+    // sim puts its plate away): after lingering at the table, before what was queued after
+    if (MoverHasTrash(moverIdx)) {
+        int pos = q->current + 1;
+        while (pos < q->count && q->steps[pos].type == ACT_LINGER) pos++;
+        int bin = FindTrashBinFor(moverIdx, MoverTrashType(moverIdx));
+        MoverAction follow[2];
+        int n = 0;
+        if (bin >= 0) { follow[n++] = ActWalkToItem(bin, true); follow[n++] = ActPutTrashIn(bin); }
+        else follow[n++] = ActDropTrash();
+        if (!QueueInsert(moverIdx, pos, follow, n)) MoverThrowTrash(moverIdx, -1);   // queue full: drop it
+    }
+    return STEP_DONE;
+}
+
+static StepResult QStepPutTrashIn(int moverIdx, MoverAction* a) {
+    Mover* m = &movers[moverIdx];
+    if (!MoverHasTrash(moverIdx)) return STEP_DONE;
+    bool reach = QItemValid(a->target) && QItemWithinReach(m, a->target);
+    MoverThrowTrash(moverIdx, reach ? a->target : -1);   // out of reach (bin gone, no way): dropped here
+    return STEP_DONE;
+}
+
+static StepResult QStepDropTrash(int moverIdx, MoverAction* a) {
+    (void)a;
+    if (MoverHasTrash(moverIdx)) MoverThrowTrash(moverIdx, -1);
     return STEP_DONE;
 }
 
@@ -251,6 +294,51 @@ static StepResult QStepLinger(int moverIdx, MoverAction* a) {
     return a->progress >= a->duration ? STEP_DONE : STEP_RUNNING;
 }
 
+// ---------------------------------------------------------------------------
+// Interrupt and resume
+// ---------------------------------------------------------------------------
+
+bool QueueSuspended(int moverIdx) { return moverQueues[moverIdx].suspended != 0; }
+
+// A step still to come eats: hunger is what the queue is about, it doesn't interrupt for it
+static bool QueueWillEat(int moverIdx) {
+    const MoverQueue* q = &moverQueues[moverIdx];
+    for (int s = q->current; s < q->count; s++) if (q->steps[s].type == ACT_EAT) return true;
+    return false;
+}
+
+bool QueueWantsInterrupt(int moverIdx) {
+    if (!queueYieldsToNeeds || !QueueBusy(moverIdx)) return false;
+    if (movers[moverIdx].needSearchCooldown > 0.0f) return false;   // looked in vain just now: carry on
+    return MoverHasCriticalNeed(moverIdx, QueueWillEat(moverIdx));
+}
+
+bool QueueReadyToResume(int moverIdx) {
+    if (!moverQueues[moverIdx].suspended) return false;
+    return movers[moverIdx].needSearchCooldown > 0.0f || !MoverHasCriticalNeed(moverIdx, QueueWillEat(moverIdx));
+}
+
+void QueueSuspend(int moverIdx) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    Mover* m = &movers[moverIdx];
+    q->suspended = 1;
+    if (q->current < q->count) q->steps[q->current].started = 0;   // a walk plans again on resume
+    QStopWalking(m);
+    m->freetimeState = FREETIME_NONE;
+    m->needTarget = -1;
+    EventLog("Mover %d queue put aside at step %d for a critical need", moverIdx, q->current);
+}
+
+void QueueResume(int moverIdx) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    if (!q->suspended) return;
+    q->suspended = 0;
+    if (q->current < q->count) q->steps[q->current].started = 0;
+    movers[moverIdx].freetimeState = FREETIME_QUEUE;
+    movers[moverIdx].needTarget = -1;
+    EventLog("Mover %d queue resumed at step %d", moverIdx, q->current);
+}
+
 // The queue ran out or a required step failed: end it, then what eating left goes to a bin
 static void QueueFinish(int moverIdx) {
     QueueEnd(moverIdx);
@@ -271,6 +359,8 @@ void QueueTick(int moverIdx) {
             case ACT_EAT:     r = QStepEat(moverIdx, a); break;
             case ACT_WAIT:    r = QStepWait(moverIdx, a); break;
             case ACT_LINGER:  r = QStepLinger(moverIdx, a); break;
+            case ACT_PUT_TRASH_IN: r = QStepPutTrashIn(moverIdx, a); break;
+            case ACT_DROP_TRASH:   r = QStepDropTrash(moverIdx, a); break;
             default: break;
         }
         if (r == STEP_RUNNING) return;
@@ -298,6 +388,8 @@ const char* QueueStepName(int moverIdx) {
         case ACT_EAT:     return "Eating";
         case ACT_WAIT:    return "Waiting";
         case ACT_LINGER:  return "Lingering at the table";
+        case ACT_PUT_TRASH_IN: return TextFormat("Throwing trash in the %s", what);
+        case ACT_DROP_TRASH:   return "Dropping trash";
         default:          return NULL;
     }
 }
@@ -317,6 +409,8 @@ static const char* StepLabel(const MoverAction* a) {
         case ACT_EAT:     return "Eat";
         case ACT_WAIT:    return "Wait";
         case ACT_LINGER:  return "Linger";
+        case ACT_PUT_TRASH_IN: return "Throw away";
+        case ACT_DROP_TRASH:   return "Drop trash";
         default:          return "?";
     }
 }
@@ -337,7 +431,7 @@ void QueueDescribe(int moverIdx, char* buf, int len) {
 static void DropCurrentBusiness(int moverIdx) {
     Mover* m = &movers[moverIdx];
     if (m->currentJobId >= 0) CancelJob(m, moverIdx);
-    if (QueueBusy(moverIdx)) QueueEnd(moverIdx);
+    if (QueueBusy(moverIdx) || QueueSuspended(moverIdx)) QueueEnd(moverIdx);
     if (m->freetimeState != FREETIME_NONE) {
         ReleaseFurnitureForMover(moverIdx);
         for (int i = 0; i < itemHighWaterMark; i++)

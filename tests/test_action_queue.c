@@ -12,6 +12,7 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/furniture.h"
 #include "../src/entities/inventory.h"
+#include "../src/entities/containers.h"
 #include "../src/entities/action_queue.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
@@ -318,6 +319,69 @@ describe(linger) {
     }
 }
 
+describe(follow_ups_and_interrupts) {
+    it("after eating, the wrapper goes in the bin next (inserted), before walking on") {
+        Setup(openFloor);
+        movers[0].hunger = 0.6f;
+        SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_SNACK);
+        int bin = SpawnItem(7 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_TRASH_BIN);
+        char said[128];
+        expect(QueueCommandAt(0, 5, 2, 0, false, said, sizeof(said)));
+        expect(QueueCommandAt(0, 14, 4, 0, true, said, sizeof(said)));
+        bool sawThrow = false, binBeforeArrival = false;
+        for (int t = 0; t < 40000 && QueueBusy(0); t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            const MoverQueue* q = &moverQueues[0];
+            // walking to the bin (the throw itself is instant on arrival)
+            if (QueueBusy(0) && q->steps[q->current].type == ACT_WALK_TO && q->steps[q->current].target == bin) sawThrow = true;
+            if (CellX() == 14 && CellY() == 4 && FirstInContainer(bin) >= 0) binBeforeArrival = true;
+        }
+        expect(sawThrow);
+        expect(binBeforeArrival);
+        expect(movers[0].heldTrash == ITEM_NONE);
+        expect(CellX() == 14 && CellY() == 4);
+    }
+
+    it("a desperate bladder puts a long walk aside: toilet first, then it walks on") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        bladderEnabled = true;
+        SpawnFurniture(6, 4, 0, FURNITURE_TOILET, MAT_OAK);
+        char said[128];
+        expect(QueueCommandAt(0, 15, 0, 0, false, said, sizeof(said)));
+        bool suspended = false, usedToilet = false;
+        for (int t = 0; t < 60000; t++) {
+            if (t == 30) movers[0].bladder = 0.01f;   // desperate, on the way
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (QueueSuspended(0)) suspended = true;
+            if (movers[0].freetimeState == FREETIME_USING_TOILET) usedToilet = true;
+            if (!QueueBusy(0) && !QueueSuspended(0) && t > 30) break;
+        }
+        expect(suspended && usedToilet);
+        expect(CellX() == 15 && CellY() == 0);   // and then it finished the walk
+        bladderEnabled = false;
+    }
+
+    it("queueYieldsToNeeds off: the order comes first") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        bladderEnabled = true;
+        queueYieldsToNeeds = false;
+        SpawnFurniture(6, 4, 0, FURNITURE_TOILET, MAT_OAK);
+        char said[128];
+        expect(QueueCommandAt(0, 15, 0, 0, false, said, sizeof(said)));
+        bool suspended = false;
+        for (int t = 0; t < 60000 && (QueueBusy(0) || t < 31); t++) {
+            if (t == 30) movers[0].bladder = 0.01f;
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (QueueSuspended(0)) suspended = true;
+        }
+        expect(!suspended && CellX() == 15 && CellY() == 0);
+        queueYieldsToNeeds = true;
+        bladderEnabled = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -325,5 +389,6 @@ int main(int argc, char* argv[]) {
     test(action_queue_basics);
     test(player_commands);
     test(linger);
+    test(follow_ups_and_interrupts);
     return summary();
 }

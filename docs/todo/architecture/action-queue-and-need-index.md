@@ -130,6 +130,15 @@ measurement that needs it.
    needs interrupting a player queue (a starving mover follows orders to the end), commands
    in the inspector / palette, the queue drawn in the world, cancel / reorder steps, more step
    kinds (drop, put into a container, use a bed, search a bin: City 1999).
+   **Insert, follow-ups and interrupts (2026-11-25, the Sims way):** `QueueInsert(mover, pos,
+   steps)`. Follow-up: after eating, the wrapper / can goes away as steps of the queue right
+   after the meal (after lingering, before what was queued next): walk to a bin + throw it in
+   (`ACT_PUT_TRASH_IN`), or drop it (`ACT_DROP_TRASH`). Interrupt and resume: a critical need
+   (starving unless the queue is about to eat, dehydrating, desperate, exhausted, freezing)
+   puts a running queue aside (`QueueSuspend`), freetime handles the need as usual, then the
+   queue carries on at the step it was on (`QueueResume`); setting `queueYieldsToNeeds` (the
+   start of the autonomy dial; per game later). Not yet: the player removing / reordering
+   queued steps; a resumed meal walks back to its seat.
 4. **Advertisements + autonomy per game**: objects say which need they serve; the dial per game.
 5. Later: coarse fast-forward for movers out of view.
 

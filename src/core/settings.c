@@ -470,6 +470,8 @@ static const Setting settings[] = {
     // --- Mover balance: meals (sit-then-eat, the action queue) ---
     SET_BOOL("sitToEat", "Sit to eat", "Mover Balance", sitToEat,
       "At its food, a mover with a free hand and a free chair, sofa or desk within 10 cells takes one portion there and eats sitting (the action queue). Off: eats standing where the food lies."),
+    SET_BOOL("queueYieldsToNeeds", "Needs interrupt orders", "Mover Balance", queueYieldsToNeeds,
+      "A critical need (starving, dehydrating, desperate, exhausted, freezing) puts a mover's action queue aside (your E orders, sit-then-eat); it carries on after. Off: the queue comes first."),
 
     // --- Mover balance: sleep rhythm ---
     SET_BOOL("sleepRhythm", "Day Rhythm", "Mover Balance/Sleep Rhythm", sleepRhythmEnabled,

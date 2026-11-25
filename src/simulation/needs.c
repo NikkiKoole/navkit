@@ -824,6 +824,19 @@ static void GetRidOfTrash(Mover* m, int moverIdx) {
 }
 
 void MoverGetRidOfTrash(Mover* m, int moverIdx) { GetRidOfTrash(m, moverIdx); }
+bool MoverHasTrash(int moverIdx) { return HasTrashToThrow(&movers[moverIdx], moverIdx); }
+ItemType MoverTrashType(int moverIdx) {
+    return movers[moverIdx].heldTrash != ITEM_NONE ? (ItemType)movers[moverIdx].heldTrash : ITEM_LEFTOVERS;
+}
+void MoverThrowTrash(int moverIdx, int bin) { LetGoOfTrash(&movers[moverIdx], moverIdx, bin); }
+bool MoverHasCriticalNeed(int moverIdx, bool skipHunger) {
+    const Mover* m = &movers[moverIdx];
+    return (!skipHunger && hungerEnabled && m->hunger < balance.hungerCriticalThreshold) ||
+           (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) ||
+           (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) ||
+           (energyEnabled && m->energy < balance.energyExhaustedThreshold) ||
+           (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold);
+}
 
 // What consuming one of type left (a can, a wrapper) goes in the hand; a mover that still
 // holds something lets go of that first
@@ -1102,6 +1115,8 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 static void ProcessFreetimeState(Mover* m, int moverIdx) {
     switch (m->freetimeState) {
         case FREETIME_NONE: {
+            // A queue put aside for a need: the need is handled (or can't be now): carry on
+            if (QueueReadyToResume(moverIdx)) { QueueResume(moverIdx); break; }
             // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
             //           hungry > thirsty > bladder > tired > chilly
             // Critical needs, in that order. One whose search finds nothing (no food
@@ -1232,6 +1247,9 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
         }
 
         case FREETIME_QUEUE:
+            // A critical need puts the queue aside (ProcessFreetimeNeeds weighs the needs again
+            // this tick); it resumes once the mover is free (FREETIME_NONE below)
+            if (QueueWantsInterrupt(moverIdx)) { QueueSuspend(moverIdx); break; }
             QueueTick(moverIdx);   // action_queue.c: the current step
             break;
 
