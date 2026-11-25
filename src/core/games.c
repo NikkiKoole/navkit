@@ -692,6 +692,7 @@ static bool HasSticksOrPlanks(const GameToolContext* c) { return c->hasSticks ||
     {HUD_TAB_BUILD,  "Build Toilet",     ACTION_WORK_FURNITURE, CONSTRUCTION_TOILET,      HasPlanksOrClay}, \
     {HUD_TAB_BUILD,  "Build Ladder",     ACTION_WORK_LADDER,    CONSTRUCTION_LADDER,      HasLogsOrPlanks}, \
     {HUD_TAB_BUILD,  "Build Railing",    ACTION_WORK_CONSTRUCT, CONSTRUCTION_RAILING,     HasSticksOrPlanks}, \
+    {HUD_TAB_BUILD,  "Build Fire Barrel", ACTION_WORK_FURNITURE, CONSTRUCTION_FIRE_BARREL, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}
 

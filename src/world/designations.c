@@ -2863,8 +2863,11 @@ void CompleteBlueprint(int blueprintIdx) {
         else if (bp->recipeIndex == CONSTRUCTION_TABLE) ft = FURNITURE_TABLE;
         else if (bp->recipeIndex == CONSTRUCTION_PIT_LATRINE) ft = FURNITURE_PIT_LATRINE;
         else if (bp->recipeIndex == CONSTRUCTION_TOILET) ft = FURNITURE_TOILET;
+        else if (bp->recipeIndex == CONSTRUCTION_FIRE_BARREL) ft = FURNITURE_FIRE_BARREL;
         if (ft != FURNITURE_NONE) {
-            SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+            int fi = SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+            // a built barrel starts empty (unlit): haulers fill it (JOBTYPE_REFUEL)
+            if (fi >= 0 && ft == FURNITURE_FIRE_BARREL) furnitureFuel[fi] = 0.0f;
         }
         bp->active = false;
         bp->assignedBuilder = -1;
