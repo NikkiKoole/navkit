@@ -619,6 +619,56 @@ Setting `carSlotTempers` (on). Per car: 60% normal, 20% speeders, 20% slow (cabs
 given up 13 -> 3; Manhattan 490 -> 589, given up 231 -> 94; 0 touches, 0 jumps. Speeders make the
 most trips (grid 2.34 each vs 2.09 normal, 1.75 slow).
 
+## Plan: heights (bridges, overpasses, tunnels) and road classes (2026-11-25)
+
+From dreamengine's road research (docs/design/road-hierarchy-notes.md, roadnet2-plan.md,
+island-studio.md + tools/carts/islandstudio.c, roadkit.h, worldgen-plan.md + runtime/citygen.h,
+backroads.md). The closest relative is islandstudio: grid A* routing, grading, bridges,
+flyovers, diamond interchanges. Lessons taken over:
+- **A crossing that shares a node is at grade; one with no shared node is grade-separated**
+  (OSM's rule; islandstudio keeps the expressway as its own layer). No "overpass" flag on a node:
+  citygen labelled crossings grade 1/2 but kept the shared node - a label without topology.
+- **One data model**: drawing, carving, routing and collisions read the same geometry (roadnet v1
+  died of a field and a graph that drifted apart).
+- **Heights: junctions first, then each road between them**, grade-capped (main 8%, minor 10-12%),
+  vertical curves smoothed; clearance spread into ramps; a deck never below the ground under it.
+- **Classes** (FHWA / OSM): freeway (ramps only, grade-separated) > arterial (lights, turn lanes)
+  > collector (priority, mini-roundabouts) > local (yield/stop). Continuity: a higher class never
+  ends on a single lower one; locals never touch a freeway. Priority: the bigger road goes first.
+- **Density decides the network** (Parish & Mueller, Chen; citygen): a density field (noise x
+  centre x flat/low terrain x water) -> highways between density peaks -> arterials -> districts
+  -> local streets only where dense enough (grid in the core, loops/cul-de-sacs at the fringe).
+- **Water**: bridge at the narrowest, roughly perpendicular point (the road detours to it).
+
+### Phases for navkit (each a scenario + headless check, like cars-city)
+
+1. **Height in the network.** Node level (int z), a z per segment point (float, levels).
+   Conflicts and connectors only between pieces at the same level (|dz| < 1); edges may cross in
+   plan without a node when their levels there differ by >= 1. Carving per point: the road at its
+   level; a **bridge deck** (`HAS_FLOOR` + railings at the edge) where the ground below is lower
+   (air, water, another road); a **tunnel** where the ground is higher (carve through). Ramps:
+   ~1 level per 12-16 cells (8% at ~2.5 m a level). Cars (slots and steered) take z from their
+   segment: drawn by `viewZ` like movers (hidden above, tinted below), pedestrian stamps and
+   touch checks per level. Scenario `cars-overpass`: a grid crossed by an elevated road with no
+   junctions, plus one road dipping into a tunnel under a hill.
+2. **Road classes.** `RdEdge.cls`: highway / arterial (today's avenue) / street / lane -> lanes per
+   way, speed limit (segment vmax), junction kind (highway: ramps only; arterial: lights; street:
+   priority to the bigger road - our priority-lane mechanism - or a mini roundabout; lane: yield).
+   Pedestrians never on highways (no pavement, route cost blocked).
+3. **Interchanges.** A diamond first (islandstudio's only kind): the highway passes over; four
+   slip roads to two at-grade junctions on the crossing road (lights). Then loops (cloverleaf,
+   trumpet) from roadkit's catalogue if wanted.
+4. **Density-driven generation.** A density field on the map; highway(s) linking peaks or ringing
+   the core; arterial grid spaced by density; local streets filling dense districts; sparse
+   fringe. Blocks: 80-110 m = 36-49 cells (cars-city's 72x40 already close).
+5. **Terrain and water** (the island): roads follow the ground with grade caps, junction heights
+   first, cuttings/embankments (carve/fill the terrain), bridges over rivers (water flows on below
+   the deck), tunnels through hills.
+
+Open calls: a level's height in metres (clearance: one level is enough for the game?); lanes are
+3 cells (2x2 cars) so a 3+3 highway is ~20 cells wide - fine, or narrower highway lanes?; start
+with 1 (+ the overpass scenario) or 2.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
