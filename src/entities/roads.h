@@ -19,9 +19,9 @@
 
 #include <stdbool.h>
 
-#define RD_MAX_NODES 4096
-#define RD_MAX_EDGES 8192
-#define RD_MAX_SEGS 32000    // (routes store segments as short)
+#define RD_MAX_NODES 8192
+#define RD_MAX_EDGES 16384
+#define RD_MAX_SEGS 65000    // (routes store segments as RdSegId, an unsigned short)
 #define RD_MAX_NODE_EDGES 6
 #define RD_MAX_CONN 32       // connectors per junction (6 roads: 6 x 5)
 #define RD_MAX_OUT 6         // connectors leaving one lane
@@ -30,11 +30,13 @@
 #define RD_SETBACK 7.0f      // cells: lanes stop this far from a junction's centre (room for the turns)
 
 typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
+typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)
+typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)
 
 // Parking bays (lay-bys): from lane s0, a curve into a spot RD_BAY_OFF cells to the right
 // (the bay's IN segment ends at the spot), and from the spot a curve back into the lane
 // at s1 = s0 + RD_BAY_LEN (OUT segment).
-#define RD_MAX_BAYS 8192
+#define RD_MAX_BAYS 16384
 #define RD_BAY_OFF 2.5f      // cells: the spot's centre from the lane's centre
 #define RD_BAY_LEN 12.0f     // cells of lane a bay takes
 typedef struct { int lane; float s0, s1; int in, out; } RdBay;   // s0/s1 in px
@@ -106,7 +108,7 @@ void RoadsCarve(int z);                   // open the roads (and junctions) in t
 void RoadPointAt(int seg, float s, float* x, float* y, float* h);
 // Shortest route (by length) from the end of lane `fromLane` to lane `toLane`:
 // writes [fromLane, conn, lane, conn, ..., toLane]; returns the length or 0 if none.
-int RoadRoute(int fromLane, int toLane, short* out, int max);
+int RoadRoute(int fromLane, int toLane, RdSegId* out, int max);
 int RoadLaneCount(void);
 int RoadLaneAt(int i);                    // i-th lane segment (0 .. RoadLaneCount-1)
 

@@ -13,6 +13,7 @@ RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
 int rdNodeCount = 0, rdEdgeCount = 0, rdSegCount = 0;
 float *rdX = NULL, *rdY = NULL, *rdS = NULL;
+static float* rdH = NULL;   // heading from point k to k+1 (the last point: the one before)
 static int rdPtCount = 0, rdPtCap = 0;
 
 static void EnsurePts(int n) {
@@ -22,6 +23,7 @@ static void EnsurePts(int n) {
     rdX = realloc(rdX, sizeof(float) * cap);
     rdY = realloc(rdY, sizeof(float) * cap);
     rdS = realloc(rdS, sizeof(float) * cap);
+    rdH = realloc(rdH, sizeof(float) * cap);
     rdPtCap = cap;
 }
 RdBay rdBays[RD_MAX_BAYS];
@@ -108,6 +110,8 @@ static int SegFromTmp(int n, RdSegKind kind) {
     }
     sg->n = rdPtCount - sg->p0;
     sg->len = rdS[rdPtCount - 1];
+    for (int i = sg->p0; i < rdPtCount - 1; i++) rdH[i] = atan2f(rdY[i + 1] - rdY[i], rdX[i + 1] - rdX[i]);
+    rdH[rdPtCount - 1] = sg->n > 1 ? rdH[rdPtCount - 2] : 0;
     sg->bx0 = sg->by0 = 1e30f; sg->bx1 = sg->by1 = -1e30f;
     for (int i = sg->p0; i < rdPtCount; i++) {
         sg->bx0 = fminf(sg->bx0, rdX[i]); sg->bx1 = fmaxf(sg->bx1, rdX[i]);
@@ -481,8 +485,8 @@ static void BuildAll(float latAccel) {
 
 void RoadPointAt(int seg, float s, float* x, float* y, float* h) {
     const RdSeg* sg = &rdSegs[seg];
-    if (s <= 0) { *x = rdX[sg->p0]; *y = rdY[sg->p0]; *h = SegHeading(seg, 0); return; }
-    if (s >= sg->len) { int k = sg->p0 + sg->n - 1; *x = rdX[k]; *y = rdY[k]; *h = SegHeading(seg, sg->n - 1); return; }
+    if (s <= 0) { *x = rdX[sg->p0]; *y = rdY[sg->p0]; *h = rdH[sg->p0]; return; }
+    if (s >= sg->len) { int k = sg->p0 + sg->n - 1; *x = rdX[k]; *y = rdY[k]; *h = rdH[k]; return; }
     int i = (int)(s / RD_STEP);          // points are RD_STEP apart (the last one closer)
     if (i > sg->n - 2) i = sg->n - 2;
     while (i > 0 && rdS[sg->p0 + i] > s) i--;
@@ -491,7 +495,7 @@ void RoadPointAt(int seg, float s, float* x, float* y, float* h) {
     float L = rdS[k + 1] - rdS[k], t = L > 1e-6f ? (s - rdS[k]) / L : 0;
     *x = rdX[k] + (rdX[k + 1] - rdX[k]) * t;
     *y = rdY[k] + (rdY[k + 1] - rdY[k]) * t;
-    *h = atan2f(rdY[k + 1] - rdY[k], rdX[k + 1] - rdX[k]);
+    *h = rdH[k];   // (stored when built: atan2 here was the top cost with 16000 cars)
 }
 
 // ---------------------------------------------------------------------------
@@ -528,7 +532,7 @@ static RdHeapItem RdHeapPop(void) {
     return top;
 }
 
-int RoadRoute(int fromLane, int toLane, short* out, int max) {
+int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
     static float dist[RD_MAX_SEGS];
     static int prevLane[RD_MAX_SEGS], prevConn[RD_MAX_SEGS];
     static unsigned char done[RD_MAX_SEGS];
@@ -537,37 +541,45 @@ int RoadRoute(int fromLane, int toLane, short* out, int max) {
         dist[l] = 1e30f; prevLane[l] = -1; prevConn[l] = -1; done[l] = 0;
     }
     rdHeapN = 0;
+    // A*: a lane's cost counts to its end; the guess is the straight line from there to the
+    // goal lane's end (a route is never shorter, so the first time the goal comes off the
+    // heap it's the best route)
+    const RdSeg* G = &rdSegs[toLane];
+    float gx = rdX[G->p0 + G->n - 1], gy = rdY[G->p0 + G->n - 1];
+#define RD_GUESS(l) sqrtf((rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) * (rdX[rdSegs[l].p0 + rdSegs[l].n - 1] - gx) + \
+                          (rdY[rdSegs[l].p0 + rdSegs[l].n - 1] - gy) * (rdY[rdSegs[l].p0 + rdSegs[l].n - 1] - gy))
     // Start: the lanes reachable from fromLane's end (fromLane itself only by a loop)
     const RdSeg* f = &rdSegs[fromLane];
     for (int k = 0; k < f->nOut; k++) {
         int c = f->out[k], l = rdSegs[c].to;
         float d = rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
-        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; RdHeapPush(d, l); }
+        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
     }
     for (;;) {
         if (rdHeapN == 0) return 0;
         RdHeapItem it = RdHeapPop();
         int best = it.l;
-        if (done[best] || it.d > dist[best]) continue;
+        if (done[best]) continue;
         if (best == toLane) break;
         done[best] = 1;
         const RdSeg* b = &rdSegs[best];
         for (int k = 0; k < b->nOut; k++) {
             int c = b->out[k], l = rdSegs[c].to;
             float d = dist[best] + rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
-            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; RdHeapPush(d, l); }
+            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
         }
     }
+#undef RD_GUESS
     // Walk back: toLane, conn, lane, ..., fromLane (stop when we reach fromLane the first time
     // we walk off the start's successors; fromLane == toLane loops round once)
-    static short rev[RD_ROUTE_TMP];
+    static RdSegId rev[RD_ROUTE_TMP];
     int n = 0, l = toLane;
-    rev[n++] = (short)l;
+    rev[n++] = (RdSegId)l;
     for (;;) {
         int c = prevConn[l], p = prevLane[l];
         if (c < 0 || n + 2 >= RD_ROUTE_TMP) return 0;
-        rev[n++] = (short)c;
-        rev[n++] = (short)p;
+        rev[n++] = (RdSegId)c;
+        rev[n++] = (RdSegId)p;
         if (p == fromLane) break;
         l = p;
     }

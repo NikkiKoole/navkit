@@ -18,7 +18,7 @@
 
 #include <stdbool.h>
 
-#define MAX_CARS 4096
+#define MAX_CARS 16384
 #define CAR_MAX_PATH 4096   // 4 px per point: routes up to ~500 cells
 #define CAR_MAX_STOPS 16
 #define CAR_MAX_ROUTE 512   // road segments in a road route
@@ -66,7 +66,7 @@ typedef struct {
     // Road driving (src/entities/traffic.c): a route of road segments (lanes and the
     // connectors through junctions), the position along the current one
     bool onRoad;
-    short route[CAR_MAX_ROUTE];
+    unsigned short route[CAR_MAX_ROUTE];   // RdSegId (roads.h)
     int routeLen, routeIdx;
     float s;               // pixels along route[routeIdx] (car centre)
     float destS;           // trip ends at destS on the last segment

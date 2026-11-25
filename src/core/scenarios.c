@@ -3563,16 +3563,16 @@ static void SetupCarsCity(void) {
     int placed = 0;
     for (int tries = 0; carCityParking && tries < carCityCount * 4 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
         if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
-    for (int tries = 0; tries < carCityCount * 50 && placed < carCityCount; tries++) {
+    // (each lane fills from its start, 4-7 cells apart: no comparing every pair of cars)
+    static float laneNext[RD_MAX_SEGS];
+    for (int i = 0; i < RoadLaneCount(); i++) laneNext[RoadLaneAt(i)] = 2;
+    for (int tries = 0; tries < carCityCount * 20 && placed < carCityCount; tries++) {
         int lane = RoadLaneAt(CityRand(RoadLaneCount()));
         float len = rdSegs[lane].len / CELL_SIZE;
-        if (len < 8) continue;
-        float s = 2 + (len - 4) * (CityRand(1000) / 1000.0f);
-        bool clear = true;
-        for (int i = 0; i < carCount && clear; i++)
-            if (cars[i].route[cars[i].routeIdx] == lane && fabsf(cars[i].s / CELL_SIZE - s) < 4) clear = false;
-        if (!clear) continue;
+        float s = laneNext[lane] + CityRand(4);
+        if (s > len - 2) continue;
         if (TrafficSpawn(lane, s * CELL_SIZE, 1) < 0) break;
+        laneNext[lane] = s + 4;
         placed++;
     }
     currentViewZ = 1;
