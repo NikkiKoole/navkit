@@ -27,6 +27,7 @@
 #include "../entities/notice.h"
 #include "../simulation/fire.h"
 #include "../simulation/explosion.h"
+#include "../world/support.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
@@ -41,6 +42,7 @@
 typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ, mood, talk, autoGather;
     float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
+    bool support;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -65,7 +67,7 @@ static void SnapshotOrRestoreSettings(void) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled, autoGatherings,
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
-                                           trainSpeed};
+                                           trainSpeed, supportEnabled};
         haveSavedSettings = true;
         return;
     }
@@ -82,6 +84,7 @@ static void SnapshotOrRestoreSettings(void) {
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
     trainSpeed = savedSettings.trainSpeed;
+    supportEnabled = savedSettings.support;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
@@ -1055,6 +1058,7 @@ static void CoverPrintStats(void) {
 }
 
 static void SetupLadders(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -1078,6 +1082,7 @@ static void SetupLadders(void) {
 // 96 movers 7.3 vs 6.9 (both ladders saturated). With the second ladder far away
 // (18,2) a detour never paid.
 static void SetupLadderChoice(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -1098,6 +1103,7 @@ static void SetupLadderChoice(void) {
 // 16 movers wandering between the levels: every climb up uses the first, every climb
 // down the second (--check fails on a climb against the direction).
 static void SetupLadderOneWay(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -1121,6 +1127,7 @@ static void SetupLadderOneWay(void) {
 // to the ground (28,16). Movers wander between levels: up the north ladders tier by tier,
 // down the south ladders or the pole. --check fails on a climb against a ladder.
 static void SetupOneWayTiers(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     static const int tierX[3] = {10, 16, 22};
     for (int t = 0; t < 3; t++) {
@@ -2737,6 +2744,7 @@ static bool BeltCheck(char* why, int whyLen) {
 // (16,9) and on along the deck into B. Chute: rock stacks pre-stocked in C (deck) ride
 // east, DOWN two levels at (34,15) and into D on the ground.
 static void SetupBeltLift(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     hungerEnabled = thirstEnabled = energyEnabled = false;
     const int deckZ = 3;
     for (int y = 0; y < gridHeight; y++)
@@ -2953,6 +2961,7 @@ static bool ElevatorGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevator(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     elevShaftX[0] = ELEV_TOWER_X0 + ELEV_TOWER_W / 2;     elevShaftY[0] = ELEV_TOWER_Y0 + ELEV_TOWER_H / 2;
     elevShaftX[1] = ELEV_TOWER_X0 + ELEV_TOWER_W - 3;     elevShaftY[1] = ELEV_TOWER_Y0 + 2;
     for (int z = 2; z <= ELEV_TOP; z++)
@@ -3050,6 +3059,7 @@ static bool ElevTallGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorTall(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     for (int z = 2; z <= ET_TOP; z++)
         for (int y = ET_Y0; y < ET_Y0 + ET_W; y++)
             for (int x = ET_X0; x < ET_X0 + ET_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
@@ -3135,6 +3145,7 @@ static bool ElevStairsGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorStairs(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     for (int z = 2; z <= ES_TOP; z++)
         for (int y = ES_Y0; y < ES_Y0 + ES_W; y++)
             for (int x = ES_X0; x < ES_X0 + ES_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
@@ -3261,6 +3272,7 @@ static bool ElevBuildGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorBuild(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     hungerEnabled = thirstEnabled = energyEnabled = false;
     for (int z = 2; z <= 3; z++)
         for (int y = 5; y <= 14; y++)
@@ -4414,6 +4426,94 @@ static bool ThrowingCheck(char* why, int whyLen) {
     return true;
 }
 
+// collapse: structural support. Three charges on fuses take the foot out of three structures:
+// a granite pillar with an arm at the top (2 s), a granite roof slab on one pillar with a
+// mover under it (3 s), a wooden deck on one post with a log on it (4 s). Each piece creaks
+// (dust), falls collapseWarning seconds later and lands as walls; the deck breaks into planks.
+// Check: nothing left hanging, the slab came down and its mover was pushed out (not buried),
+// the deck and the log came down, the state audit is clean.
+static int collapseMover;
+static int collapseLog;
+static bool collapseKnocked;
+
+static int CollapseCount(int x0, int x1, int y0, int y1, int z, MaterialType m) {
+    int n = 0;
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == m) n++;
+    return n;
+}
+
+static void SetupCollapse(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    supportEnabled = true;
+    collapseKnocked = false;
+    // A: pillar with an arm
+    for (int z = 1; z <= 5; z++) { GRID(8, 8, z) = CELL_WALL; SetWallMaterial(8, 8, z, MAT_GRANITE); }
+    for (int x = 9; x <= 11; x++) { GRID(x, 8, 5) = CELL_WALL; SetWallMaterial(x, 8, 5, MAT_GRANITE); }
+    // B: roof slab (z3, 15 x 3) on one pillar at its east end
+    for (int z = 1; z <= 2; z++) { GRID(34, 11, z) = CELL_WALL; SetWallMaterial(34, 11, z, MAT_GRANITE); }
+    for (int y = 10; y <= 12; y++)
+        for (int x = 20; x <= 34; x++) { GRID(x, y, 3) = CELL_WALL; SetWallMaterial(x, y, 3, MAT_GRANITE); }
+    // C: wooden deck (z4) on one post, a log on it
+    for (int z = 1; z <= 3; z++) { GRID(40, 22, z) = CELL_WALL; SetWallMaterial(40, 22, z, MAT_OAK); }
+    for (int y = 20; y <= 24; y++)
+        for (int x = 40; x <= 44; x++) { SET_FLOOR(x, y, 4); SetFloorMaterial(x, y, 4, MAT_OAK); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    collapseLog = SpawnItemWithMaterial(43.5f * CELL_SIZE, 23.5f * CELL_SIZE, 4.0f, ITEM_LOG, MAT_OAK);
+    collapseMover = moverCount;
+    SpawnMoverAt(22, 11, 1);
+    ExplosionLightFuse(8, 8, 1, 5.0f, 2.0f);
+    ExplosionLightFuse(34, 11, 1, 5.0f, 3.0f);
+    ExplosionLightFuse(40, 22, 1, 4.0f, 4.0f);
+    currentViewZ = 1;
+    AddMessage("Collapse: three charges take the foot out of a pillar (2 s), a roof slab (3 s) and a deck (4 s)", ORANGE);
+}
+
+static void CollapseTickStats(void) {
+    if (collapseMover < moverCount && MoverKnocked(collapseMover)) collapseKnocked = true;
+}
+
+static void CollapsePrintStats(void) {
+    printf("Collapse: pillar+arm granite at z5 %d (was 4), roof granite at z3 %d (was 45) / at z1 %d\n",
+           CollapseCount(8, 11, 8, 8, 5, MAT_GRANITE), CollapseCount(20, 34, 10, 12, 3, MAT_GRANITE),
+           CollapseCount(20, 34, 10, 12, 1, MAT_GRANITE));
+    int deck = 0;
+    for (int y = 20; y <= 24; y++) for (int x = 40; x <= 44; x++) if (HAS_FLOOR(x, y, 4)) deck++;
+    printf("  deck floors left %d (was 25), log at z%d, roof mover knocked %s, unsupported cells %d, pending %d\n",
+           deck, collapseLog >= 0 ? (int)items[collapseLog].z : -1, collapseKnocked ? "yes" : "no",
+           SupportCountUnsupported(), SupportPendingCount());
+}
+
+static bool CollapseCheck(char* why, int whyLen) {
+    if (ExplosionFuseCount() != 0 || SupportPendingCount() != 0) {
+        snprintf(why, (size_t)whyLen, "still waiting: %d fuses, %d collapses", ExplosionFuseCount(), SupportPendingCount());
+        return false;
+    }
+    int un = SupportCountUnsupported();
+    if (un != 0) { snprintf(why, (size_t)whyLen, "%d structure cells left hanging", un); return false; }
+    if (CollapseCount(8, 11, 8, 8, 5, MAT_GRANITE) != 0) { snprintf(why, (size_t)whyLen, "the pillar's arm is still up"); return false; }
+    if (CollapseCount(20, 34, 10, 12, 3, MAT_GRANITE) != 0) { snprintf(why, (size_t)whyLen, "the roof slab is still up"); return false; }
+    if (CollapseCount(20, 33, 10, 12, 1, MAT_GRANITE) < 30) { snprintf(why, (size_t)whyLen, "the roof slab didn't land on the ground"); return false; }
+    for (int y = 20; y <= 24; y++)
+        for (int x = 40; x <= 44; x++)
+            if (HAS_FLOOR(x, y, 4)) { snprintf(why, (size_t)whyLen, "deck floor at %d,%d still up", x, y); return false; }
+    if (collapseLog < 0 || !items[collapseLog].active || (int)items[collapseLog].z >= 4) {
+        snprintf(why, (size_t)whyLen, "the log on the deck didn't come down"); return false;
+    }
+    if (!collapseKnocked) { snprintf(why, (size_t)whyLen, "the mover under the roof wasn't pushed aside"); return false; }
+    const Mover* m = &movers[collapseMover];
+    if (CellIsSolid(GRID((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z))) {
+        snprintf(why, (size_t)whyLen, "the mover under the roof is buried"); return false;
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4509,6 +4609,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"collapse",   "Structural support: charges take the foot out of a granite pillar with an arm, a roof slab over a mover and a wooden deck with a log on it; each creaks, falls and lands as walls",
+                   NULL,        SetupCollapse, CollapseTickStats, CollapsePrintStats, CollapseCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",

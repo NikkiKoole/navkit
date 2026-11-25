@@ -18,6 +18,7 @@
 #include "../entities/belts.h"
 #include "../entities/furniture.h"   // fridgeSpoilageFactor
 #include "../entities/inventory.h"   // carryLimitKg
+#include "../world/support.h"         // supportEnabled, collapseWarning
 #include "../entities/elevators.h"
 #include "../entities/ladders.h"
 #include "../entities/tool_quality.h"
@@ -261,6 +262,10 @@ static const Setting settings[] = {
       "Height of the sea beyond the map edge (-1 = none: all edge water flows off). The island sets its sea level.", NULL),
     SET_FLOAT("waterFlowHalfLife", "Current half-life (ticks)", "Simulation/Water", waterFlowHalfLife, 10.0f, 10.0f, 3600.0f,
       "Water ticks for the remembered current (water flow overlay) to fade to half. Longer = steadier arrows, slower to show a change.", NULL),
+    SET_BOOL("structuralSupport", "Structural support", "World/Explosions", supportEnabled,
+      "Walls, rock and floors that lose their connection to the ground fall after a warning: each wall drops straight down and lands as a wall, floors break into rubble, whoever is under is pushed aside and dazed."),
+    SET_FLOAT("collapseWarning", "Collapse warning (s)", "World/Explosions", collapseWarning, 0.1f, 0.0f, 30.0f,
+      "Game seconds between an unsupported piece creaking (dust trickles from its underside) and its fall. Propped up in time it holds.", NULL),
     SET_BOOL("itemsDrift", "Items drift", "Simulation/Water", itemsDrift,
       "Loose things that float go with the current until they wash up: light plant matter (sticks, leaves, grass, reeds) in any water, wood (logs, planks) in water 2 deep. Carried off the map edge they are lost. Not when carried, stored or reserved for a job."),
     SET_FLOAT("waterCurrentPush", "Current push", "Simulation/Water", waterCurrentPush, 0.05f, 0.0f, 0.9f,

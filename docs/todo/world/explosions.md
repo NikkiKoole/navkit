@@ -1,8 +1,9 @@
 # Explosions (and structural support)
 
-Status: **partial** (2026-11-25). Slice 1 built (see "Built"): blasts break walls and floors
-(natural rock too: blast mining), throw loose items by weight, knock movers back. Not yet:
-structural support, gameplay sources (gunpowder, blast mining as a job), animals, visuals.
+Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural rock too: blast
+mining), throw loose items by weight, knock movers back (slice 1); structural support: what
+loses its connection to the ground creaks and falls, landing as walls (slice 2). Not yet:
+gameplay sources (gunpowder, blast mining as a job), animals, visuals, overhang limits.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -42,9 +43,58 @@ gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
 Seen while building: a charge on open dirt makes a wide shallow crater (~3.5 cells, ~35 dirt
 items). Tune soil strength or blast coupling into the ground if that's too much.
 
-Next: structural support (column rule; walls and natural rock both, user's call), gameplay
-sources (gunpowder, blast mining job with a charge item), animals knocked too, a fuse sprite and
-a flash / debris particles.
+## Built: structural support (slice 2, 2026-11-25)
+
+`src/world/support.c` / `.h`, test `tests/test_support.c`, scenario `collapse`, settings
+`structuralSupport` (on) and `collapseWarning` (2 game s), group World/Explosions.
+
+Measured first (generated worlds, 2 seeds each): every world is fully connected to the ground
+(only Towers3D seed 1 has 10 floating cells) and every upper-storey floor hangs off grounded
+walls; overhangs reach up to 6 cells (HillsSoilsWater cave roofs) and 7+ (Towers3D bridges).
+So the rule is connection, not overhang length: a length limit would bring fresh worlds down.
+Generated cells are all marked natural (castle walls too), so natural vs built can't steer it.
+
+- Structure: solid cells except trees (walls, rock, soil, windows, doors) and floors. Solids hold
+  each other face to face; a floor hangs off a solid in the 3x3 on its level or the one below,
+  or off a floor beside it. Anchors: z = 0, bedrock, anything touching a tree (soil on roots;
+  trees never fall here). A piece that can't reach an anchor is unsupported.
+- Trigger: `MarkChunkDirty` (every cell change the pathfinder hears of) calls
+  `SupportNoteChange`; a cell that is open now (and holds no water: that's water reporting its
+  depth) is checked next tick, up to 256 per tick. The search goes lowest level first, stops at
+  the first anchor (or a cell already found grounded this tick), gives up after 20000 cells
+  (then it's anchored). Cost: island with tide, survival, 512 world all under 0.03 ms/tick;
+  worlds identical with it on and off.
+- Fall (user's calls): a warning first (dust trickles from the underside, `collapseWarning`
+  seconds; propped up in time it holds), then each wall drops straight down (through floors,
+  which break) and lands as a wall again, same material, rough; floors become rubble items; a
+  door / window or a wall landing on a ramp, ladder ... becomes its drop item. Items on top come
+  down. Whoever a wall lands on is moved out (beside, or up on the pile) and knocked + dazed
+  (`ExplosionKnockMover`). Dust, a shake, the event log.
+- Pending collapses are transient (cleared with explosions; not saved).
+- New worlds settle: `GenerateCurrentTerrain` ends with `SupportSettleWorld()`, which drops
+  whatever hangs at once, without warning or effects (whole-world scan: one sweep marking cells
+  on grounded columns, a flood into the rest; 2048 world ~0.2 s). Survival's HillsSoilsWater
+  left a 9-cell floating lump at z7-8 that a settler digging nearby would have brought down.
+  Games set `supportEnabled = true` before generating (their start()).
+- Pathing rigs whose decks stand on nothing (ladders, ladder-choice, ladder-oneway,
+  oneway-tiers, belt-lift, elevator, elevator-tall, elevator-stairs, elevator-build) set
+  `supportEnabled = false`; scenario reset restores it. Without that elevator-build's decks fell
+  when the shaft cut its hole (arrivals 46 -> 35). Ladders deliberately hold nothing.
+- Console `support`: counts structure cells not connected to the ground.
+- Scenario `collapse`: charges take the foot out of a granite pillar with an arm (lands as a
+  stump), a 15x3 roof slab on one pillar with a mover under it (36 of 45 cells land on the
+  ground, the rest in the blast crater; the mover is pushed out and dazed) and a wooden deck on
+  one post with a log on it (25 floors -> planks, the log on the ground). Nothing left hanging.
+
+Found while building: soil resting on a tree root counted as hanging and "fell" in place forever
+(island): trees are anchors now.
+
+Not done: overhang / span limits (a 15-cell slab on one pillar stands as long as it touches it),
+falling pieces don't hurt or crush items (pushed out), no sound or proper dust particles, no
+warning drawn on the cells themselves (only dust), animals aren't pushed out.
+
+Next: gameplay sources (gunpowder, blast mining job with a charge item), animals knocked too,
+a fuse sprite and a flash / debris particles, maybe span limits per material for built things.
 
 ## What exists to build on
 
@@ -153,6 +203,7 @@ Touches busy shared files (`items.c`, `designations.c`, `grid.c`, `mover.c`): ke
 
 - Movers: knockback only for now (no harm).
 - Walls and natural rock both break: blast mining wanted.
+- Collapse: falling mass lands as walls; whoever is under is pushed aside + dazed; a short
+  warning before the fall.
 
-Still open: which games get it; collapses for natural rock too (cave-ins) or built walls only;
-rare event or regular mining tool.
+Still open: which games get it; rare event or regular mining tool.

@@ -55,6 +55,7 @@ done <<'EOF'
 33  | 0 | --scenario cover
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
+0   | 0 | --scenario collapse
 0   | 0 | --scenario throwing
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long

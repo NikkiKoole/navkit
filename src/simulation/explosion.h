@@ -35,6 +35,9 @@ void ExplosionsTick(float dt);
 // False once it lands somewhere it can't stand: the normal update lets it fall.
 bool ExplosionMoverTick(int moverIdx, float dt);
 bool MoverKnocked(int moverIdx);
+// Knock a mover away from (fromX, fromY) (cell units) with the push of a blast of `power` there
+// (structural collapse uses it for whoever a wall lands on)
+void ExplosionKnockMover(int moverIdx, float fromX, float fromY, float power);
 
 // Strength of the wall at (x, y, z) in power units, -1 = unbreakable (bedrock, trees), 0 = open
 float ExplosionCellStrength(int x, int y, int z);

@@ -18,6 +18,7 @@
 #include "../world/material.h"
 #include "../world/designations.h"
 #include "../world/pathfinding.h"
+#include "../world/support.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../entities/mover.h"
@@ -99,6 +100,7 @@ static float knockVX[MAX_MOVERS], knockVY[MAX_MOVERS], knockDaze[MAX_MOVERS];
 static int knockedCount;   // movers with knockDaze > 0 (fast exit when none)
 
 void ClearExplosions(void) {
+    ClearSupport();   // pending collapses: transient like fuses
     fuseCount = 0;
     flyingCount = 0;
     if (knockedCount > 0) {
@@ -226,6 +228,12 @@ static void KnockMover(int i, float power, float ox, float oy, ExplosionResult* 
     knockDaze[i] = daze > 2.5f ? 2.5f : daze;
     m->fallTimer = knockDaze[i];   // drawn like a fall (blue) while dazed
     res->moversKnocked++;
+}
+
+void ExplosionKnockMover(int moverIdx, float fromX, float fromY, float power) {
+    if (moverIdx < 0 || moverIdx >= moverCount || !movers[moverIdx].active) return;
+    ExplosionResult unused = {0};
+    KnockMover(moverIdx, power, fromX, fromY, &unused);
 }
 
 ExplosionResult Explode(int x, int y, int z, float power) {

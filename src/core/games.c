@@ -1,5 +1,6 @@
 // games.c - The games this engine hosts (see games.h)
 #include "../entities/talk.h"
+#include "../world/support.h"
 #include "../entities/relations.h"
 #include "games.h"
 #include "scenarios.h"
@@ -218,6 +219,7 @@ static void SetSurvivalRules(void) {
 
 // Randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover with supplies
 static void StartSurvival(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     // Randomize seed
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
@@ -302,6 +304,7 @@ static Point IslandStartCell(Point want, Point anchor) {
 }
 
 static void StartIsland(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
     InitGridWithSizeAndChunkSize(ISLAND_SIZE, ISLAND_SIZE, 16, 16);
     ClearAnimals();
@@ -357,6 +360,7 @@ static void StartIsland(void) {
 
 // Small apartment, 2 movers, kitchen, bathroom, food
 static void StartDollhouse(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
     // A city flat (concrete) on a small plot: 14x10 under a roof, a railed balcony, a pond
@@ -561,6 +565,7 @@ static void StartDollhouse(void) {
 // ---------------------------------------------------------------------------
 
 static void StartSandbox(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     ScenarioResetWorldSized(NULL, 32, 32);   // flat 32x32 dirt map, same as startup
     ResetTime();
     balance.baseMoverSpeed = 200.0f;         // balance.c default (survival/dollhouse change it)

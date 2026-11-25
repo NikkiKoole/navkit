@@ -15,6 +15,7 @@
 #include "../simulation/needs.h"
 #include "../simulation/mood.h"
 #include "../simulation/explosion.h"
+#include "../world/support.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -26,6 +27,9 @@ void SimStep(float dt) {
     ItemsTick(dt);
     ThrowsTick(dt);
     ExplosionsTick(dt);
+    PROFILE_BEGIN(Support);
+    SupportTick(dt);
+    PROFILE_END(Support);
     PROFILE_END(Items);
 
     PROFILE_BEGIN(Notice);

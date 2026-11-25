@@ -29,6 +29,7 @@
 #include "render/world_batch.h"
 void rlDrawRenderBatchActive(void);   // rlgl (part of raylib): flush pending draws
 #include "render/play_hud.h"
+#include "world/support.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -570,6 +571,7 @@ void GenerateCurrentTerrain(void) {
         case 24: GenerateIsland(); break;
     }
     SyncMaterialsToTerrain();
+    if (supportEnabled) SupportSettleWorld();   // generators leave the odd floating lump: it drops now
 }
 
 // ============================================================================

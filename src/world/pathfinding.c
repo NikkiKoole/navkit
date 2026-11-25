@@ -7,6 +7,7 @@
 // demo/test helpers that use game RNG.
 
 #include "pathfinding.h"
+#include "support.h"
 #include "nav_host.h"
 #include "../core/time.h"
 #include "../../vendor/raylib.h"
@@ -143,6 +144,7 @@ unsigned walkabilityChangeCount = 0;
 
 void MarkChunkDirty(int cellX, int cellY, int cellZ) {
     walkabilityChangeCount++;
+    SupportNoteChange(cellX, cellY, cellZ);   // a cell opened up: does what hung on it still hold? (support.c)
     NavMarkCellChanged(NavGame(), cellX, cellY, cellZ);
 }
 

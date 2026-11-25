@@ -22,6 +22,7 @@
 #include "../simulation/weather.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/explosion.h"
+#include "../world/support.h"
 #include "../core/time.h"
 #include "../core/sim_manager.h"
 #include "../world/designations.h"
@@ -598,6 +599,13 @@ static void RunThrow(const CmdValue* v) {
     Say(GREEN, "Mover %d throws %s at %d,%d,%d (range %.0f cells)", mi, ItemName(items[it].type), x, y, z, ThrowRange(it));
 }
 
+static void RunSupport(const CmdValue* v) {
+    (void)v;
+    int n = SupportCountUnsupported();
+    Say(n ? ORANGE : GREEN, "Unsupported structure cells: %d (collapses waiting: %d)", n, SupportPendingCount());
+    printf("Unsupported structure cells: %d\n", n);
+}
+
 // ---- rendering toys ----
 static void RunCutscene(const CmdValue* v) { (void)v; PlayTestCutscene(); }
 static const char* const shakeChoices[] = { "small", "medium", "large" };
@@ -694,6 +702,8 @@ static const CommandDef commandTable[] = {
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
       RunThrow, NULL },
+    { "support", "World/Explosions", "Count structure cells not connected to the ground (they fall when something next to them changes)",
+      0, { { 0 } }, RunSupport, NULL },
     { "cutscene", "Rendering & Debug", "Play the test cutscene", 0, { { 0 } }, RunCutscene, NULL },
     { "shake", "Rendering & Debug", "Screen shake: small, medium, large", 1, { ARG_CHOICE("size", shakeChoices) }, RunShake, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
