@@ -36,6 +36,7 @@ int carCityRoundabouts = 3;
 bool carCityAvenues = true;
 bool carCityParking = true;
 bool carCitySlots = false;
+float carGapCells = 1.0f;
 
 int carPlanCount = 0, carPlanExpansionsMax = 0;
 double carPlanMsTotal = 0, carPlanMsMax = 0;

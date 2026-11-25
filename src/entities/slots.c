@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+float carSlotCells = 3.0f;
+int SlotsVmax(void) { int v = (int)(9.0f / carSlotCells + 0.5f); return v < 1 ? 1 : v; }
+
 SlotCar* slotCars = NULL;
 int slotCarCount = 0;
 static int slCarCap = 0;

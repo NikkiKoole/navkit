@@ -40,7 +40,7 @@ static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0
 #define TR_MAX_HOLD 24
 #define TR_MAX_REQ 48
 #define TR_TIME_GAP 1.0f       // s: IDM time gap
-#define TR_MIN_GAP 1.0f        // cells: IDM standstill gap (bumper to bumper)
+#define TR_MIN_GAP carGapCells  // cells: IDM standstill gap, bumper to bumper (setting, default 1)
 #define TR_STOP_BACK 0.4f      // cells: stop this far before a junction's start
 #define TR_ASK_AHEAD 6.0f      // cells beyond braking distance: ask the junction
 #define TR_STANLEY_K 2.5f      // 1/s: sideways error correction

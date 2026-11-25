@@ -18,9 +18,9 @@
 
 #include <stdbool.h>
 
-#define SL_SLOT_CELLS 3.0f   // a car + its gap
+#define SL_SLOT_CELLS carSlotCells   // a car + its gap (setting, default 3)
 #define SL_STEP 1.0f         // seconds per step
-#define SL_VMAX 3            // slots per step (~9 cells/s)
+#define SL_VMAX SlotsVmax()  // slots per step: ~9 cells/s whatever the slot size
 #define SL_DAWDLE 0.2f       // chance a moving car is a slot slower this step
 #define SL_MAX_ROUTE 256
 
@@ -41,6 +41,8 @@ typedef struct {
 extern SlotCar* slotCars;
 extern int slotCarCount;
 
+extern float carSlotCells;               // cells per slot (setting): smaller = cars queue closer
+int SlotsVmax(void);
 void SlotsClear(void);
 void SlotsBuild(void);                    // cut the network into slots (after RoadsBuild)
 int SlotsSpawn(int count, unsigned int seed);   // cars on random free lane slots; returns how many

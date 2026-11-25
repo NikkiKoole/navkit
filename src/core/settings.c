@@ -16,6 +16,7 @@
 #include "../entities/items.h"
 #include "../entities/trains.h"
 #include "../entities/cars.h"
+#include "../entities/slots.h"
 #include "../entities/belts.h"
 #include "../entities/furniture.h"   // fridgeSpoilageFactor
 #include "../entities/inventory.h"   // carryLimitKg
@@ -688,6 +689,10 @@ static const Setting settings[] = {
       "Cars in cars-city park in bays between trips. Off: they start on the roads and just drive (for load tests with more cars than bays)."),
     SET_BOOL("carCitySlots", "City Slot Traffic", "Experiments/Cars", carCitySlots,
       "cars-city with the abstract slot traffic (cars hop between fixed slots; poses only on screen) instead of steered cars. Restart the scenario to apply."),
+    SET_FLOAT("carGapCells", "Queue Gap (cells)", "Experiments/Cars", carGapCells, 0.05f, 0.2f, 3.0f,
+      "Road cars (steered): the gap they keep to the car ahead when stopped. Smaller = closer queues.", NULL),
+    SET_FLOAT("carSlotCells", "Slot Size (cells)", "Experiments/Cars", carSlotCells, 0.05f, 2.0f, 5.0f,
+      "Slot traffic: cells per slot (a car + its gap; 2 = bumper to bumper). Smaller = closer queues, more cars per road. Restart the scenario to apply.", NULL),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
       "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,
