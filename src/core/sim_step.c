@@ -17,6 +17,7 @@
 #include "../simulation/needs.h"
 #include "../simulation/mood.h"
 #include "../simulation/explosion.h"
+#include "../simulation/vapour.h"
 #include "../world/support.h"
 #include "effects.h"
 
@@ -30,6 +31,7 @@ void SimStep(float dt) {
     ItemsTick(dt);
     ThrowsTick(dt);
     ExplosionsTick(dt);
+    VapourTick(dt);
     PROFILE_BEGIN(Support);
     SupportTick(dt);
     PROFILE_END(Support);

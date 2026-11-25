@@ -176,6 +176,25 @@ void FxSplash(float wx, float wy, int z, float dirX, float dirY, int n, float sp
     p->r = 228; p->g = 236; p->b = 244;
 }
 
+void FxFlame(float wx, float wy, int z, float lvl) {
+    Fx* f = NewFx(FX_BLAST);   // one short lump of fireball per cell: together they roll as a front
+    if (!f) return;
+    f->x = wx + FxRandRange(-8.0f, 8.0f); f->y = wy + FxRandRange(-8.0f, 8.0f); f->z = z;
+    f->radius = CELL_SIZE * (0.5f + 0.07f * lvl) * FxRandRange(0.8f, 1.2f);
+    f->life = FxRandRange(0.3f, 0.45f);
+    if (FxRand01() < 0.3f) {
+        Fx* s = NewFx(FX_SMOKE);
+        if (!s) return;
+        s->x = wx; s->y = wy; s->z = z;
+        s->vx = FxRandRange(-4.0f, 4.0f); s->vy = -FxRandRange(6.0f, 12.0f);
+        s->radius = CELL_SIZE * FxRandRange(0.4f, 0.7f);
+        s->age = -0.25f;
+        s->life = FxRandRange(1.2f, 2.2f);
+        int g = FxRand01() < 0.5f ? 70 : 96;
+        s->r = (uint8_t)g; s->g = (uint8_t)(g - 3); s->b = (uint8_t)(g - 6);
+    }
+}
+
 static void AddEmitter(FxKind kind, int x, int y, int z, int mat, float seconds, float rate) {
     if (!effectsEnabled || emitterCount >= MAX_EMITTERS) return;
     FxEmitter* e = &emitters[emitterCount++];

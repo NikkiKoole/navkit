@@ -13,6 +13,8 @@
 #include "../src/core/effects.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/smoke.h"
+#include "../src/simulation/vapour.h"
+#include "../src/simulation/fire.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -25,6 +27,7 @@ static void FlatWorld(void) {
     ClearMovers();
     ClearStockpiles();
     ClearExplosions();
+    ClearFire();   // earlier tests leave fires: they'd light the vapour
     for (int z = 0; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
@@ -428,6 +431,79 @@ describe(blast_kinds) {
     }
 }
 
+static void RunVapour(float seconds) {
+    for (float t = 0.0f; t < seconds; t += 1.0f / 60.0f) VapourTick(1.0f / 60.0f);
+}
+
+describe(fuel_vapour) {
+    it("sinks into a pit and spreads, made from a leak, then thins out") {
+        FlatWorld();
+        ClearVapour();
+        for (int y = 10; y <= 14; y++) for (int x = 14; x <= 18; x++) GRID(x, y, 0) = CELL_AIR;   // a pit
+        VapourLeak(11, 12, 1, 20.0f, 2.0f);
+        RunVapour(3.5f);
+        int pit = 0;
+        for (int y = 10; y <= 14; y++) for (int x = 14; x <= 18; x++) pit += GetVapourLevel(x, y, 0);
+        expect(VapourTotal() > 0);
+        expect(VapourCellCount() > 5);
+        expect(pit > 0);
+        expect(GetVapourLevel(11, 12, 2) == 0);   // never rises
+        RunVapour(120.0f);
+        expect(VapourTotal() < 20);
+    }
+
+    it("lights from a spark and the flame burns the whole connected cloud") {
+        FlatWorld();
+        ClearVapour();
+        for (int y = 8; y <= 16; y++) for (int x = 4; x <= 20; x++) AddVapour(x, y, 1, 2);
+        int before = VapourCellCount();
+        expect(VapourIgnite(4, 8, 1));
+        RunVapour(3.0f);
+        expect(VapourBurnedCells() >= before);   // and what spread meanwhile
+        expect(VapourCellCount() == 0);
+        expect(VapourBurningCount() == 0);
+    }
+
+    it("doesn't burn past a wall the cloud doesn't reach around") {
+        FlatWorld();
+        ClearVapour();
+        vapourThinChance = 0.0f;
+        for (int y = 0; y < gridHeight; y++) for (int z = 1; z <= 3; z++) Wall(12, y, z, MAT_GRANITE);
+        for (int y = 8; y <= 16; y++) { for (int x = 4; x <= 10; x++) AddVapour(x, y, 1, 2); for (int x = 14; x <= 20; x++) AddVapour(x, y, 1, 2); }
+        VapourIgnite(4, 8, 1);
+        RunVapour(0.5f);   // burns before the clouds move far
+        int east = 0;
+        for (int y = 8; y <= 16; y++) for (int x = 14; x <= 20; x++) east += GetVapourLevel(x, y, 1);
+        expect(east > 0);
+        vapourThinChance = 0.03f;
+    }
+
+    it("is lit by a fire beside it, a blast and a fuse's sparks, and pushes whoever stands in it") {
+        FlatWorld();
+        ClearVapour();
+        for (int y = 8; y <= 16; y++) for (int x = 4; x <= 12; x++) AddVapour(x, y, 1, 3);
+        int m = AddMover(8, 12, 1);
+        Wall(13, 12, 1, MAT_OAK);
+        IgniteCell(13, 12, 1);
+        RunVapour(1.5f);
+        expect(VapourBurnedCells() > 50);
+        expect(MoverKnocked(m));
+        FlatWorld();
+        ClearVapour();
+        for (int y = 8; y <= 16; y++) for (int x = 4; x <= 12; x++) AddVapour(x, y, 1, 3);
+        Explode(8, 12, 1, 2.0f);
+        RunVapour(1.5f);
+        expect(VapourCellCount() == 0);
+        FlatWorld();
+        ClearVapour();
+        for (int y = 8; y <= 16; y++) for (int x = 4; x <= 12; x++) AddVapour(x, y, 1, 3);
+        ExplosionLightFuse(8, 12, 1, 2.0f, 5.0f);
+        ExplosionsTick(1.0f / 60.0f);
+        RunVapour(1.5f);
+        expect(VapourBurnedCells() > 50);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -442,5 +518,6 @@ int main(int argc, char** argv) {
     test(explosion_water);
     test(explosion_crater);
     test(blast_kinds);
+    test(fuel_vapour);
     return summary();
 }

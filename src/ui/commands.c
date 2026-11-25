@@ -22,6 +22,7 @@
 #include "../simulation/weather.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/explosion.h"
+#include "../simulation/vapour.h"
 #include "../world/support.h"
 #include "../core/time.h"
 #include "../core/sim_manager.h"
@@ -630,6 +631,20 @@ static void RunBlastKind(const CmdValue* v) {
     Say(ORANGE, "%s at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires",
         blastKinds[v[0].choice].name, x, y, z, v[1].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited);
 }
+// leak [seconds] [rate] [x y z]: fuel vapour leaking out at the mouse (a petrol barrel)
+static void RunLeak(const CmdValue* v) {
+    int x, y, z;
+    if (!ExplodeTarget(v + 2, &x, &y, &z)) return;
+    if (VapourLeak(x, y, z, v[1].f, v[0].f)) Say(ORANGE, "Vapour leaking at %d,%d,%d: %.0f/s for %.0fs (it sinks: watch low ground)", x, y, z, v[1].f, v[0].f);
+    else Say(YELLOW, "Too many leaks");
+}
+// light [x y z]: a spark at the mouse: lights fuel vapour there
+static void RunLightVapour(const CmdValue* v) {
+    int x, y, z;
+    if (!ExplodeTarget(v, &x, &y, &z)) return;
+    if (VapourIgnite(x, y, z)) Say(ORANGE, "Vapour lit at %d,%d,%d", x, y, z);
+    else Say(YELLOW, "Not enough vapour at %d,%d,%d to light (%d, needs %d)", x, y, z, GetVapourLevel(x, y, z), VAPOUR_LIGHT_LEVEL);
+}
 static void RunCharge(const CmdValue* v) {
     int x, y, z;
     if (!ExplodeTarget(v + 2, &x, &y, &z)) return;
@@ -778,6 +793,18 @@ static const CommandDef commandTable[] = {
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
       RunBlastKind, NULL },
+    { "leak", "World/Explosions", "Fuel vapour leaking out at the mouse (or x y z): heavier than air, it pools in low places; a spark or fire lights it",
+      5, { { .name = "seconds", .type = CARG_FLOAT, .optional = true, .lo = 0.1f, .hi = 600, .def = 10 },
+           { .name = "rate", .type = CARG_FLOAT, .optional = true, .lo = 0.1f, .hi = 200, .def = 20 },
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunLeak, NULL },
+    { "light", "World/Explosions", "A spark at the mouse (or x y z): lights fuel vapour there (the flame runs through the whole cloud)",
+      3, { { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunLightVapour, NULL },
     { "charge", "World/Explosions", "Lit charge at the mouse (or x y z): explodes after the fuse (game seconds)",
       5, { { .name = "power", .type = CARG_FLOAT, .optional = true, .lo = 1, .hi = EXPLOSION_MAX_POWER, .def = 6 },
            { .name = "fuse", .type = CARG_FLOAT, .optional = true, .lo = 0, .hi = 120, .def = 3 },

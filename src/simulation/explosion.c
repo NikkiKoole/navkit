@@ -11,6 +11,7 @@
 #include "fire.h"
 #include "smoke.h"
 #include "water.h"
+#include "vapour.h"
 #include "../game_state.h"
 #include "../core/event_log.h"
 #include "../world/grid.h"
@@ -110,6 +111,7 @@ static int knockedCount;   // movers with knockDaze > 0 (fast exit when none)
 
 void ClearExplosions(void) {
     ClearSupport();   // pending collapses: transient like fuses
+    ClearVapour();    // not saved either
     ClearFx();
     fuseCount = 0;
     flyingCount = 0;
@@ -524,6 +526,7 @@ ExplosionResult ExplodeKind(int x, int y, int z, float power, BlastKind kind) {
             for (int cx = x0; cx <= x1; cx++) {
                 float v = best[BIDX(cx, cy, cz)];
                 if (v <= 0.0f) continue;
+                if (GetVapourLevel(cx, cy, cz) >= VAPOUR_LIGHT_LEVEL) VapourIgnite(cx, cy, cz);   // fumes it reaches
                 if (v >= power - K->fire && !HasFire(cx, cy, cz) && GetFuelAt(cx, cy, cz) > 0) {
                     IgniteCell(cx, cy, cz);
                     if (HasFire(cx, cy, cz)) res.cellsIgnited++;
@@ -653,6 +656,8 @@ void ExplosionsTick(float dt) {
     if (fuseCount > 0) {
         for (int f = 0; f < fuseCount; ) {
             fuses[f].t -= dt;
+            // The burning fuse is a spark: vapour around it catches
+            if (GetVapourLevel(fuses[f].x, fuses[f].y, fuses[f].z) >= VAPOUR_LIGHT_LEVEL) VapourIgnite(fuses[f].x, fuses[f].y, fuses[f].z);
             if (fuses[f].t > 0.0f) { f++; continue; }
             Fuse fu = fuses[f];
             fuses[f] = fuses[--fuseCount];

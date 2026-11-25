@@ -27,6 +27,7 @@
 #include "../entities/notice.h"
 #include "../simulation/fire.h"
 #include "../simulation/explosion.h"
+#include "../simulation/vapour.h"
 #include "../world/support.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
@@ -5245,6 +5246,62 @@ static bool LandslideCheck(char* why, int whyLen) {
     return true;
 }
 
+// flashfire: petrol vapour. A leak on bare ground (8 s) by a pit dug into the field: the fumes
+// spread over the ground, run into the pit and pool there. At 10 s a spark at the far edge of the
+// cloud (someone lights a pipe): the flame runs back through the whole cloud and down into the
+// pit (a mover stands in it, one by the leak: both pushed), leaving the ground hot and a little
+// smoke. Check: the cloud reached the pit, it burned through (more than 40 cells), nothing is
+// left, the movers were pushed, audit clean.
+static int flashMostCells, flashPitMost;
+static bool flashKnocked[2];
+static int flashMover[2];
+
+static void SetupFlashFire(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    vapourEnabled = true;
+    flashMostCells = flashPitMost = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) SetVegetation(x, y, 0, VEG_NONE);   // bare: no grass fire
+    // The pit: x 16..23, y 12..20, one level into the ground
+    for (int y = 12; y <= 20; y++)
+        for (int x = 16; x <= 23; x++) { GRID(x, y, 0) = CELL_AIR; SetWallMaterial(x, y, 0, MAT_NONE); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int k = 0; k < 2; k++) { flashKnocked[k] = false; flashMover[k] = moverCount; SpawnMoverAt(k == 0 ? 18 : 12, k == 0 ? 16 : 18, k == 0 ? 0 : 1); }
+    VapourLeak(13, 16, 1, 20.0f, 8.0f);
+    VapourSpark(7, 16, 1, 10.0f);   // someone lights a pipe at the edge of the cloud
+    currentViewZ = 1;
+    AddMessage("Flash fire: petrol fumes leak by a pit (8 s); a spark at the cloud's edge at 10 s", ORANGE);
+}
+
+static void FlashFireTickStats(void) {
+    int n = VapourCellCount();
+    if (n > flashMostCells) flashMostCells = n;
+    int pit = 0;
+    for (int y = 12; y <= 20; y++) for (int x = 16; x <= 23; x++) pit += GetVapourLevel(x, y, 0);
+    if (pit > flashPitMost) flashPitMost = pit;
+    for (int k = 0; k < 2; k++) if (MoverKnocked(flashMover[k])) flashKnocked[k] = true;
+}
+
+static void FlashFirePrintStats(void) {
+    printf("Flash fire: vapour cells %d (most %d), in the pit most %d, burned %d, burning %d, leaks %d, movers pushed %d %d\n",
+           VapourCellCount(), flashMostCells, flashPitMost, VapourBurnedCells(), VapourBurningCount(), VapourLeakCount(),
+           flashKnocked[0], flashKnocked[1]);
+}
+
+static bool FlashFireCheck(char* why, int whyLen) {
+    if (flashPitMost < 20) { snprintf(why, (size_t)whyLen, "the fumes didn't pool in the pit (%d)", flashPitMost); return false; }
+    if (VapourBurnedCells() < 40) { snprintf(why, (size_t)whyLen, "only %d cells burned", VapourBurnedCells()); return false; }
+    if (VapourCellCount() > 0 || VapourBurningCount() > 0) { snprintf(why, (size_t)whyLen, "vapour left: %d cells", VapourCellCount()); return false; }
+    if (!flashKnocked[0] || !flashKnocked[1]) { snprintf(why, (size_t)whyLen, "a mover in the cloud wasn't pushed"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -5358,6 +5415,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupFlood, FloodTickStats, FloodPrintStats, FloodCheck, 48, 32},
     {"landslide",  "Landslides: a charge near the sheer edge of a dirt hill shakes it loose (dirt slides off and lands at its foot, by a mover); the same on a granite hill holds",
                    NULL,        SetupLandslide, NULL, LandslidePrintStats, LandslideCheck, 48, 32},
+    {"flashfire",  "Fuel vapour: petrol fumes leak by a pit, run into it and spread over the ground; a spark at the cloud's edge at 10 s and the flame runs through the whole cloud and into the pit (a flash fire), pushing the movers in it",
+                   NULL,        SetupFlashFire, FlashFireTickStats, FlashFirePrintStats, FlashFireCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",

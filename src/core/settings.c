@@ -19,6 +19,7 @@
 #include "../entities/furniture.h"   // fridgeSpoilageFactor
 #include "../entities/inventory.h"   // carryLimitKg
 #include "../world/support.h"         // supportEnabled, collapseWarning
+#include "../simulation/vapour.h"     // vapourEnabled, vapourStepInterval, vapourThinChance
 #include "effects.h"                  // effectsEnabled
 #include "../entities/elevators.h"
 #include "../entities/ladders.h"
@@ -272,6 +273,12 @@ static const Setting settings[] = {
       "Game seconds between an unsupported piece creaking (dust trickles from its underside) and its fall. Propped up in time it holds.", NULL),
     SET_BOOL("landslides", "Landslides", "World/Explosions", landslidesEnabled,
       "Loose soil (dirt, sand, gravel, peat, mud) with a drop of two levels or more beside it slides down when a blast or a collapse shakes it, and can set off more."),
+    SET_BOOL("vapour", "Fuel vapour", "World/Explosions", vapourEnabled,
+      "Fuel vapour (petrol fumes): leaks, sinks into low places, spreads and thins out; a fire or spark lights it and the flame runs through the whole cloud (a flash fire)."),
+    SET_FLOAT("vapourStep", "Vapour: move every (s)", "World/Explosions", vapourStepInterval, 0.05f, 0.05f, 5.0f,
+      "Game seconds between vapour moves (sinking one level, spreading one cell). Shorter = it runs and pools faster.", NULL),
+    SET_FLOAT("vapourThin", "Vapour: thinning", "World/Explosions", vapourThinChance, 0.01f, 0.0f, 1.0f,
+      "Per move, the chance a cell at the thin edge of a cloud (level 1) clears into the air. Higher = clouds shrink faster.", NULL),
     SET_FLOAT("blastPower", "Blast charge power", "World/Explosions", blastPower, 0.1f, 1.0f, 12.0f,
       "Power of one gunpowder charge set by blast mining (cells of reach in open air). A wall soaks its strength: granite 4, soil 2. At 5 a charge in granite takes out its cell and the 6 around it.", NULL),
     SET_FLOAT("blastFuse", "Blast fuse (s)", "World/Explosions", blastFuse, 0.1f, 1.0f, 30.0f,

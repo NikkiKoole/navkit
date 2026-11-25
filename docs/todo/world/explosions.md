@@ -259,7 +259,7 @@ injuries yet and no grenades (the games are about building and living: accidents
 weapons; knockback and daze carry it; a "lethal blasts in survival" setting is the cheap step
 if wanted later).
 
-Order: 1. blast presets (built, below), 2. vapour grid + burn front, open-air flash fire only,
+Order: 1. blast presets (built, below), 2. vapour grid + burn front, open-air flash fire only (built, below),
 3. enclosure (room pressure, windows/doors blowing out, flame jets), 4. sources: firedamp in
 mines, dusty mills (Town), a petrol barrel (City 1999).
 
@@ -271,6 +271,34 @@ brisance), fire reach, smoke, push, fireball size. `ExplodeKind`, `ExplosionLigh
 1 cell, half the smoke, 0.8 the push, a smaller fireball: at power 5 it takes 28 cells of
 granite where gunpowder takes 7 (gunpowder needs 8 for that). Console `blast <kind> [power] [x y z]`.
 No dynamite item yet (nothing in the game makes it; an item and recipe when a game wants it).
+
+### Built: fuel vapour and flash fires (2026-11-25)
+
+`src/simulation/vapour.c` / `.h` (sparse layer `vapourLayer`, registered in `grid_layers.c`;
+ticks in SimStep after the explosions), settings `vapour`, `vapourStep` (0.2 s), `vapourThin`
+(0.03), group World/Explosions. Not saved yet (gone after a load).
+
+- A cell holds 0-7. Every step (0.2 s) each cell sinks as far as there's room below (a floor
+  holds it), gives one to each side with two less, and one to a side with one less by a coin
+  toss (it flattens out wide and thin like a spill); a lone wisp (1) stays put and clears by
+  `vapourThin`. Cells with vapour are kept in a list: a tick costs the cloud, not the map.
+- Leaks: `VapourLeak(x, y, z, perSecond, seconds)` (console `leak [seconds] [rate] [x y z]`).
+- Lit by: a fire in the cell, on the ground under it or beside it (checked every 0.1 s); a
+  blast that reaches it; a burning fuse; `VapourSpark(x, y, z, seconds)` (a match: lights within
+  2 cells; console `light`). Any vapour at all catches (level 1: the thin edge too).
+- The flame front: from a burning cell into every cell with vapour within 2 (a thin cloud is
+  patchy; not past a wall), 0.04-0.1 s per step (x1.6 for a jump of 2). Each cell that burns:
+  vapour gone, burnable things in it and under it catch fire, heat (150 + 40 x level), a
+  little smoke, `FxFlame` (a short fireball lump; together they roll as a front), and whoever
+  stands in it is pushed away from where it was lit (once per flame, 1.5 + 0.25 x level).
+- Drawn as a dithered oily-yellow cloud (gas cloud slot 2, effects on).
+- Scenario `flashfire` (in scenarios-check): 160 levels leak beside a pit (85 cells at most,
+  ~31 in the pit), a spark at the cloud's west edge at 10 s: the flame crosses 71 cells in about
+  half a second, into the pit; both movers in the cloud pushed. Tests in `test_explosion`
+  (`fuel_vapour`).
+- Next: enclosure (room pressure, windows and doors blowing out, flame jets through openings),
+  sources (a petrol barrel item, firedamp, dusty mills), movers smelling it and keeping fires away,
+  saving it.
 
 ### Other ideas from the brainstorm (not planned yet)
 

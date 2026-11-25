@@ -31,6 +31,7 @@
 #include "simulation/fire.c"
 #include "simulation/smoke.c"
 #include "simulation/explosion.c"
+#include "simulation/vapour.c"
 #include "world/support.c"
 #include "core/effects.c"
 #include "simulation/steam.c"

@@ -7,6 +7,7 @@
 #include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
+#include "../simulation/vapour.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/chase.h"
@@ -1358,6 +1359,10 @@ void DrawGasClouds(void) {
     if (steamActiveCells > 0)
         DrawGasCloud(1, GetSteamLevel, &steamLayer, (Color){ 236, 238, 242, 255 }, (Color){ 200, 205, 214, 255 },
                      (Color){ 176, 180, 190, 255 });
+    // Fuel vapour: a faint oily shimmer (real fumes are near invisible; the player needs to see it)
+    if (VapourActive())
+        DrawGasCloud(2, GetVapourLevel, &vapourLayer, (Color){ 176, 168, 96, 255 }, (Color){ 150, 150, 92, 255 },
+                     (Color){ 128, 126, 80, 255 });
 }
 
 bool GasCloudsAvailable(void);   // render/effects_draw.c

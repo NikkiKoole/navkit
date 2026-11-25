@@ -45,6 +45,8 @@ void FxDust(float wx, float wy, int z, int mat, int n, float spread);
 void FxChunks(int cx, int cy, int cz, int mat, float fromX, float fromY, int n, float speed);
 // A splash: n droplets thrown along (dirX, dirY) from (wx, wy) at `speed` world units/s, and spray
 void FxSplash(float wx, float wy, int z, float dirX, float dirY, int n, float speed);
+// A cell of a flame front running through vapour (lvl: how much vapour burned there, 1-7)
+void FxFlame(float wx, float wy, int z, float lvl);
 // Sparks from cell (x, y, z) for `seconds` (a lit fuse)
 void FxEmitSparks(int x, int y, int z, float seconds);
 // Dust trickling from cell (x, y, z) for `seconds` (an unsupported piece creaking)
