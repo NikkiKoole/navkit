@@ -49,6 +49,8 @@ typedef struct {
     int owner;               // a mover's own car (-1: nobody's): parked until its owner drives it
     bool ownerIn;            // the owner is driving it
     int boardStep;           // ... since this step (gets out after a pull-in after it)
+    double boardTime;        // ... at this game time, from (boardX, boardY) px: the drive's speed
+    float boardX, boardY;
     float goalX, goalY;      // owner's drive: park as near this as a free kerb spot allows (px)
     int trips;
     int routeLen;
@@ -90,6 +92,10 @@ int SlotsCarOf(int mover);               // the car mover owns, -1 none
 bool SlotsCarParked(int car);            // at the kerb, nobody in it
 bool SlotsMoverBoard(int mover, int car);
 bool SlotCarDriven(int car);             // its owner is in it (drawing)
+// Drive or walk: the drives' speed so far (straight line from getting in to getting out, cells/s,
+// a running average: slow traffic makes driving look slower), and the choices made
+float SlotsDriveSpeed(void);
+void SlotsNoteChoice(bool drove, float tWalk, float tDrive);
 
 // Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
 // (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;

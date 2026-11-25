@@ -3638,12 +3638,18 @@ static bool CityWalkGoal(int moverIdx, Point* goal) {
     }
     int c = cityWalk[CityRand(cityWalkN)];   // (the city's own generator: runs repeat)
     *goal = (Point){c % gridWidth, c / gridWidth, 1};
-    // a far goal and the car near: walk to the car first
+    // Drive or walk: estimated times (walking along the streets ~ the blocks' Manhattan distance;
+    // the drive: walk to the car, pull out + park ~12 s, the drives' measured speed, walk ~6 cells
+    // from the spot). Drive only if clearly quicker.
     if (car >= 0 && SlotsCarParked(car)) {
         Point door = CityCarDoor(car);
-        float mx = m->x / CELL_SIZE, my = m->y / CELL_SIZE;
-        float far = hypotf(goal->x - mx, goal->y - my), toCar = hypotf(door.x - mx, door.y - my);
-        if (far > 50 && toCar < 30) {
+        float mx = m->x / CELL_SIZE, my = m->y / CELL_SIZE, spc = MoverWalkSecondsPerCell(moverIdx);
+        float tWalk = (fabsf(goal->x - mx) + fabsf(goal->y - my)) * spc;
+        float tDrive = (fabsf(door.x - mx) + fabsf(door.y - my)) * spc + 12.0f
+                     + hypotf(goal->x - door.x, goal->y - door.y) / SlotsDriveSpeed() + 6.0f * spc;
+        bool drive = tDrive < 0.9f * tWalk;
+        SlotsNoteChoice(drive, tWalk, tDrive);
+        if (drive) {
             m->transportFinalGoal = *goal;
             cityToCar[moverIdx] = 1;
             *goal = door;
@@ -3750,7 +3756,9 @@ static void SetupCarsCity(void) {
         float privateCars = carCityCount * (1.0f - carCityCabs), park = carCityParking ? 0.3f : 0.0f;
         if (privateCars > 0 && carCityDrivers * 1.1f / privateCars > park) park = fminf(1.0f, carCityDrivers * 1.1f / privateCars);
         placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs, park);
-        // pedestrians: wander between pavement spots (endless mode), held at the kerb by the traffic
+        // pedestrians: wander between pavement spots (endless mode), held at the kerb by the traffic;
+        // at a walking pace next to the cars (the colony's movers are far quicker)
+        balance.baseMoverSpeed = carCityWalkSpeed * CELL_SIZE * dayLength / 60.0f;
         endlessMoverMode = true;
         moodEnabled = false;
         hungerEnabled = thirstEnabled = energyEnabled = false;

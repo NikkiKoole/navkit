@@ -585,11 +585,22 @@ reset the ride state of a jobless mover every tick (a drive is now marked as the
 `TrainsMarkPersonalTrip`) - the drivers stood in the road and the cars waited for them. Keeping
 the ride state by clearing the path each tick made the repath pass plan 50000 paths (148 ms/tick).
 
-Drawing: a driven car has the mover's head sprite on its seat and a white ring (far out: a ring).
-Camera follow (`carFollow`) in slot mode follows mover 0, a driver.
+Drawing: a driven car has the mover's head sprite on its seat (the user: a ring round it not
+needed). Camera follow (`carFollow`) in slot mode follows mover 0, a driver.
 
 Manhattan, 10 minutes: 250 cars + 20 drivers: 51 drives, 38 done; 80 cars + 60 drivers (of 100
 pedestrians): 281 drives, 244 done, 0.15 ms/tick; mover 0 drove 8 trips of 45-110 s.
+
+### Drive or walk
+
+The owner compares estimated times for each goal: walking (Manhattan distance x
+`MoverWalkSecondsPerCell`) against walking to the car + 12 s (pull out, park) + the straight line
+at the drives' measured speed (running average of finished drives, `SlotsDriveSpeed`) + 6 cells
+walking from the spot; drives if under 0.9x the walk. Colony movers walk ~5 cells/s - faster than
+cars average across town (~2 with lights), so nobody drove: the city sets the walking pace
+(`carCityWalkSpeed`, 1.2 cells/s; real ~0.6). 80 cars + 60 drivers: 182 drove, 122 walked, drive
+speed 2.7 cells/s. 250 cars: the jams bring the drive speed to ~0.5 cells/s and the owners walk
+(30 drove, 34 walked, fewer as it drops) - traffic decides.
 
 ## Open questions / next steps
 

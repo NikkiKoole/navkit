@@ -51,6 +51,9 @@ static int* slPedStamp = NULL;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
 static long slDrives = 0, slDrivesDone = 0, slDriveFails = 0;
+static float slDriveSpeed = 2.0f;   // cells/s straight line, running average of finished drives
+static long slChoseDrive = 0, slChoseWalk = 0;
+static double slSumWalkT = 0, slSumDriveT = 0;
 static bool SlDriveTo(int car);
 static void SlDriverOut(int car);
 static double* slPedHeldAt = NULL;   // gameTime a mover was last held (waiting: no walking ahead)
@@ -112,6 +115,9 @@ void SlotsClear(void) {
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
+    slDriveSpeed = 2.0f;
+    slChoseDrive = slChoseWalk = 0;
+    slSumWalkT = slSumDriveT = 0;
     slStillMax = 0;
     slRouteCursor = 0;
 }
@@ -1242,6 +1248,11 @@ int SlotCarSignals(int i) {
 }
 
 // --- Movers driving
+float SlotsDriveSpeed(void) { return slDriveSpeed; }
+void SlotsNoteChoice(bool drove, float tWalk, float tDrive) {
+    if (drove) slChoseDrive++; else slChoseWalk++;
+    slSumWalkT += tWalk; slSumDriveT += tDrive;
+}
 void SlotsSetOwner(int car, int mover) {
     SlotCar* c = &slotCars[car];
     c->owner = mover;
@@ -1305,6 +1316,8 @@ bool SlotsMoverBoard(int mi, int car) {
     if (!SlDriveTo(car)) { slDriveFails++; c->stopSteps = 1 << 30; return false; }
     c->ownerIn = true;
     c->boardStep = slStep;
+    c->boardTime = gameTime;
+    c->boardX = m->x; c->boardY = m->y;
     m->transportState = TRANSPORT_RIDING;
     TrainsMarkPersonalTrip(mi, true);   // its own trip: the jobs' idle pass leaves the ride alone
     m->transportTrainIdx = -1;
@@ -1340,6 +1353,11 @@ static void SlDriverOut(int car) {
     c->ownerIn = false;
     c->stopSteps = 1 << 30;
     slDrivesDone++;
+    {   // the drive's speed into the running average
+        double t = gameTime - c->boardTime;
+        float d = hypotf(m->x - c->boardX, m->y - c->boardY) / CELL_SIZE;
+        if (t > 5 && d > 10) slDriveSpeed = 0.8f * slDriveSpeed + 0.2f * (float)(d / t);
+    }
     if (getenv("SL_DRIVELOG")) printf("t %.1f: mover %d gets out of car %d at (%.0f,%.0f)\n", gameTime, c->owner, car, m->x / CELL_SIZE, m->y / CELL_SIZE);
 }
 
@@ -1572,6 +1590,9 @@ void SlotsPrintStats(void) {
         }
     }
     if (slDrives || slDriveFails) printf("  movers driving: %ld drives started, %ld parked and got out, %ld found no spot to drive to\n", slDrives, slDrivesDone, slDriveFails);
+    if (slChoseDrive + slChoseWalk > 0)
+        printf("  drive or walk (owners, car parked): %ld drove, %ld walked; estimates on average: walk %.0f s, drive %.0f s; drives' speed %.2f cells/s (straight line)\n",
+               slChoseDrive, slChoseWalk, slSumWalkT / (slChoseDrive + slChoseWalk), slSumDriveT / (slChoseDrive + slChoseWalk), slDriveSpeed);
     if (moverCount > 0) printf("  pedestrians: %d; %ld slots blocked for them, %ld ticks waiting at the kerb or for a car; hard stops (any cause) %ld\n",
                                moverCount, slPedBlocks, slPedHolds, slHardStops);
     if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
