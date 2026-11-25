@@ -171,7 +171,7 @@ residents, which only gives pairs, so it gets:
 6. **The cat**: relations (owner, startled-by), responses approach / follow / hide / flee,
    cover search.
 7. **Outdoor animals** (grazers, predators) moved to rows; the old behaviour functions removed.
-8. *Done 2026-11-25 (11243f9a, `talk.c` TALK_WALK):* **Walking together**: friends outdoors (like >= 30) go for a stroll (also after half of their talks): the leader walks its own path leg after leg at 0.7 pace, slowing for the other; the other keeps a spot at its right (behind in narrow places); they chat on the way. Pair 0.88 cells apart, side by side 70%. Indoors no walks. Next in this line: chase/flee (tag) as the test ground for the animal rework.
+8. *Done 2026-11-25 (11243f9a, `talk.c` TALK_WALK):* **Walking together**: friends outdoors (like >= 30) go for a stroll (also after half of their talks): the leader walks its own path leg after leg at 0.7 pace, slowing for the other; the other keeps a spot at its right (behind in narrow places); they chat on the way. Pair 0.88 cells apart, side by side 70%. Indoors no walks. Chase/flee (58569411, `src/entities/chase.c`): chase aims where the target is going; flee scores spots 5-9 cells away (away, open, straight run) and runs there along a path; stamina (worn out: 0.85x). Tag scenario: smart fleeing 27 s per chase vs 6 s straight-away. Next in this line: animals on these blocks (paths, flee/chase, hiding), the cat.
 
 Save impact: noticed lists are transient (rebuilt after load); relations are saved (new mover
 data, save bump at step 2); animal path state probably transient.
