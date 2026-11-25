@@ -341,6 +341,71 @@ static void HallwayPrintStats(void) {
            hallContacts, minutes > 0 && active ? hallContacts / (minutes * active) : 0.0);
 }
 
+// doorway: two rooms split by a wall with one door (a 1-wide gap), 16 movers wandering both:
+// traffic through the door both ways. Tunnel yielding makes one wait; compare yieldLetPass
+// on/off: bumping the one it waited for in the second after the wait, and arrivals.
+static const int doorwayX = 16, doorwayY = 16;
+static long doorwayTicks, doorwayContacts, doorwayWaitTicks, doorwayPassContacts, doorwayWaits;
+static int doorwayLastFor[MAX_MOVERS], doorwaySince[MAX_MOVERS];   // whom it last waited for, ticks since
+
+static void SetupDoorway(void) {
+    doorwayTicks = doorwayContacts = doorwayWaitTicks = doorwayPassContacts = doorwayWaits = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) { doorwayLastFor[i] = -1; doorwaySince[i] = 1 << 20; }
+    for (int y = 0; y < gridHeight; y++) {
+        GRID(doorwayX, y, 1) = CELL_WALL;
+        SetWallMaterial(doorwayX, y, 1, MAT_GRANITE);
+    }
+    GRID(doorwayX, doorwayY, 1) = CELL_DOOR;
+    SetWallMaterial(doorwayX, doorwayY, 1, MAT_OAK);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 16;
+    for (int i = 0; i < n; i++) SpawnMoverAt(i % 2 ? 20 + (i / 2) % 8 : 4 + (i / 2) % 8, 8 + (i / 2) * 2 % 16, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Doorway: %d movers, two rooms, one door (let them pass %s)", n,
+                          yieldLetPass ? "on" : "off"), GREEN);
+}
+
+static void DoorwayTickStats(void) {
+    doorwayTicks++;
+    float r = CELL_SIZE * 0.5f;
+    float dcx = (doorwayX + 0.5f) * CELL_SIZE, dcy = (doorwayY + 0.5f) * CELL_SIZE, near = CELL_SIZE * 2.5f;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* a = &movers[i];
+        if (!a->active) continue;
+        int yf = MoverYieldingFor(i);
+        if (yf >= 0) {
+            if (doorwaySince[i] > 0) doorwayWaits++;   // a new wait
+            doorwayWaitTicks++;
+            doorwayLastFor[i] = yf;
+            doorwaySince[i] = 0;
+        } else if (doorwayLastFor[i] >= 0 && ++doorwaySince[i] <= TICK_RATE) {
+            // the second after a wait ends: do the two bump while passing?
+            const Mover* b = &movers[doorwayLastFor[i]];
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (b->active && dx * dx + dy * dy < r * r) doorwayPassContacts++;
+        }
+        if (a->pathIndex < 0) continue;
+        if (fabsf(a->x - dcx) > near || fabsf(a->y - dcy) > near) continue;
+        for (int j = i + 1; j < moverCount; j++) {
+            const Mover* b = &movers[j];
+            if (!b->active || b->pathIndex < 0) continue;
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (dx * dx + dy * dy < r * r) doorwayContacts++;
+        }
+    }
+}
+
+static void DoorwayPrintStats(void) {
+    printf("Tunnel yielding: %s, let them pass: %s\n", useTunnelYielding ? "on" : "off", yieldLetPass ? "on" : "off");
+    printf("Mover-ticks waiting at the door: %ld\n", doorwayWaitTicks);
+    printf("Waits: %ld; bumping the one it waited for in the second after: %ld ticks\n", doorwayWaits,
+           doorwayPassContacts);
+    printf("Close contacts near the door (walking pairs within half a cell): %ld ticks\n", doorwayContacts);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3427,6 +3492,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",
+                   NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
                    NULL,        SetupHallway,  HallwayTickStats, HallwayPrintStats, NULL, 0, 0},
     {"social",     "10 movers wandering a plaza with two wall pieces: they notice each other (setting notice)",

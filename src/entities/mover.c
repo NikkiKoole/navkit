@@ -72,6 +72,10 @@ static Point moverYieldCell[MAX_MOVERS];   // where the current wait started
 // Waiting at a narrow passage this tick: others' avoidance ignores it, or a crowd waiting at
 // the far end walls off the very mover it waits for (no hard bodies: walk through them)
 static bool moverYielding[MAX_MOVERS];
+static int moverYieldFor[MAX_MOVERS];      // who it waits for (valid while moverYielding)
+bool yieldLetPass = true;                  // waiting at a narrow entrance: keep waiting until the one it let out has got past
+
+int MoverYieldingFor(int i) { return (i >= 0 && i < moverCount && moverYielding[i]) ? moverYieldFor[i] : -1; }
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
@@ -493,6 +497,8 @@ static bool YieldKeyEqual(const YieldClearKey* a, const YieldClearKey* b) {
            a->walkCount == b->walkCount;
 }
 
+static void CountNeighborCb(int j, float distSq, void* user) { (void)j; (void)distSq; (*(int*)user)++; }
+
 static bool MoverShouldYield(int i) {
     Mover* m = &movers[i];
     int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
@@ -552,9 +558,11 @@ static bool MoverShouldYield(int i) {
         if (myDx * oDx + myDy * oDy >= 0.0f) continue;
 
         for (int k = start; k <= end; k++)
-            if (PointsEqual(route[k], oc)) return true;               // oncoming mover inside the stretch
-        if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i))
-            return true;                                              // about to enter from the far end, has priority
+            if (PointsEqual(route[k], oc)) { moverYieldFor[i] = j; return true; }   // oncoming, inside the stretch
+        if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i)) {
+            moverYieldFor[i] = j;                                     // about to enter from the far end, has priority
+            return true;
+        }
     }
     return false;
 }
@@ -2053,7 +2061,23 @@ void UpdateMovers(void) {
                 // flickers, so the timeout never fired and dozens waited at both ends.)
                 Point here = {currentX, currentY, currentZ};
                 if (moverYieldTime[i] > 0.0f && !PointsEqual(moverYieldCell[i], here)) moverYieldTime[i] = 0.0f;
-                if (moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i)) {
+                bool wait = moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i);
+                // Polite: someone it let out of the passage hasn't got past it yet -> keep waiting
+                if (!wait && yieldLetPass && moverYieldTime[i] > 0.0f && moverYieldTime[i] < YIELD_TIMEOUT) {
+                    int j = moverYieldFor[i];
+                    if (j >= 0 && j < moverCount && movers[j].active && (int)movers[j].z == currentZ) {
+                        float ox = movers[j].x - m->x, oy = movers[j].y - m->y;
+                        float ahead = (ox * dxf + oy * dyf) / dist;
+                        float lateral = (ox * -dyf + oy * dxf) / dist;   // already beside me: go
+                        if (ahead > -CELL_SIZE * 0.25f && ahead < CELL_SIZE * 1.5f && fabsf(lateral) < CELL_SIZE * 0.6f) {
+                            // ...unless it's a crowd: then people squeeze past rather than queue longer
+                            int crowd = 0;
+                            QueryMoverNeighbors(m->x, m->y, CELL_SIZE * 1.5f, i, CountNeighborCb, &crowd);
+                            wait = crowd < 3;
+                        }
+                    }
+                }
+                if (wait) {
                     if (moverYieldTime[i] == 0.0f) moverYieldCell[i] = here;
                     moverYieldTime[i] += dt;
                     moverYielding[i] = true;

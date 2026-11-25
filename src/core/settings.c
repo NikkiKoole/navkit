@@ -641,6 +641,8 @@ static const Setting settings[] = {
       "Movers count as arrived a bit farther from their goal, so crowds don't knot up there."),
     SET_BOOL("tunnelYield", "Tunnel Yielding", "Entities/Movers/Walls", useTunnelYielding,
       "Wait at 1-wide passages for oncoming movers."),
+    SET_BOOL("yieldLetPass", "Yield: let them pass", "Entities/Movers/Walls", yieldLetPass,
+      "Waiting at a narrow entrance: keep waiting until the one coming out has got past you, not just out of the passage (not in a crowd: 3+ others within 1.5 cells)."),
     SET_BOOL("singleFileLadders", "Single-file Ladders", "Entities/Movers/Walls", useSingleFileLadders,
       "One climber per ladder segment at a time."),
     SET_BOOL("ladderQueueCost", "Ladder Queue Cost", "Entities/Movers/Walls", useLadderQueueCost,

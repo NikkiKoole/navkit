@@ -1754,9 +1754,13 @@ static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis n
 
 static int MoverFaceView(int i, const Mover* m) {
     float dx, dy, lookX, lookY;
+    int yieldTo = MoverYieldingFor(i);
     if (TalkLookAt(i, &lookX, &lookY)) {   // in a conversation: look at its middle
         dx = lookX - m->x;
         dy = lookY - m->y;
+    } else if (yieldTo >= 0) {              // waiting at a doorway: look at who it lets through
+        dx = movers[yieldTo].x - m->x;
+        dy = movers[yieldTo].y - m->y;
     } else if (m->pathLength > 0 && m->pathIndex >= 0) {
         Point wp = moverPaths[i][m->pathIndex];
         dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;

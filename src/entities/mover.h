@@ -265,6 +265,8 @@ Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance);
 extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
+extern bool yieldLetPass;            // waiting at a narrow entrance: keep waiting until the one it let out has got past
+int MoverYieldingFor(int moverIdx);  // who it is waiting for at a narrow entrance, -1 if not waiting
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random
 float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x
