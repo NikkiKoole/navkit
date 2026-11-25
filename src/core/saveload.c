@@ -11,6 +11,7 @@ void RebuildPostLoadState(void);
 #include "../entities/inventory.h"   // RecalcAllCarried
 #include "../entities/belts.h"
 #include "../entities/relations.h"
+#include "../entities/town.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -548,6 +549,9 @@ bool SaveWorld(const char* filename) {
 
     // Relations (v111+): who knows whom, one MoverRelations per saved mover
     fwrite(moverRelations, sizeof(MoverRelations), moverCount, f);
+
+    // Town (v113+): roads, lots, who owns which bed (town.c)
+    TownSave(f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -1492,6 +1496,15 @@ bool LoadWorld(const char* filename) {
     // Relations (v111+). Older saves: nobody knows anybody.
     ClearRelations();
     if (version >= V111_RELATIONS && moverCount > 0) fread(moverRelations, sizeof(MoverRelations), moverCount, f);
+
+    // Town (v113+). Older saves: no town.
+    ClearTown();
+    if (version >= V113_TOWN && !TownLoad(f)) {
+        printf("ERROR: bad town section\n");
+        AddMessage("Bad town section in save", RED);
+        fclose(f);
+        return false;
+    }
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);

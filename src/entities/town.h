@@ -84,6 +84,13 @@ int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
 int  TownResidents(int lot);                      // movers who live there
 int  TownFreeBeds(void);                          // unowned beds in all homes
 int  TownHomeless(void);                          // active movers without a home (town only)
+// Save/load (v113, after relations). Lots are saved as geometry + the bed owners in cell order;
+// their furniture, workshops, pantry and flour stack are found again from the cells after a load.
+#include <stdio.h>
+void TownSave(FILE* f);
+bool TownLoad(FILE* f);                // false: corrupt counts
+bool TownSkipSave(FILE* f);            // inspect.c: read past the town section
+
 // May this mover rest on / use this furniture? (needs.c bed search). Cheap when no town.
 bool TownMayUseFurniture(int furnIdx, int moverIdx);
 

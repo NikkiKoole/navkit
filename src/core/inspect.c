@@ -33,6 +33,7 @@
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
 #include "../entities/relations.h"
+#include "../entities/town.h"
 #include "../simulation/mood.h"
 #include "save_migrations.h"
 
@@ -1827,6 +1828,8 @@ int InspectSaveFile(int argc, char** argv) {
     // Relations (v111+): skipped (not inspected yet)
     if (version >= V111_RELATIONS && insp_moverCount > 0)
         fseek(f, insp_moverCount * (long)sizeof(MoverRelations), SEEK_CUR);
+    // Town (v113+): skipped (not inspected yet)
+    if (version >= V113_TOWN) TownSkipSave(f);
     
     fclose(f);
     

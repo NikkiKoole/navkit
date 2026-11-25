@@ -76,8 +76,7 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
 - Console `town road|home|work|remove x1 y1 x2 y2`, `town list` (viewed level).
 - Tests: `tests/test_town.c` (paving, refusals, door facing the road on every side, beds
   reachable from the road, removal restores the ground).
-- **Not saved yet**: the cells and furniture are, the road and lot lists are not (a load
-  forgets which building is a lot). Comes with step 3 (`Mover.home` needs a save change anyway).
+- Saved since v113 (see "Save" below).
 
 ### Built (2026-11-25): step 3
 
@@ -121,6 +120,17 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
 - Known: a baker carries the whole flour stack (20) to their stove; the delivery then puts a new
   stack down. Flour in town stays bounded (one stack per stove + one at the spot), but it is
   generous.
+
+### Save (v113)
+
+After the relations: the road rectangles, then per lot its geometry and the owners of its
+furniture in cell order (row-major over the lot). Furniture is saved compacted (indices change),
+so after a load each lot finds its furniture, stoves/counters, pantry stockpile and flour stack
+again from its cells (`TownRelinkLot`); `townHome[]` follows from the bed owners. Older saves: no
+town. `inspect.c` reads past it (`TownSkipSave`). Checked: run, save, load, run on: everyone keeps
+their home, no extra newcomers, audit 0 violations. Not saved: arrival / housekeeping timers.
+After loading a town save the play HUD shows the sandbox tools (the game is found from
+`gameMode`); the dev Draw bar has the town tools.
 
 ## Open questions
 

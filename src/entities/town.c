@@ -589,3 +589,109 @@ void TownTick(float dt) {
     for (int l = 0; l < townLotHighWater; l++)
         if (townLots[l].active && townLots[l].kind == LOT_WORK) TownDeliverFlour(&townLots[l]);
 }
+
+// ---------------------------------------------------------------------------
+// Save / load
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    bool active;
+    int kind;
+    int x1, y1, x2, y2, z;
+    int front, doorX, doorY, beds, supplyX, supplyY;
+} TownLotSave;
+
+// A lot's furniture in cell order (row-major over the lot): the same order before and after a
+// load, whatever indices the furniture gets
+static int TownLotFurnitureInCellOrder(const TownLot* L, int* out, int max) {
+    int n = 0;
+    for (int y = L->y1; y <= L->y2; y++)
+        for (int x = L->x1; x <= L->x2; x++) {
+            int f = GetFurnitureAt(x, y, L->z);
+            if (f >= 0 && n < max) out[n++] = f;
+        }
+    return n;
+}
+
+void TownSave(FILE* f) {
+    fwrite(&townRoadCount, sizeof(int), 1, f);
+    fwrite(townRoads, sizeof(TownRoad), townRoadCount, f);
+    fwrite(&townLotHighWater, sizeof(int), 1, f);
+    for (int l = 0; l < townLotHighWater; l++) {
+        const TownLot* L = &townLots[l];
+        TownLotSave ls = { L->active, (int)L->kind, L->x1, L->y1, L->x2, L->y2, L->z,
+                           (int)L->front, L->doorX, L->doorY, L->beds, L->supplyX, L->supplyY };
+        fwrite(&ls, sizeof(ls), 1, f);
+        int furn[TOWN_MAX_LOT_FURN];
+        int n = L->active ? TownLotFurnitureInCellOrder(L, furn, TOWN_MAX_LOT_FURN) : 0;
+        fwrite(&n, sizeof(int), 1, f);
+        for (int i = 0; i < n; i++) {
+            short owner = townFurnOwner[furn[i]];
+            fwrite(&owner, sizeof(short), 1, f);
+        }
+    }
+}
+
+// After the lot's geometry is back: its furniture, workshops, pantry and flour stack from the cells
+static void TownRelinkLot(TownLot* L) {
+    L->furnCount = TownLotFurnitureInCellOrder(L, L->furn, TOWN_MAX_LOT_FURN);
+    L->fridge = -1;
+    for (int i = 0; i < L->furnCount; i++)
+        if (furniture[L->furn[i]].type == FURNITURE_FRIDGE) L->fridge = L->furn[i];
+    L->wsCount = 0;
+    for (int w = 0; w < MAX_WORKSHOPS && L->wsCount < TOWN_MAX_LOT_WS; w++)
+        if (workshops[w].active && workshops[w].z == L->z && workshops[w].x >= L->x1 && workshops[w].x <= L->x2
+            && workshops[w].y >= L->y1 && workshops[w].y <= L->y2) L->ws[L->wsCount++] = w;
+    L->stockpile = -1;
+    if (L->fridge >= 0) {
+        const Furniture* fr = &furniture[L->fridge];
+        for (int sp = 0; sp < MAX_STOCKPILES; sp++)
+            if (stockpiles[sp].active && stockpiles[sp].x == fr->x && stockpiles[sp].y == fr->y && stockpiles[sp].z == fr->z)
+                { L->stockpile = sp; break; }
+    }
+    L->supplyItem = -1;
+    if (L->kind == LOT_WORK)
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].type == ITEM_FLOUR && items[i].state == ITEM_ON_GROUND && (int)items[i].z == L->z
+                && (int)(items[i].x / CELL_SIZE) == L->supplyX && (int)(items[i].y / CELL_SIZE) == L->supplyY)
+                { L->supplyItem = i; break; }
+}
+
+static bool TownReadSection(FILE* f, bool apply) {
+    int roads = 0, lots = 0;
+    if (fread(&roads, sizeof(int), 1, f) != 1 || roads < 0 || roads > TOWN_MAX_ROADS) return false;
+    TownRoad roadBuf[1];
+    for (int r = 0; r < roads; r++) {
+        if (fread(apply ? &townRoads[r] : roadBuf, sizeof(TownRoad), 1, f) != 1) return false;
+    }
+    if (fread(&lots, sizeof(int), 1, f) != 1 || lots < 0 || lots > TOWN_MAX_LOTS) return false;
+    if (apply) { ClearTown(); townRoadCount = roads; }
+    for (int l = 0; l < lots; l++) {
+        TownLotSave ls;
+        int n = 0;
+        if (fread(&ls, sizeof(ls), 1, f) != 1 || fread(&n, sizeof(int), 1, f) != 1) return false;
+        if (n < 0 || n > TOWN_MAX_LOT_FURN) return false;
+        short owners[TOWN_MAX_LOT_FURN];
+        if (n > 0 && fread(owners, sizeof(short), n, f) != (size_t)n) return false;
+        if (!apply) continue;
+        TownLot* L = &townLots[l];
+        *L = (TownLot){ .active = ls.active, .kind = (LotKind)ls.kind, .x1 = ls.x1, .y1 = ls.y1, .x2 = ls.x2, .y2 = ls.y2,
+                        .z = ls.z, .front = (TownSide)ls.front, .doorX = ls.doorX, .doorY = ls.doorY, .beds = ls.beds,
+                        .supplyX = ls.supplyX, .supplyY = ls.supplyY, .fridge = -1, .stockpile = -1, .supplyItem = -1 };
+        townLotHighWater = l + 1;
+        if (!L->active) continue;
+        TownRelinkLot(L);
+        for (int i = 0; i < L->furnCount && i < n; i++) {
+            townFurnOwner[L->furn[i]] = owners[i];
+            if (owners[i] >= 0 && owners[i] < MAX_MOVERS) townHome[owners[i]] = (short)l;
+        }
+    }
+    if (apply) {
+        townLotHighWater = lots;
+        while (townLotHighWater > 0 && !townLots[townLotHighWater - 1].active) townLotHighWater--;
+    }
+    return true;
+}
+
+bool TownLoad(FILE* f) { return TownReadSection(f, true); }
+bool TownSkipSave(FILE* f) { return TownReadSection(f, false); }
