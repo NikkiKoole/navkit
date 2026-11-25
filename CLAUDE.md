@@ -105,6 +105,10 @@ legacy names like `entrances`/`use8Dir` are macros onto it) and answers its worl
 
 Pathfinding (A*, HPA*), movers (agents with avoidance), jobs (designations → work), stockpiles (filtered storage), workshops (crafting), simulations (water/fire/smoke).
 
+Explosions, structural support (unsupported walls fall), landslides, fuel vapour / firedamp
+with flash fires and rooms blowing out, and the dithered effects layer: code map, scenarios and
+what's next in `docs/todo/world/explosions.md` ("Where we are").
+
 ## Walkability Model (DF-style)
 
 Movers stand **on top** of solid ground, not inside it:

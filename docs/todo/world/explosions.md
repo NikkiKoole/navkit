@@ -1,11 +1,42 @@
 # Explosions (and structural support)
 
-Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural rock too: blast
-mining), throw loose items by weight, knock movers back (slice 1); structural support: what
-loses its connection to the ground creaks and falls, landing as walls (slice 2); gunpowder and
-blast mining as a job (slice 3); gunpowder goes off in fire and chains (slice 4); dithered
-blast / dust / chunk / spark effects (slice 5); blasts throw water and breach ponds (6),
-landslides (7), craters with ramps (8). Not yet: animals, overhang limits.
+Status: **partial** (2026-11-26, paused: user "we are good for now"). Built: blasts break
+walls and floors (natural rock too: blast mining), throw loose items by weight, knock movers
+back (slice 1); structural support: what loses its connection to the ground creaks and falls,
+landing as walls (slice 2); gunpowder and blast mining as a job (slice 3); gunpowder goes off in
+fire and chains (slice 4); dithered blast / dust / chunk / spark effects, real smoke (slice 5);
+blasts throw water and breach ponds (6), landslides (7), craters with ramps (8); blast kinds
+(gunpowder, dynamite); fuel vapour with flash fires, closed rooms blowing out, firedamp.
+
+## Where we are (2026-11-26)
+
+Code map:
+
+| What | Where |
+|---|---|
+| Blast, kinds, fuses, flying items, knocked movers, room vents | `src/simulation/explosion.c` / `.h` |
+| Structural support, landslides | `src/world/support.c` / `.h` |
+| Fuel vapour (petrol, firedamp), flame front, room pressure | `src/simulation/vapour.c` / `.h` |
+| Effects (data / drawing); smoke, steam and vapour clouds | `src/core/effects.c`, `src/render/effects_draw.c`, `rendering.c` `DrawGasClouds` |
+| Blast mining job, gunpowder, saltpeter | `jobs.c` (`JOBTYPE_BLAST`), `designations.c` (`DESIGNATION_BLAST`), items (save v114) |
+| Tests | `tests/test_explosion.c`, `tests/test_support.c` |
+
+Scenarios (all in scenarios-check): `explosions`, `collapse`, `blasting`, `powder-fire`, `flood`,
+`landslide`, `flashfire`, `gasroom`, `firedamp`. Console: `explode`, `blast <kind>`, `charge`,
+`leak`, `light`, `support`. Settings: group World/Explosions in the dev sidebar.
+
+Not saved (gone after a load): fuses, flying items, knocked movers, pending collapses and
+slides, vapour.
+
+Next, when picked up again (user's choice between):
+1. A petrol barrel item that leaks when hit by fire, a blast or a stone (a new item type: save
+   bump, coordinate the version with other sessions).
+2. Dusty mills: a mill room gets dusty while grinding, gets swept; a spark sets the whole room
+   off through the room pressure (the Town session's mill).
+3. Miners noticing gas: a canary or safety lamp, keeping fires away from it, ventilation (a
+   shaft to the surface lets firedamp out).
+Older open items: animals knocked by blasts, movers keeping away from lit charges, saving
+vapour, sprites for gunpowder / saltpeter / a charge, the ideas list below.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -179,7 +210,7 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
 Next: animals knocked too, movers keeping away from a lit charge or a burning powder store, a
 gunpowder / saltpeter / charge sprite, maybe span limits per material for built things.
 
-## Next: terrain effects (planned 2026-11-25, user: "write these up and start on them")
+## Terrain effects (planned and built 2026-11-25, user: "write these up and start on them")
 
 Brainstorm with the user; these three were picked to go first, in this order.
 
@@ -231,7 +262,7 @@ In `src/world/support.c` (bottom, "Landslides"; ticks from `SupportTick`), setti
 - Not done: keeping part of the broken soil as loose fill instead of ~35 dirt items, the
   scorch fading.
 
-## Next: kinds of explosive, gas and flash fires (planned 2026-11-25)
+## Kinds of explosive, gas and flash fires (planned 2026-11-25, built 2026-11-25/26)
 
 Talked through with the user (gasoline, grenades, dynamite, "steekvlammen"). Two families:
 
@@ -353,6 +384,11 @@ mix (a cell holding one takes none of the other). `AddVapourKind`, `GetPetrolLev
 - Gameplay: demolition by blasting (faster, materials lost), tripwire traps, fireworks
   (movers gather to watch), blast quarrying (bigger stones, or cracked rock that's quicker to
   dig).
+
+---
+
+The rest is the first investigation (2026-11-25, before slice 1), kept for its reasoning; the
+"Built" sections above are what the code does.
 
 ## What exists to build on
 
