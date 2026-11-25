@@ -53,6 +53,7 @@ done <<'EOF'
 34  | 0 | --scenario hide-and-seek
 107 | 0 | --scenario mingle
 14  | 0 | --scenario campfire
+27  | 0 | --scenario follow-leader
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long

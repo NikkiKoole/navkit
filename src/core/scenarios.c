@@ -905,6 +905,57 @@ static bool CampfireCheck(char* why, int whyLen) {
     return true;
 }
 
+// follow-leader: the tag plaza (pillars), 6 players in a line: the leader winds round, the others
+// follow its route (chase.c). Compare followTrail on/off: how far followers stray from the route.
+static long flTicks, flDistN, flGapN;
+static double flDistSum, flGapSum, flDistMax;
+
+static void SetupFollowLeader(void) {
+    flTicks = flDistN = flGapN = 0;
+    flDistSum = flGapSum = flDistMax = 0.0;
+    for (int py = 6; py < gridHeight - 4; py += 8)
+        for (int px = 6; px < gridWidth - 4; px += 8)
+            for (int dy = 0; dy < 2; dy++)
+                for (int dx = 0; dx < 2; dx++) {
+                    GRID(px + dx, py + dy, 1) = CELL_WALL;
+                    SetWallMaterial(px + dx, py + dy, 1, MAT_GRANITE);
+                }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 6, players[FOLLOW_MAX];
+    if (n > FOLLOW_MAX) n = FOLLOW_MAX;
+    for (int i = 0; i < n; i++) { SpawnMoverAt(4 + i, 4, 1); players[i] = moverCount - 1; }
+    FollowLeaderStart(players, n);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Follow the leader: %d players (following the trail %s)", n, followTrail ? "on" : "off"), GREEN);
+}
+
+static void FollowLeaderTickStats(void) {
+    flTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        float d;
+        if (FollowTrailDistance(i, &d)) { flDistSum += d; flDistN++; if (d > flDistMax) flDistMax = d; }
+        int k = FollowPlace(i);
+        if (k > 0) {
+            for (int j = 0; j < moverCount; j++)
+                if (FollowPlace(j) == k - 1) {
+                    float dx = movers[i].x - movers[j].x, dy = movers[i].y - movers[j].y;
+                    flGapSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE; flGapN++;
+                }
+        }
+    }
+}
+
+static void FollowLeaderPrintStats(void) {
+    printf("Following the trail: %s; followers %.2f cells from the leader's route on average (worst %.1f)\n",
+           followTrail ? "on" : "off", flDistN ? flDistSum / flDistN : 0.0, flDistMax);
+    printf("Gap to the one ahead: %.2f cells on average; leader changes: %ld\n", flGapN ? flGapSum / flGapN : 0.0,
+           followLeaderChanges);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -4047,6 +4098,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
+                   NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",
                    NULL,        SetupCampfire, CampfireTickStats, CampfirePrintStats, CampfireCheck, 0, 0},
     {"mingle",     "20 guests, two circles of friends and strangers: talks form, break up, people move between groups (setting mingle)",

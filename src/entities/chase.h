@@ -47,4 +47,17 @@ bool HideIsHidden(int moverIdx);     // in its spot, not found yet
 bool HideIsFound(int moverIdx);
 bool HideControls(int moverIdx);     // a player in a game of hide and seek: the game gives its goals
 
+// --- Follow the leader ---
+// FollowLeaderStart(players, n): the first leads a winding route (legs 5-10 cells) at 0.8x; the
+// others walk in a line, each following the trail of the one ahead (followTrail: the route it
+// actually took, about a cell back; off: straight at the one ahead, cutting corners). Every
+// 60 s the leader goes to the back and the next one leads.
+#define FOLLOW_MAX 16
+extern bool followTrail;
+extern long followLeaderChanges;
+void FollowLeaderStart(const int* players, int n);
+int FollowLeader(void);                 // who leads now, -1 if no game
+int FollowPlace(int moverIdx);          // its place in the line (0 = leader), -1 if not playing
+bool FollowTrailDistance(int moverIdx, float* cells);   // how far a follower is from the leader's route
+
 #endif

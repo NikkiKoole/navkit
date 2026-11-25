@@ -45,8 +45,11 @@ static float ChaseRandRange(float lo, float hi) {
 
 static void ClearHideSeek(void);
 
+static void ClearFollow(void);
+
 void ClearChase(void) {
     ClearHideSeek();
+    ClearFollow();
     memset(playing, 0, sizeof(playing));
     memset(fleeing, 0, sizeof(fleeing));
     memset(replanTimer, 0, sizeof(replanTimer));
@@ -64,7 +67,11 @@ bool ChaseIsFleeing(int i) { return ChaseIsPlaying(i) && fleeing[i]; }
 int ChaseIt(void) { return (tagIt >= 0 && tagIt < moverCount && movers[tagIt].active) ? tagIt : -1; }
 void ChaseSetIt(int i) { tagIt = i; tagTarget = -1; tagFreeze = TAG_FREEZE; tagChaseTime = 0.0f; }
 
+static float FollowSpeedScale(int i);
+
 float ChaseSpeedScale(int i) {
+    float fs = FollowSpeedScale(i);
+    if (fs > 0.0f) return fs;
     if (!ChaseIsPlaying(i)) return 1.0f;
     if (i == tagIt) return chaseSpeed;
     if (!fleeing[i]) return 1.0f;
@@ -175,8 +182,11 @@ static bool ThreatClose(int i, int threat) {
 
 static void HideSeekTick(float dt);
 
+static void FollowLeaderTick(float dt);
+
 void ChaseTick(float dt) {
     HideSeekTick(dt);
+    FollowLeaderTick(dt);
     int it = ChaseIt();
     if (it < 0) return;
     tagChaseTime += dt;
@@ -237,8 +247,10 @@ void ChaseTick(float dt) {
 
 static bool HideMoverTick(int i);
 
+static bool FollowMoverTick(int i, float dt);
+
 bool ChaseMoverTick(int i, float dt) {
-    (void)dt;
+    if (FollowMoverTick(i, dt)) return true;
     if (HideMoverTick(i)) return true;
     if (i != ChaseIt() || tagFreeze <= 0.0f) return false;
     Mover* m = &movers[i];   // counting to three
@@ -286,7 +298,8 @@ static void ClearHideSeek(void) {
 int HideSeeker(void) { return hsPhase != HS_NONE && hsSeeker >= 0 && hsSeeker < moverCount ? hsSeeker : -1; }
 bool HideIsCounting(int i) { return hsPhase == HS_COUNT && i == hsSeeker; }
 bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_HIDDEN; }
-bool HideControls(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i); }
+static bool FollowControls(int i);
+bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i); }
 bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
 
 static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
@@ -436,5 +449,180 @@ static bool HideMoverTick(int i) {
     m->timeWithoutProgress = 0.0f;
     m->lastX = m->x;
     m->lastY = m->y;
+    return true;
+}
+
+// ============================================================================
+// Follow the leader
+// ============================================================================
+bool followTrail = true;
+long followLeaderChanges = 0;
+
+#define FL_TRAIL         96      // trail points kept per player
+#define FL_TRAIL_STEP    4.0f    // pixels between trail points
+#define FL_GAP           1.0f    // cells along the trail between one and the next
+#define FL_LEAD_PACE     0.8f
+#define FL_FOLLOW_PACE   1.2f    // a follower's top speed (catching up)
+#define FL_TURN_TIME     60.0f   // seconds before the leader goes to the back
+
+static int flOrder[FOLLOW_MAX], flCount = 0;      // movers, flOrder[0] leads
+static float flTrailX[FOLLOW_MAX][FL_TRAIL], flTrailY[FOLLOW_MAX][FL_TRAIL];
+static int flTrailHead[FOLLOW_MAX], flTrailLen[FOLLOW_MAX];
+static float flTurn = 0.0f;
+// leader's route for the stats: a longer trail of the leader only
+#define FL_ROUTE 512
+static float flRouteX[FL_ROUTE], flRouteY[FL_ROUTE];
+static int flRouteHead = 0, flRouteLen = 0;
+
+static void ClearFollow(void) { flCount = 0; flRouteLen = 0; followLeaderChanges = 0; }
+
+static int FollowSlot(int i) {   // index in flOrder, -1
+    for (int k = 0; k < flCount; k++) if (flOrder[k] == i) return k;
+    return -1;
+}
+int FollowPlace(int i) { return FollowSlot(i); }
+int FollowLeader(void) { return flCount > 0 ? flOrder[0] : -1; }
+static bool FollowControls(int i) { return flCount > 0 && FollowSlot(i) >= 0; }
+
+static float FollowSpeedScale(int i) {
+    int k = FollowSlot(i);
+    return k == 0 ? FL_LEAD_PACE : 0.0f;   // (followers move themselves: FollowMoverTick)
+}
+
+// The trail of slot k: newest first, index n back
+static bool TrailPoint(int k, int n, float* x, float* y) {
+    if (n >= flTrailLen[k]) return false;
+    int idx = (flTrailHead[k] - n + FL_TRAIL) % FL_TRAIL;
+    *x = flTrailX[k][idx]; *y = flTrailY[k][idx];
+    return true;
+}
+
+static void TrailRecord(int k, float x, float y) {
+    float lx, ly;
+    if (TrailPoint(k, 0, &lx, &ly) && (lx - x) * (lx - x) + (ly - y) * (ly - y) < FL_TRAIL_STEP * FL_TRAIL_STEP) return;
+    flTrailHead[k] = (flTrailHead[k] + 1) % FL_TRAIL;
+    flTrailX[k][flTrailHead[k]] = x; flTrailY[k][flTrailHead[k]] = y;
+    if (flTrailLen[k] < FL_TRAIL) flTrailLen[k]++;
+}
+
+void FollowLeaderStart(const int* players, int n) {
+    flCount = n > FOLLOW_MAX ? FOLLOW_MAX : n;
+    for (int k = 0; k < flCount; k++) {
+        flOrder[k] = players[k];
+        flTrailLen[k] = 0; flTrailHead[k] = 0;
+        playing[players[k]] = true;
+        TrailRecord(k, movers[players[k]].x, movers[players[k]].y);
+        movers[players[k]].pathLength = 0;
+        movers[players[k]].pathIndex = -1;
+    }
+    flTurn = FL_TURN_TIME;
+    flRouteLen = 0;
+}
+
+static void LeaderNextLeg(int leader) {
+    const Mover* m = &movers[leader];
+    for (int tries = 0; tries < 12; tries++) {
+        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(5.0f, 10.0f);
+        int gx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), gy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        if (PathTo(leader, gx, gy, (int)m->z)) return;
+    }
+}
+
+static void FollowLeaderTick(float dt) {
+    if (flCount < 2) return;
+    // trails (each slot's trail is about the mover in it) and the leader's longer route
+    for (int k = 0; k < flCount; k++) TrailRecord(k, movers[flOrder[k]].x, movers[flOrder[k]].y);
+    {
+        const Mover* L = &movers[flOrder[0]];
+        int last = (flRouteHead + FL_ROUTE - 1) % FL_ROUTE;
+        if (flRouteLen == 0 || (flRouteX[last] - L->x) * (flRouteX[last] - L->x) + (flRouteY[last] - L->y) * (flRouteY[last] - L->y) >= FL_TRAIL_STEP * FL_TRAIL_STEP) {
+            flRouteX[flRouteHead] = L->x; flRouteY[flRouteHead] = L->y;
+            flRouteHead = (flRouteHead + 1) % FL_ROUTE;
+            if (flRouteLen < FL_ROUTE) flRouteLen++;
+        }
+    }
+    if (movers[flOrder[0]].pathIndex < 0) LeaderNextLeg(flOrder[0]);
+    if ((flTurn -= dt) <= 0.0f) {   // the leader goes to the back; trails move with their movers
+        int lead = flOrder[0];
+        float tx[FL_TRAIL], ty[FL_TRAIL];
+        int th = flTrailHead[0], tl = flTrailLen[0];
+        memcpy(tx, flTrailX[0], sizeof(tx)); memcpy(ty, flTrailY[0], sizeof(ty));
+        for (int k = 0; k + 1 < flCount; k++) {
+            flOrder[k] = flOrder[k + 1];
+            memcpy(flTrailX[k], flTrailX[k + 1], sizeof(tx)); memcpy(flTrailY[k], flTrailY[k + 1], sizeof(ty));
+            flTrailHead[k] = flTrailHead[k + 1]; flTrailLen[k] = flTrailLen[k + 1];
+        }
+        flOrder[flCount - 1] = lead;
+        memcpy(flTrailX[flCount - 1], tx, sizeof(tx)); memcpy(flTrailY[flCount - 1], ty, sizeof(ty));
+        flTrailHead[flCount - 1] = th; flTrailLen[flCount - 1] = tl;
+        movers[lead].pathLength = 0; movers[lead].pathIndex = -1;
+        flTurn = FL_TURN_TIME;   // (the route goes on: the new leader was walking it)
+        followLeaderChanges++;
+    }
+}
+
+// Where follower slot k should head: a point about FL_GAP back along the trail of the one ahead
+// (followTrail), or straight at the one ahead
+static bool FollowTarget(int k, float* x, float* y) {
+    int ahead = flOrder[k - 1];
+    if (!followTrail) {
+        float dx = movers[flOrder[k]].x - movers[ahead].x, dy = movers[flOrder[k]].y - movers[ahead].y;
+        float d = sqrtf(dx * dx + dy * dy);
+        if (d < 0.5f) return false;
+        *x = movers[ahead].x + dx / d * FL_GAP * CELL_SIZE;
+        *y = movers[ahead].y + dy / d * FL_GAP * CELL_SIZE;
+        return true;
+    }
+    float along = 0.0f, px, py;
+    if (!TrailPoint(k - 1, 0, &px, &py)) return false;
+    for (int n = 1; ; n++) {   // walk back along the trail until FL_GAP cells of it
+        float qx, qy;
+        if (!TrailPoint(k - 1, n, &qx, &qy)) break;
+        along += sqrtf((qx - px) * (qx - px) + (qy - py) * (qy - py));
+        px = qx; py = qy;
+        if (along >= FL_GAP * CELL_SIZE) break;
+    }
+    // the follower's own position: if it's already past that point (close to the one ahead), wait
+    *x = px; *y = py;
+    return true;
+}
+
+static bool FollowMoverTick(int i, float dt) {
+    int k = FollowSlot(i);
+    if (k <= 0) return false;   // the leader walks its path; not playing: nothing here
+    Mover* m = &movers[i];
+    float tx, ty;
+    if (FollowTarget(k, &tx, &ty)) {
+        float dx = tx - m->x, dy = ty - m->y, d = sqrtf(dx * dx + dy * dy);
+        float ax = movers[flOrder[k - 1]].x - m->x, ay = movers[flOrder[k - 1]].y - m->y;
+        bool tooClose = ax * ax + ay * ay < (FL_GAP * 0.8f * CELL_SIZE) * (FL_GAP * 0.8f * CELL_SIZE);
+        if (d > 1.0f && !tooClose) {
+            float pace = d > CELL_SIZE * 0.5f ? FL_FOLLOW_PACE : FL_LEAD_PACE;
+            float step = m->speed * (60.0f / dayLength) * pace * dt;
+            if (step > d) step = d;
+            float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
+            int z = (int)m->z;
+            if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+            else if (IsCellWalkableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;
+            else if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
+        }
+    }
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    m->timeWithoutProgress = 0.0f;
+    m->lastX = m->x;
+    m->lastY = m->y;
+    return true;
+}
+
+bool FollowTrailDistance(int i, float* cells) {
+    int k = FollowSlot(i);
+    if (k <= 0 || flRouteLen < 8) return false;
+    float best = 1e18f;
+    for (int n = 0; n < flRouteLen; n++) {
+        float dx = flRouteX[n] - movers[i].x, dy = flRouteY[n] - movers[i].y;
+        if (dx * dx + dy * dy < best) best = dx * dx + dy * dy;
+    }
+    *cells = sqrtf(best) / CELL_SIZE;
     return true;
 }

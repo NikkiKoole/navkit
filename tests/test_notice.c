@@ -1022,6 +1022,58 @@ describe(auto_gatherings) {
     }
 }
 
+// Distance (pixels) from (x, y) to the L route: (x0,y0) east to (x1,y0), then south to (x1,y1)
+static float DistToL(float x, float y, float x0, float x1, float y0, float y1) {
+    float dA = (x < x0 ? x0 - x : (x > x1 ? x - x1 : 0.0f)) + fabsf(y - y0);   // the east leg (city-block, fine here)
+    float dB = fabsf(x - x1) + (y < y0 ? y0 - y : (y > y1 ? y - y1 : 0.0f));  // the south leg
+    return dA < dB ? dA : dB;
+}
+
+// The leader walks an L by hand (2 px a tick), the follower follows; worst distance from the L
+static float RunFollowL(bool trail) {
+    TagSetup();
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+    followTrail = trail;
+    int lead = AddMover(4, 3, 1), fol = AddMover(3, 3, 1);
+    int players[2] = { lead, fol };
+    FollowLeaderStart(players, 2);
+    float x0 = movers[lead].x, y0 = movers[lead].y, x1 = x0 + 4 * CELL_SIZE, y1 = y0 + 4 * CELL_SIZE;
+    float worst = 0.0f;
+    for (int t = 0; t < 600; t++) {
+        if (movers[lead].x < x1) movers[lead].x += 2.0f; else if (movers[lead].y < y1) movers[lead].y += 2.0f;
+        movers[lead].pathLength = 1; movers[lead].pathIndex = 0;   // (keep it "walking": no new legs)
+        moverPaths[lead][0] = (Point){(int)(x1 / CELL_SIZE), (int)(y1 / CELL_SIZE), 1};
+        ChaseTick(TICK_DT);
+        ChaseMoverTick(fol, TICK_DT);
+        if (movers[fol].x >= x0) {
+            float d = DistToL(movers[fol].x, movers[fol].y, x0, x1, y0, y1);
+            if (d > worst) worst = d;
+        }
+    }
+    followTrail = true;
+    return worst / CELL_SIZE;
+}
+
+describe(follow_the_leader) {
+    it("following the trail: the follower walks the leader's L, round the corner") {
+        expect(RunFollowL(true) < 0.2f);
+    }
+
+    it("straight at the one ahead instead: it cuts the corner") {
+        expect(RunFollowL(false) > 0.3f);
+    }
+
+    it("the leader leads, the others are in line behind it") {
+        TagSetup();
+        int a = AddMover(4, 3, 1), b = AddMover(3, 3, 1), c = AddMover(2, 3, 1);
+        int players[3] = { a, b, c };
+        FollowLeaderStart(players, 3);
+        expect(FollowLeader() == a && FollowPlace(b) == 1 && FollowPlace(c) == 2);
+        expect(HideControls(b) && ChaseIsPlaying(c));   // the game gives their goals
+        expect(ChaseSpeedScale(a) < 1.0f);              // the leader goes a bit slower
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1039,5 +1091,6 @@ int main(int argc, char* argv[]) {
     test(spot_choice);
     test(mingling);
     test(auto_gatherings);
+    test(follow_the_leader);
     return summary();
 }

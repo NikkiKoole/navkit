@@ -626,6 +626,8 @@ static const Setting settings[] = {
       "Walkers steer round someone they dislike (like <= -20) and wanderers don't pick a goal near them."),
     SET_BOOL("hideSmart", "Hide: smart", "Entities/Movers/Noticing", hideSmart,
       "Hide and seek: hiders pick a spot out of sight of the seeker's home, tucked in by walls, away from the others. Off: any spot in range."),
+    SET_BOOL("followTrail", "Follow: the trail", "Entities/Movers/Noticing", followTrail,
+      "Follow the leader: each follows the route the one ahead took. Off: straight at the one ahead (cuts corners)."),
     SET_BOOL("fleeSmart", "Flee: smart", "Entities/Movers/Noticing", fleeSmart,
       "Fleeing (tag, later animals): run along a path to a good open spot away from the threat. Off: straight away from it."),
     SET_FLOAT("chaseSpeed", "Chase: speed", "Entities/Movers/Noticing", chaseSpeed, 0.05f, 0.5f, 3.0f,
