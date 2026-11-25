@@ -118,7 +118,9 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
   seeker / leader) and ends an activity too small to go on. A load leaves `FREETIME_PLAY`
   without a game: needs.c sets it back to `FREETIME_NONE`. A new kind: a row in
   `ActivityDefOf` + its state struct and hooks; iterate members by mover index
-  (`ActivityHas(a, i)`).
+  (`ActivityHas(a, i)`). Movers propose games themselves (`ActPropose`, game rule `autoGames`,
+  off in scenarios): a kind with `minPlayers` > 0 and a `begin` hook can be proposed; such a
+  game has `timeLeft` and ends by itself.
 - The social need (`social.c`, saved v120 after the purses): `moverSocial[i]`, down alone, up in
   company (`SocialCompany`: talk, gathering, walk, table talk, game), scaled by liking. Only when
   `SocialActive()` (setting `socialNeed`, off for now; `talkEnabled`; 2+ movers). Moodlets in

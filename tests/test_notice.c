@@ -1422,8 +1422,107 @@ describe(joint_activities) {
     }
 }
 
-bool SaveWorld(const char* filename);
-bool LoadWorld(const char* filename);
+// Notice + games, with the clock ticking (proposals are staggered over currentTick)
+static void RunPlay(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        currentTick++;
+        BuildMoverSpatialGrid();
+        NoticeTick();
+        ChaseTick(TICK_DT);
+    }
+}
+
+static void PlaySetup(void) {
+    TagSetup();
+    autoGames = true;
+    gameChance = 1.0f;
+    gameMinSeconds = gameMaxSeconds = 30.0f;
+    gameCooldown = 60.0f;
+}
+
+describe(games_by_themselves) {
+    it("two friends idle near each other start a game by themselves; strangers don't") {
+        PlaySetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(16, 8, 1), d = AddMover(18, 8, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);   // c and d don't know each other
+        RunPlay(1.0f);
+        int g = MoverActivity(a);
+        expect(g >= 0 && MoverActivity(b) == g && activities[g].timeLeft > 0.0f);
+        expect(activities[g].kind == ACT_TAG);   // two players: tag
+        expect(MoverActivity(c) < 0 && MoverActivity(d) < 0);
+        expect(autoGameStarts[ACT_TAG] == 1);
+        ClearChase();
+    }
+
+    it("off (autoGames), or where people don't talk: no games") {
+        PlaySetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        autoGames = false;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0);
+        autoGames = true; talkEnabled = false;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0);
+        talkEnabled = true;
+        ClearChase();
+    }
+
+    it("hungry: it neither proposes nor joins") {
+        PlaySetup();
+        hungerEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        movers[a].hunger = 1.0f;
+        movers[b].hunger = balance.hungerSeekThreshold - 0.05f;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0 && MoverActivity(b) < 0);
+        hungerEnabled = false;
+        ClearChase();
+    }
+
+    it("a game they started ends by itself; then a cooldown before the next") {
+        PlaySetup();
+        gameMinSeconds = gameMaxSeconds = 2.0f;
+        gameCooldown = 5.0f;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        RunPlay(1.0f);
+        expect(MoverActivity(a) >= 0);
+        RunPlay(2.0f);
+        expect(!ChaseIsPlaying(a) && !ChaseIsPlaying(b) && movers[a].freetimeState == FREETIME_NONE);
+        expect(autoGameEnded == 1 && ActivityCooldown(a) > 0.0f);
+        RunPlay(2.0f);
+        expect(MoverActivity(a) < 0);   // still cooling down
+        RunPlay(5.0f);
+        expect(autoGameStarts[ACT_TAG] + autoGameStarts[ACT_HIDE_SEEK] + autoGameStarts[ACT_FOLLOW_LEADER] >= 2);   // played again
+        ClearChase();
+    }
+
+    it("each game's start: the one who proposed it is it / seeks / leads; what they say they are doing") {
+        TagSetup();
+        int p[3] = { AddMover(4, 4, 1), AddMover(6, 4, 1), AddMover(8, 6, 1) };
+        char buf[80];
+        int g = ActivityStartWith(ACT_TAG, p, 2, 30.0f);
+        expect(g >= 0 && ChaseIt() == p[0]);
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "Playing tag: it") != NULL);
+        expect(ChaseDescribe(p[1], buf, sizeof(buf)) && strstr(buf, "tag") != NULL);
+        expect(!ChaseDescribe(p[2], buf, sizeof(buf)));   // not playing
+        ClearChase();
+        g = ActivityStartWith(ACT_HIDE_SEEK, p, 3, 30.0f);
+        expect(g >= 0 && HideSeeker() == p[0] && HideIsCounting(p[0]));
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "counting") != NULL);
+        expect(ChaseDescribe(p[1], buf, sizeof(buf)) && strstr(buf, "Hide and seek") != NULL);
+        ClearChase();
+        expect(ActivityStartWith(ACT_HIDE_SEEK, p, 2, 30.0f) < 0);   // hide and seek takes three
+        g = ActivityStartWith(ACT_FOLLOW_LEADER, p, 3, 30.0f);
+        expect(g >= 0 && FollowLeader() == p[0] && FollowPlace(p[2]) == 2);
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "leading") != NULL);
+        expect(ActivityStartWith(ACT_PACK_HUNT, p, 3, 30.0f) < 0);   // never proposed
+        ClearChase();
+    }
+}
 
 // Run the social need for this many game hours (dayLength 60: 1 game hour = 2.5 s)
 static void RunSocial(float gameHours) {
@@ -1546,5 +1645,6 @@ int main(int argc, char* argv[]) {
     test(playing_is_busy);
     test(joint_activities);
     test(social_need);
+    test(games_by_themselves);
     return summary();
 }

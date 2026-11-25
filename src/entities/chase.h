@@ -21,6 +21,7 @@
 extern const ActivityDef tagActivityDef, hideSeekActivityDef, followLeaderActivityDef, packHuntActivityDef;
 void ChaseMoverReset(int moverIdx);   // fresh for a game (stamina, not running): activity.c on joining
 void ChaseMoverLeft(int moverIdx);    // out of its game (not running any more)
+bool ChaseDescribe(int moverIdx, char* buf, int len);   // its part in its game ("Playing tag: it"); false if not playing
 
 extern bool fleeSmart;           // flee along paths to a good spot (false: straight away)
 extern float chaseSpeed, fleeSpeed;   // running pace, x walking speed

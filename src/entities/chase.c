@@ -16,6 +16,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 bool fleeSmart = true;
 float chaseSpeed = 1.25f;
@@ -406,9 +407,16 @@ static void TagMemberLeft(int a, int i) {
 
 static bool TagTooSmall(int a) { return activities[a].count < 2 || TagItOf(TagOf(a)) < 0; }
 
+// Proposed: the one who proposed it is "it"
+static void TagBegin(int a, const int* players, int n) {
+    for (int k = 0; k < n; k++) ActivityAdd(a, players[k]);
+    if (ActivityHas(a, players[0])) TagSetIt(TagOf(a), players[0]);
+}
+
 const ActivityDef tagActivityDef = {
     "tag", "Playing tag", sizeof(TagState),
     TagTick, TagMoverTick, TagSpeedScale, TagMemberLeft, TagTooSmall, NULL,
+    2, 8, TagBegin,
 };
 
 // ============================================================================
@@ -640,9 +648,16 @@ static void HideMemberLeft(int a, int i) {
 static bool HideTooSmall(int a) { return activities[a].count < 2 || HideOf(a)->phase == HS_NONE; }
 static void HideEnd(int a) { HideState* hs = HideOf(a); free(hs->seen); hs->seen = NULL; }
 
+// Proposed: the one who proposed it seeks first
+static void HideBegin(int a, const int* players, int n) {
+    for (int k = 0; k < n; k++) ActivityAdd(a, players[k]);
+    if (ActivityHas(a, players[0])) HideRound(a, players[0]);
+}
+
 const ActivityDef hideSeekActivityDef = {
     "hide-and-seek", "Playing hide and seek", sizeof(HideState),
     HideTick, HideMoverTick, NULL, HideMemberLeft, HideTooSmall, HideEnd,
+    3, 8, HideBegin,
 };
 
 // ============================================================================
@@ -704,9 +719,7 @@ static void TrailRecord(FollowState* fl, int k, float x, float y) {
     if (fl->trailLen[k] < FL_TRAIL) fl->trailLen[k]++;
 }
 
-void FollowLeaderStart(const int* players, int n) {
-    int a = ActivityStart(ACT_FOLLOW_LEADER);
-    if (a < 0) return;
+static void FollowBegin(int a, const int* players, int n) {
     FollowState* fl = FollowOf(a);
     if (n > FOLLOW_MAX) n = FOLLOW_MAX;
     for (int k = 0; k < n; k++) {
@@ -720,6 +733,11 @@ void FollowLeaderStart(const int* players, int n) {
     }
     fl->turn = FL_TURN_TIME;
     fl->routeLen = 0;
+}
+
+void FollowLeaderStart(const int* players, int n) {
+    int a = ActivityStart(ACT_FOLLOW_LEADER);
+    if (a >= 0) FollowBegin(a, players, n);   // (the first one leads)
 }
 
 static void LeaderNextLeg(int leader) {
@@ -850,6 +868,7 @@ static bool FollowTooSmall(int a) { return FollowOf(a)->count < 2; }
 const ActivityDef followLeaderActivityDef = {
     "follow-the-leader", "Playing follow the leader", sizeof(FollowState),
     FollowTick, FollowMoverTick, FollowSpeedScale, FollowMemberLeft, FollowTooSmall, NULL,
+    3, 6, FollowBegin,
 };
 
 // ============================================================================
@@ -1280,4 +1299,55 @@ static bool PackTooSmall(int a) {
 const ActivityDef packHuntActivityDef = {
     "pack-hunt", "Hunting as a pack", sizeof(PackState),
     PackTick, PackMoverTick, PackSpeedScale, PackMemberLeft, PackTooSmall, NULL,
+    0, 0, NULL,   // (hunting, not play: never proposed)
 };
+
+// ============================================================================
+// What a player is doing in its game, for the describe lines ("Playing tag: it")
+// ============================================================================
+static const char* ChaseNameOf(int i) { return (i >= 0 && i < moverCount && movers[i].name[0]) ? movers[i].name : "someone"; }
+
+bool ChaseDescribe(int i, char* buf, int len) {
+    if (!ChaseIsPlaying(i)) return false;
+    int a = MoverActivity(i);
+    if (a < 0 || !activities[a].active) { snprintf(buf, (size_t)len, "Waiting to play"); return true; }
+    switch (activities[a].kind) {
+        case ACT_TAG: {
+            const TagState* t = TagOf(a);
+            if (i == t->it && t->freeze > 0.0f) snprintf(buf, (size_t)len, "Playing tag: it, counting to three");
+            else if (i == t->it) snprintf(buf, (size_t)len, t->target >= 0 ? "Playing tag: it, after %s" : "Playing tag: it", ChaseNameOf(t->target));
+            else if (fleeing[i]) snprintf(buf, (size_t)len, "Playing tag: running from %s", ChaseNameOf(t->it));
+            else snprintf(buf, (size_t)len, "Playing tag (%s is it)", ChaseNameOf(t->it));
+            return true;
+        }
+        case ACT_HIDE_SEEK: {
+            const HideState* hs = HideOf(a);
+            const char* what = "playing";
+            if (i == hs->seeker) what = hs->phase == HS_COUNT ? "counting, eyes shut" : "seeking";
+            else if (hiderState[i] == HIDER_GOING) what = "running off to hide";
+            else if (hiderState[i] == HIDER_HIDDEN) what = "hiding";
+            else if (hiderState[i] == HIDER_FOUND) what = "found";
+            snprintf(buf, (size_t)len, "Hide and seek: %s", what);
+            return true;
+        }
+        case ACT_FOLLOW_LEADER: {
+            const FollowState* fl = FollowOf(a);
+            int k = FollowSlot(fl, i);
+            if (k == 0) snprintf(buf, (size_t)len, "Follow the leader: leading");
+            else if (k > 0) snprintf(buf, (size_t)len, "Follow the leader: behind %s", ChaseNameOf(fl->order[k - 1]));
+            else snprintf(buf, (size_t)len, "Follow the leader");
+            return true;
+        }
+        case ACT_PACK_HUNT: {
+            static const char* roles[4] = {"driving it", "cutting it off", "flanking", "searching"};
+            const PackState* pk = PackOf(a);
+            int r = PackRole(i);
+            if (i == pk->target) snprintf(buf, (size_t)len, pk->ducked ? "Hunted: lying low" : "Hunted by the pack");
+            else if (r >= 0 && r < 4) snprintf(buf, (size_t)len, "Pack hunt: %s", roles[r]);
+            else snprintf(buf, (size_t)len, "Pack hunt");
+            return true;
+        }
+    }
+    snprintf(buf, (size_t)len, "%s", ActivityDefOf(activities[a].kind)->label);
+    return true;
+}

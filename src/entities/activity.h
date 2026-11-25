@@ -34,6 +34,10 @@ typedef struct {
     void  (*memberLeft)(int a, int i);           // i has just left (it is no longer a member): carry on
     bool  (*tooSmall)(int a);                    // can't go on (NULL: fewer than 2 members)
     void  (*end)(int a);                         // free the kind's resources (the state is freed after)
+    // Proposed by movers themselves (autoGames): how many it takes (minPlayers 0 = never
+    // proposed) and how to set it up with them (players[0] proposed it)
+    int minPlayers, maxPlayers;
+    void  (*begin)(int a, const int* players, int n);
 } ActivityDef;
 
 typedef struct {
@@ -41,6 +45,7 @@ typedef struct {
     int kind;                    // ActivityKind
     int count;                   // members (movers with MoverActivity == this one)
     float age;                   // sim seconds since it started
+    float timeLeft;              // ends after this many sim seconds of age (0 = until it falls apart)
     void* state;                 // the kind's own state (ActivityDef.stateSize bytes)
 } Activity;
 
@@ -63,6 +68,21 @@ bool ActivityMoverFree(int i);   // free to join: no job, no need being seen to,
 // the waiting ones). The sweep frees anyone still waiting.
 bool ActivityWait(int i);        // false if it isn't free
 bool ActivityWaiting(int i);
+
+// Proposed by movers themselves (game rule autoGames, where people talk: talkEnabled). A free,
+// idle mover with no game cooldown and no pressing need sometimes proposes a game to free movers
+// near by that it likes: the chance grows with how much it likes them and, with the social need
+// on (social.h), with how lonely it is. Each one asked accepts by its own liking (and
+// loneliness). Two players: tag; three or more: tag, hide and seek or follow the leader. Such
+// a game ends after gameMinSeconds..gameMaxSeconds; everyone leaving a game waits gameCooldown
+// before the next.
+extern bool autoGames;
+extern float gameChance;         // chance per check (each free mover ~4x/s) with a friend near by
+extern float gameMinSeconds, gameMaxSeconds, gameCooldown;
+extern long autoGameStarts[ACT_KIND_COUNT], autoGameDeclined, autoGameEnded;
+extern double autoGameSecondsSum;   // how long the proposed games lasted (all ended ones)
+int  ActivityStartWith(int kind, const int* players, int n, float seconds);   // -1 if it didn't start
+float ActivityCooldown(int i);   // seconds before it may play again
 
 // Queries
 int  MoverActivity(int i);       // its activity, -1 if none (also -1 while waiting)

@@ -31,6 +31,7 @@
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
+#include "../entities/activity.h"
 #include "../entities/town.h"
 #include "../entities/action_queue.h"
 #include "../entities/throwing.h"
@@ -85,6 +86,7 @@ static void SnapshotOrRestoreSettings(void) {
     moodEnabled = savedSettings.mood;
     talkEnabled = savedSettings.talk;
     autoGatherings = savedSettings.autoGather;
+    autoGames = false;   // movers starting games by themselves: a scenario that wants it sets it
     moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
@@ -1234,6 +1236,83 @@ static void SetupHuntCover(void) {
     PackHuntStart(hunters, 4, moverCount - 1);
     currentViewZ = 1;
     AddMessage(TextFormat("Hunt in cover: 4 hunters (0-3) on 1 runner (4), only by sight %s", packStealth ? "on" : "off"), GREEN);
+}
+
+// Six friends on a lawn with hiding places, food in a corner: they start games by themselves
+// (autoGames: tag, hide and seek, follow the leader), leave them to eat, play again later
+static long ptTicks, ptPlaying, ptMeals;
+static float ptLowestHunger;
+static int ptPrevState[MAX_MOVERS];
+
+static void SetupPlaytime(void) {
+    ptTicks = ptPlaying = ptMeals = 0;
+    ptLowestHunger = 1.0f;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;
+    endlessMoverMode = true;
+    moverWanderPause = 1.0f;
+    noticeEnabled = true;
+    talkEnabled = true;
+    autoGatherings = false;
+    autoGames = true;
+    PhWall(9, 9, 9, 13, CELL_WALL); PhWall(20, 18, 24, 18, CELL_WALL);   // places to hide behind
+    PhWall(14, 24, 18, 24, CELL_RAILING);
+    int bushes[][2] = {{6, 20}, {7, 20}, {25, 8}, {25, 9}, {16, 6}, {28, 26}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    SpawnFurniture(13, 15, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    CreateStockpile(2, 2, 1, 3, 3);
+    for (int i = 0; i < 9; i++) {
+        int idx = SpawnItem((2 + i % 3) * CELL_SIZE + 4, (2 + i / 3) * CELL_SIZE + 4, 1, ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    int n = scenarioMovers > 0 ? scenarioMovers : 6;
+    int first = moverCount;
+    for (int i = 0; i < n; i++) {
+        SpawnMoverAt(13 + (i % 3) * 2, 11 + (i / 3) * 2, 1);
+        movers[moverCount - 1].hunger = 0.45f + 0.08f * (i % 6);
+        ptPrevState[moverCount - 1] = FREETIME_NONE;
+    }
+    for (int a = first; a < moverCount; a++)   // they all know and like each other
+        for (int b = a + 1; b < moverCount; b++) RelationSetPair(a, b, 60.0f, 60.0f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Playtime: %d friends start games by themselves (autoGames %s)", n, autoGames ? "on" : "off"), GREEN);
+}
+
+static void PlaytimeTickStats(void) {
+    ptTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (movers[i].freetimeState == FREETIME_EATING && ptPrevState[i] != FREETIME_EATING) ptMeals++;
+        ptPrevState[i] = movers[i].freetimeState;
+        if (movers[i].hunger < ptLowestHunger) ptLowestHunger = movers[i].hunger;
+        if (MoverActivity(i) >= 0) ptPlaying++;
+    }
+}
+
+static void PlaytimePrintStats(void) {
+    long starts = 0;
+    for (int k = 0; k < ACT_KIND_COUNT; k++) starts += autoGameStarts[k];
+    printf("Games by themselves: %s; started %ld (tag %ld, hide and seek %ld, follow the leader %ld), declined %ld\n",
+           autoGames ? "on" : "off", starts, autoGameStarts[ACT_TAG], autoGameStarts[ACT_HIDE_SEEK],
+           autoGameStarts[ACT_FOLLOW_LEADER], autoGameDeclined);
+    printf("Ended %ld, lasting %.0f s on average; playing %.0f%% of the time; left a game %ld times\n",
+           autoGameEnded, autoGameEnded ? autoGameSecondsSum / autoGameEnded : 0.0,
+           ptTicks && moverCount ? 100.0 * ptPlaying / ((double)ptTicks * moverCount) : 0.0, playLeftCount);
+    printf("Meals %ld, lowest hunger %.2f, talks started %ld\n", ptMeals, ptLowestHunger, talkStartedCount);
+}
+
+static bool PlaytimeCheck(char* why, int whyLen) {
+    int kinds = 0;
+    long starts = 0;
+    for (int k = 0; k < ACT_KIND_COUNT; k++) { starts += autoGameStarts[k]; if (autoGameStarts[k] > 0) kinds++; }
+    bool day = ptTicks >= 21600;   // a game day (dayLength 360): several games, more than one kind
+    if (starts < (day ? 3 : 1)) { snprintf(why, (size_t)whyLen, "only %ld games started", starts); return false; }
+    if (day && kinds < 2) { snprintf(why, (size_t)whyLen, "only one kind of game played"); return false; }
+    if (day && ptMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    if (ptLowestHunger <= 0.1f) { snprintf(why, (size_t)whyLen, "someone went hungry (%.2f)", ptLowestHunger); return false; }
+    return true;
 }
 
 static void SetupLadders(void) {
@@ -5189,6 +5268,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupHuntCover, HuntCoverTickStats, HuntCoverPrintStats, PackHuntCheck, 0, 0},
     {"play-hungry", "Tag with hunger on: players leave the game to eat, the game goes on without them (playing is a free-time state)",
                    NULL,        SetupPlayHungry, PlayHungryTickStats, PlayHungryPrintStats, PlayHungryCheck, 0, 0},
+    {"playtime",   "Six friends on a lawn start games by themselves (tag, hide and seek, follow the leader), leave to eat, play again (setting autoGames)",
+                   NULL,        SetupPlaytime, PlaytimeTickStats, PlaytimePrintStats, PlaytimeCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
                    NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",

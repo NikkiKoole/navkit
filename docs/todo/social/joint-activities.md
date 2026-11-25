@@ -1,6 +1,6 @@
 # Joint activities: a few movers doing something together
 
-Status: **partial** (2026-11-25): step 1 done (the games are activities, `src/entities/activity.c`); step 2a done (the social need, off by default); next: step 2b
+Status: **partial** (2026-11-25): step 1 done (the games are activities, `src/entities/activity.c`); step 2a done (the social need, off by default); 2b + 2c done (games start by themselves, describe lines); next: step 3 (effects)
 
 Several movers doing one thing together, each with a part, sometimes in a set order: a chat, a
 gathering round the fire, a walk together, tag, hide and seek, follow the leader, the pack hunt;
@@ -166,11 +166,26 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
      measured over 3 days, town (12 citizens) ended at 0% for everyone (mood 52.8% -> 44.5%):
      they have 1-4 idle hours a day but spend them apart, nobody goes looking for company.
      Dollhouse (2): 93%, Good company, mood 64% vs 60%. Survival (1 settler): unchanged.
-   - **2b**: lonely movers go looking for company: walk to where others are (a home, the square,
-     a fire), start talks and propose games (tag, hide and seek) to friends near by, scored by
-     how low they are; the invited accept by their own need. Then `socialNeed` on by default,
-     re-measured in the town. Maybe: working beside others (bakery, field) as a little company.
-   - **2c**: describe lines for every game role ("Playing tag: it", "Hiding").
+   - **2b, done 2026-11-25** (games start by themselves; activity.c `ActPropose`): a free, idle
+     mover (no cooldown, no pressing need, not in a talk) checks ~4x/s; with free movers near by
+     (6 cells) that it likes, it proposes with chance `gameChance` x liking/50 (x 1.5 - social,
+     with the social need on); each asked says yes by its liking/30 (x 1.5 - social). Two
+     players: tag; 3+: tag, hide and seek or follow the leader (each kind's `minPlayers`,
+     `maxPlayers`, `begin`: the proposer is it / seeks / leads). Ends after 40-90 s
+     (`Activity.timeLeft`; scenario games 0 = no end), then `gameCooldown` 120 s. Game rule
+     `autoGames`: on in survival, island, dollhouse, town; scenarios off unless they ask. Event
+     log: "Mover 3 proposes tag: 2 players, 44 s" / "Game over: ...". Scenario `playtime`
+     (6 friends, 4 game days): 13 games (11 tag, 1 hide and seek, 1 follow the leader), 40 s
+     each, playing 13% of the time, meals 91 vs 89 with games off, lowest hunger 0.20 vs 0.19;
+     dollhouse (2): 3 games in 2 days. The seven older game scenarios: identical output.
+     Not yet: **lonely movers going out to find company** (walk to where others are) - so the
+     social need stays off; free friends **joining a running game** (games are mostly tag: at
+     the moment of proposing usually one friend is free and close).
+   - **2c, done 2026-11-25**: describe lines for every role (`ChaseDescribe`): "Playing tag: it,
+     counting to three / it, after Mara / running from Ben", "Hide and seek: counting, eyes shut
+     / seeking / running off to hide / hiding / found", "Follow the leader: leading / behind
+     Mara", "Pack hunt: driving it / cutting it off / flanking / searching", "Hunted: lying
+     low"; debug: players and time.
    - Check: a scenario where friends start games by themselves; how often, how long, social and
      mood on/off, nobody misses a meal.
 3. Effects: moodlet + liking at the end.

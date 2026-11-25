@@ -494,6 +494,16 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (detail == DESC_DEBUG) DescAdd(out, DESC_MUTED, "Talk %d: %.0f s left, %s", t, talks[t].timeLeft,
                                           MoverIsSpeaking(idx) ? "speaking" : "listening");
     }
+    {   // its part in a game (chase.c)
+        char g[80];
+        if (ChaseDescribe(idx, g, sizeof(g))) {
+            DescAdd(out, DESC_INFO, "%s", g);
+            int a = MoverActivity(idx);
+            if (detail == DESC_DEBUG && a >= 0)
+                DescAdd(out, DESC_MUTED, "Game %d: %d players, %.0f s%s", a, activities[a].count, activities[a].age,
+                        activities[a].timeLeft > 0.0f ? TextFormat(" of %.0f", activities[a].timeLeft) : "");
+        }
+    }
 
     // Train trip: the lines still ahead (planned when it last chose, i.e. at its last stop)
     int routeLines[TRAIN_PLAN_CHANGES_MAX + 1];

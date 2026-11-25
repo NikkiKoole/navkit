@@ -200,6 +200,7 @@ static void SetSurvivalRules(void) {
     gameMode = GAME_MODE_SURVIVAL;
     talkEnabled = true;       // idle settlers stop to chat, walk together, mingle (talk.c)
     autoGatherings = true;    // and gather round a burning fire
+    autoGames = true;         // and start games of tag, hide and seek, follow the leader (activity.c)
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
@@ -549,6 +550,7 @@ static void StartDollhouse(void) {
     gameMode = GAME_MODE_SANDBOX;
     talkEnabled = true;       // the residents stop to chat (talk.c)
     autoGatherings = true;    // and gather round the cooking, a fire, a heater
+    autoGames = true;         // and start games (activity.c)
     hungerEnabled = true;
     energyEnabled = true;
     thirstEnabled = true;
@@ -602,6 +604,7 @@ static void StartTown(void) {
     gameMode = GAME_MODE_SANDBOX;     // nobody dies
     talkEnabled = true;
     autoGatherings = true;
+    autoGames = true;
     hungerEnabled = true;
     energyEnabled = true;
     thirstEnabled = true;
@@ -631,6 +634,7 @@ static void StartSandbox(void) {
     gameMode = GAME_MODE_SANDBOX;
     talkEnabled = false;
     autoGatherings = false;
+    autoGames = false;
     hungerEnabled = false;
     energyEnabled = false;
     thirstEnabled = false;

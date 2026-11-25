@@ -32,6 +32,7 @@
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/social.h"
+#include "../entities/activity.h"
 #include "../entities/action_queue.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
@@ -591,6 +592,16 @@ static const Setting settings[] = {
       "Each mover looks around once per this many ticks (staggered over movers).", NULL),
     SET_BOOL("talk", "Stop to Talk", "Entities/Movers/Noticing", talkEnabled,
       "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in survival, island, dollhouse and town. Needs Noticing."),
+    SET_BOOL("autoGames", "Games by themselves", "Entities/Movers/Noticing", autoGames,
+      "Idle movers propose a game (tag, hide and seek, follow the leader) to ones they like near by; lonelier ones more often (Social need). A game rule: on where people talk (Stop to Talk); scenarios: off unless they ask."),
+    SET_FLOAT("gameChance", "Games: chance", "Entities/Movers/Noticing", gameChance, 0.001f, 0.0f, 1.0f,
+      "Chance per check (each idle mover ~4 times a second) that it proposes a game to a friend near by (scaled by how much it likes them).", NULL),
+    SET_FLOAT("gameMinSeconds", "Games: min (s)", "Entities/Movers/Noticing", gameMinSeconds, 1.0f, 5.0f, 600.0f,
+      "Shortest a game the movers started lasts, seconds.", NULL),
+    SET_FLOAT("gameMaxSeconds", "Games: max (s)", "Entities/Movers/Noticing", gameMaxSeconds, 1.0f, 5.0f, 1200.0f,
+      "Longest a game the movers started lasts, seconds.", NULL),
+    SET_FLOAT("gameCooldown", "Games: cooldown (s)", "Entities/Movers/Noticing", gameCooldown, 1.0f, 0.0f, 1200.0f,
+      "Seconds after leaving a game before a mover plays again.", NULL),
     SET_BOOL("socialNeed", "Social need", "Entities/Movers/Noticing", socialNeedEnabled,
       "Company as a need: down while awake and alone, up in talks, gatherings, walks, table talk and games (faster with friends). Low: Lonely moodlets. Only where Stop to Talk is on and someone else lives. Off for now: nobody goes looking for company yet."),
     SET_FLOAT("socialDrainGH", "Social: hours alone to empty", "Entities/Movers/Noticing", socialDrainGH, 1.0f, 1.0f, 240.0f,

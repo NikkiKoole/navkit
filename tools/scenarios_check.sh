@@ -56,6 +56,7 @@ done <<'EOF'
 103 | 0 | --scenario personal-space
 105 | 0 | --scenario hunt-cover
 46  | 0 | --scenario play-hungry
+26  | 0 | --scenario playtime
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
 0   | 0 | --scenario collapse
