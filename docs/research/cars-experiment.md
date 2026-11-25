@@ -429,6 +429,31 @@ Results: fully connected at 330 ... 2048 (2406 junctions); steered, 5 x 100/128 
   0 wall contacts; in the grid city, cabs in its single lanes lengthen queues (pull-out waits up
   to ~100 s).
 
+## Real cars in view, and a more physical slot model (2026-11-25)
+
+`carSlotReal`: slot cars in the camera view also get a physical car (bicycle model, steering,
+smooth speed) chasing their slot's pose; snapped back when 3+ cells off. Cheap (~0.01 ms for
+~100 cars in view). With the plain cellular model it looked wrong (the user saw cars jump near
+junctions): slot cars stop dead from full speed and take junction curves at full speed, which no
+real car can follow.
+
+`carSlotPhysical` (on): each step a car looks up to 24 slots ahead and takes the fastest speed
+from which it can still stop behind the car ahead even if that one brakes too (Gipps), braking
+at most `carBrake` per step; junction curves have a speed (from their curvature) cars slow to in
+time; a junction that doesn't look passable (red / crossing traffic / no room) is braked for as
+a stop line. Manhattan, 250 cars, 5 minutes, view 140 x 100 cells:
+
+| slot model | slot | snaps | tracking error | jumps in view | touching pairs max | trips |
+|---|---|---|---|---|---|---|
+| plain | 2 | 142 | 0.64 | ~220 | 27 | 528 |
+| plain | 3 | 360 | 0.60 | ~530 | 10 | 466 |
+| physical | 2 | 4 | 0.36 | 2 | 16 | 459 |
+| physical | 3 | 22 | 0.42 | 15 | 4 | 366 |
+
+(2-cell slots are bumper to bumper by definition: real cars touch.) Cost: none in CPU (16000
+cars, 2048 city: 0.15 ms/tick either way); throughput down 13-25% (cars brake for junctions).
+Diagnostics: SL_VIEW, SL_JUMPS (counts only jumps inside the view when there is one), SL_SNAPS.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

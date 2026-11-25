@@ -709,6 +709,8 @@ static const Setting settings[] = {
       "cars-city: share of yellow cabs. Cabs don't park; they stop in the lane for 3-8 s at each fare (others wait or overtake). Restart the scenario to apply.", NULL),
     SET_BOOL("carCityGreenWave", "City Green Wave", "Experiments/Cars", carCityGreenWave,
       "cars-city: lights timed so a car at ~80% of the limit catches green after green along the avenues (otherwise random offsets). Restart the scenario to apply."),
+    SET_BOOL("carSlotPhysical", "Slot Traffic: Braking + Curve Speeds", "Experiments/Cars", carSlotPhysical,
+      "Slot traffic: cars brake over several steps (look ahead, Gipps) and slow for junction curves. Off: the plain cellular model (stop dead, full speed through curves)."),
     SET_BOOL("carSlotReal", "Slot Traffic: Real Cars in View", "Experiments/Cars", carSlotReal,
       "Slot traffic: cars in the camera view also get a physical car (real steering, smooth speed) chasing their slot's position; elsewhere only slots."),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,

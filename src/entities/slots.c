@@ -12,6 +12,7 @@
 
 float carSlotCells = 3.0f;
 bool carSlotReal = false;
+bool carSlotPhysical = true;
 static float SL_REAL_PULL = 2.0f, SL_REAL_ACCEL = 1.5f;   // (tuning: env SL_PULL / SL_ACCEL)
 
 typedef struct { float x, y, h, v, steer; bool on; } SlReal;
@@ -226,6 +227,81 @@ static int SlFreeAhead(int i, int want) {
     return n;
 }
 
+// --- A more physical slot model (carSlotPhysical): braking takes several steps and curves
+// have a speed. Without it a slot car could stop dead from full speed and take a junction
+// curve at full speed - invisible as slots, impossible for a real car (carSlotReal snapped).
+static int SlBrakeSlots(void) {   // slots per step per step a car may slow by (from carBrake)
+    int d = (int)(carBrake * SL_STEP * SL_STEP / SL_SLOT_CELLS + 0.5f);
+    return d < 1 ? 1 : d;
+}
+static int SlBrakeDist(int v, int D) {   // slots needed to stop from v
+    int s = 0;
+    while (v > 0) { s += v; v -= D; }
+    return s;
+}
+static int SlCurveV(int conn) {           // top speed on a curve, slots per step
+    int v = (int)(rdSegs[conn].vmax * SL_STEP / SL_SLOT_CELLS);
+    if (v < 1) v = 1;
+    return v > SL_VMAX ? SL_VMAX : v;
+}
+// Will this curve probably be granted when we get there? (green or no light, no crossing curve
+// in use, room past it) - then drive at it at its curve speed, else brake for its stop line
+static bool SlCurveLooksOpen(int conn) {
+    const RdSeg* C = &rdSegs[conn];
+    const RdNode* N = &rdNodes[C->node];
+    int light = TrafficLightAt(C->node, C->from);
+    if (light == 0 || light == 1) return false;
+    int freeRun = 0;
+    while (freeRun < slSegN[C->to] && slSlotCar[SlIdx(C->to, freeRun)] < 0) freeRun++;
+    if (freeRun <= slSegCount[conn]) return false;
+    for (int j = 0; j < N->nConn; j++) {
+        int other = N->conn[j];
+        if (other != conn && N->conflict[C->ci][j] && slSegCount[other] > 0) return false;
+    }
+    return true;
+}
+// The fastest speed from which we can still stop behind whatever is ahead (Gipps: even if a
+// car ahead brakes too), and slow to each curve's speed before it. Looks up to 24 slots ahead.
+static int SlSafeSpeed(int i) {
+    const SlotCar* c = &slotCars[i];
+    int D = SlBrakeSlots(), vmax = SL_VMAX, best = vmax;
+    int ri = c->ri, k = c->slot, dist = 0;   // free slots so far
+    if (rdSegs[c->route[ri]].kind == RD_CONN) { int vc = SlCurveV(c->route[ri]); if (vc < best) best = vc; }
+    for (int look = 0; look < 24; look++) {
+        int seg = c->route[ri];
+        if (ri == c->routeLen - 1 && k >= c->destSlot) break;   // the trip ends: stop here
+        k++;
+        if (k >= slSegN[seg]) {
+            if (ri + 1 >= c->routeLen) break;
+            int next = c->route[ri + 1];
+            if (rdSegs[next].kind == RD_CONN && rdSegs[seg].kind != RD_CONN) {
+                bool open = slGrantStep[i] == slStep || SlCurveLooksOpen(next);
+                if (!open) break;                                       // brake for the stop line
+                int vc = SlCurveV(next), v = vmax;                      // slow to the curve's speed by then
+                while (v > vc && SlBrakeDist(v, D) > dist + SlBrakeDist(vc, D)) v--;
+                if (v < best) best = v;
+            }
+            ri++;
+            k = 0;
+            seg = next;
+        }
+        int o = slSlotCar[SlIdx(seg, k)];
+        if (o >= 0) {                                                   // a car ahead: Gipps
+            int vo = slotCars[o].stopSteps > 0 ? 0 : slotCars[o].v;
+            int v = vmax;
+            while (v > 0 && SlBrakeDist(v, D) > dist + SlBrakeDist(vo, D)) v--;
+            return v < best ? v : best;
+        }
+        dist++;
+    }
+    if (dist < 24) {                                                    // a stop (line / trip end) dist slots ahead
+        int v = vmax;
+        while (v > 0 && SlBrakeDist(v, D) > dist) v--;
+        if (v < best) best = v;
+    }
+    return best;
+}
+
 // Junction requests: cars at the end of a lane whose next step is a curve
 static int SlWantsCurve(int i) {
     const SlotCar* c = &slotCars[i];
@@ -350,6 +426,7 @@ static void SlRunStep(void) {
         SlotCar* c = &slotCars[i];
         if (c->stopSteps > 0) { c->stopSteps--; slStepV[i] = 0; if (c->stopSteps == 0) SlQueueRoute(i); continue; }   // a cab at a fare
         int v = c->v + 1 > SL_VMAX ? SL_VMAX : c->v + 1;
+        if (carSlotPhysical) { int vs = SlSafeSpeed(i); if (v > vs) v = vs; }   // brake in time, slow for curves
         int f = SlFreeAhead(i, v);
         if (v > f) v = f;
         if (v > 0 && SlRand() < (unsigned)(SL_DAWDLE * 32768)) v--;
@@ -478,7 +555,8 @@ static void CheckJumps(float dt) {
     for (int i = 0; i < slotCarCount; i++) {
         float x, y, h, st;
         SlotCarDrawPose(i, &x, &y, &h, &st);
-        if (jumpX[i] >= 0) {
+        bool inView = slVX1 < slVX0 || (x >= slVX0 && x <= slVX1 && y >= slVY0 && y <= slVY1);   // (with a view: only jumps you could see)
+        if (jumpX[i] >= 0 && inView) {
             float d = sqrtf((x - jumpX[i]) * (x - jumpX[i]) + (y - jumpY[i]) * (y - jumpY[i]));
             if (d > limit) {
                 jumpCount++;
