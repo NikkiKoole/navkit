@@ -77,6 +77,8 @@ Recipe hearthRecipes[] = {
     { "Brew Tea",     ITEM_WATER, 2, ITEM_DRIED_GRASS, 4, ITEM_NONE, 0, ITEM_HERBAL_TEA, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Press Juice",  ITEM_WATER, 2, ITEM_BERRIES, 6, ITEM_NONE, 0, ITEM_BERRY_JUICE, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Make Lye",     ITEM_ASH, 2, ITEM_WATER, 1, ITEM_NONE, 0, ITEM_LYE, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Old nitre beds: water through compost and wood ash, boiled down to saltpeter (for gunpowder)
+    { "Leach Saltpeter", ITEM_COMPOST, 2, ITEM_ASH, 1, ITEM_WATER, 1, ITEM_SALTPETER, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
@@ -114,6 +116,9 @@ int compostPileRecipeCount = sizeof(compostPileRecipes) / sizeof(compostPileReci
 // Quern recipes: grind grain into flour
 Recipe quernRecipes[] = {
     { "Grind Wheat", ITEM_WHEAT, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_FLOUR, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Black powder without sulfur: weaker, fine for blasting rock (one gunpowder = one charge).
+    // One of each: a recipe takes an input's count from one stack, and saltpeter often lies in two
+    { "Grind Gunpowder", ITEM_SALTPETER, 1, ITEM_CHARCOAL, 1, ITEM_NONE, 0, ITEM_GUNPOWDER, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int quernRecipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]);
 

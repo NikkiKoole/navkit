@@ -757,6 +757,7 @@ static const struct { const char* name; const char* worker; } designationText[DE
     [DESIGNATION_EXPLORE]        = {"Explore",        "Explorer"},
     [DESIGNATION_FARM]           = {"Farm",           "Farmer"},
     [DESIGNATION_REMOVE_BELT]    = {"Remove Belt",    "Worker"},
+    [DESIGNATION_BLAST]          = {"Blast",          "Blaster"},
 };
 
 const char* DesignationDisplayName(int type) {

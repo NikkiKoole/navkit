@@ -1,4 +1,5 @@
 #include "jobs.h"
+#include "../simulation/explosion.h"
 #include "inventory.h"
 #include "items.h"
 #include "item_defs.h"
@@ -145,6 +146,8 @@ static int cleanCacheCount = 0;
 
 static OnTileDesignationEntry removeBeltCache[MAX_DESIGNATION_CACHE];
 static int removeBeltCacheCount = 0;
+static AdjacentDesignationEntry blastCache[MAX_DESIGNATION_CACHE];
+static int blastCacheCount = 0;
 
 static OnTileDesignationEntry harvestBerryCache[MAX_DESIGNATION_CACHE];
 static int harvestBerryCacheCount = 0;
@@ -174,6 +177,7 @@ static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool removeBeltCacheDirty = true;
+static bool blastCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
 static bool digRootsCacheDirty = true;
@@ -194,6 +198,7 @@ static void RebuildGatherReedsDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
 static void RebuildRemoveBeltDesignationCache(void);
+static void RebuildBlastDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
@@ -286,6 +291,7 @@ static inline void PhaseMoverEnd(int moverIdx, bool was) {
 static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_RemoveBelt(int moverIdx);
+static int WorkGiver_Blast(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -343,6 +349,8 @@ static DesignationJobSpec designationSpecs[] = {
      tillCache, &tillCacheCount, &tillCacheDirty},
     {DESIGNATION_REMOVE_BELT, JOBTYPE_REMOVE_BELT, RebuildRemoveBeltDesignationCache, WorkGiver_RemoveBelt,
      removeBeltCache, &removeBeltCacheCount, &removeBeltCacheDirty},
+    {DESIGNATION_BLAST, JOBTYPE_BLAST, RebuildBlastDesignationCache, WorkGiver_Blast,
+     blastCache, &blastCacheCount, &blastCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -492,6 +500,12 @@ static void RebuildCleanDesignationCache(void) {
     if (!cleanCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount, true);
     cleanCacheDirty = false;
+}
+
+static void RebuildBlastDesignationCache(void) {
+    if (!blastCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_BLAST, blastCache, &blastCacheCount, true);
+    blastCacheDirty = false;
 }
 
 static void RebuildRemoveBeltDesignationCache(void) {
@@ -2611,6 +2625,100 @@ JobRunResult RunJob_RemoveBelt(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Somewhere to stand out of a blast's reach: the nearest walkable cell on this level at least
+// minDist cells from the charge, by a walking search (4 neighbours, up to 2000 cells)
+static bool FindBlastShelter(int fromX, int fromY, int z, int cx, int cy, float minDist, int* outX, int* outY) {
+    enum { CAP = 2000 };
+    static int qx[CAP], qy[CAP];
+    static const int dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
+    int head = 0, tail = 0;
+    qx[tail] = fromX; qy[tail++] = fromY;
+    while (head < tail) {
+        int x = qx[head], y = qy[head++];
+        float ddx = (float)(x - cx), ddy = (float)(y - cy);
+        if (ddx * ddx + ddy * ddy >= minDist * minDist) { *outX = x; *outY = y; return true; }
+        for (int d = 0; d < 4 && tail < CAP; d++) {
+            int nx = x + dx4[d], ny = y + dy4[d];
+            if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight || !IsCellWalkableAt(z, ny, nx)) continue;
+            bool seen = false;
+            for (int k = 0; k < tail && !seen; k++) seen = qx[k] == nx && qy[k] == ny;
+            if (seen) continue;
+            qx[tail] = nx; qy[tail++] = ny;
+        }
+    }
+    return false;
+}
+
+// Blast job driver: fetch gunpowder -> carry it to the wall -> set the charge -> light it ->
+// walk out of reach (explosion.c does the bang after blastFuse seconds)
+JobRunResult RunJob_Blast(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    if (job->step == STEP_FLEEING) {
+        // job->progress counts game seconds here; done once clear (or the fuse surely burned down)
+        job->progress += dt;
+        int gx = job->targetAdjX, gy = job->targetAdjY;
+        if (mover->goal.x != gx || mover->goal.y != gy || mover->goal.z != tz) {
+            mover->goal = (Point){ gx, gy, tz };
+            mover->needsRepath = true;
+        }
+        float ddx = mover->x / CELL_SIZE - (gx + 0.5f), ddy = mover->y / CELL_SIZE - (gy + 0.5f);
+        if ((ddx * ddx + ddy * ddy < 0.5f * 0.5f) || job->progress > blastFuse + 1.0f) return JOBRUN_DONE;
+        return JOBRUN_RUNNING;
+    }
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_BLAST) return JOBRUN_FAIL;
+    if (ExplosionCellStrength(tx, ty, tz) <= 0.0f) {   // mined or blasted away meanwhile
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        // Still a stack (merged into one meanwhile): take one off (as RunJob_PlantCrop does with seeds)
+        int gi = job->targetItem;
+        if (gi >= 0 && items[gi].active && items[gi].stackCount > 1) {
+            int single = SplitStack(gi, 1);
+            if (single >= 0) {
+                ReleaseItemReservation(gi);
+                ReserveItem(single, (int)(mover - movers));
+                job->targetItem = single;
+            }
+        }
+        return RunPickupStep(job, mover, (Point){ job->targetAdjX, job->targetAdjY, tz });
+    }
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, job->targetAdjX, job->targetAdjY, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_SETTING_CHARGE;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+        return r;
+    }
+    if (job->step == STEP_SETTING_CHARGE) {
+        int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, BLAST_SET_WORK_TIME, true, 1.0f);
+        if (r != JOBRUN_DONE) return r;
+        DeleteItem(itemIdx);
+        job->carryingItem = -1;
+        CancelDesignation(tx, ty, tz);
+        ExplosionLightFuse(tx, ty, tz, blastPower, blastFuse);
+        EventLog("Mover %d lit a charge at (%d,%d,z%d)", (int)(mover - movers), tx, ty, tz);
+        // Run: out of reach on this level (the blast is weaker past walls, but don't count on it)
+        int mx = (int)(mover->x / CELL_SIZE), my = (int)(mover->y / CELL_SIZE), sx, sy;
+        if (!FindBlastShelter(mx, my, tz, tx, ty, blastPower + 2.0f, &sx, &sy)) { sx = mx; sy = my; }
+        job->targetAdjX = sx;
+        job->targetAdjY = sy;
+        job->targetMineX = job->targetMineY = -1;   // the designation is gone (CancelJob: nothing to release)
+        job->step = STEP_FLEEING;
+        job->progress = 0.0f;
+        mover->goal = (Point){ sx, sy, tz };
+        mover->needsRepath = true;
+        return JOBRUN_RUNNING;
+    }
+    return JOBRUN_FAIL;
+}
+
 // Deconstruct workshop driver: walk to work tile, tear down, refund materials
 JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -3442,6 +3550,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_WATER_CROP] = RunJob_WaterCrop,
     [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
     [JOBTYPE_THROW] = RunJob_Throw,
+    [JOBTYPE_BLAST] = RunJob_Blast,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
@@ -6755,6 +6864,76 @@ static int WorkGiver_RemoveBelt(int moverIdx) {
     GetDesignation(bx, by, bz)->assignedMover = moverIdx;
     m->currentJobId = jobId;
     m->goal = cell;
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
+// WorkGiver_Blast: nearest blast designation + nearest gunpowder; miners do it
+static int WorkGiver_Blast(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canMine || blastCacheCount == 0) return -1;
+    int bx = -1, by = -1, bz = -1;
+    float bestDistSq = 1e30f;
+    for (int i = 0; i < blastCacheCount; i++) {
+        AdjacentDesignationEntry* e = &blastCache[i];
+        Designation* d = GetDesignation(e->x, e->y, e->z);
+        if (!d || d->type != DESIGNATION_BLAST || d->assignedMover != -1 || d->unreachableCooldown > 0.0f) continue;
+        float dx = (e->adjX + 0.5f) * CELL_SIZE - m->x, dy = (e->adjY + 0.5f) * CELL_SIZE - m->y;
+        if (dx * dx + dy * dy < bestDistSq) { bestDistSq = dx * dx + dy * dy; bx = e->x; by = e->y; bz = e->z; }
+    }
+    if (bx < 0 || !JobInRange(moverIdx, bx, by, bz)) return -1;
+
+    int bestItem = -1;
+    float bestItemDistSq = 1e30f;
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        Item* it = &items[j];
+        if (!it->active || it->type != ITEM_GUNPOWDER || it->reservedBy != -1 || it->containedIn >= 0) continue;
+        if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) continue;
+        if (it->unreachableCooldown > 0.0f) continue;
+        if (!IsExplored((int)(it->x / CELL_SIZE), (int)(it->y / CELL_SIZE), (int)it->z)) continue;
+        float dx = it->x - m->x, dy = it->y - m->y;
+        if (dx * dx + dy * dy < bestItemDistSq) { bestItemDistSq = dx * dx + dy * dy; bestItem = j; }
+    }
+    if (bestItem < 0) return -1;
+
+    Item* it = &items[bestItem];
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point itemCell = { (int)(it->x / CELL_SIZE), (int)(it->y / CELL_SIZE), (int)it->z };
+    Point tempPath[MAX_PATH];
+    if (FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH) <= 0) {
+        SetItemUnreachableCooldown(bestItem, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
+    int adjX, adjY;
+    if (!FindReachableAdjacentTile(bx, by, bz, itemCell, &adjX, &adjY)) {
+        Designation* d = GetDesignation(bx, by, bz);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    int jobId = CreateJob(JOBTYPE_BLAST);
+    if (jobId < 0) return -1;
+    // One charge is one gunpowder: take one off a stack now, so other blasters can take the rest
+    if (items[bestItem].stackCount > 1) {
+        int single = SplitStack(bestItem, 1);
+        if (single >= 0) bestItem = single;
+    }
+    ReserveItem(bestItem, moverIdx);
+    Designation* d = GetDesignation(bx, by, bz);
+    d->assignedMover = moverIdx;
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestItem;
+    job->targetMineX = bx;
+    job->targetMineY = by;
+    job->targetMineZ = bz;
+    job->targetAdjX = adjX;
+    job->targetAdjY = adjY;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+    m->currentJobId = jobId;
+    m->goal = itemCell;
     m->needsRepath = true;
     RemoveMoverFromIdleList(moverIdx);
     return jobId;

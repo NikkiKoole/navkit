@@ -2,8 +2,8 @@
 
 Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural rock too: blast
 mining), throw loose items by weight, knock movers back (slice 1); structural support: what
-loses its connection to the ground creaks and falls, landing as walls (slice 2). Not yet:
-gameplay sources (gunpowder, blast mining as a job), animals, visuals, overhang limits.
+loses its connection to the ground creaks and falls, landing as walls (slice 2); gunpowder and
+blast mining as a job (slice 3). Not yet: animals, visuals, overhang limits, gunpowder in fire.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -93,8 +93,34 @@ Not done: overhang / span limits (a 15-cell slab on one pillar stands as long as
 falling pieces don't hurt or crush items (pushed out), no sound or proper dust particles, no
 warning drawn on the cells themselves (only dust), animals aren't pushed out.
 
-Next: gameplay sources (gunpowder, blast mining job with a charge item), animals knocked too,
-a fuse sprite and a flash / debris particles, maybe span limits per material for built things.
+## Built: gunpowder and blast mining (slice 3, 2026-11-25)
+
+Save v114 (items ITEM_SALTPETER, ITEM_GUNPOWDER; stockpile allowedTypes 83 -> 85, StockpileV113).
+Scenario `blasting` (in scenarios-check), tests in test_explosion "blast_designation".
+
+- Chain (user's pick): hearth "Leach Saltpeter" 2 compost + 1 ash + 1 water -> 1 saltpeter
+  (4 h); quern "Grind Gunpowder" 1 saltpeter + 1 charcoal -> 1 gunpowder (1 h). Planned as 2
+  saltpeter + 1 charcoal -> 2, changed to one of each: a recipe takes an input's count from one
+  stack, and two saltpeter often sit in two stockpile slots (the quern never started). No sulfur.
+- `DESIGNATION_BLAST` (adjacent, like mining; any wall the blast can break: not bedrock or trees)
+  -> `JOBTYPE_BLAST` (miners, `canMine`): fetch one gunpowder (one off a stack, split when the
+  job is given so other blasters take the rest), carry it to the wall, set it (0.3 h), light it
+  (`ExplosionLightFuse` in the wall cell: drilled in), walk to the nearest cell at least
+  `blastPower` + 2 away on that level (`FindBlastShelter`), job done there or when the fuse
+  must have burned down. Settings `blastPower` 5 (granite: its cell + the 6 around it; ~20 cells
+  of soil), `blastFuse` 5 s.
+- Tools: dev Work bar Dig -> Blast (b), drag, right-drag cancels; play HUD (survival, island):
+  "Blast Rock" once there is gunpowder (`GameToolContext.hasGunpowder`).
+- Headless `--events FILE` writes the event log after the run (added to find the bug below).
+
+Found while building: a blaster picked up the whole stockpile stack of 3 gunpowder and setting the
+charge deleted all three; one blast job at a time held the stack. Both fixed by splitting one off.
+
+Not done: gunpowder near fire doesn't go off; blasters don't warn others (only themselves get
+clear); no charge item with its own fuse length; no sprite of its own (gravel / dirt sprites).
+
+Next: animals knocked too, a fuse sprite and a flash / debris particles, gunpowder in fire,
+maybe span limits per material for built things.
 
 ## What exists to build on
 

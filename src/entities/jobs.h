@@ -48,6 +48,7 @@ typedef enum {
     JOBTYPE_GATHER_REEDS,            // Gather reeds (creates reeds item)
     JOBTYPE_REMOVE_BELT,             // Walk onto a belt, take it down
     JOBTYPE_THROW,                   // Fetch a small item, throw it at a goal cell (throwing.c)
+    JOBTYPE_BLAST,                   // Fetch gunpowder, set it in a designated wall, light it, run
     JOBTYPE_COUNT
 } JobType;
 
@@ -90,6 +91,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_GATHER_REEDS]         = "GATHER_REEDS",
         [JOBTYPE_REMOVE_BELT]         = "REMOVE_BELT",
         [JOBTYPE_THROW]               = "THROW",
+        [JOBTYPE_BLAST]               = "BLAST",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -123,6 +125,8 @@ static inline const char* JobTypeName(int type) {
 // Tool fetch step (shared by designation and craft jobs)
 // High value to avoid collision with existing step numbering
 #define STEP_FETCHING_TOOL          13 // Walking to tool item, equips on arrival
+#define STEP_SETTING_CHARGE    2  // Blast: at the wall, setting the charge
+#define STEP_FLEEING           3  // Blast: fuse lit, walking out of reach
 
 // Job struct - contains all data for a single job
 typedef struct {
@@ -225,6 +229,7 @@ JobRunResult RunJob_DigRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveFloor(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveBelt(Job* job, void* mover, float dt);
+JobRunResult RunJob_Blast(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);

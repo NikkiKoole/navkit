@@ -8,6 +8,7 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/simulation/explosion.h"
 #include "../src/core/state_audit.h"
+#include "../src/world/designations.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -196,6 +197,32 @@ describe(explosion_fuse) {
     }
 }
 
+describe(blast_designation) {
+    it("marks walls the blast can break, not air, bedrock or trees, and not twice") {
+        FlatWorld();
+        Wall(5, 5, 1, MAT_GRANITE);
+        Wall(6, 5, 1, MAT_BEDROCK);
+        GRID(7, 5, 1) = CELL_TREE_TRUNK;
+        expect(DesignateBlast(5, 5, 1));
+        expect(HasBlastDesignation(5, 5, 1));
+        expect(!DesignateBlast(5, 5, 1));       // already marked
+        expect(!DesignateBlast(8, 8, 1));       // air
+        expect(!DesignateBlast(6, 5, 1));       // bedrock
+        expect(!DesignateBlast(7, 5, 1));       // tree
+        expect(CountBlastDesignations() == 1);
+        CancelDesignation(5, 5, 1);
+        expect(CountBlastDesignations() == 0);
+    }
+
+    it("doesn't take a wall someone already marked for something else") {
+        FlatWorld();
+        Wall(5, 5, 1, MAT_GRANITE);
+        expect(DesignateMine(5, 5, 1));
+        expect(!DesignateBlast(5, 5, 1));
+        CancelDesignation(5, 5, 1);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -204,5 +231,6 @@ int main(int argc, char** argv) {
     test(explosion_walls);
     test(explosion_movers);
     test(explosion_fuse);
+    test(blast_designation);
     return summary();
 }

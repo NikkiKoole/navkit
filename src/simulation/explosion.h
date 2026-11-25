@@ -13,6 +13,9 @@
 
 #define EXPLOSION_MAX_POWER 24.0f
 
+extern float blastPower;   // setting blastPower: one gunpowder charge set by a blast-mining job
+extern float blastFuse;    // setting blastFuse: game seconds from lighting to the bang
+
 typedef struct {
     int cellsBroken;     // walls / windows
     int floorsBroken;

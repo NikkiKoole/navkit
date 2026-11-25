@@ -270,6 +270,8 @@ hooks for headless runs (ladders uses them for queue length).
 ./build/bin/path --headless --scenario <name> --ticks 100   # see Scenarios
 ```
 
+`--events FILE` (any headless run) writes the event log to FILE after the run (what F8 does in game).
+
 `--day-budget` (any headless run) prints where the movers' days go: game hours per mover per
 day sleeping, working, walking to work, walking to needs (split by food/drink/toilet/bed),
 eating, drinking, toilet, idle, plus meals/drinks/jobs per day (`src/core/day_budget.c`).

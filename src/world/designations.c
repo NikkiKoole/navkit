@@ -1,4 +1,5 @@
 #include "designations.h"
+#include "../simulation/explosion.h"
 #include "grid.h"
 #include "cell_defs.h"
 #include "material.h"
@@ -2965,4 +2966,35 @@ void CompleteRemoveBeltDesignation(int x, int y, int z) {
         SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_PLANKS);
     }
     CancelRemoveBeltDesignation(x, y, z);
+}
+
+// =============================================================================
+// Blast mining (adjacent designation, JOBTYPE_BLAST; the blast itself: explosion.c)
+// =============================================================================
+
+bool DesignateBlast(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (!IsExplored(x, y, z)) return false;
+    if (!CellIsSolid(GRID(x, y, z)) || ExplosionCellStrength(x, y, z) <= 0.0f) return false;
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_BLAST;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_BLAST);
+    return true;
+}
+
+bool HasBlastDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    return DESIGNATION(x, y, z).type == DESIGNATION_BLAST;
+}
+
+int CountBlastDesignations(void) {
+    int n = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (DESIGNATION(x, y, z).type == DESIGNATION_BLAST) n++;
+    return n;
 }

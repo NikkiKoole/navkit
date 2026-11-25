@@ -70,6 +70,7 @@ typedef enum {
     ACTION_WORK_DIG_RAMP,
     ACTION_WORK_REMOVE_FLOOR,
     ACTION_WORK_REMOVE_RAMP,
+    ACTION_WORK_BLAST,      // Blast mining: a gunpowder charge per designated wall (explosion.c)
     // Work > Build actions
     ACTION_WORK_CONSTRUCT,
     ACTION_WORK_FLOOR,

@@ -635,6 +635,18 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = false,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_BLAST,
+        .name = "BLAST",
+        .barDisplayText = "Blast",
+        .barKey = 'b',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // ========================================================================
     // MODE_WORK > SUBMODE_BUILD actions

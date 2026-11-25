@@ -57,6 +57,7 @@ done <<'EOF'
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
 0   | 0 | --scenario collapse
+0   | 0 | --scenario blasting
 0   | 0 | --scenario throwing
 0   | 0 | --scenario throwscare
 7   | 0 | --scenario train

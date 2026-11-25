@@ -95,6 +95,9 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_CHEST,        FILTER_CAT_CONTAINER, "Chest",        BROWN},
     {ITEM_BACKPACK,     FILTER_CAT_CONTAINER, "Backpack",     DARKGREEN},
     {ITEM_PLASTIC_BAG,  FILTER_CAT_CONTAINER, "Plastic Bag",  LIGHTGRAY},
+    // Blasting (in Craft)
+    {ITEM_SALTPETER,    FILTER_CAT_CRAFT,     "Saltpeter",    RAYWHITE},
+    {ITEM_GUNPOWDER,    FILTER_CAT_CRAFT,     "Gunpowder",    DARKGRAY},
     // Tool
     {ITEM_DIGGING_STICK,FILTER_CAT_TOOL,      "Digging Stick",BROWN},
     {ITEM_STONE_AXE,    FILTER_CAT_TOOL,      "Stone Axe",    GRAY},

@@ -1067,6 +1067,14 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             printf("\nNo active mover %s (%d movers)\n", argv[i + 1], moverCount);
     }
 
+    // --events FILE: the event log (event_log.c: job lifecycle, item deletes, explosions, ...)
+    // written to FILE after the run, as F8 does in the game
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--events") != 0) continue;
+        EventLogDump(argv[i + 1]);
+        printf("Event log (%d entries) written to %s\n", EventLogCount(), argv[i + 1]);
+    }
+
     // --describe-cell X,Y,Z: the cell as the game describes it (room, materials, ...), after
     // the run. Repeatable.
     for (int i = 1; i + 1 < argc; i++) {
@@ -1421,7 +1429,7 @@ int main(int argc, char** argv) {
                 }
             }
             if (!headlessFile && !scenarioName && !gameName) {
-                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--mover N] ...\n", argv[0]);
+                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--events <logfile>] [--mover N] ...\n", argv[0]);
                 return 1;
             }
             return RunHeadless(headlessFile, scenarioName, gameName, headlessTicks, argc, argv);
@@ -2199,6 +2207,10 @@ int main(int argc, char** argv) {
                             case ACTION_WORK_MINE:
                                 fillColor = (Color){255, 150, 0, 80};
                                 lineColor = ORANGE;
+                                break;
+                            case ACTION_WORK_BLAST:
+                                fillColor = (Color){230, 40, 40, 80};
+                                lineColor = RED;
                                 break;
                             case ACTION_WORK_CONSTRUCT:
                                 fillColor = (Color){0, 200, 200, 80};

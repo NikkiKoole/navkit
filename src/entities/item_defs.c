@@ -129,6 +129,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_PLASTIC_BAG]    = { "Plastic Bag",  SPRITE_crate_red,      IF_CONTAINER, 1, MAT_NONE, 0.05f, 0.0f, 0.0f },
     // Big portion (nutrition 1.0): leftovers unless very hungry; leftovers spoil within half a day
     [ITEM_BURGER]         = { "Burger",       SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 1.0f, 48.0f },
+    [ITEM_SALTPETER]      = { "Saltpeter",    SPRITE_gravel,         IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_GUNPOWDER]      = { "Gunpowder",    SPRITE_dirt,           IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_LEFTOVERS]      = { "Leftovers",    SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.05f, LEFTOVER_UNIT_NUTRITION, 12.0f },
 };
 #undef MN

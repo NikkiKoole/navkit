@@ -646,6 +646,23 @@ static void ExecuteDesignateRemoveRamp(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+// Blast mining: one gunpowder charge per designated wall; the blaster lights it and runs
+static void ExecuteDesignateBlast(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (DesignateBlast(dx, dy, z)) count++;
+    if (count > 0) AddMessage(TextFormat("Marked %d wall%s for blasting (one gunpowder each)", count, count > 1 ? "s" : ""), ORANGE);
+}
+
+static void ExecuteCancelBlast(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (HasBlastDesignation(dx, dy, z)) { CancelDesignation(dx, dy, z); count++; }
+    if (count > 0) AddMessage(TextFormat("Cancelled %d blast%s", count, count > 1 ? "s" : ""), ORANGE);
+}
+
 static void ExecuteCancelRemoveRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2040,6 +2057,7 @@ RECT_TOOL(ExecuteDesignateChannel)   RECT_TOOL(ExecuteCancelChannel)
 RECT_TOOL(ExecuteDesignateDigRamp)   RECT_TOOL(ExecuteCancelDigRamp)
 RECT_TOOL(ExecuteDesignateRemoveFloor) RECT_TOOL(ExecuteCancelRemoveFloor)
 RECT_TOOL(ExecuteDesignateRemoveRamp)  RECT_TOOL(ExecuteCancelRemoveRamp)
+RECT_TOOL(ExecuteDesignateBlast)     RECT_TOOL(ExecuteCancelBlast)
 RECT_TOOL(ExecuteDesignateBuild)     RECT_TOOL(ExecuteCancelBuild)
 RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
 RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
@@ -2218,6 +2236,7 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_WORK_DIG_RAMP]      = PAIR(ExecuteDesignateDigRamp, ExecuteCancelDigRamp),
     [ACTION_WORK_REMOVE_FLOOR]  = PAIR(ExecuteDesignateRemoveFloor, ExecuteCancelRemoveFloor),
     [ACTION_WORK_REMOVE_RAMP]   = PAIR(ExecuteDesignateRemoveRamp, ExecuteCancelRemoveRamp),
+    [ACTION_WORK_BLAST]         = PAIR(ExecuteDesignateBlast, ExecuteCancelBlast),
     [ACTION_WORK_CONSTRUCT]     = PAIR(ExecuteDesignateBuild, ExecuteCancelBuild),
     [ACTION_WORK_LADDER]        = PAIR(ExecuteDesignateLadder, ExecuteCancelBuild),
     [ACTION_WORK_FLOOR]         = PAIR(ExecuteDesignateFloor, ExecuteCancelBuild),

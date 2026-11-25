@@ -91,6 +91,8 @@ typedef enum {
     ITEM_PLASTIC_BAG,    // Held in one hand: a container
     ITEM_BURGER,         // City meal, a big portion: who isn't very hungry leaves some (leftovers)
     ITEM_LEFTOVERS,      // What was left of a meal: a little food per unit, spoils fast
+    ITEM_SALTPETER,      // Leached from compost and ash at the hearth; ground with charcoal into gunpowder
+    ITEM_GUNPOWDER,      // One blasting charge (blast mining: DESIGNATION_BLAST, explosion.c)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

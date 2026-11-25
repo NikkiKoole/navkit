@@ -42,6 +42,9 @@
 #define MIN_SPEED        0.5f    // weaker pushes do nothing
 #define ITEM_LAND_SPEED  2.0f    // a thrown item keeps its height until it slows to this
 
+float blastPower = 5.0f;   // granite (4): the drilled cell + the 6 around it; ~20 cells of soil
+float blastFuse = 5.0f;
+
 // ---------------------------------------------------------------------------------------------
 // Strength
 

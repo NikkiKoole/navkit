@@ -4666,6 +4666,105 @@ static bool CollapseCheck(char* why, int whyLen) {
     return true;
 }
 
+// blasting: blast mining end to end. A granite hill (z1-3) with 4 walls on its face marked
+// for blasting; 3 gunpowder lie by the stockpile and a hearth + quern make 2 more: the hearth
+// leaches one saltpeter from compost, ash and water, the quern grinds it and the saltpeter
+// already there, each with a charcoal (Leach Saltpeter, Grind Gunpowder). 3 miners fetch a charge each,
+// set it, light it and get clear before the bang. Check: every mark blasted (the 4th charge
+// came from the chain), nobody was caught by a blast, nothing hanging, the state audit is clean.
+static int blastGraniteBefore;
+static bool blastSomeoneKnocked;
+
+static int BlastCountGranite(void) {
+    int n = 0;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 4; y <= 28; y++)
+            for (int x = 30; x <= 44; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == MAT_GRANITE) n++;
+    return n;
+}
+
+static int RecipeByName(WorkshopType type, const char* name) {
+    for (int i = 0; i < workshopDefs[type].recipeCount; i++)
+        if (strcmp(workshopDefs[type].recipes[i].name, name) == 0) return i;
+    return -1;
+}
+
+// One stack of n on (x, y): a recipe takes its count of an input from one stack
+static void SpawnPile(int x, int y, ItemType type, int n) {
+    int idx = SpawnItem((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 1.0f, type);
+    if (idx >= 0) items[idx].stackCount = n;
+}
+
+static void SetupBlasting(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    toolRequirementsEnabled = false;
+    blastSomeoneKnocked = false;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 4; y <= 28; y++)
+            for (int x = 30; x <= 44; x++) {
+                GRID(x, y, z) = CELL_WALL;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
+                SetWallNatural(x, y, z);
+            }
+    blastGraniteBefore = BlastCountGranite();
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    // Saltpeter and gunpowder only: the raw things lie by their workshop, rubble stays where it lands
+    int sp = CreateStockpile(4, 4, 1, 6, 6);
+    for (int t = 0; t < ITEM_TYPE_COUNT && sp >= 0; t++)
+        SetStockpileFilter(sp, (ItemType)t, t == ITEM_SALTPETER || t == ITEM_GUNPOWDER);
+    int hearth = CreateWorkshop(14, 5, 1, WORKSHOP_HEARTH);
+    int quern = CreateWorkshop(14, 12, 1, WORKSHOP_QUERN);
+    if (hearth >= 0) AddBill(hearth, RecipeByName(WORKSHOP_HEARTH, "Leach Saltpeter"), BILL_DO_X_TIMES, 1);
+    if (quern >= 0) AddBill(quern, RecipeByName(WORKSHOP_QUERN, "Grind Gunpowder"), BILL_DO_X_TIMES, 2);
+    SpawnPile(11, 5, ITEM_COMPOST, 2);
+    SpawnPile(11, 6, ITEM_ASH, 1);
+    SpawnPile(12, 6, ITEM_WATER, 1);
+    SpawnPile(11, 12, ITEM_CHARCOAL, 2);
+    SpawnPile(5, 5, ITEM_SALTPETER, 1);    // + the one leached: two grinds
+    SpawnPile(5, 7, ITEM_GUNPOWDER, 3);
+    for (int k = 0; k < 4; k++) DesignateBlast(30, 7 + k * 6, 1);   // one more than the gunpowder ready
+    for (int i = 0; i < 3; i++) SpawnMoverAt(20, 8 + i * 6, 1);
+    currentViewZ = 1;
+    AddMessage("Blasting: 4 walls marked, 3 gunpowder ready, a hearth and a quern make 2 more", ORANGE);
+}
+
+static void BlastingTickStats(void) {
+    for (int i = 0; i < moverCount; i++) if (movers[i].active && MoverKnocked(i)) blastSomeoneKnocked = true;
+}
+
+static int BlastCountItems(ItemType t) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == t) n += items[i].stackCount;
+    return n;
+}
+
+static void BlastingPrintStats(void) {
+    EventLogDump("/private/tmp/claude-501/-Users-nikkikoole-Projects-navkit/3a468705-3aac-436e-805d-780b1cc7def2/scratchpad/blast_events.log");   // DBG
+    printf("Blasting: marks left %d, fuses %d, granite blasted %d, gunpowder left %d, saltpeter %d, compost %d, "
+           "someone caught by a blast %s, unsupported %d\n",
+           CountBlastDesignations(), ExplosionFuseCount(), blastGraniteBefore - BlastCountGranite(),
+           BlastCountItems(ITEM_GUNPOWDER), BlastCountItems(ITEM_SALTPETER), BlastCountItems(ITEM_COMPOST),
+           blastSomeoneKnocked ? "yes" : "no", SupportCountUnsupported());
+}
+
+static bool BlastingCheck(char* why, int whyLen) {
+    if (CountBlastDesignations() != 0) { snprintf(why, (size_t)whyLen, "%d walls still marked for blasting", CountBlastDesignations()); return false; }
+    if (ExplosionFuseCount() != 0) { snprintf(why, (size_t)whyLen, "a fuse is still burning"); return false; }
+    int blasted = blastGraniteBefore - BlastCountGranite();
+    if (blasted < 20) { snprintf(why, (size_t)whyLen, "only %d granite cells blasted (want >= 20 for 4 charges)", blasted); return false; }
+    if (BlastCountItems(ITEM_COMPOST) > 0) { snprintf(why, (size_t)whyLen, "the hearth didn't leach the compost"); return false; }
+    if (blastSomeoneKnocked) { snprintf(why, (size_t)whyLen, "a blaster was caught by a blast"); return false; }
+    int un = SupportCountUnsupported();
+    if (un) { snprintf(why, (size_t)whyLen, "%d structure cells hanging", un); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4763,6 +4862,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"blasting",   "Blast mining: 4 walls of a granite hill marked; 3 gunpowder ready, a hearth + quern make 2 more (saltpeter from compost, ash, water; ground with charcoal); 3 miners set, light and run",
+                   NULL,        SetupBlasting, BlastingTickStats, BlastingPrintStats, BlastingCheck, 48, 32},
     {"collapse",   "Structural support: charges take the foot out of a granite pillar with an arm, a roof slab over a mover and a wooden deck with a log on it; each creaks, falls and lands as walls",
                    NULL,        SetupCollapse, CollapseTickStats, CollapsePrintStats, CollapseCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
