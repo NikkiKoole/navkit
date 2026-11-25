@@ -91,6 +91,16 @@ extern long tableTalkTicks;          // diner-ticks with someone to talk to at t
 int MoverDiningAt(int moverIdx);     // the table it eats at (furniture index), -1 if none
 void TableTalkTick(float dt);        // (TalkTick calls it)
 
+// --- Mingling: someone in a talk or round a place (a campfire) now and then moves over to a
+// group within 10 cells it likes clearly better (the one it likes most there, +15 over here; a
+// place counts +10 of its own), after 6 s at least; when a talk ends its members look for a
+// group with a friend in it before wandering off. It walks to the group and joins when in reach
+// (up to 15 s). Not from walks, not the performer. Setting mingleEnabled.
+extern bool mingleEnabled;
+extern float mingleChance;          // per check, once a clearly better group is in range
+extern long mingleCount;            // moves to another group (stats)
+bool MoverIsMingling(int moverIdx); // on its way to another group
+
 // --- Choosing a spot (a seat, a place in a gathering's ring) by who's next to it ---
 // A bonus in cells (positive: nicer, negative: rather not) from the people within 1.6 cells of
 // the spot (sitting/reserved on seats there, or standing there): a friend (like >= 20) up to +4,

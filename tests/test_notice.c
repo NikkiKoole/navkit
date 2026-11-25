@@ -916,6 +916,53 @@ describe(spot_choice) {
     }
 }
 
+describe(mingling) {
+    it("in a talk with strangers, a friend's group nearby: moves over and joins it") {
+        TalkSetup();
+        mingleEnabled = true; mingleChance = 1.0f;
+        talkMinSeconds = talkMaxSeconds = 120.0f;
+        int a = AddMover(4, 5, 1), s1 = AddMover(6, 5, 1);      // a talks with a stranger
+        int f = AddMover(12, 5, 1), f2 = AddMover(14, 5, 1);    // its friend talks with someone else
+        RelationAdd(a, f, 60.0f, 80.0f);
+        TalkStart(a, s1);
+        TalkStart(f, f2);
+        int other = MoverTalk(f);
+        RunTalk(7.0f);                                          // a has been there 6 s+: leaves
+        expect(MoverIsMingling(a) || MoverTalk(a) == other);
+        for (int t = 0; t < 8 * TICK_RATE && MoverTalk(a) != other; t++) {   // walk over (by hand here)
+            float dx = talks[other].centerX - movers[a].x, dy = talks[other].centerY - movers[a].y;
+            float d = sqrtf(dx * dx + dy * dy);
+            if (d > 1.0f) { movers[a].x += dx / d * 2.0f; movers[a].y += dy / d * 2.0f; }
+            TalkTick(TICK_DT);
+        }
+        expect(MoverTalk(a) == other);
+        expect(talks[other].count == 3);
+        expect(mingleCount == 1);
+        mingleChance = 0.02f;
+    }
+
+    it("nothing better nearby (or off, or a foe there): stays") {
+        TalkSetup();
+        mingleChance = 1.0f;
+        talkMinSeconds = talkMaxSeconds = 120.0f;
+        int a = AddMover(4, 5, 1), b = AddMover(6, 5, 1), c = AddMover(12, 5, 1), d = AddMover(14, 5, 1);
+        RelationSetPair(a, b, 40.0f, 60.0f);
+        RelationAdd(a, c, 50.0f, 60.0f);                        // only a bit better than here: stays
+        TalkStart(a, b); TalkStart(c, d);
+        RunTalk(8.0f);
+        expect(MoverTalk(a) == MoverTalk(b) && !MoverIsMingling(a));
+        RelationAdd(a, c, 30.0f, 0.0f);                         // now much better, but a foe is there
+        RelationAdd(a, d, -40.0f, 50.0f);
+        RunTalk(4.0f);
+        expect(MoverTalk(a) == MoverTalk(b));
+        mingleEnabled = false;
+        RelationAdd(a, d, 80.0f, 0.0f);
+        RunTalk(4.0f);
+        expect(MoverTalk(a) == MoverTalk(b));
+        mingleEnabled = true; mingleChance = 0.02f;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -931,5 +978,6 @@ int main(int argc, char* argv[]) {
     test(glances_and_greetings);
     test(table_talk);
     test(spot_choice);
+    test(mingling);
     return summary();
 }

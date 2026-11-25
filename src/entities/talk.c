@@ -36,6 +36,13 @@ float walkPace = 0.7f;
 long walkStartedCount = 0;
 long walkJoinedCount = 0;
 bool spotByFriends = true;
+bool mingleEnabled = true;
+float mingleChance = 0.02f;   // per check (~4 checks a second) once a better group is there
+long mingleCount = 0;
+static float groupTime[MAX_MOVERS];     // seconds in its current group (mingling: not before 6 s)
+static int groupLast[MAX_MOVERS];       // the talk index + 1 groupTime counts for
+static int mingleTarget[MAX_MOVERS];    // talk index + 1 it is walking over to, 0 = none
+static float mingleGiveUp[MAX_MOVERS];
 static int talkHigh = 0;   // talks[] entries at or above this are all free
 
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
@@ -81,6 +88,9 @@ void ClearTalks(void) {
     talkStartedCount = 0;
     talkJoinedCount = 0;
     tableTalkTicks = 0;
+    mingleCount = 0;
+    memset(groupTime, 0, sizeof(groupTime));
+    memset(mingleTarget, 0, sizeof(mingleTarget));
     for (int i = 0; i < MAX_MOVERS; i++) dinerTable[i] = -1;
     for (int f = 0; f < MAX_FURNITURE; f++) tableSpeaker[f] = -1;
     watchJoinedCount = 0;
@@ -577,8 +587,14 @@ static void TryStartTalk(int i) {
     }
 }
 
+static void MingleTick(float dt);
+static bool TryMingle(int i);
+static int BestOtherGroup(int i, float* appeal);
+static void MingleTo(int i, int t);
+
 void TalkTick(float dt) {
     TableTalkTick(dt);
+    MingleTick(dt);
     for (int i = 0; i < moverCount; i++)
         if (moverTalkCooldown[i] > 0.0f) moverTalkCooldown[i] -= dt;
 
@@ -672,6 +688,12 @@ void TalkTick(float dt) {
             EndTalk(t);
             if (walkOn && TalkWalkStart(who[0], who[1]))
                 for (int k = 2; k < n; k++) WalkJoin(MoverTalk(who[0]), who[k]);
+            else if (mingleEnabled)   // not walking on together: anyone with a friend in another group goes over
+                for (int k = 0; k < n; k++) {
+                    float a;
+                    int g = BestOtherGroup(who[k], &a);
+                    if (g >= 0 && a >= 20.0f) MingleTo(who[k], g);
+                }
             continue;
         }
         // Talking: they get to know each other; like follows the mood (happy: up, grumpy: down)
@@ -694,6 +716,8 @@ void TalkTick(float dt) {
     if (!noticeEnabled) return;
     unsigned int phase = talkTickCounter++ % TALK_CHECK_EVERY;
     for (int i = (int)phase; i < moverCount; i += TALK_CHECK_EVERY) {
+        if (TryMingle(i)) continue;              // in a group: move over to a better one?
+        if (mingleTarget[i]) continue;           // on its way to one
         if (!CanTalk(i)) continue;
         if (talkHigh > 0 && TryWatch(i)) continue;   // something worth watching in range comes first
         if (talkEnabled && TryWalk(i)) continue;    // a walk with a friend
@@ -917,4 +941,102 @@ float SpotPreference(int i, float x, float y, int z) {
 float SeatPreference(int i, int f) {
     if (f < 0 || f >= MAX_FURNITURE || !furniture[f].active) return 0.0f;
     return SpotPreference(i, (furniture[f].x + 0.5f) * CELL_SIZE, (furniture[f].y + 0.5f) * CELL_SIZE, furniture[f].z);
+}
+
+// --- Mingling ---
+#define MINGLE_MIN_TIME   6.0f    // seconds in a group before it may move on
+#define MINGLE_RANGE     10.0f    // cells
+#define MINGLE_BETTER    15.0f    // how much more it must like the other group
+#define MINGLE_PLACE     10.0f    // a place (campfire) is worth this of its own
+#define MINGLE_GIVE_UP   15.0f    // seconds to get there
+
+bool MoverIsMingling(int i) { return i >= 0 && i < moverCount && mingleTarget[i] > 0; }
+
+// How much i would like to be in talk t: the one it likes most there (a place: at least
+// MINGLE_PLACE); -1000 if someone it dislikes is there or it can't join
+static float GroupAppeal(int i, int t) {
+    const Talk* tk = &talks[t];
+    if (!tk->active || tk->kind == TALK_WALK || tk->z != (int)movers[i].z) return -1000.0f;
+    if (tk->kind == TALK_CHAT && tk->count >= TALK_MAX_MEMBERS && MoverTalk(i) != t) return -1000.0f;
+    if (tk->kind == TALK_WATCH && tk->focus >= 0) return -1000.0f;   // (a performer: watching, not mingling)
+    float best = tk->kind == TALK_WATCH ? MINGLE_PLACE : -100.0f;
+    for (int k = 0; k < tk->count; k++) {
+        int j = tk->members[k];
+        if (j == i) continue;
+        float like = RelationLike(i, j);
+        if (like <= -20.0f) return -1000.0f;
+        if (like > best) best = like;
+    }
+    return best;
+}
+
+// The most appealing other group within range, or -1
+static int BestOtherGroup(int i, float* appeal) {
+    int best = -1, cur = MoverTalk(i);
+    float bestA = -1000.0f, r = MINGLE_RANGE * CELL_SIZE;
+    for (int t = 0; t < talkHigh; t++) {
+        if (t == cur || !talks[t].active) continue;
+        float dx = talks[t].centerX - movers[i].x, dy = talks[t].centerY - movers[i].y;
+        if (dx * dx + dy * dy > r * r) continue;
+        float a = GroupAppeal(i, t);
+        if (a > bestA) { bestA = a; best = t; }
+    }
+    *appeal = bestA;
+    return best;
+}
+
+// Leave for group t: walk over (joining happens on arrival, MingleTick)
+static void MingleTo(int i, int t) {
+    Mover* m = &movers[i];
+    Point start = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+    Point goal = {(int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z};
+    if (!IsCellWalkableAt(goal.z, goal.y, goal.x)) goal = (Point){(int)(talks[t].slotX[0] / CELL_SIZE), (int)(talks[t].slotY[0] / CELL_SIZE), talks[t].z};
+    m->goal = goal;
+    if (MoverPlanPath(i, start, goal) <= 0) return;
+    m->needsRepath = false;
+    mingleTarget[i] = t + 1;
+    mingleGiveUp[i] = MINGLE_GIVE_UP;
+    moverTalkCooldown[i] = 0.0f;
+    mingleCount++;
+}
+
+// Every tick: time in groups, minglers arriving (or giving up)
+static void MingleTick(float dt) {
+    for (int i = 0; i < moverCount; i++) {
+        int t = MoverTalk(i);
+        if (t + 1 != groupLast[i]) { groupLast[i] = t + 1; groupTime[i] = 0.0f; }
+        else groupTime[i] += dt;
+        if (!mingleTarget[i]) continue;
+        int g = mingleTarget[i] - 1;
+        mingleGiveUp[i] -= dt;
+        if (t >= 0 || !movers[i].active || !talks[g].active || GroupAppeal(i, g) <= -1000.0f || mingleGiveUp[i] <= 0.0f ||
+            movers[i].currentJobId >= 0 || movers[i].freetimeState != FREETIME_NONE) {
+            mingleTarget[i] = 0;
+            continue;
+        }
+        float dx = talks[g].centerX - movers[i].x, dy = talks[g].centerY - movers[i].y;
+        float reach = talks[g].radius + 1.5f * CELL_SIZE;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        mingleTarget[i] = 0;
+        if (talks[g].kind == TALK_CHAT) TalkJoin(g, i);
+        else WatchJoin(g, i);
+    }
+}
+
+// In a group a while: a clearly better one in range? (one roll per check)
+static bool TryMingle(int i) {
+    int t = MoverTalk(i);
+    if (!mingleEnabled || t < 0 || groupTime[i] < MINGLE_MIN_TIME || mingleTarget[i]) return false;
+    if (talks[t].kind == TALK_WALK || talks[t].focus == i) return false;
+    if (talks[t].kind == TALK_WATCH && talks[t].focus >= 0) return false;
+    float here = GroupAppeal(i, t), there;
+    int g = BestOtherGroup(i, &there);
+    if (g < 0 || there < here + MINGLE_BETTER) return false;
+    if (!Roll(mingleChance)) return false;
+    for (int k = 0; k < talks[t].count; k++)
+        if (talks[t].members[k] == i) { LeaveTalk(t, k); break; }
+    if (talks[t].kind == TALK_CHAT && talks[t].count >= 2) ArrangeSlots(t);
+    if (talks[t].kind == TALK_WATCH) WatchUpdateRadius(&talks[t]);
+    MingleTo(i, g);
+    return true;
 }

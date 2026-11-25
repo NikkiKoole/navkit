@@ -442,6 +442,7 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     }
     DescribeMoverGear(m, job, out);
     DescribeMoverRelations(idx, detail, out);
+    if (MoverIsMingling(idx)) DescAdd(out, DESC_INFO, "Going over to another group");
     int partner = TalkPartner(idx);
     if (MoverIsPerforming(idx)) {
         DescAdd(out, DESC_INFO, "Performing for %d", talks[MoverTalk(idx)].count);
