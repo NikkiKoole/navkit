@@ -60,4 +60,18 @@ int FollowLeader(void);                 // who leads now, -1 if no game
 int FollowPlace(int moverIdx);          // its place in the line (0 = leader), -1 if not playing
 bool FollowTrailDistance(int moverIdx, float* cells);   // how far a follower is from the leader's route
 
+// --- Pack hunt ---
+// PackHuntStart(hunters, n, target): n hunters (up to 8) on one runner. packTactics: roles
+// re-assigned all the time: the nearest drives (straight at it), one cuts it off where it is
+// going, the others flank (beside and ahead of it); off: all straight at it. The runner flees
+// from all of them (away from the nearest, not past one), with stamina. Caught: the runner
+// turns up again somewhere >= 10 cells from the hunters (a new round).
+extern bool packTactics;
+extern float packSpeed;          // hunters' running pace (x walking); the runner: fleeSpeed
+extern long packCatches;
+extern double packCatchSecondsSum;
+void PackHuntStart(const int* hunters, int n, int target);
+int PackTarget(void);            // -1 if no hunt
+int PackRole(int moverIdx);      // 0 driver, 1 cutter, 2 flanker, -1 not hunting
+
 #endif

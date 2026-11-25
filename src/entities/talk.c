@@ -406,10 +406,10 @@ static void WatchJoin(int t, int i) {
 static bool CanSeeGathering(const Mover* m, const Talk* tk) {
     int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
     int cx = (int)(tk->centerX / CELL_SIZE), cy = (int)(tk->centerY / CELL_SIZE);
-    if (IsCellWalkableAt(tk->z, cy, cx)) return HasLineOfSight(mx, my, cx, cy, tk->z);
+    if (IsCellWalkableAt(tk->z, cy, cx)) return CanSeeCell(mx, my, cx, cy, tk->z);
     static const int nx[4] = {1, -1, 0, 0}, ny[4] = {0, 0, 1, -1};
     for (int d = 0; d < 4; d++)
-        if (IsCellWalkableAt(tk->z, cy + ny[d], cx + nx[d]) && HasLineOfSight(mx, my, cx + nx[d], cy + ny[d], tk->z)) return true;
+        if (IsCellWalkableAt(tk->z, cy + ny[d], cx + nx[d]) && CanSeeCell(mx, my, cx + nx[d], cy + ny[d], tk->z)) return true;
     return false;
 }
 

@@ -47,9 +47,12 @@ static void ClearHideSeek(void);
 
 static void ClearFollow(void);
 
+static void ClearPack(void);
+
 void ClearChase(void) {
     ClearHideSeek();
     ClearFollow();
+    ClearPack();
     memset(playing, 0, sizeof(playing));
     memset(fleeing, 0, sizeof(fleeing));
     memset(replanTimer, 0, sizeof(replanTimer));
@@ -69,9 +72,13 @@ void ChaseSetIt(int i) { tagIt = i; tagTarget = -1; tagFreeze = TAG_FREEZE; tagC
 
 static float FollowSpeedScale(int i);
 
+static float PackSpeedScale(int i);
+
 float ChaseSpeedScale(int i) {
     float fs = FollowSpeedScale(i);
     if (fs > 0.0f) return fs;
+    float ps = PackSpeedScale(i);
+    if (ps > 0.0f) return ps;
     if (!ChaseIsPlaying(i)) return 1.0f;
     if (i == tagIt) return chaseSpeed;
     if (!fleeing[i]) return 1.0f;
@@ -133,19 +140,36 @@ static bool FleeSpotStillGood(int i, int threat) {
     return gx * tx + gy * ty < 0.0f;
 }
 
-static void FleeRun(int i, int threat) {
+// Distance (pixels) from point p to the segment a-b
+static float SegDist(float px, float py, float ax, float ay, float bx, float by) {
+    float vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+    float t = l2 > 0.0f ? ((px - ax) * vx + (py - ay) * vy) / l2 : 0.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float qx = ax + vx * t - px, qy = ay + vy * t - py;
+    return sqrtf(qx * qx + qy * qy);
+}
+
+// Flee from one or more threats: candidate spots round the "away" direction (away from all,
+// the nearest weighing most), the best = far from the nearest threat, open round it, a straight
+// run that doesn't pass close by a threat
+static void FleeRunFrom(int i, const int* threats, int n) {
     const Mover* m = &movers[i];
     int z = (int)m->z;
-    float ax = m->x - movers[threat].x, ay = m->y - movers[threat].y;   // away from the threat
+    float ax = 0.0f, ay = 0.0f;
+    for (int k = 0; k < n; k++) {
+        float dx = m->x - movers[threats[k]].x, dy = m->y - movers[threats[k]].y;
+        float d2 = dx * dx + dy * dy + 1.0f;
+        ax += dx / d2; ay += dy / d2;
+    }
     float al = sqrtf(ax * ax + ay * ay);
-    if (al < 0.5f) { ax = 1.0f; ay = 0.0f; al = 1.0f; }
+    if (al < 1e-6f) { ax = 1.0f; ay = 0.0f; al = 1.0f; }
     ax /= al; ay /= al;
     if (!fleeSmart) {   // straight away, as far as the map allows (how animals flee today)
         for (float d = FLEE_MAX; d >= 1.0f; d -= 1.0f)
             if (PathTo(i, (int)((m->x + ax * d * CELL_SIZE) / CELL_SIZE), (int)((m->y + ay * d * CELL_SIZE) / CELL_SIZE), z)) return;
         return;
     }
-    // Candidates spread round the "away" direction (up to +-100 degrees), 5-9 cells out
     int bestX = -1, bestY = -1;
     float bestScore = -1e9f;
     float base = atan2f(ay, ax);
@@ -155,13 +179,20 @@ static void FleeRun(int i, int threat) {
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
         if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z)) continue;   // a straight run
         float px = (cx + 0.5f) * CELL_SIZE, py = (cy + 0.5f) * CELL_SIZE;
-        float fromThreat = sqrtf((px - movers[threat].x) * (px - movers[threat].x) + (py - movers[threat].y) * (py - movers[threat].y));
-        // room to run on from there (not a corner): walkable neighbours
-        int open = 0;
+        float nearest = 1e9f, pass = 1e9f;
+        for (int k = 0; k < n; k++) {
+            const Mover* t = &movers[threats[k]];
+            float td = sqrtf((px - t->x) * (px - t->x) + (py - t->y) * (py - t->y));
+            if (td < nearest) nearest = td;
+            float sd = SegDist(t->x, t->y, m->x, m->y, px, py);
+            if (sd < pass) pass = sd;
+        }
+        int open = 0;   // room to run on from there (not a corner)
         for (int oy = -1; oy <= 1; oy++)
             for (int ox = -1; ox <= 1; ox++)
                 if ((ox || oy) && IsCellWalkableAt(z, cy + oy, cx + ox)) open++;
-        float score = fromThreat / CELL_SIZE + open * 0.5f;
+        float score = nearest / CELL_SIZE + open * 0.5f;
+        if (pass < 1.5f * CELL_SIZE) score -= 10.0f;   // runs right past a hunter
         if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
     }
     if (bestX < 0 || !PathTo(i, bestX, bestY, z)) {   // nothing in the open: straight away
@@ -169,6 +200,8 @@ static void FleeRun(int i, int threat) {
             if (PathTo(i, (int)((m->x + ax * d * CELL_SIZE) / CELL_SIZE), (int)((m->y + ay * d * CELL_SIZE) / CELL_SIZE), z)) return;
     }
 }
+
+static void FleeRun(int i, int threat) { FleeRunFrom(i, &threat, 1); }
 
 // Is the threat close enough to run from (and has it been seen: noticed, or very close)?
 static bool ThreatClose(int i, int threat) {
@@ -184,9 +217,12 @@ static void HideSeekTick(float dt);
 
 static void FollowLeaderTick(float dt);
 
+static void PackTick(float dt);
+
 void ChaseTick(float dt) {
     HideSeekTick(dt);
     FollowLeaderTick(dt);
+    PackTick(dt);
     int it = ChaseIt();
     if (it < 0) return;
     tagChaseTime += dt;
@@ -299,7 +335,8 @@ int HideSeeker(void) { return hsPhase != HS_NONE && hsSeeker >= 0 && hsSeeker < 
 bool HideIsCounting(int i) { return hsPhase == HS_COUNT && i == hsSeeker; }
 bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_HIDDEN; }
 static bool FollowControls(int i);
-bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i); }
+static bool PackControls(int i);
+bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i) || PackControls(i); }
 bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
 
 static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
@@ -315,7 +352,7 @@ static bool PickHidingSpot(int i) {
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
         float score = 0.0f;
         if (hideSmart) {
-            if (HasLineOfSight(hsHome.x, hsHome.y, cx, cy, z)) score -= 20.0f;   // seen from home: bad
+            if (CanSeeCell(hsHome.x, hsHome.y, cx, cy, z)) score -= 20.0f;   // seen from home: bad
             int walls = 0;   // tucked in
             for (int oy = -1; oy <= 1; oy++)
                 for (int ox = -1; ox <= 1; ox++)
@@ -375,7 +412,7 @@ static void SeekerLook(int s) {
             int x = sx + dx, y = sy + dy;
             if (x < 0 || y < 0 || x >= hsSeenW || y >= hsSeenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
             if (hsSeen[y * hsSeenW + x] || !IsCellWalkableAt(z, y, x)) continue;
-            if (HasLineOfSight(sx, sy, x, y, z)) hsSeen[y * hsSeenW + x] = 1;
+            if (CanSeeCell(sx, sy, x, y, z)) hsSeen[y * hsSeenW + x] = 1;
         }
 }
 
@@ -625,4 +662,174 @@ bool FollowTrailDistance(int i, float* cells) {
     }
     *cells = sqrtf(best) / CELL_SIZE;
     return true;
+}
+
+// ============================================================================
+// Pack hunt
+// ============================================================================
+bool packTactics = true;
+float packSpeed = 1.1f;
+long packCatches = 0;
+double packCatchSecondsSum = 0.0;
+
+#define PACK_MAX       8
+#define PACK_CLOSE     1.5f    // cells: everyone just goes straight at it
+#define PACK_AHEAD     3.0f    // cells: flank points ahead of the runner ...
+#define PACK_SIDE      2.5f    // ... and to the side
+#define PACK_CUT_AHEAD 5.0f    // cells: where it's going, when it has no goal yet
+#define PACK_RESPAWN   10.0f   // cells from every hunter
+
+static int packHunters[PACK_MAX], packN = 0, packTarget = -1;
+static int packRole[PACK_MAX];
+static float packReplan[PACK_MAX], packTime = 0.0f, packTargetReplan = 0.0f;
+
+static void ClearPack(void) { packN = 0; packTarget = -1; packCatches = 0; packCatchSecondsSum = 0.0; }
+int PackTarget(void) { return packTarget >= 0 && packTarget < moverCount && movers[packTarget].active ? packTarget : -1; }
+
+static int PackSlot(int i) {
+    for (int k = 0; k < packN; k++) if (packHunters[k] == i) return k;
+    return -1;
+}
+int PackRole(int i) { int k = PackSlot(i); return k >= 0 && PackTarget() >= 0 ? packRole[k] : -1; }
+static bool PackControls(int i) { return PackTarget() >= 0 && PackSlot(i) >= 0; }   // (the runner wanders when calm)
+
+static float PackSpeedScale(int i) {
+    if (PackTarget() < 0) return 0.0f;
+    if (PackSlot(i) >= 0) return packSpeed;
+    if (i == packTarget) return fleeing[i] ? (stamina[i] > TIRED ? fleeSpeed : TIRED_SPEED) : 1.0f;
+    return 0.0f;
+}
+
+void PackHuntStart(const int* hunters, int n, int target) {
+    packN = n > PACK_MAX ? PACK_MAX : n;
+    for (int k = 0; k < packN; k++) {
+        packHunters[k] = hunters[k];
+        packRole[k] = 0;
+        packReplan[k] = 0.1f * k;   // staggered
+        playing[hunters[k]] = true;
+    }
+    packTarget = target;
+    playing[target] = true;
+    stamina[target] = 1.0f;
+    fleeing[target] = false;
+    packTime = 0.0f;
+}
+
+// A walkable cell near (x, y) (pixels), searching outwards a little; false if none
+static bool NearWalkable(float x, float y, int z, int* ox, int* oy) {
+    int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE);
+    for (int r = 0; r <= 2; r++)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) {
+                if (abs(dx) != r && abs(dy) != r) continue;
+                int x2 = cx + dx, y2 = cy + dy;
+                if (x2 < 0 || y2 < 0 || x2 >= gridWidth || y2 >= gridHeight || !IsCellWalkableAt(z, y2, x2)) continue;
+                *ox = x2; *oy = y2;
+                return true;
+            }
+    return false;
+}
+
+// Roles: the nearest drives; the one nearest to where the runner is going cuts it off; the rest
+// flank (each on its own side of the runner's escape line)
+static void PackAssignRoles(float ex, float ey, float gx, float gy) {
+    const Mover* t = &movers[packTarget];
+    int driver = -1, cutter = -1;
+    float best = 1e18f;
+    for (int k = 0; k < packN; k++) {
+        const Mover* h = &movers[packHunters[k]];
+        float d = (h->x - t->x) * (h->x - t->x) + (h->y - t->y) * (h->y - t->y);
+        if (d < best) { best = d; driver = k; }
+    }
+    best = 1e18f;
+    for (int k = 0; k < packN; k++) {
+        if (k == driver) continue;
+        const Mover* h = &movers[packHunters[k]];
+        float d = (h->x - gx) * (h->x - gx) + (h->y - gy) * (h->y - gy);
+        if (d < best) { best = d; cutter = k; }
+    }
+    for (int k = 0; k < packN; k++) packRole[k] = k == driver ? 0 : (k == cutter ? 1 : 2);
+    (void)ex; (void)ey;
+}
+
+static void PackTick(float dt) {
+    int tgt = PackTarget();
+    if (tgt < 0 || packN == 0) return;
+    Mover* T = &movers[tgt];
+    packTime += dt;
+    // caught?
+    for (int k = 0; k < packN; k++) {
+        const Mover* h = &movers[packHunters[k]];
+        if ((h->x - T->x) * (h->x - T->x) + (h->y - T->y) * (h->y - T->y) > (CATCH_DIST * CELL_SIZE) * (CATCH_DIST * CELL_SIZE)) continue;
+        packCatches++;
+        packCatchSecondsSum += packTime;
+        packTime = 0.0f;
+        for (int tries = 0; tries < 60; tries++) {   // the runner turns up again far from the pack
+            int x = GetRandomValue(1, gridWidth - 2), y = GetRandomValue(1, gridHeight - 2), z = (int)T->z;
+            if (!IsCellWalkableAt(z, y, x)) continue;
+            bool far = true;
+            for (int q = 0; q < packN; q++) {
+                float dx = (x + 0.5f) * CELL_SIZE - movers[packHunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[packHunters[q]].y;
+                if (dx * dx + dy * dy < (PACK_RESPAWN * CELL_SIZE) * (PACK_RESPAWN * CELL_SIZE)) far = false;
+            }
+            if (!far) continue;
+            T->x = (x + 0.5f) * CELL_SIZE; T->y = (y + 0.5f) * CELL_SIZE;
+            T->pathLength = 0; T->pathIndex = -1;
+            moverRouteLen[tgt] = 0;
+            break;
+        }
+        stamina[tgt] = 1.0f;
+        fleeing[tgt] = false;
+        return;
+    }
+    // the runner: flee from the pack when one is close (noticed, or very close), get tired
+    bool threat = false;
+    for (int k = 0; k < packN && !threat; k++) threat = ThreatClose(tgt, packHunters[k]);
+    if (fleeing[tgt]) { stamina[tgt] -= STAMINA_DRAIN * dt; if (stamina[tgt] < 0.0f) stamina[tgt] = 0.0f; }
+    else { stamina[tgt] += STAMINA_REST * dt; if (stamina[tgt] > 1.0f) stamina[tgt] = 1.0f; }
+    if (threat) {
+        packTargetReplan -= dt;
+        if (!fleeing[tgt] || T->pathIndex < 0 || packTargetReplan <= 0.0f) {
+            FleeRunFrom(tgt, packHunters, packN);
+            packTargetReplan = CHASE_REPLAN;
+        }
+    }
+    fleeing[tgt] = threat;
+    // where it's going: its goal if running, else away from the pack's middle
+    float cx = 0.0f, cy = 0.0f;
+    for (int k = 0; k < packN; k++) { cx += movers[packHunters[k]].x; cy += movers[packHunters[k]].y; }
+    cx /= packN; cy /= packN;
+    float gx, gy;
+    if (T->pathIndex >= 0) { gx = (T->goal.x + 0.5f) * CELL_SIZE; gy = (T->goal.y + 0.5f) * CELL_SIZE; }
+    else {
+        float ax = T->x - cx, ay = T->y - cy, al = sqrtf(ax * ax + ay * ay);
+        if (al < 1.0f) { ax = 1.0f; ay = 0.0f; al = 1.0f; }
+        gx = T->x + ax / al * PACK_CUT_AHEAD * CELL_SIZE; gy = T->y + ay / al * PACK_CUT_AHEAD * CELL_SIZE;
+    }
+    float ex = gx - T->x, ey = gy - T->y, el = sqrtf(ex * ex + ey * ey);
+    if (el < 1.0f) { ex = T->x - cx; ey = T->y - cy; el = sqrtf(ex * ex + ey * ey); if (el < 1.0f) { ex = 1.0f; ey = 0.0f; el = 1.0f; } }
+    ex /= el; ey /= el;
+    if (packTactics) PackAssignRoles(ex, ey, gx, gy);
+    // the hunters
+    int z = (int)T->z;
+    for (int k = 0; k < packN; k++) {
+        int h = packHunters[k];
+        packReplan[k] -= dt;
+        if (packReplan[k] > 0.0f && movers[h].pathIndex >= 0) continue;
+        packReplan[k] = CHASE_REPLAN;
+        float dx = T->x - movers[h].x, dy = T->y - movers[h].y;
+        if (!packTactics || packRole[k] == 0 || dx * dx + dy * dy < (PACK_CLOSE * CELL_SIZE) * (PACK_CLOSE * CELL_SIZE)) {
+            ChaseRun(h, tgt);
+            continue;
+        }
+        float px, py;
+        if (packRole[k] == 1) { px = gx; py = gy; }   // cut it off where it's going
+        else {   // flank: ahead and to the side it's on
+            float side = (movers[h].x - T->x) * (-ey) + (movers[h].y - T->y) * ex >= 0.0f ? 1.0f : -1.0f;
+            px = T->x + ex * PACK_AHEAD * CELL_SIZE - ey * side * PACK_SIDE * CELL_SIZE;
+            py = T->y + ey * PACK_AHEAD * CELL_SIZE + ex * side * PACK_SIDE * CELL_SIZE;
+        }
+        int ox, oy;
+        if (!NearWalkable(px, py, z, &ox, &oy) || !PathTo(h, ox, oy, z)) ChaseRun(h, tgt);
+    }
 }

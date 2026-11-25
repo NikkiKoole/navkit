@@ -957,6 +957,46 @@ static void FollowLeaderPrintStats(void) {
            followLeaderChanges);
 }
 
+// pack-hunt: an arena with pillars and railings (half-height: see across, can't cross), 4
+// hunters on 1 runner (chase.c). The runner is faster when fresh and tires; caught, it turns up
+// again far away. Compare packTactics on/off: seconds to a catch.
+static void PhWall(int x0, int y0, int x1, int y1, CellType c) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) { GRID(x, y, 1) = c; SetWallMaterial(x, y, 1, c == CELL_RAILING ? MAT_OAK : MAT_GRANITE); }
+}
+
+static void SetupPackHunt(void) {
+    PhWall(7, 7, 8, 8, CELL_WALL);   PhWall(23, 7, 24, 8, CELL_WALL);
+    PhWall(7, 23, 8, 24, CELL_WALL); PhWall(23, 23, 24, 24, CELL_WALL);
+    PhWall(15, 15, 16, 16, CELL_WALL);                       // pillars
+    PhWall(11, 4, 20, 4, CELL_RAILING);  PhWall(11, 27, 20, 27, CELL_RAILING);
+    PhWall(4, 11, 4, 20, CELL_RAILING);  PhWall(27, 11, 27, 20, CELL_RAILING);   // railings
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int hunters[4];
+    for (int k = 0; k < 4; k++) { SpawnMoverAt(2 + k, 2, 1); hunters[k] = moverCount - 1; }
+    SpawnMoverAt(16, 12, 1);
+    for (int k = 0; k < 4; k++) ChaseSetPlayer(hunters[k], true);
+    ChaseSetPlayer(moverCount - 1, true);
+    PackHuntStart(hunters, 4, moverCount - 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Pack hunt: 4 hunters (0-3) on 1 runner (4), tactics %s", packTactics ? "on" : "off"), GREEN);
+}
+
+static void PackHuntPrintStats(void) {
+    printf("Pack tactics: %s; catches: %ld, a catch takes %.1f s on average\n", packTactics ? "on" : "off",
+           packCatches, packCatches ? packCatchSecondsSum / packCatches : 0.0);
+}
+
+static bool PackHuntCheck(char* why, int whyLen) {
+    if (packCatches == 0) { snprintf(why, (size_t)whyLen, "the pack never caught the runner"); return false; }
+    return true;
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -4227,6 +4267,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"pack-hunt",  "4 hunters on 1 runner in an arena with pillars and railings: drive, cut off, flank (setting packTactics)",
+                   NULL,        SetupPackHunt, NULL, PackHuntPrintStats, PackHuntCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
                    NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",

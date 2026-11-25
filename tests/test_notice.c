@@ -1074,6 +1074,63 @@ describe(follow_the_leader) {
     }
 }
 
+describe(pack_hunt) {
+    it("sight: across a railing or a window yes, through a wall no") {
+        TalkSetup();
+        GRID(8, 5, 1) = CELL_RAILING;
+        GRID(8, 7, 1) = CELL_WINDOW;
+        GRID(8, 9, 1) = CELL_WALL;
+        expect(CanSeeCell(5, 5, 11, 5, 1));
+        expect(CanSeeCell(5, 7, 11, 7, 1));
+        expect(!CanSeeCell(5, 9, 11, 9, 1));
+        expect(!HasLineOfSight(5, 5, 11, 5, 1));   // (walking straight across it: no)
+    }
+
+    it("roles: the nearest drives, one cuts off, the rest flank") {
+        TagSetup();
+        packTactics = true;
+        int h[4];
+        h[0] = AddMover(10, 4, 1); h[1] = AddMover(4, 4, 1); h[2] = AddMover(4, 8, 1); h[3] = AddMover(16, 8, 1);
+        int t = AddMover(11, 6, 1);
+        for (int k = 0; k < 4; k++) ChaseSetPlayer(h[k], true);
+        ChaseSetPlayer(t, true);
+        PackHuntStart(h, 4, t);
+        RunChase(0.2f);
+        int drivers = 0, cutters = 0, flankers = 0;
+        for (int k = 0; k < 4; k++) {
+            int r = PackRole(h[k]);
+            drivers += r == 0; cutters += r == 1; flankers += r == 2;
+        }
+        expect(drivers == 1 && cutters == 1 && flankers == 2);
+        expect(PackRole(h[0]) == 0);                       // the nearest
+        expect(ChaseSpeedScale(h[1]) == packSpeed);
+    }
+
+    it("the runner flees between two hunters: away from both, not past one") {
+        TagSetup();
+        int a = AddMover(4, 6, 1), b = AddMover(10, 2, 1), t = AddMover(8, 6, 1);
+        int hs[2] = { a, b };
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(t, true);
+        PackHuntStart(hs, 2, t);
+        Look();
+        RunChase(0.3f);
+        expect(ChaseIsFleeing(t));
+        expect(movers[t].goal.x > 8 && movers[t].goal.y > 4);   // east and south: away from a (west) and b (north)
+    }
+
+    it("caught: a new round, the runner turns up far from the pack") {
+        TagSetup();
+        int h[1] = { AddMover(8, 6, 1) };
+        int t = AddMover(8, 6, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(0.1f);
+        expect(packCatches == 1);
+        float dx = movers[t].x - movers[h[0]].x, dy = movers[t].y - movers[h[0]].y;
+        expect(sqrtf(dx * dx + dy * dy) >= 10.0f * CELL_SIZE);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1092,5 +1149,6 @@ int main(int argc, char* argv[]) {
     test(mingling);
     test(auto_gatherings);
     test(follow_the_leader);
+    test(pack_hunt);
     return summary();
 }

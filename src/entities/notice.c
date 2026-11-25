@@ -7,6 +7,7 @@
 #include "../world/cell_defs.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 MoverNotice moverNotice[MAX_MOVERS];
 bool noticeEnabled = true;
@@ -41,6 +42,28 @@ static GreetMemo greeted[MAX_MOVERS][GREET_MEMORY];
 // Salience bonuses on top of closeness (1 at the same spot, 0 at the radius edge)
 #define NOTICE_STICKY_BONUS    0.35f   // already noticed: attention doesn't flick between equals
 #define NOTICE_APPROACH_BONUS  0.25f   // walking toward me
+
+static bool BlocksSight(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return true;
+    CellType c = GRID(x, y, z);
+    if (c == CELL_RAILING || c == CELL_WINDOW) return false;
+    return CellBlocksMovement(c);
+}
+
+bool CanSeeCell(int x0, int y0, int x1, int y1, int z) {
+    int dx = abs(x1 - x0), dy = -abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+    int x = x0, y = y0;
+    while (x != x1 || y != y1) {
+        int e2 = 2 * err, nx = x, ny = y;
+        if (e2 >= dy) { err += dy; nx += sx; }
+        if (e2 <= dx) { err += dx; ny += sy; }
+        if (nx != x && ny != y && BlocksSight(nx, y, z) && BlocksSight(x, ny, z)) return false;   // a closed corner
+        x = nx; y = ny;
+        if ((x != x1 || y != y1) && BlocksSight(x, y, z)) return false;
+    }
+    return true;
+}
 
 void ClearNotices(void) {
     memset(moverNotice, 0, sizeof(moverNotice));
@@ -196,7 +219,7 @@ void NoticeMover(int i) {
                 float dSq = dx * dx + dy * dy;
                 if (dSq > radiusSq) continue;
                 int ocx = (int)(movers[j].x / CELL_SIZE), ocy = (int)(movers[j].y / CELL_SIZE);
-                if (!HasLineOfSight(mcx, mcy, ocx, ocy, z)) continue;
+                if (!CanSeeCell(mcx, mcy, ocx, ocy, z)) continue;
                 KeepGreeted(i, j);   // in sight (noticed or not): a greeting still holds
 
                 const NoticeEntry* old = FindEntry(n, j);

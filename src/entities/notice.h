@@ -28,6 +28,11 @@ extern bool noticeEnabled;
 extern float noticeRadius;          // cells
 extern int noticeEveryTicks;        // each mover looks around once per this many ticks
 
+// Can someone at cell 0 see cell 1 (same level)? Sight, not walking: walls and other solid cells
+// block it; railings and windows don't (half-height / see-through), nor do furniture or a drop.
+// (HasLineOfSight in mover.c is "can walk there straight": it stops at railings too.)
+bool CanSeeCell(int x0, int y0, int x1, int y1, int z);
+
 void NoticeTick(void);              // after movement (uses moverGrid)
 void ClearNotices(void);
 void NoticeMover(int moverIdx);     // one mover looks around now (NoticeTick staggers these)
