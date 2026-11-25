@@ -39,6 +39,8 @@ Entities/Movers/Walls for doorways).
 | Tag | chase aims where the target is going; flee to open spots along paths; stamina | `fleeSmart`, `chaseSpeed`, `fleeSpeed`, `fleeRadius` | `tag` | a chase 27 s smart vs 6 s straight away |
 | Hide and seek | cover search (out of sight, tucked in, apart); seeker remembers where it looked | `hideSmart` | `hide-and-seek` | found after 18 s vs 7 s |
 | Follow the leader | the line walks the leader's exact route (trails) | `followTrail` | `follow-leader` | 0.05 cells off the route vs 0.27 |
+| Pack hunt | 4 hunters on 1 runner: the nearest drives, one cuts it off where it's going, two flank; the runner flees from all of them (not past one), tires | `packTactics`, `packSpeed` | `pack-hunt` | catch in 9.3 s vs 15.4 s all-straight (38.5 s at equal speed) |
+| Sight | `CanSeeCell`: walls block, railings (half height) and windows don't; noticing, gatherings, hide and seek use it (walking straight stays `HasLineOfSight`) | | `pack-hunt` (railings) | |
 
 Game rules: `talkEnabled` on in the dollhouse only (talks cut walking throughput in the
 pathfinding scenarios); `autoGatherings` on in survival, island and dollhouse. Walks only
@@ -47,7 +49,8 @@ outdoors (`IsExposedToSky`).
 ## Next
 
 - **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
-  chase / hide from `chase.c`, herds (walk formation), freeze as a choice. The cat first
+  chase / hide from `chase.c`, wolves as a pack (pack hunt roles), herds (walk formation), freeze
+  as a choice. Cover behind half-height blocks (crouching behind a railing) is not modelled yet. The cat first
   (dollhouse): hides, comes to the kitchen, follows its favourite, a gathering source, petting
   as an interaction.
 - **Showing what a talk is about**: topic icons from real state, a heart or cloud at the end.
