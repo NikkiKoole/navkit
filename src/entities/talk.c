@@ -203,6 +203,7 @@ static bool CanTalk(int i) {
     if (m->z - floorf(m->z) > 0.0001f) return false;   // on a ladder or ramp
     if (moverTalkIdx[i] || moverTalkCooldown[i] > 0.0f) return false;
     if (ChaseIsPlaying(i)) return false;   // playing tag
+    if (QueueSuspended(i)) return false;   // a queue on hold for a need (looks idle, isn't)
     return true;
 }
 
@@ -210,7 +211,7 @@ static bool CanTalk(int i) {
 static bool CanStayInTalk(int i) {
     const Mover* m = &movers[i];
     return m->active && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE && !m->isDrafted &&
-           m->transportState == TRANSPORT_NONE;
+           m->transportState == TRANSPORT_NONE && !QueueSuspended(i);
 }
 
 static void StopWalking(int i) {
