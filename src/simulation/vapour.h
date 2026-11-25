@@ -2,6 +2,8 @@
 // that runs through it when it's lit (docs/todo/world/explosions.md "kinds of explosive, gas
 // and flash fires").
 //
+// Two kinds that don't mix: petrol vapour (leaks, sinks) and firedamp (methane from the coal
+// measures: let out by digging slate, it rises and gathers under the roof of a mine).
 // Vapour leaks from a source, sinks (pools in pits, cellars, low ground), spreads level with
 // its neighbours and thins out slowly at its edges. A fire or spark in a cell with enough of it
 // (level >= VAPOUR_LIGHT_LEVEL) lights the cloud: the flame front runs cell to cell through
@@ -31,9 +33,11 @@ typedef struct {
     uint8_t level : 3;    // 0-7
     uint8_t listed : 1;   // in the active list
     uint8_t burning : 1;  // the flame front is in it
-    uint8_t kind : 1;     // 0 = petrol vapour (sinks); 1 kept for firedamp (rises), later
+    uint8_t kind : 1;     // VapourKind: petrol vapour (sinks) or firedamp (rises)
     uint8_t pad : 2;
 } VapourCell;
+
+typedef enum { VAPOUR_PETROL = 0, VAPOUR_FIREDAMP = 1 } VapourKind;
 
 extern SparseLayer vapourLayer;
 #define VAPOUR(x, y, z) (*(const VapourCell*)SparseLayerRead(&vapourLayer, (x), (y), (z)))
@@ -44,8 +48,20 @@ extern float vapourStepInterval;  // setting vapourStep: game seconds between mo
 extern float vapourThinChance;    // setting vapourThin: per move, chance a thin edge cell (level 1) clears
 
 void ClearVapour(void);
-int GetVapourLevel(int x, int y, int z);
-void AddVapour(int x, int y, int z, int amount);   // capped at VAPOUR_MAX_LEVEL
+int GetVapourLevel(int x, int y, int z);            // either kind
+int GetVapourLevelOf(int x, int y, int z, VapourKind kind);
+int GetPetrolLevel(int x, int y, int z);
+int GetFiredampLevel(int x, int y, int z);
+void AddVapour(int x, int y, int z, int amount);   // petrol; capped at VAPOUR_MAX_LEVEL
+// Kinds don't mix: a cell holding the other kind takes none
+void AddVapourKind(int x, int y, int z, int amount, VapourKind kind);
+
+// Firedamp: digging natural slate (the coal measures) lets a pocket out now and then. Call with
+// the cell's material before it's dug out (mining jobs, blasts)
+extern int firedampChance;   // setting firedamp: % of natural slate cells dug that let a pocket out
+extern int firedampPocket;   // levels in a pocket
+void VapourMinedRock(int x, int y, int z, int mat, bool natural);
+int VapourFiredampPockets(void);
 // A leak: `perSecond` levels of vapour come out at (x, y, z) for `seconds`
 bool VapourLeak(int x, int y, int z, float perSecond, float seconds);
 // Light the cloud at (x, y, z) if there's enough vapour there; true if it caught

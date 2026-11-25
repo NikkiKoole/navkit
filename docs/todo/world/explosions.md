@@ -319,6 +319,25 @@ In `vapour.c` (pressure) and `explosion.c` (`ExplosionVent`), setting `vapourVen
   Tests `vapour_rooms` in `test_explosion`.
 - Not done: roofs lifting, backdraft, rooms connected by an open door sharing the pressure.
 
+### Built: firedamp (2026-11-25)
+
+The vapour cell's kind bit: `VAPOUR_PETROL` (sinks) and `VAPOUR_FIREDAMP` (rises: up while
+there's room above, a floor or rock stops it, off the top of the map it's gone). Kinds don't
+mix (a cell holding one takes none of the other). `AddVapourKind`, `GetPetrolLevel`,
+`GetFiredampLevel`; drawn as a cold blue-grey haze (gas slot 3).
+
+- Source: digging natural slate (the coal measures), by a miner (`jobs.c` mine job) or a blast,
+  lets a pocket out (`firedampPocket` 20 levels into the dug cell and the cells beside it) in
+  `firedampChance` % of cells (setting `firedamp`, 15; a hash of the cell, so the same seam
+  gives the same pockets). `VapourMinedRock`.
+- A fuse's sparks light vapour in its cell and the one above (gas under a tunnel's roof); a
+  flame overhead knocks over whoever stands under it.
+- Scenario `firedamp` (in scenarios-check): a pocket in a 2-high slate tunnel rises under the
+  roof (56 levels up, none left on the floor), creeps to a charge's burning fuse at the face, the
+  flame races back along the roof over the two miners (both knocked over); the charge goes off
+  after. Tests `firedamp` in `test_explosion`.
+- Next: miners noticing it (a canary, a safety lamp), ventilation (a shaft to the surface lets it out).
+
 ### Other ideas from the brainstorm (not planned yet)
 
 - Explosions touching other sims: steam explosions (lava or a hot cell meeting water), dust

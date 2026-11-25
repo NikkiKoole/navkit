@@ -234,8 +234,8 @@ static const char* fxGasFS =
 static Shader gasShader;
 static bool gasReady = false, gasFailed = false;
 static int gasLocQuadPix, gasLocQuadOrigin, gasLocTime, gasLocDense, gasLocThin, gasLocDeep;
-static Texture2D gasTex[3];
-static int gasTexW[3], gasTexH[3];
+static Texture2D gasTex[4];
+static int gasTexW[4], gasTexH[4];
 
 static bool GasInit(void) {
     if (gasReady) return true;
@@ -255,11 +255,11 @@ static bool GasInit(void) {
 // Can the clouds be drawn (shader built, or not tried yet)? If not, smoke and steam draw the old way
 bool GasCloudsAvailable(void) { return !gasFailed; }
 
-// rgba: w * h texels (r = viewed level, g = below), cells minX.. / minY.. ; slot 0 smoke, 1 steam, 2 vapour.
+// rgba: w * h texels (r = viewed level, g = below), cells minX.. / minY.. ; slot 0 smoke, 1 steam, 2 petrol vapour, 3 firedamp.
 // Returns false if it can't draw (no shader): the caller draws the old way.
 bool DrawGasDithered(int slot, int minX, int minY, int w, int h, const unsigned char* rgba,
                      Color dense, Color thin, Color deep) {
-    if (w <= 0 || h <= 0 || slot < 0 || slot > 2 || !GasInit()) return false;
+    if (w <= 0 || h <= 0 || slot < 0 || slot > 3 || !GasInit()) return false;
     if (gasTexW[slot] != w || gasTexH[slot] != h) {
         if (gasTexW[slot] > 0) UnloadTexture(gasTex[slot]);
         Image img = GenImageColor(w, h, BLANK);

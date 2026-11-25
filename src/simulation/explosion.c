@@ -444,7 +444,10 @@ ExplosionResult ExplodeKind(int x, int y, int z, float power, BlastKind kind) {
                     FxChunks(cx, cy, cz, mat, (x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 3, 110.0f + 25.0f * (v > 0.0f ? v : 0.0f));
                     if (res.cellsBroken % 2 == 0) FxDust((cx + 0.5f) * CELL_SIZE, (cy + 0.5f) * CELL_SIZE, cz, mat, 1, CELL_SIZE * 0.3f);
                 }
+                int brokeMat = GetWallMaterial(cx, cy, cz);
+                bool brokeNatural = IsWallNatural(cx, cy, cz);
                 CompleteMineDesignation(cx, cy, cz);
+                VapourMinedRock(cx, cy, cz, brokeMat, brokeNatural);   // firedamp out of the coal measures?
                 res.cellsBroken++;
             }
     // Mining leaves a floor in the cell; over a hole the blast made below it there is none
@@ -714,8 +717,10 @@ void ExplosionsTick(float dt) {
     if (fuseCount > 0) {
         for (int f = 0; f < fuseCount; ) {
             fuses[f].t -= dt;
-            // The burning fuse is a spark: vapour around it catches
-            if (GetVapourLevel(fuses[f].x, fuses[f].y, fuses[f].z) >= VAPOUR_LIGHT_LEVEL) VapourIgnite(fuses[f].x, fuses[f].y, fuses[f].z);
+            // The burning fuse is a spark: vapour in its cell or just above it (firedamp under the
+            // roof) catches
+            for (int up = 0; up <= 1; up++)
+                if (GetVapourLevel(fuses[f].x, fuses[f].y, fuses[f].z + up) >= VAPOUR_LIGHT_LEVEL) VapourIgnite(fuses[f].x, fuses[f].y, fuses[f].z + up);
             if (fuses[f].t > 0.0f) { f++; continue; }
             Fuse fu = fuses[f];
             fuses[f] = fuses[--fuseCount];

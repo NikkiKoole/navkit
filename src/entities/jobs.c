@@ -1,4 +1,5 @@
 #include "jobs.h"
+#include "../simulation/vapour.h"
 #include "../simulation/explosion.h"
 #include "inventory.h"
 #include "items.h"
@@ -1175,7 +1176,11 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
         MaterialType mat = GetWallMaterial(job->targetMineX, job->targetMineY, job->targetMineZ);
         float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, mat, mover->equippedTool);
         JobRunResult r = RunWorkProgress(job, d, mover, dt, MINE_WORK_TIME, false, speed);
-        if (r == JOBRUN_DONE) CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+        if (r == JOBRUN_DONE) {
+            bool natural = IsWallNatural(job->targetMineX, job->targetMineY, job->targetMineZ);
+            CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+            VapourMinedRock(job->targetMineX, job->targetMineY, job->targetMineZ, mat, natural);   // firedamp?
+        }
         return r;
     }
     return JOBRUN_FAIL;

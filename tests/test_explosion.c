@@ -566,6 +566,41 @@ describe(vapour_rooms) {
     }
 }
 
+describe(firedamp) {
+    it("rises and stops under a roof, and doesn't mix with petrol") {
+        FlatWorld();
+        ClearVapour();
+        for (int y = 8; y <= 16; y++) for (int x = 8; x <= 16; x++) Wall(x, y, 4, MAT_SLATE);   // a roof at z4
+        AddVapourKind(12, 12, 1, 7, VAPOUR_FIREDAMP);
+        RunVapour(2.0f);
+        int up = 0, low = 0;
+        for (int y = 8; y <= 16; y++) for (int x = 8; x <= 16; x++) { up += GetFiredampLevel(x, y, 3); low += GetFiredampLevel(x, y, 1); }
+        expect(up > 0);
+        expect(low == 0);
+        AddVapour(12, 12, 3, 3);   // petrol into a cell holding firedamp: nothing
+        expect(GetPetrolLevel(12, 12, 3) == 0);
+    }
+
+    it("comes out of natural slate dug by a miner or a blast, not out of granite or built slate") {
+        FlatWorld();
+        ClearVapour();
+        int keep = firedampChance;
+        firedampChance = 100;
+        VapourMinedRock(12, 12, 1, MAT_SLATE, true);   // (the cell already dug out)
+        expect(VapourFiredampPockets() == 1);
+        expect(GetFiredampLevel(12, 12, 1) > 0);
+        VapourMinedRock(5, 5, 1, MAT_GRANITE, true);
+        VapourMinedRock(6, 6, 1, MAT_SLATE, false);
+        expect(VapourFiredampPockets() == 1);
+        FlatWorld();
+        ClearVapour();
+        for (int z = 1; z <= 3; z++) for (int y = 8; y <= 16; y++) for (int x = 8; x <= 16; x++) { Wall(x, y, z, MAT_SLATE); SetWallNatural(x, y, z); }
+        Explode(12, 12, 2, 5.0f);
+        expect(VapourFiredampPockets() > 0);
+        firedampChance = keep;
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -582,5 +617,6 @@ int main(int argc, char** argv) {
     test(blast_kinds);
     test(fuel_vapour);
     test(vapour_rooms);
+    test(firedamp);
     return summary();
 }

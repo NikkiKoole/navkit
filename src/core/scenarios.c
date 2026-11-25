@@ -5415,6 +5415,69 @@ static bool GasRoomCheck(char* why, int whyLen) {
     return true;
 }
 
+// firedamp: a tunnel 2 high into a hill of slate (the coal measures), its face at x 32. A pocket
+// of firedamp the last dig let out (x 20-27); lighter than air, it rises and creeps along the
+// tunnel's roof. Two miners in the tunnel, a third at the mouth. A charge against the face has a
+// 10 s fuse: when the gas reaches the sparks it lights and the flame races back along the roof
+// over the miners' heads, knocking them over; then the charge goes off (blasting slate can let
+// out more).
+// Check: the gas rose (more under the roof than on the floor before it was lit), the fuse lit it
+// before the charge went off, it burned (15+ cells), both miners in the tunnel knocked, audit clean.
+static int dampMostRoof, dampMostFloor;
+static bool dampLitByFuse;
+static int dampMover[3];
+static bool dampKnocked[3];
+
+static void SetupFiredamp(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    vapourEnabled = true;
+    dampMostRoof = dampMostFloor = 0;
+    dampLitByFuse = false;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 14; x <= 40; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_SLATE); SetWallNatural(x, y, z); }
+    for (int z = 1; z <= 2; z++)
+        for (int x = 14; x <= 32; x++) { GRID(x, 16, z) = CELL_AIR; SetWallMaterial(x, 16, z, MAT_NONE); ClearWallNatural(x, 16, z); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int x = 20; x <= 27; x++) AddVapourKind(x, 16, 1, 7, VAPOUR_FIREDAMP);   // the pocket the last dig let out
+    static const int mx[3] = { 26, 20, 12 };
+    for (int k = 0; k < 3; k++) { dampKnocked[k] = false; dampMover[k] = moverCount; SpawnMoverAt(mx[k], 16, 1); }
+    ExplosionLightFuseKind(32, 16, 1, 5.0f, 10.0f, BLAST_GUNPOWDER);   // a charge against the face, lit
+    currentViewZ = 2;
+    AddMessage("Firedamp: gas from a slate seam gathers under a tunnel's roof; a charge's fuse at the face", ORANGE);
+}
+
+static void FiredampTickStats(void) {
+    if (VapourBurnedCells() == 0) {
+        int roof = 0, floor = 0;
+        for (int x = 14; x <= 32; x++) { roof += GetFiredampLevel(x, 16, 2); floor += GetFiredampLevel(x, 16, 1); }
+        if (roof > dampMostRoof) { dampMostRoof = roof; dampMostFloor = floor; }
+    }
+    for (int k = 0; k < 3; k++) if (MoverKnocked(dampMover[k])) dampKnocked[k] = true;
+    if (VapourBurnedCells() > 0 && ExplosionCount() == 0) dampLitByFuse = true;
+}
+
+static void FiredampPrintStats(void) {
+    int left = 0;
+    for (int z = 1; z <= 4; z++) for (int x = 0; x < gridWidth; x++) left += GetFiredampLevel(x, 16, z);
+    printf("Firedamp: under the roof %d (floor %d then), burned %d, left %d, pockets from digging %d, explosions %d, knocked %d %d %d\n",
+           dampMostRoof, dampMostFloor, VapourBurnedCells(), left, VapourFiredampPockets(), ExplosionCount(),
+           dampKnocked[0], dampKnocked[1], dampKnocked[2]);
+}
+
+static bool FiredampCheck(char* why, int whyLen) {
+    if (dampMostRoof <= dampMostFloor) { snprintf(why, (size_t)whyLen, "the gas didn't rise to the roof (%d vs %d)", dampMostRoof, dampMostFloor); return false; }
+    if (VapourBurnedCells() < 15) { snprintf(why, (size_t)whyLen, "only %d cells burned", VapourBurnedCells()); return false; }
+    if (!dampLitByFuse) { snprintf(why, (size_t)whyLen, "the gas didn't catch from the fuse (only from the blast)"); return false; }
+    if (!dampKnocked[0] || !dampKnocked[1]) { snprintf(why, (size_t)whyLen, "a miner in the tunnel wasn't knocked"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -5532,6 +5595,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupFlashFire, FlashFireTickStats, FlashFirePrintStats, FlashFireCheck, 48, 32},
     {"gasroom",    "Fuel vapour in closed rooms: fumes leak inside a brick house with a window and an oak shed; lit, the pressure blows the house's window and the shed's door out with jets of flame, knocking over the movers outside (brick holds)",
                    NULL,        SetupGasRoom, GasRoomTickStats, GasRoomPrintStats, GasRoomCheck, 48, 32},
+    {"firedamp",   "Firedamp: gas let out of a slate seam rises along a tunnel's roof; the fuse of a charge at the face lights it and the flame races back overhead, knocking the miners over",
+                   NULL,        SetupFiredamp, FiredampTickStats, FiredampPrintStats, FiredampCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",

@@ -43,6 +43,7 @@ static uint32_t fireId;            // which flame (a mover is pushed once per fl
 static float fireX, fireY;         // where it was lit (cells): the push points away from there
 static uint32_t moverFire[MAX_MOVERS];
 static uint32_t vrng = 0x2545F491u;
+static int firedampPockets;
 
 // Pressure: burning vapour in a closed room (not outdoors) pushes on its edge. Per room: the
 // vapour burnt per room cell lately (it leaks away), and where it burnt (the edge near the fire
@@ -84,15 +85,57 @@ static void SetLevel(int x, int y, int z, int level) {
     if (level > 0) ListCell(x, y, z);
 }
 
-void AddVapour(int x, int y, int z, int amount) {
-    if (!vapourEnabled || !CanHold(x, y, z) || amount <= 0) return;
-    SetLevel(x, y, z, GetVapourLevel(x, y, z) + amount);
+// Into a cell: an empty one takes the kind, one with the other kind in it doesn't take any
+static bool Takes(int x, int y, int z, int kind) {
+    VapourCell c = VAPOUR(x, y, z);
+    return c.level == 0 || c.kind == kind;
+}
+static void SetLevelKind(int x, int y, int z, int level, int kind) {
+    if (level > 0 && VAPOUR(x, y, z).kind != kind) VAPOUR_MUT(x, y, z).kind = (uint8_t)kind;
+    SetLevel(x, y, z, level);
+}
+
+void AddVapourKind(int x, int y, int z, int amount, VapourKind kind) {
+    if (!vapourEnabled || !CanHold(x, y, z) || amount <= 0 || !Takes(x, y, z, (int)kind)) return;
+    SetLevelKind(x, y, z, GetVapourLevel(x, y, z) + amount, (int)kind);
+}
+void AddVapour(int x, int y, int z, int amount) { AddVapourKind(x, y, z, amount, VAPOUR_PETROL); }
+
+int GetVapourLevelOf(int x, int y, int z, VapourKind kind) {
+    if (!VInBounds(x, y, z)) return 0;
+    VapourCell c = VAPOUR(x, y, z);
+    return c.kind == (int)kind ? c.level : 0;
+}
+int GetPetrolLevel(int x, int y, int z) { return GetVapourLevelOf(x, y, z, VAPOUR_PETROL); }
+int GetFiredampLevel(int x, int y, int z) { return GetVapourLevelOf(x, y, z, VAPOUR_FIREDAMP); }
+
+int firedampChance = 15;   // setting firedamp: % of natural slate cells dug that let a pocket out
+int firedampPocket = 20;   // levels of firedamp in a pocket
+
+void VapourMinedRock(int x, int y, int z, int mat, bool natural) {
+    if (!vapourEnabled || !natural || mat != MAT_SLATE || firedampChance <= 0) return;
+    unsigned h = (unsigned)(x * 73856093u) ^ (unsigned)(y * 19349663u) ^ (unsigned)(z * 83492791u);
+    h ^= h >> 16; h *= 0x45d9f3bu; h ^= h >> 16;
+    if ((int)(h % 100u) >= firedampChance) return;
+    // The pocket comes out into the cell that was dug (and the open cells beside it)
+    int left = firedampPocket;
+    static const int d5[5][2] = { {0,0}, {1,0}, {-1,0}, {0,1}, {0,-1} };
+    for (int k = 0; k < 5 && left > 0; k++) {
+        int nx = x + d5[k][0], ny = y + d5[k][1];
+        if (!CanHold(nx, ny, z) || !Takes(nx, ny, z, VAPOUR_FIREDAMP)) continue;
+        int room = VAPOUR_MAX_LEVEL - GetVapourLevel(nx, ny, z), m = left < room ? left : room;
+        AddVapourKind(nx, ny, z, m, VAPOUR_FIREDAMP);
+        left -= m;
+    }
+    firedampPockets++;
+    EventLog("Firedamp: a pocket let out at (%d,%d,z%d)", x, y, z);
 }
 
 void ClearVapour(void) {
     SparseLayerClear(&vapourLayer);
     cellCount = frontCount = leakCount = sparkCount = roomBurnCount = 0;
     ventsTotal = 0;
+    firedampPockets = 0;
     stepAcc = igniteAcc = 0.0f;
     burnedTotal = 0;
 }
@@ -145,6 +188,7 @@ int VapourLeakCount(void) { return leakCount; }
 bool VapourActive(void) { return cellCount > 0 || frontCount > 0; }
 int VapourSparkCount(void) { return sparkCount; }
 int VapourVentCount(void) { return ventsTotal; }
+int VapourFiredampPockets(void) { return firedampPockets; }
 
 // A cell of vapour burnt at (x, y, z): pressure in its room, if it's a closed one
 static void RoomBurnt(int x, int y, int z, int lvl) {
@@ -220,13 +264,17 @@ static void Step(void) {
         int x = cells[i].x, y = cells[i].y, z = cells[i].z;
         VapourCell c = VAPOUR(x, y, z);
         if (c.level == 0 || c.burning) continue;
-        int l = c.level;
+        int l = c.level, kind = c.kind;
         if (!CanHold(x, y, z)) { SetLevel(x, y, z, 0); continue; }   // a wall was built here
-        // Heavier than air: down while there's room below (a floor holds it)
-        if (z > 0 && !HAS_FLOOR(x, y, z) && CanHold(x, y, z - 1) && !VAPOUR(x, y, z - 1).burning) {
-            int b = GetVapourLevel(x, y, z - 1), m = VAPOUR_MAX_LEVEL - b;
+        // Petrol is heavier than air: down while there's room below (a floor holds it). Firedamp
+        // is lighter: up (under a floor or a roof of rock it stops; off the top of the map it's gone)
+        int vz = kind == VAPOUR_FIREDAMP ? z + 1 : z - 1;
+        bool floorBetween = kind == VAPOUR_FIREDAMP ? (vz < gridDepth && HAS_FLOOR(x, y, vz)) : HAS_FLOOR(x, y, z);
+        if (kind == VAPOUR_FIREDAMP && vz >= gridDepth) { SetLevel(x, y, z, l - 1); l--; }
+        else if (vz >= 0 && !floorBetween && CanHold(x, y, vz) && !VAPOUR(x, y, vz).burning && Takes(x, y, vz, kind)) {
+            int b = GetVapourLevel(x, y, vz), m = VAPOUR_MAX_LEVEL - b;
             if (m > l) m = l;
-            if (m > 0) { SetLevel(x, y, z, l - m); SetLevel(x, y, z - 1, b + m); l -= m; }
+            if (m > 0) { SetLevel(x, y, z, l - m); SetLevelKind(x, y, vz, b + m, kind); l -= m; }
         }
         if (l == 0) continue;
         // Level with its neighbours: one to each that has two less; to one that has one less by a
@@ -235,10 +283,10 @@ static void Step(void) {
         for (int j = 0; j < 4 && l > 0; j++) {
             int k = (start + j) & 3;
             int nx = x + d4[k][0], ny = y + d4[k][1];
-            if (!CanHold(nx, ny, z) || VAPOUR(nx, ny, z).burning) continue;
+            if (!CanHold(nx, ny, z) || VAPOUR(nx, ny, z).burning || !Takes(nx, ny, z, kind)) continue;
             int nb = GetVapourLevel(nx, ny, z);
             // (a lone wisp of 1 doesn't wander off: it stays and thins out)
-            if (nb < l - 1 || (nb == l - 1 && l >= 2 && (VRand() & 1u))) { SetLevel(nx, ny, z, nb + 1); l--; SetLevel(x, y, z, l); }
+            if (nb < l - 1 || (nb == l - 1 && l >= 2 && (VRand() & 1u))) { SetLevelKind(nx, ny, z, nb + 1, kind); l--; SetLevel(x, y, z, l); }
         }
         // A thin edge thins out into the air
         if (l == 1 && VRand01() < vapourThinChance) SetLevel(x, y, z, 0);
@@ -316,7 +364,8 @@ static void FrontTick(float dt) {
         if (!m->active || moverFire[i] == fireId) continue;
         int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
         for (int b = 0; b < burnedN; b++) {
-            if (burned[b].x != mx || burned[b].y != my || burned[b].z != mz) continue;
+            // in it, or under it (a flame racing along a tunnel's roof overhead)
+            if (burned[b].x != mx || burned[b].y != my || (burned[b].z != mz && burned[b].z != mz + 1)) continue;
             moverFire[i] = fireId;
             ExplosionKnockMover(i, fireX, fireY, 1.5f + 0.25f * (float)burnedLevel[b]);
             break;

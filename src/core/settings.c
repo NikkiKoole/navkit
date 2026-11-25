@@ -279,6 +279,8 @@ static const Setting settings[] = {
       "Game seconds between vapour moves (sinking one level, spreading one cell). Shorter = it runs and pools faster.", NULL),
     SET_FLOAT("vapourThin", "Vapour: thinning", "World/Explosions", vapourThinChance, 0.01f, 0.0f, 1.0f,
       "Per move, the chance a cell at the thin edge of a cloud (level 1) clears into the air. Higher = clouds shrink faster.", NULL),
+    SET_INT("firedamp", "Firedamp: pocket chance (%)", "World/Explosions", firedampChance, 1.0f, 0, 100,
+      "Chance that digging (or blasting) a cell of natural slate lets out a pocket of firedamp: a gas lighter than air that gathers under a mine's roof and goes up in a flash at the first fire or spark.", NULL),
     SET_FLOAT("vapourVentLeak", "Vapour: room pressure leak (/s)", "World/Explosions", vapourVentLeak, 0.1f, 0.0f, 20.0f,
       "Share of a closed room's pressure (burning vapour) that leaks away per game second. Lower = rooms hold it and blow out windows, doors and walls more easily.", NULL),
     SET_FLOAT("blastPower", "Blast charge power", "World/Explosions", blastPower, 0.1f, 1.0f, 12.0f,
