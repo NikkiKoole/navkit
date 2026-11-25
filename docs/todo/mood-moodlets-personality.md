@@ -12,7 +12,7 @@
 - `Moodlet moodlets[8]` — type, value, remainingTime
 - `uint8_t traits[2]` — TraitType personality traits
 - Continuous inputs: hunger, thirst, energy, bodyTemp feed mood via squared curve
-- Traits (`src/simulation/mood.h`): Hardy, Picky Eater, Outdoorsy, Glutton, Stoic; added later by other work: Patient / Impatient (how long they wait in lines), Tidy / Slob (trash: walk to a bin or drop it), Scavenger (not rolled; City 1999)
+- Traits (`src/simulation/mood.h`): Hardy, Picky Eater, Outdoorsy, Glutton, Stoic; added later by other work: Patient / Impatient (how long they wait in lines), Tidy / Slob (trash: walk to a bin or drop it; dirt: Slob never gets "Filthy surroundings", Tidy feels it 1.5x), Scavenger (not rolled; City 1999)
 - Speed multiplier: 0.7x (miserable) to 1.2x (happy)
 - `MoodTick()` called per frame, `AddMoodlet()` at event transition points
 - Trait multiplier table modifies moodlet intensity per-mover
@@ -123,7 +123,7 @@ Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 - [ ] **Social** — amplified Company/Alone moodlets
 - [ ] **Loner** — reversed Company/Alone (likes being alone, dislikes crowds)
 - [ ] **Neat** — amplified Filthy Surroundings penalty, bonus from clean rooms
-- [ ] **Slob** — ignores dirt entirely. Name taken: the code's `TRAIT_SLOB` is about trash (drops it where they stand); a dirt trait needs another name or should extend that one
+- [x] **Slob** — ignores dirt entirely: built as part of the existing `TRAIT_SLOB` (trash + dirt, one personality); Tidy minds dirt 1.5x
 
 ---
 
