@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: plan + step 1 in progress (2026-11-25). Game `town`.
+> Status: steps 1-2 built on branch `town` (2026-11-25), step 3 next. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -36,10 +36,10 @@ Earlier ones that apply here:
 
 ## Milestone 1: Town (steps, each testable on its own)
 
-1. **Game + roads.** Game `town`: flat 128x128 (later bigger), instant build, needs on, nobody
+1. **(built) Game + roads.** Game `town`: flat 128x128 (later bigger), instant build, needs on, nobody
    dies (sandbox rules like the dollhouse). A road tool drags a road (a paved strip, 3 wide) on
    the ground. A road touching the map edge is where newcomers arrive.
-2. **Lots and buildings.** A lot tool drags a rectangle next to a road, kind Home or Work. A
+2. **(built) Lots and buildings.** A lot tool drags a rectangle next to a road, kind Home or Work. A
    building from a template that fits the lot appears at once, its door facing the road.
    Templates: small house (1 bed), house (double bed), workshop / office. Deleting a lot
    removes its building.
@@ -56,6 +56,25 @@ Earlier ones that apply here:
 After milestone 1 (not planned in detail): shops and coins (with City 1999), growth (lots that
 build themselves when people want homes / jobs), cars on the drawn roads (road network from the
 cars branch, needs it merged first), services (water, power), bigger maps (2048 = ~2 km town).
+
+### Built (2026-11-25): steps 1-2
+
+- `src/entities/town.c/.h`: roads are a list of rectangles (paving = the ground block below
+  turns to smooth concrete, grass off); lots are rectangles of 5x5 to 24x24 that must lie along
+  a road. The side with the most road along it is the front: a yard row there, brick walls
+  (concrete for work) round the rest, a door in the middle of the front wall, a paved cell from
+  the door to the road, windows, a slate roof one level up. Homes: beds along the back wall then
+  up the sides (area / 6, 1-6), a tap and a fridge either side of the door, a toilet, a table
+  and chair when there's room. Work: desks along the back wall with a chair in front (the work
+  spots), a tap, a toilet. The aisle from the door to the back wall stays free.
+- Game `town`: flat 128x128, a main street in from the west edge, instant build, needs on,
+  sandbox rules. Play HUD (Huisje tab): Road, Home, Work (left-drag place, right-drag remove);
+  dev Draw bar: City (c) -> Road / Home / Work.
+- Console `town road|home|work|remove x1 y1 x2 y2`, `town list` (viewed level).
+- Tests: `tests/test_town.c` (paving, refusals, door facing the road on every side, beds
+  reachable from the road, removal restores the ground).
+- **Not saved yet**: the cells and furniture are, the road and lot lists are not (a load
+  forgets which building is a lot). Comes with step 3 (`Mover.home` needs a save change anyway).
 
 ## Open questions
 

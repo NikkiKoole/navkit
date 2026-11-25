@@ -135,6 +135,10 @@ typedef enum {
     ACTION_SANDBOX_MOVER,       // Place mover at clicked cell
     ACTION_WORK_BELT,           // Work > Build: conveyor belt blueprints (appended: keeps other values)
     ACTION_WORK_SHAFT,          // Work > Build: elevator shaft blueprints (appended)
+    ACTION_DRAW_TOWN,           // Draw > Town (category): roads and lots (town.c, appended)
+    ACTION_DRAW_ROAD,           // Draw > Town: pave a road
+    ACTION_DRAW_LOT_HOME,       // Draw > Town: a home lot, the house appears at once
+    ACTION_DRAW_LOT_WORK,       // Draw > Town: a work lot, the workplace appears at once
 } InputAction;
 
 // Current input state

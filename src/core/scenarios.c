@@ -31,6 +31,7 @@
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
+#include "../entities/town.h"
 #include "../entities/action_queue.h"
 #include "../entities/throwing.h"
 
@@ -129,6 +130,7 @@ void ScenarioResetWorld(const char* terrain) {
     ClearStockpiles();
     ClearWorkshops();
     ClearFurniture();
+    ClearTown();
     ClearWater();
     // Designations + blueprints before generating: some generators place them
     InitDesignations();

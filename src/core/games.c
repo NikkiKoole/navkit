@@ -2,6 +2,7 @@
 #include "../entities/talk.h"
 #include "../world/support.h"
 #include "../entities/relations.h"
+#include "../entities/town.h"
 #include "games.h"
 #include "scenarios.h"
 #include "../game_state.h"
@@ -561,6 +562,43 @@ static void StartDollhouse(void) {
 }
 
 // ---------------------------------------------------------------------------
+// town: draw roads and lots, buildings appear at once (docs/vision/town.md)
+// ---------------------------------------------------------------------------
+
+#define TOWN_SIZE 128
+
+static void StartTown(void) {
+    ScenarioResetWorldSized(NULL, TOWN_SIZE, TOWN_SIZE);   // flat grass, walking level z=1
+    ResetTime();
+    // A main street in from the west edge: where newcomers will arrive
+    int midY = TOWN_SIZE / 2;
+    TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 8, midY + 1, 1, NULL);
+    BuildEntrances();
+    BuildGraph();
+
+    dayLength = 360.0f;               // 6-minute day, walking 3x: as the dollhouse
+    balance.baseMoverSpeed = 900.0f;
+    gameMode = GAME_MODE_SANDBOX;     // nobody dies
+    talkEnabled = true;
+    autoGatherings = true;
+    hungerEnabled = true;
+    energyEnabled = true;
+    thirstEnabled = true;
+    bladderEnabled = true;
+    toiletsPlumbed = true;            // mains water
+    moodEnabled = true;
+    bodyTempEnabled = false;
+    toolRequirementsEnabled = false;
+    jobDistanceWeight = 0.2f;
+    gameOverTriggered = false;
+    currentViewZ = 1;
+    followMoverIdx = -1;
+    zoom = 1.0f;
+    offset.x = GetScreenWidth() / 2.0f - (TOWN_SIZE / 2) * CELL_SIZE * zoom;
+    offset.y = GetScreenHeight() / 2.0f - midY * CELL_SIZE * zoom;
+}
+
+// ---------------------------------------------------------------------------
 // sandbox: the flat startup map, no needs, every tool; free drawing and testing
 // ---------------------------------------------------------------------------
 
@@ -638,6 +676,11 @@ static const GameTool survivalTools[] = {
 };
 static const GameTool dollhouseTools[] = { BASIC_TOOLS };
 static const GameTool sandboxTools[]   = { BASIC_TOOLS };
+static const GameTool townTools[] = {
+    {HUD_TAB_BUILD, "Road", ACTION_DRAW_ROAD,     -1, NULL},
+    {HUD_TAB_BUILD, "Home", ACTION_DRAW_LOT_HOME, -1, NULL},
+    {HUD_TAB_BUILD, "Work", ACTION_DRAW_LOT_WORK, -1, NULL},
+};
 #undef BASIC_TOOLS
 #define TOOLS(list) list, (int)(sizeof(list) / sizeof(list[0]))
 
@@ -654,6 +697,8 @@ static const GameDef games[] = {
                   StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  true,  TOOLS(sandboxTools)},
+    {"town",      "Town",      "Draw roads and lots: homes and workplaces appear at once, people move in",
+                  StartTown,      false, true,  TOOLS(townTools)},
 };
 #undef TOOLS
 #define GAME_COUNT ((int)(sizeof(games) / sizeof(games[0])))

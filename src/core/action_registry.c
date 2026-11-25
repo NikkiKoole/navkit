@@ -1320,6 +1320,59 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
 
+    // DRAW > CITY (category): town roads and lots (town.c, docs/vision/town.md)
+    {
+        .action = ACTION_DRAW_TOWN,
+        .name = "CITY",
+        .barDisplayText = "City",
+        .barKey = 'c',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_ROAD,
+        .hints = { "L-drag pave a road", "R-drag remove roads" },
+        .name = "ROAD",
+        .barDisplayText = "Road",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_HOME,
+        .hints = { "L-drag a home lot along a road", "R-drag remove lots" },
+        .name = "HOME",
+        .barDisplayText = "Home",
+        .barKey = 'h',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_WORK,
+        .hints = { "L-drag a work lot along a road", "R-drag remove lots" },
+        .name = "WORK",
+        .barDisplayText = "Work",
+        .barKey = 'w',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+
 };
 
 const int ACTION_REGISTRY_COUNT = sizeof(ACTION_REGISTRY) / sizeof(ACTION_REGISTRY[0]);

@@ -20,6 +20,7 @@
 #include "../entities/action_queue.h"
 #include "../ui/commands.h"
 #include "../entities/elevators.h"
+#include "../entities/town.h"
 #include "../entities/belts.h"
 
 // Forward declaration
@@ -2146,6 +2147,26 @@ static void Tool_RemoveTrain(const ToolArgs* a) {
     }
 }
 
+// Town: roads and lots (town.c); buildings appear at once
+static void Tool_TownRoad(const ToolArgs* a) {
+    const char* why = NULL;
+    if (TownAddRoad(a->x1, a->y1, a->x2, a->y2, a->z, &why) < 0) AddMessage(TextFormat("No road: %s", why), RED);
+}
+static void Tool_TownRemoveRoad(const ToolArgs* a) {
+    int n = TownRemoveRoadsIn(a->x1, a->y1, a->x2, a->y2, a->z);
+    if (n > 0) AddMessage(TextFormat("Removed %d road%s", n, n > 1 ? "s" : ""), ORANGE);
+}
+static void Tool_TownLot(const ToolArgs* a) {
+    const char* why = NULL;
+    LotKind kind = a->param == 1 ? LOT_WORK : LOT_HOME;
+    int lot = TownAddLot(kind, a->x1, a->y1, a->x2, a->y2, a->z, &why);
+    if (lot < 0) AddMessage(TextFormat("No %s: %s", kind == LOT_WORK ? "workplace" : "home", why), RED);
+}
+static void Tool_TownRemoveLot(const ToolArgs* a) {
+    int n = TownRemoveLotsIn(a->x1, a->y1, a->x2, a->y2, a->z);
+    if (n > 0) AddMessage(TextFormat("Removed %d lot%s", n, n > 1 ? "s" : ""), ORANGE);
+}
+
 #define WS_DRAW(w)  {Tool_PlaceWorkshop, NULL, w, NULL}
 #define WS_WORK(w)  {Tool_PlaceWorkshopBlueprint, Tool_CancelWorkshopBlueprint, w, NULL}
 #define SOIL(s)     {Tool_Soil, NULL, s, Tool_PileSoilAtMouse}
@@ -2187,6 +2208,9 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_DRAW_TRACK]         = PAIR(PlaceTrack, RemoveTrack),
     [ACTION_DRAW_PLATFORM]      = PAIR(PlacePlatform, RemovePlatform),
     [ACTION_DRAW_TRAIN]         = PAIR(SpawnTrain, RemoveTrain),
+    [ACTION_DRAW_ROAD]          = PAIR(TownRoad, TownRemoveRoad),
+    [ACTION_DRAW_LOT_HOME]      = {Tool_TownLot, Tool_TownRemoveLot, 0, NULL},
+    [ACTION_DRAW_LOT_WORK]      = {Tool_TownLot, Tool_TownRemoveLot, 1, NULL},
 
     // Work: designations and blueprints the movers carry out
     [ACTION_WORK_MINE]          = PAIR(ExecuteDesignateMine, ExecuteCancelMine),
