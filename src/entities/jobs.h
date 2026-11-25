@@ -196,6 +196,8 @@ extern int* activeJobList;      // List of active job indices
 extern int activeJobCount;      // Number of active jobs
 extern bool* jobIsActive;       // Quick lookup: is job in active list?
 
+extern bool huntThrowStones;   // hunters fetch and throw a stone first (a hit dazes the animal)
+
 // Job pool functions
 void InitJobPool(void);
 void FreeJobPool(void);

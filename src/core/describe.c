@@ -520,6 +520,8 @@ void DescribeAnimal(int idx, DescLines* out) {
         else DescAdd(out, DESC_BAD, "Prey: none");
     }
 
+    if (AnimalDazed(idx)) DescAdd(out, DESC_WARN, "Dazed (hit by a stone)");
+    else if (AnimalScared(idx)) DescAdd(out, DESC_WARN, "Scared: running");
     if (a->markedForHunt) DescAdd(out, DESC_BAD, "Marked for Hunt");
     if (a->reservedByHunter >= 0) DescAdd(out, DESC_SOFT_BAD, "Hunter: Mover #%d", a->reservedByHunter);
 }

@@ -2809,12 +2809,51 @@ JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
 // Hunt job steps
 #define HUNT_STEP_CHASING  0
 #define HUNT_STEP_ATTACKING 1
+#define HUNT_STEP_WINDUP   2   // standing, about to throw the stone at it
+#define HUNT_STEP_FETCH    3   // walking to a stone (job->targetItem, reserved)
 #define HUNT_CHASE_TIMEOUT 30.0f  // Fail if can't reach animal in 30s
 #define HUNT_RETARGET_INTERVAL 1.0f  // Re-path every 1s while chasing
+#define HUNT_STONE_RADIUS  10.0f  // cells: a hunter fetches a stone this close before the chase
+#define HUNT_THROW_MIN     2.5f   // cells: closer than this it just goes for it
+#define HUNT_THROW_CHECK   0.25f  // seconds between "would a throw from here hit it?" checks
+#define HUNT_WINDUP        0.35f  // seconds winding up
 
-// Hunt job driver: chase animal -> attack when adjacent -> kill
+// Hunters throw stones (throwing.c): a hit dazes the animal, they walk in while it stands still.
+// The stone thrown is kept in job->targetMineX (targetMineY/Z stay -1, so no designation code
+// takes it for a cell; targetItem would be released on a cancel while someone else may own it).
+bool huntThrowStones = true;
+
+// Put the stone down, forget the thrown one (job done)
+static void HuntLetGoOfStones(Job* job, int moverIdx) {
+    if (job->carryingItem >= 0) { ThrowDropHeld(moverIdx, job->carryingItem); job->carryingItem = -1; }
+    if (job->targetItem >= 0) {
+        if (items[job->targetItem].active && items[job->targetItem].reservedBy == moverIdx)
+            ReleaseItemReservation(job->targetItem);
+        job->targetItem = -1;
+    }
+    job->targetMineX = -1;
+}
+
+// Fetch a stone to throw: in its hands or pockets (taken out at its feet), else one lying close
+static bool HuntFetchStone(Job* job, Mover* mover, int moverIdx, int stoneIdx) {
+    if (stoneIdx < 0 || !ItemThrowable(stoneIdx)) return false;
+    const char* why = "";
+    int s = ThrowReadyItem(moverIdx, stoneIdx, &why);
+    if (s < 0 || items[s].reservedBy >= 0) return false;
+    if (items[s].state != ITEM_ON_GROUND && items[s].state != ITEM_IN_STOCKPILE) return false;
+    ReserveItem(s, moverIdx);
+    job->targetItem = s;
+    job->step = HUNT_STEP_FETCH;
+    mover->goal = (Point){ (int)(items[s].x / CELL_SIZE), (int)(items[s].y / CELL_SIZE), (int)items[s].z };
+    mover->needsRepath = true;
+    return true;
+}
+
+// Hunt job driver: (fetch a stone) -> chase animal (throwing the stone from a distance: a hit
+// dazes it; fetch it again after a miss) -> attack when adjacent -> kill
 JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
     int animalIdx = job->targetAnimalIdx;
 
     // Validate target animal
@@ -2827,7 +2866,84 @@ JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
     int animalCellY = (int)(target->y / CELL_SIZE);
     int animalCellZ = (int)target->z;
 
+    if (job->step == HUNT_STEP_FETCH) {
+        int s = job->targetItem;
+        bool usable = s >= 0 && items[s].active && items[s].reservedBy == moverIdx &&
+                      (items[s].state == ITEM_ON_GROUND || items[s].state == ITEM_IN_STOCKPILE);
+        if (!usable || AnimalDazed(animalIdx)) {   // gone, or no time for it now
+            if (usable) ReleaseItemReservation(s);
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+            return JOBRUN_RUNNING;
+        }
+        if (ThrowPickUp(moverIdx, s)) {
+            job->carryingItem = s;
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+            job->progress = HUNT_THROW_CHECK;   // check right away
+            return JOBRUN_RUNNING;
+        }
+        Point g = { (int)(items[s].x / CELL_SIZE), (int)(items[s].y / CELL_SIZE), (int)items[s].z };
+        if (mover->goal.x != g.x || mover->goal.y != g.y || mover->goal.z != g.z) {
+            mover->goal = g;
+            mover->needsRepath = true;
+        }
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > 3.0f) {   // can't get to it: forget it
+            ReleaseItemReservation(s);
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+        }
+        return JOBRUN_RUNNING;
+    }
+
+    if (job->step == HUNT_STEP_WINDUP) {
+        job->progress += dt;
+        mover->timeWithoutProgress = 0.0f;
+        if (job->progress < HUNT_WINDUP) return JOBRUN_RUNNING;
+        int s = job->carryingItem;
+        if (s >= 0 && !AnimalDazed(animalIdx) && ThrowAtAnimal(moverIdx, s, animalIdx, true)) {
+            job->carryingItem = -1;
+            job->targetMineX = s;   // pick it up again if it missed
+        }
+        job->step = HUNT_STEP_CHASING;
+        job->progress = 0.0f;
+        return JOBRUN_RUNNING;
+    }
+
     if (job->step == HUNT_STEP_CHASING) {
+        // Throwing: with a stone in hand, from far enough, at an animal that isn't dazed yet
+        if (huntThrowStones && !AnimalDazed(animalIdx) && (int)mover->z == animalCellZ) {
+            float tdx = (target->x - mover->x) / CELL_SIZE, tdy = (target->y - mover->y) / CELL_SIZE;
+            bool far = tdx * tdx + tdy * tdy >= HUNT_THROW_MIN * HUNT_THROW_MIN;
+            int held = job->carryingItem;
+            if (held >= 0 && far) {
+                job->progress += dt;
+                if (job->progress >= HUNT_THROW_CHECK) {
+                    job->progress = 0.0f;
+                    if (ThrowAtAnimal(moverIdx, held, animalIdx, false)) {
+                        job->step = HUNT_STEP_WINDUP;
+                        mover->goal = (Point){ (int)(mover->x / CELL_SIZE), (int)(mover->y / CELL_SIZE), (int)mover->z };
+                        mover->needsRepath = true;
+                        return JOBRUN_RUNNING;
+                    }
+                }
+            } else if (held < 0) {
+                int thrown = job->targetMineX;
+                if (thrown >= 0 && items[thrown].active && items[thrown].state == ITEM_IN_FLIGHT) {
+                    // still flying: see where it comes down
+                } else if (thrown >= 0 && items[thrown].active && items[thrown].reservedBy < 0 &&
+                           (int)items[thrown].z == (int)mover->z && ItemThrowable(thrown) &&
+                           HuntFetchStone(job, mover, moverIdx, thrown)) {
+                    return JOBRUN_RUNNING;   // missed: fetch it again
+                } else {
+                    job->targetMineX = -1;
+                }
+            }
+        }
+
         // Update goal to animal's current position
         if (mover->goal.x != animalCellX || mover->goal.y != animalCellY || mover->goal.z != animalCellZ) {
             mover->goal = (Point){animalCellX, animalCellY, animalCellZ};
@@ -2887,6 +3003,7 @@ JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
             // Kill the animal — spawns carcass
             KillAnimal(animalIdx);
             job->targetAnimalIdx = -1;
+            HuntLetGoOfStones(job, moverIdx);
             return JOBRUN_DONE;
         }
         return JOBRUN_RUNNING;
@@ -8753,6 +8870,9 @@ int WorkGiver_Hunt(int moverIdx) {
     m->currentJobId = jobId;
     m->goal = goalCell;
     m->needsRepath = true;
+
+    // A stone to throw first (hands, pockets, or lying close by)
+    if (huntThrowStones) HuntFetchStone(job, m, moverIdx, ThrowFindItem(moverIdx, HUNT_STONE_RADIUS));
 
     RemoveMoverFromIdleList(moverIdx);
 

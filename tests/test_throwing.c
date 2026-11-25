@@ -11,9 +11,12 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/throwing.h"
 #include "../src/entities/animals.h"
+#include "../src/entities/tool_quality.h"
 #include "../src/simulation/balance.h"
 #include "../src/core/state_audit.h"
 #include "../src/core/time.h"
+#include "../src/world/designations.h"
+#include "../src/game_state.h"
 #include "test_helpers.h"
 #include <math.h>
 #include <string.h>
@@ -208,20 +211,38 @@ static void RunAnimals(float seconds) {
 }
 
 describe(throw_hit) {
-    it("a stone hitting a grazer scares it: it runs away from where the stone came from") {
+    it("a stone hitting a grazer dazes it: it stands still, then comes to and runs from the thrower") {
         FlatWorld();
         int a = PlaceAnimal(11, 10, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
         int s = ThrowAtCell(11);
         expect(s >= 0);
         expect(throwHitCount == 1);
-        expect(AnimalScared(a));
+        expect(AnimalDazed(a));
         expect(items[s].state == ITEM_ON_GROUND);
         expect(items[s].x / CELL_SIZE < 11.5f);   // bounced off it, didn't fly on through
         float x0 = AnimalX(a);
+        RunAnimals(GameHoursToGameSeconds(animalDazeHours) * 0.9f);
+        expect(AnimalDazed(a));
+        expect(fabsf(AnimalX(a) - x0) < 0.01f);   // didn't move
+        RunAnimals(GameHoursToGameSeconds(animalDazeHours) * 0.2f);
+        expect(!AnimalDazed(a));
+        expect(AnimalScared(a));
         RunAnimals(2.0f);
         expect(AnimalX(a) > x0 + 3.0f);           // away from the thrower (at x 4)
         RunAnimals(GameHoursToGameSeconds(animalScareHours));
         expect(!AnimalScared(a));                 // calms down
+    }
+    it("a stone coming down right next to an animal scares it (a near miss)") {
+        FlatWorld();
+        int a = PlaceAnimal(11, 11, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        int s = Spawn(4, 10, 1, ITEM_SHARP_STONE);
+        ThrowAim aim = { 60.0f, 11.5f, 10.5f, 1.0f };   // steep: comes down a cell beside it
+        ThrowLaunch(s, 4.5f, 10.5f, 1.7f, aim, false, -1);
+        Settle();
+        expect(throwHitCount == 0);
+        expect(throwStartleCount == 1);
+        expect(!AnimalDazed(a));
+        expect(AnimalScared(a));
     }
     it("a stone that lands well short of an animal doesn't scare it") {
         FlatWorld();
@@ -230,23 +251,23 @@ describe(throw_hit) {
         expect(throwHitCount == 0);
         expect(!AnimalScared(a));
     }
-    it("a stone passing beside an animal doesn't hit it") {
+    it("a stone passing a couple of cells beside an animal doesn't hit or scare it") {
         FlatWorld();
-        int a = PlaceAnimal(11, 12, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        int a = PlaceAnimal(11, 13, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
         expect(ThrowAtCell(11) >= 0);
         expect(throwHitCount == 0);
-        expect(!AnimalScared(a));
+        expect(!AnimalScared(a) && !AnimalDazed(a));
     }
-    it("a steering grazer runs too") {
+    it("a steering grazer is dazed too, and runs after") {
         FlatWorld();
         int a = PlaceAnimal(11, 10, 1, ANIMAL_GRAZER, BEHAVIOR_STEERING_GRAZER);
         expect(ThrowAtCell(11) >= 0);
-        expect(AnimalScared(a));
+        expect(AnimalDazed(a));
         float x0 = AnimalX(a);
-        RunAnimals(2.0f);
+        RunAnimals(GameHoursToGameSeconds(animalDazeHours) + 2.0f);
         expect(AnimalX(a) > x0 + 2.0f);
     }
-    it("a predator hit stops hunting and runs") {
+    it("a dazed predator stops hunting; it runs when it comes to") {
         FlatWorld();
         int p = PlaceAnimal(11, 10, 1, ANIMAL_PREDATOR, BEHAVIOR_PREDATOR);
         animals[p].state = ANIMAL_HUNTING;
@@ -257,11 +278,123 @@ describe(throw_hit) {
         prey->x = 7.5f * CELL_SIZE; prey->state = ANIMAL_BEING_HUNTED;   // stands still
         animalCount = 2;
         expect(ThrowAtCell(11) >= 0);
-        expect(AnimalScared(p));
+        expect(AnimalDazed(p));
         float x0 = AnimalX(p);
-        RunAnimals(2.0f);
+        RunAnimals(GameHoursToGameSeconds(animalDazeHours) + 2.0f);
         expect(AnimalX(p) > x0 + 2.0f);
         expect(animals[1].active);   // not caught
+    }
+    it("aims ahead of a running animal and hits it") {
+        FlatWorld();
+        int a = PlaceAnimal(10, 6, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        int s = Spawn(4, 10, 1, ITEM_SHARP_STONE);
+        float vy = 2.5f;   // cells/s, running south across the throw
+        ThrowAim aim;
+        expect(ThrowPlanHit(s, 4.5f, 10.5f, 1.7f, 10.5f, 6.5f, 1, 0.0f, vy, &aim));
+        expect(aim.y > 6.5f + 0.5f);   // aimed ahead of it
+        ThrowLaunch(s, 4.5f, 10.5f, 1.7f, aim, false, -1);
+        for (int t = 0; t < 600 && ThrowFlightCount() > 0; t++) {
+            if (!AnimalDazed(a)) animals[a].y += vy * CELL_SIZE / 60.0f;
+            ThrowsTick(1.0f / 60.0f);
+        }
+        expect(throwHitCount == 1);
+        expect(AnimalDazed(a));
+    }
+    it("won't plan a hit through a wall") {
+        FlatWorld();
+        for (int y = 7; y <= 13; y++) for (int z = 1; z <= 3; z++) Wall(8, y, z);
+        PlaceAnimal(12, 10, 1, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        int s = Spawn(4, 10, 1, ITEM_SHARP_STONE);
+        ThrowAim aim;
+        expect(!ThrowPlanHit(s, 4.5f, 10.5f, 1.7f, 12.5f, 10.5f, 1, 0.0f, 0.0f, &aim));
+    }
+}
+
+static int CountCarcasses(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_CARCASS) n++;
+    return n;
+}
+
+describe(throw_hunt) {
+    it("a hunter fetches a stone, dazes a deer that outruns it, walks in and kills it") {
+        InitTestGridFromAscii(
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearJobs(); ClearStockpiles(); ClearThrows();
+        InitBalance();
+        toolRequirementsEnabled = false;
+        float oldFlee = animalFleeSpeed;
+        animalFleeSpeed = 4.0f;   // faster than a person
+        huntThrowStones = true;
+        Point g = { 2, 5, 0 };
+        InitMover(&movers[0], 2.5f * CELL_SIZE, 5.5f * CELL_SIZE, 0.0f, g, MOVER_SPEED);
+        movers[0].capabilities.canHunt = true;
+        moverCount = 1;
+        int stone = Spawn(4, 7, 0, ITEM_SHARP_STONE);
+        int deer = PlaceAnimal(13, 5, 0, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        animals[deer].markedForHunt = true;
+        InitJobSystem(MAX_MOVERS);
+        RebuildIdleMoverList();
+        expect(WorkGiver_Hunt(0) >= 0);
+        expect(items[stone].reservedBy == 0);      // fetching the stone first
+        bool killed = false, dazed = false;
+        for (int t = 0; t < 6000 && !killed; t++) {
+            Tick();
+            AnimalsTick(gameDeltaTime);
+            JobsTick();
+            ThrowsTick(gameDeltaTime);
+            if (AnimalDazed(deer)) dazed = true;
+            killed = CountCarcasses() > 0;
+        }
+        expect(throwCount >= 1);
+        expect(dazed);
+        expect(killed);
+        expect(movers[0].currentJobId == -1);
+        expect(items[stone].active && items[stone].state == ITEM_ON_GROUND);   // put down, not carried off
+        expect(items[stone].reservedBy == -1);
+        expect(RunStateAudit(false) == 0);
+        animalFleeSpeed = oldFlee;
+    }
+    it("without a stone close by it just chases, as before") {
+        InitTestGridFromAscii(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearJobs(); ClearStockpiles(); ClearThrows();
+        InitBalance();
+        toolRequirementsEnabled = false;
+        Point g = { 1, 2, 0 };
+        InitMover(&movers[0], 1.5f * CELL_SIZE, 2.5f * CELL_SIZE, 0.0f, g, MOVER_SPEED);
+        movers[0].capabilities.canHunt = true;
+        moverCount = 1;
+        int deer = PlaceAnimal(6, 2, 0, ANIMAL_GRAZER, BEHAVIOR_SIMPLE_GRAZER);
+        animals[deer].markedForHunt = true;
+        InitJobSystem(MAX_MOVERS);
+        RebuildIdleMoverList();
+        int job = WorkGiver_Hunt(0);
+        expect(job >= 0);
+        expect(GetJob(job)->targetItem == -1);
+        bool killed = false;
+        for (int t = 0; t < 3000 && !killed; t++) {
+            Tick(); AnimalsTick(gameDeltaTime); JobsTick(); ThrowsTick(gameDeltaTime);
+            killed = CountCarcasses() > 0;
+        }
+        expect(killed);
+        expect(throwCount == 0);
     }
 }
 
@@ -339,6 +472,7 @@ int main(int argc, char* argv[]) {
     test(throw_what);
     test(throw_flight);
     test(throw_hit);
+    test(throw_hunt);
     test(throw_job);
     return summary();
 }

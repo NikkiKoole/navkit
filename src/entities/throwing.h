@@ -11,9 +11,9 @@
 // a lob over a wall if needed), and the throw going a bit wrong (direction and strength, more
 // so far away). Beyond its range it falls short.
 //
-// Hitting: a stone flying (faster than a bump) through an animal's body scares it: it runs from
-// the thrower for animalScareHours game hours (animals.c) and the stone bounces off it. One hit per
-// throw. Movers aren't hit yet.
+// Hitting: a stone flying (faster than a bump) through an animal's body dazes it (animals.c:
+// it stands still, then runs from the thrower) and the stone bounces off it. One hit per throw.
+// A stone coming down close to an animal (a miss) scares it: it runs. Movers aren't hit yet.
 //
 // Light and small enough: one unit of an item that isn't two-handed and weighs at most
 // throwMaxWeight kg (a stack: one unit is split off). An item in flight is ITEM_IN_FLIGHT: no
@@ -32,7 +32,7 @@ extern float throwMaxWeight;   // kg per unit: heavier things aren't thrown
 #define THROW_MAX_FLIGHTS 256
 
 // Stats since ClearThrows (scenario checks)
-extern long throwCount, throwBounceCount, throwHitCount;
+extern long throwCount, throwBounceCount, throwHitCount, throwStartleCount;
 
 bool ItemThrowable(int itemIdx);                 // light and small enough (one unit of it)
 float ThrowRange(int itemIdx);                   // cells on flat ground, flattest useful arc
@@ -51,6 +51,11 @@ typedef struct { float angle, x, y, h; } ThrowAim;
 // walled in).
 bool ThrowPlan(int itemIdx, float x, float y, float h, int gx, int gy, int gz, float tolerance, ThrowAim* aim);
 
+// An arc whose perfect throw passes through the body of an animal standing at (tx, ty) on level
+// tz (cells) and moving at (tvx, tvy) cells/s: aimed where it will be when the stone gets there.
+// False if none does (out of range, something in the way).
+bool ThrowPlanHit(int itemIdx, float x, float y, float h, float tx, float ty, int tz, float tvx, float tvy, ThrowAim* aim);
+
 // Let go of an item at (x, y, h) along `aim`; `noisy`: the throw goes a bit wrong (direction,
 // strength). thrower -1 = none.
 void ThrowLaunch(int itemIdx, float x, float y, float h, ThrowAim aim, bool noisy, int thrower);
@@ -63,6 +68,13 @@ int ThrowFlightCount(void);
 // Drawing (render): flight i -> item, position in cells, height above its shadow (levels) and
 // the shadow's level. False if i is not a live flight.
 bool ThrowFlightInfo(int i, int* itemIdx, float* x, float* y, float* h, int* shadowZ);
+
+// For other jobs that throw (the hunt job):
+int ThrowFindItem(int moverIdx, float maxDist);   // throwable in hands, pockets, else on the ground within maxDist cells; -1
+int ThrowReadyItem(int moverIdx, int itemIdx, const char** why);   // out of pockets, one unit of a stack; -1
+bool ThrowPickUp(int moverIdx, int itemIdx);       // close enough: now carried (true)
+bool ThrowAtAnimal(int moverIdx, int itemIdx, int animalIdx, bool launch);   // a throw from here would hit it? launch: throw
+void ThrowDropHeld(int moverIdx, int itemIdx);     // put a carried item down at its feet
 
 // Job driver (jobs.c table)
 #include "jobs.h"

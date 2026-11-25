@@ -20,7 +20,7 @@ float throwGravity = 30.0f;
 float throwBounce = 0.35f;
 float throwSpread = 1.0f;
 float throwMaxWeight = 5.0f;
-long throwCount = 0, throwBounceCount = 0, throwHitCount = 0;
+long throwCount = 0, throwBounceCount = 0, throwHitCount = 0, throwStartleCount = 0;
 
 #define THROW_RELEASE_HEIGHT 0.7f   // levels above the thrower's feet
 #define THROW_PI             3.14159265f
@@ -38,6 +38,9 @@ long throwCount = 0, throwBounceCount = 0, throwHitCount = 0;
 #define THROW_HIT_HEIGHT     0.8f   // levels: how tall an animal is
 #define THROW_HIT_SPEED      3.0f   // cells/s: slower than this it just bumps into it (no scare)
 #define THROW_HIT_KEEP       0.25f  // speed kept bouncing off an animal
+#define THROW_STARTLE_RADIUS 1.5f   // cells: a stone coming down this close scares an animal
+#define THROW_HIT_AIM_H      0.4f   // levels: aim at the middle of an animal's body
+#define THROW_HIT_AIM_TOL    0.3f   // cells: a perfect throw passes this close to that point
 
 // Job steps
 #define THROW_STEP_FETCH    0   // walking to the item
@@ -54,6 +57,7 @@ typedef struct {
     int lastX, lastY, lastZ;   // last open cell it was in (landing falls back on it)
     float fromX, fromY;   // cells: where it was let go (an animal hit runs from there)
     int hitAnimal;        // the animal it hit (-1: none yet); one hit per throw
+    bool landed;          // touched the ground once (the moment animals nearby get startled)
 } Flight;
 
 static Flight flights[THROW_MAX_FLIGHTS];
@@ -61,7 +65,7 @@ static int flightCount = 0;
 
 void ClearThrows(void) {
     flightCount = 0;
-    throwCount = throwBounceCount = throwHitCount = 0;
+    throwCount = throwBounceCount = throwHitCount = throwStartleCount = 0;
 }
 
 int ThrowFlightCount(void) { return flightCount; }
@@ -300,6 +304,55 @@ bool ThrowPlan(int itemIdx, float x, float y, float h, int gx, int gy, int gz, f
     return false;
 }
 
+// A perfect throw: how close does it pass to (tx, ty, th) before it first touches anything?
+static float ThrowSimClosest(float x, float y, float h, float vx, float vy, float vz, float tx, float ty, float th) {
+    Flight f = { .x = x, .y = y, .h = h, .vx = vx, .vy = vy, .vz = vz, .thrower = -1,
+                 .lastX = (int)x, .lastY = (int)y, .lastZ = (int)h };
+    float best = 1e9f;
+    for (float t = 0.0f; t < 4.0f; t += 1.0f / 60.0f) {
+        float x0 = f.x, y0 = f.y, h0 = f.h;
+        bool hitGround = false;
+        int bounces = 0;
+        FlyState st = FLY_ON;
+        ThrowStepFlight(&f, 1.0f / 60.0f, &hitGround, &bounces, &st);
+        float sx = f.x - x0, sy = f.y - y0, sh = f.h - h0;
+        float len2 = sx * sx + sy * sy + sh * sh;
+        float u = len2 > 1e-8f ? ((tx - x0) * sx + (ty - y0) * sy + (th - h0) * sh) / len2 : 0.0f;
+        if (u < 0.0f) u = 0.0f;
+        if (u > 1.0f) u = 1.0f;
+        float dx = x0 + sx * u - tx, dy = y0 + sy * u - ty, dh = h0 + sh * u - th;
+        float d = sqrtf(dx * dx + dy * dy + dh * dh);
+        if (d < best) best = d;
+        if (st != FLY_ON || hitGround || bounces > 0) break;
+    }
+    return best;
+}
+
+bool ThrowPlanHit(int itemIdx, float x, float y, float h, float tx, float ty, int tz, float tvx, float tvy, ThrowAim* aim) {
+    float th = (float)tz + THROW_HIT_AIM_H;
+    float vmax = ThrowMaxSpeed(itemIdx);
+    // Flat arcs first: they get there sooner (a running animal has less time to move on)
+    static const float tries[] = { 15, 20, 25, 30, 10, 35, 40, 45, 50 };
+    for (int t = 0; t < (int)(sizeof(tries) / sizeof(tries[0])); t++) {
+        float a = tries[t];
+        float px = tx, py = ty, vx = 0.0f, vy = 0.0f, vz = 0.0f;
+        bool ok = true;
+        for (int iter = 0; iter < 3 && ok; iter++) {   // where will it be when the stone gets there?
+            if (!ThrowSolve(x, y, h, px, py, th, a, &vx, &vy, &vz)) { ok = false; break; }
+            float hs = sqrtf(vx * vx + vy * vy);
+            float dx = px - x, dy = py - y;
+            float time = hs > 0.01f ? sqrtf(dx * dx + dy * dy) / hs : 0.0f;
+            px = tx + tvx * time; py = ty + tvy * time;
+        }
+        if (!ok || !ThrowSolve(x, y, h, px, py, th, a, &vx, &vy, &vz)) continue;
+        if (vx * vx + vy * vy + vz * vz > vmax * vmax) continue;
+        if (ThrowSimClosest(x, y, h, vx, vy, vz, px, py, th) > THROW_HIT_AIM_TOL) continue;   // in the way
+        aim->angle = a; aim->x = px; aim->y = py; aim->h = th;
+        return true;
+    }
+    return false;
+}
+
 // ~N(0, 1) from three uniforms (deterministic through raylib's seed)
 static float ThrowGauss(void) {
     float s = 0.0f;
@@ -363,6 +416,31 @@ static void ThrowLand(Flight* f) {
     EventLog("Throw: item %d came to rest at (%d,%d,%d)", f->item, cx, cy, (int)it->z);
 }
 
+// Where an animal runs from (pixels): the thrower, else where the stone was let go
+static void ThrowSource(const Flight* f, float* x, float* y) {
+    *x = f->fromX * CELL_SIZE; *y = f->fromY * CELL_SIZE;
+    if (f->thrower >= 0 && f->thrower < moverCount && movers[f->thrower].active) {
+        *x = movers[f->thrower].x; *y = movers[f->thrower].y;
+    }
+}
+
+// The stone first came down: animals close by (not the one it hit) get a fright and run
+static void ThrowStartle(Flight* f) {
+    int sz = ThrowShadowZ((int)floorf(f->x), (int)floorf(f->y), (int)floorf(f->h));
+    float fromX, fromY;
+    ThrowSource(f, &fromX, &fromY);
+    for (int i = 0; i < animalCount; i++) {
+        const Animal* a = &animals[i];
+        if (!a->active || i == f->hitAnimal || AnimalDazed(i)) continue;
+        if ((int)a->z != sz) continue;
+        float dx = a->x / CELL_SIZE - f->x, dy = a->y / CELL_SIZE - f->y;
+        if (dx * dx + dy * dy > THROW_STARTLE_RADIUS * THROW_STARTLE_RADIUS) continue;
+        ScareAnimal(i, fromX, fromY);
+        throwStartleCount++;
+        EventLog("Throw: item %d came down by animal %d: it runs", f->item, i);
+    }
+}
+
 // Did the stone, moving from (x0,y0,h0) to where f is now, go through an animal? A hit scares
 // the animal (it runs from the thrower, or from where the stone was let go) and the stone
 // bounces off it, losing most of its speed.
@@ -382,12 +460,10 @@ static void ThrowHitAnimals(Flight* f, float x0, float y0, float h0) {
         float px = x0 + sx * t - ax, py = y0 + sy * t - ay, ph = h0 + sh * t - a->z;
         if (px * px + py * py > THROW_HIT_RADIUS * THROW_HIT_RADIUS) continue;
         if (ph < 0.0f || ph > THROW_HIT_HEIGHT) continue;
-        // Hit
-        float fromX = f->fromX * CELL_SIZE, fromY = f->fromY * CELL_SIZE;
-        if (f->thrower >= 0 && f->thrower < moverCount && movers[f->thrower].active) {
-            fromX = movers[f->thrower].x; fromY = movers[f->thrower].y;
-        }
-        ScareAnimal(i, fromX, fromY);
+        // Hit: dazed
+        float fromX, fromY;
+        ThrowSource(f, &fromX, &fromY);
+        DazeAnimal(i, fromX, fromY);
         f->hitAnimal = i;
         float hx = x0 + sx * t, hy = y0 + sy * t, hh = h0 + sh * t;   // where it struck
         if (!ThrowCellBlocked((int)floorf(hx), (int)floorf(hy), (int)floorf(hh))) {
@@ -397,7 +473,7 @@ static void ThrowHitAnimals(Flight* f, float x0, float y0, float h0) {
         if (f->vz > 0.0f) f->vz *= THROW_HIT_KEEP;
         f->rolling = false;
         throwHitCount++;
-        EventLog("Throw: item %d hit animal %d at (%.1f,%.1f,%.1f), %.1f cells/s: it runs",
+        EventLog("Throw: item %d hit animal %d at (%.1f,%.1f,%.1f), %.1f cells/s: dazed",
                  f->item, i, f->x, f->y, f->h, speed);
         return;
     }
@@ -417,6 +493,7 @@ void ThrowsTick(float dt) {
         ThrowStepFlight(&f, dt, &hitGround, &bounces, &st);
         throwBounceCount += bounces;
         if (st == FLY_ON) ThrowHitAnimals(&f, x0, y0, h0);
+        if ((hitGround || st != FLY_ON) && !f.landed) { f.landed = true; ThrowStartle(&f); }
         f.age += dt;
         if (st != FLY_ON || f.age > THROW_MAX_TIME) { ThrowLand(&f); continue; }
         int cz = (int)floorf(f.h);
@@ -493,39 +570,28 @@ static void ThrowStopWalking(Mover* m) {
     m->needsRepath = true;
 }
 
-int ThrowOrder(int moverIdx, int itemIdx, int gx, int gy, int gz, const char** why) {
-    static const char* none = "";
-    if (!why) why = &none;
-    if (moverIdx < 0 || moverIdx >= moverCount || !movers[moverIdx].active) { *why = "no such mover"; return -1; }
-    if (gx < 0 || gy < 0 || gz < 0 || gx >= gridWidth || gy >= gridHeight || gz >= gridDepth) { *why = "goal outside the map"; return -1; }
+int ThrowFindItem(int moverIdx, float maxDist) {
     Mover* m = &movers[moverIdx];
-
-    // Something to throw: given, else in its hands, else in its pockets, else the nearest on the ground
-    if (itemIdx < 0) {
-        for (int h = 0; h < 2 && itemIdx < 0; h++)
-            if (m->hands[h] >= 0 && ItemThrowable(m->hands[h])) itemIdx = m->hands[h];
+    for (int h = 0; h < 2; h++)   // not its tool (a knife, an axe)
+        if (m->hands[h] >= 0 && m->hands[h] != m->equippedTool && ItemThrowable(m->hands[h])) return m->hands[h];
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].state == ITEM_IN_CONTAINER && i != m->equippedTool && ItemThrowable(i) &&
+            ItemIsInMoverInventory(moverIdx, i)) return i;
+    int found = -1;
+    float best = maxDist * CELL_SIZE * maxDist * CELL_SIZE;
+    int mz = (int)m->z;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* it = &items[i];
+        if (!it->active || it->reservedBy >= 0) continue;
+        if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) continue;
+        if ((int)it->z != mz || !ItemThrowable(i)) continue;
+        float dx = it->x - m->x, dy = it->y - m->y, d = dx * dx + dy * dy;
+        if (d <= best) { best = d; found = i; }
     }
-    if (itemIdx < 0) {
-        for (int i = 0; i < itemHighWaterMark && itemIdx < 0; i++)
-            if (items[i].active && items[i].state == ITEM_IN_CONTAINER && ItemThrowable(i) &&
-                ItemIsInMoverInventory(moverIdx, i)) itemIdx = i;
-    }
-    if (itemIdx < 0) {
-        float best = 1e30f;
-        int mz = (int)m->z;
-        for (int i = 0; i < itemHighWaterMark; i++) {
-            Item* it = &items[i];
-            if (!it->active || it->reservedBy >= 0) continue;
-            if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) continue;
-            if ((int)it->z != mz || !ItemThrowable(i)) continue;
-            float dx = it->x - m->x, dy = it->y - m->y, d = dx * dx + dy * dy;
-            if (d < best) { best = d; itemIdx = i; }
-        }
-    }
-    if (!ItemThrowable(itemIdx)) { *why = "nothing light enough to throw"; return -1; }
+    return found;
+}
 
-    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
-
+int ThrowReadyItem(int moverIdx, int itemIdx, const char** why) {
     // Out of its hands / pockets: at its feet, then picked up right away
     if (ItemIsInMoverInventory(moverIdx, itemIdx)) {
         if (items[itemIdx].reservedBy == moverIdx) ReleaseItemReservation(itemIdx);
@@ -541,6 +607,59 @@ int ThrowOrder(int moverIdx, int itemIdx, int gx, int gy, int gz, const char** w
         if (one < 0) { *why = "couldn't split the stack"; return -1; }
         itemIdx = one;
     }
+    return itemIdx;
+}
+
+bool ThrowPickUp(int moverIdx, int itemIdx) {
+    Mover* m = &movers[moverIdx];
+    Item* it = &items[itemIdx];
+    if (!it->active || (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE)) return false;
+    // Close, or in its cell (a mover arriving stops anywhere in the goal cell, the item may lie in a corner)
+    const float pickR = CELL_SIZE * 0.75f;
+    float dx = m->x - it->x, dy = m->y - it->y;
+    bool sameCell = (int)(m->x / CELL_SIZE) == (int)(it->x / CELL_SIZE) && (int)(m->y / CELL_SIZE) == (int)(it->y / CELL_SIZE);
+    if ((int)m->z != (int)it->z || (!sameCell && dx * dx + dy * dy >= pickR * pickR)) return false;
+    if (it->state == ITEM_IN_STOCKPILE) RemoveItemFromStockpileSlot(it->x, it->y, (int)it->z);
+    it->state = ITEM_CARRIED;
+    MoverMakeHandsFor(moverIdx, itemIdx);
+    return true;
+}
+
+bool ThrowAtAnimal(int moverIdx, int itemIdx, int animalIdx, bool launch) {
+    const Mover* m = &movers[moverIdx];
+    const Animal* a = &animals[animalIdx];
+    float x, y, h;
+    ThrowReleasePoint(m, 0, 0, &x, &y, &h);
+    float avx, avy;
+    AnimalVelocity(animalIdx, &avx, &avy);
+    ThrowAim aim;
+    if (!ThrowPlanHit(itemIdx, x, y, h, a->x / CELL_SIZE, a->y / CELL_SIZE, (int)a->z,
+                      avx / CELL_SIZE, avy / CELL_SIZE, &aim)) return false;
+    if (launch) ThrowLaunch(itemIdx, x, y, h, aim, true, moverIdx);
+    return true;
+}
+
+void ThrowDropHeld(int moverIdx, int itemIdx) {
+    if (itemIdx < 0 || !items[itemIdx].active || items[itemIdx].state != ITEM_CARRIED) return;
+    const Mover* m = &movers[moverIdx];
+    SafeDropItem(itemIdx, m->x, m->y, (int)m->z);
+    if (items[itemIdx].reservedBy >= 0) ReleaseItemReservation(itemIdx);
+}
+
+int ThrowOrder(int moverIdx, int itemIdx, int gx, int gy, int gz, const char** why) {
+    static const char* none = "";
+    if (!why) why = &none;
+    if (moverIdx < 0 || moverIdx >= moverCount || !movers[moverIdx].active) { *why = "no such mover"; return -1; }
+    if (gx < 0 || gy < 0 || gz < 0 || gx >= gridWidth || gy >= gridHeight || gz >= gridDepth) { *why = "goal outside the map"; return -1; }
+    Mover* m = &movers[moverIdx];
+
+    // Something to throw: given, else in its hands, else in its pockets, else the nearest on the ground
+    if (itemIdx < 0) itemIdx = ThrowFindItem(moverIdx, 1e6f);
+    if (!ItemThrowable(itemIdx)) { *why = "nothing light enough to throw"; return -1; }
+
+    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+    itemIdx = ThrowReadyItem(moverIdx, itemIdx, why);
+    if (itemIdx < 0) return -1;
 
     int jobId = CreateJob(JOBTYPE_THROW);
     if (jobId < 0) { *why = "job pool full"; return -1; }
@@ -564,19 +683,13 @@ JobRunResult RunJob_Throw(Job* job, void* moverPtr, float dt) {
     Mover* m = (Mover*)moverPtr;
     int moverIdx = (int)(m - movers);
     int gx = job->targetMineX, gy = job->targetMineY, gz = job->targetMineZ;
-    const float pickR = CELL_SIZE * 0.75f;
 
     if (job->step == THROW_STEP_FETCH) {
         int itemIdx = job->targetItem;
         if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
         Item* it = &items[itemIdx];
         if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) return JOBRUN_FAIL;
-        float dx = m->x - it->x, dy = m->y - it->y;
-        bool sameZ = (int)m->z == (int)it->z;
-        if (sameZ && dx * dx + dy * dy < pickR * pickR) {
-            if (it->state == ITEM_IN_STOCKPILE) RemoveItemFromStockpileSlot(it->x, it->y, (int)it->z);
-            it->state = ITEM_CARRIED;
-            MoverMakeHandsFor(moverIdx, itemIdx);
+        if (ThrowPickUp(moverIdx, itemIdx)) {
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = THROW_STEP_POSITION;

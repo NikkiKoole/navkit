@@ -1,8 +1,9 @@
 # Throwing (and later ranged attacks)
 
-Status: **experiment, slice 2 built** (2026-11-25). A mover throws a small item at a goal cell
+Status: **experiment, slice 3 built** (2026-11-25). A mover throws a small item at a goal cell
 as a job; the item flies in 3D, bounces off walls and the ground, rolls to a stop. A stone that
-hits an animal scares it off.
+hits an animal dazes it, one landing next to it scares it off; hunters throw stones at their
+prey and walk in while it's dazed.
 
 ## Built (slice 1)
 
@@ -75,11 +76,44 @@ hits an animal scares it off.
   down; a short throw and a throw passing beside don't scare; steering grazer; predator stops
   hunting).
 
+## Built (slice 3): hits daze, near misses scare, hunters throw (user's calls)
+
+- **Every hit dazes** (`DazeAnimal`): the animal stands still for `animalDazeHours` game hours
+  (1.5), head down, three yellow stars circling over it; its description says "Dazed". Then it
+  comes to and runs (`ScareAnimal`, from the thrower). A dazed predator drops its prey.
+- **A miss that comes down within 1.5 cells** of an animal (first ground touch) scares it: it
+  runs (`throwStartleCount`).
+- **Aiming at an animal** (`ThrowPlanHit`): flat arcs first (15, 20, 25, ... degrees: less time
+  for it to move), aimed at the middle of its body where it will be when the stone gets there
+  (its speed is measured each tick, `AnimalVelocity`). The arc must pass within 0.3 cells of
+  that point before touching anything (no throws through walls). Then the usual noise.
+- **Hunters throw** (setting `huntThrowStones`, on): `WorkGiver_Hunt` gives the hunter a stone
+  first (hands, pockets, else lying within 10 cells; never its tool). Chasing, from 2.5 cells
+  or further, every 0.25 s: would a throw from here hit it? Then stop, wind up 0.35 s, throw.
+  A hit: it walks in while the animal stands dazed (the attack freezes it as before). A miss:
+  it fetches the stone again (if it can get to it) and goes on. At the kill it puts the stone
+  down. The thrown stone is kept in `job->targetMineX` (Y/Z stay -1): `targetItem` is released
+  on a cancel and the stone isn't reserved while it flies.
+- **`animalFleeSpeed`** (setting, 1.3 as before): a fleeing grazer's pace x walking speed.
+  Above ~3.3 it outruns a person: then only stones (or a corner) get it.
+- Fixed along the way: picking an item up counts when the mover stands in its cell (a mover
+  stops anywhere in the goal cell; a stone in the corner was never picked up).
+- **Scenario `throwhunt`** (in scenarios-check): two lanes walled apart, fast deer (flee 4.0).
+  The hunter with a pile of stones vs one without. 3000 ticks: 5 kills vs 2; 12000 ticks: 18
+  vs 7 (42 throws, 15 hits, 14 near misses). The chaser only gets deer it corners at the lane
+  ends.
+- Tests (`throw_hit`, `throw_hunt`): daze then run, near miss scares, aiming ahead of a running
+  animal hits, no plan through a wall, a hunter dazes a deer that outruns it and kills it, no
+  stone close by: chases as before.
+
 ## Not yet / ideas
 
-- **Ranged hunting:** the hunt job throws (aim leading a moving animal) instead of walking
-  up to it; a hit wounds (needs animal health), a scared animal is harder to get close to.
-- Near misses could startle too (a stone landing within a cell or two).
+- The simple flee runs straight away from the threat, so deer get cornered at map edges and
+  walls; a smarter flee (along open ground, like `fleeSmart` in chase.c) would make stones
+  matter even more.
+- Hunters don't carry stones around between hunts (a pouch of stones, slings later).
+
+- A hit could wound (needs animal health); bigger stones / spears daze longer.
 
 - **Hitting movers.** No health yet (see `../world/explosions.md` "Gaps"); a hit mover could at
   least flinch / be annoyed at the thrower (relations).

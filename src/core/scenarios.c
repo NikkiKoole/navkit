@@ -44,6 +44,7 @@ typedef struct {
     bool hunger, thirst, energy, endless, preferDiffZ, mood, talk, autoGather;
     float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
     bool support;
+    float animalFlee; bool huntThrow, animalRespawn;
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -68,7 +69,8 @@ static void SnapshotOrRestoreSettings(void) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
                                            endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled, autoGatherings,
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
-                                           trainSpeed, supportEnabled};
+                                           trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
+                                           animalRespawnEnabled};
         haveSavedSettings = true;
         return;
     }
@@ -86,6 +88,9 @@ static void SnapshotOrRestoreSettings(void) {
     jobDistanceWeight = savedSettings.jobDistanceWeight;
     trainSpeed = savedSettings.trainSpeed;
     supportEnabled = savedSettings.support;
+    animalFleeSpeed = savedSettings.animalFlee;
+    huntThrowStones = savedSettings.huntThrow;
+    animalRespawnEnabled = savedSettings.animalRespawn;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
@@ -4534,8 +4539,8 @@ static bool ThrowingCheck(char* why, int whyLen) {
 }
 
 // throwscare: three movers each with a sharp stone and a grazer about 8 cells east of them. A
-// mover throws at the cell its grazer stands on; a hit scares it and it runs off east (away from
-// the thrower). Headless: the stone goes back to the thrower and it throws again at wherever the
+// mover throws at the cell its grazer stands on; a hit dazes it, then it runs off east (away
+// from the thrower); a stone coming down next to it scares it right away. Headless: the stone goes back to the thrower and it throws again at wherever the
 // grazer is now (out of range: it walks closer first). Prints throws, hits and how far the grazers
 // got; --check: stones hit, hit grazers ran, nothing in a wall, the state audit is clean.
 #define SCARE_LANES 3
@@ -4589,19 +4594,21 @@ static void ThrowScareTickStats(void) {
         if (scareFlying[k]) {
             scareFlying[k] = false;
             scareThrows[k]++;
-            if (AnimalScared(scareAnimal[k]) && throwHitCount > scareHitsSeen) scareHits[k]++;
+            if (AnimalDazed(scareAnimal[k]) && throwHitCount > scareHitsSeen) scareHits[k]++;
             scareHitsSeen = throwHitCount;
             const Item* t = &items[it];
             int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
             if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) throwInWall++;
             items[it].x = movers[m].x; items[it].y = movers[m].y; items[it].z = movers[m].z;   // hand it back
         }
-        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0 && !AnimalScared(scareAnimal[k])) ScareOrder(k);
+        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0 && !AnimalScared(scareAnimal[k]) &&
+            !AnimalDazed(scareAnimal[k])) ScareOrder(k);
     }
 }
 
 static void ThrowScarePrintStats(void) {
-    printf("Throwing at animals: %ld throws, %ld hits, %d stones ended in a wall\n", throwCount, throwHitCount, throwInWall);
+    printf("Throwing at animals: %ld throws, %ld hits, %ld near misses that scared, %d stones ended in a wall\n",
+           throwCount, throwHitCount, throwStartleCount, throwInWall);
     for (int k = 0; k < SCARE_LANES; k++)
         printf("  lane %d: throws %3d  hits %3d  grazer ran from x %.1f to x %.1f\n",
                k, scareThrows[k], scareHits[k], scareStartX[k], scareFarthest[k]);
@@ -4621,6 +4628,100 @@ static bool ThrowScareCheck(char* why, int whyLen) {
     }
     if (hit < 2) { snprintf(why, (size_t)whyLen, "only %d of %d grazers were hit", hit, SCARE_LANES); return false; }
     if (throwInWall > 0) { snprintf(why, (size_t)whyLen, "%d stones came to rest inside a wall", throwInWall); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// throwhunt: hunting deer that outrun people (animalFleeSpeed 4). Two lanes walled apart, a
+// hunter at the west end and a marked deer 13 cells east in each. Lane 0 has a pile of sharp
+// stones by the hunter: it fetches one, throws from a distance (a hit dazes the deer), walks
+// in and kills it, fetching the stone again after a miss. Lane 1 has no stones: it can only
+// run after the deer. Headless: each kill puts a new marked deer back in its lane. Prints
+// kills, throws and hits per lane; --check: the stone lane killed, more than the chase lane,
+// no stone stuck in a wall, the state audit is clean.
+#define HUNTLANES 2
+static int huntLaneMover[HUNTLANES], huntLaneDeer[HUNTLANES], huntLaneKills[HUNTLANES];
+static int huntLaneCarcasses[HUNTLANES];
+static long huntLaneThrows0;
+static const int huntLaneY[HUNTLANES] = { 7, 23 };
+
+static void ThrowHuntDeer(int k) {
+    SpawnAnimal(ANIMAL_GRAZER, 1, BEHAVIOR_SIMPLE_GRAZER);
+    int d = animalCount - 1;
+    for (int i = 0; i < animalCount; i++)   // SpawnAnimal reuses the first free slot
+        if (animals[i].active && !animals[i].markedForHunt && i != huntLaneDeer[1 - k]) { d = i; break; }
+    Animal* a = &animals[d];
+    // 13 cells from the hunter, at the end of the lane away from it
+    const Mover* h = huntLaneMover[k] < moverCount ? &movers[huntLaneMover[k]] : NULL;
+    float hx = h ? h->x / CELL_SIZE : 4.5f;
+    int ax = hx < gridWidth / 2 ? (int)hx + 13 : (int)hx - 13;
+    a->x = (ax + 0.5f) * CELL_SIZE; a->y = (huntLaneY[k] + 0.5f) * CELL_SIZE; a->z = 1.0f;
+    a->targetCellX = ax; a->targetCellY = huntLaneY[k];
+    a->state = ANIMAL_IDLE; a->stateTimer = 0.0f;
+    a->markedForHunt = true;
+    a->reservedByHunter = -1;
+    huntLaneDeer[k] = d;
+}
+
+static void SetupThrowHunt(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    animalRespawnEnabled = false;
+    animalFleeSpeed = 4.0f;
+    huntThrowStones = true;
+    ThrowWallBox(0, 15, gridWidth - 1, 16, 1, 2);   // keeps the lanes apart
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    huntLaneDeer[0] = huntLaneDeer[1] = -1;
+    for (int k = 0; k < HUNTLANES; k++) {
+        huntLaneMover[k] = moverCount;
+        SpawnMoverAt(4, huntLaneY[k], 1);
+        huntLaneMover[k] = moverCount - 1;
+        huntLaneKills[k] = huntLaneCarcasses[k] = 0;
+        ThrowHuntDeer(k);
+    }
+    int pile = SpawnItemWithMaterial(3.5f * CELL_SIZE, (huntLaneY[0] + 1.5f) * CELL_SIZE, 1.0f,
+                                     ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+    if (pile >= 0) items[pile].stackCount = 5;
+    huntLaneThrows0 = 0;
+    currentViewZ = 1;
+    AddMessage("Hunting fast deer: the hunter with stones (top) dazes them from a distance; the other (bottom) can only chase", GREEN);
+}
+
+static void ThrowHuntTickStats(void) {
+    for (int k = 0; k < HUNTLANES; k++) {
+        int d = huntLaneDeer[k];
+        if (d >= 0 && animals[d].active) continue;
+        huntLaneKills[k]++;
+        ThrowHuntDeer(k);
+    }
+}
+
+static void ThrowHuntPrintStats(void) {
+    printf("Hunting fast deer (flee speed %.1f): %ld throws, %ld hits (dazed), %ld near misses\n",
+           animalFleeSpeed, throwCount, throwHitCount, throwStartleCount);
+    printf("  lane 0 (stones):    kills %d\n", huntLaneKills[0]);
+    printf("  lane 1 (no stones): kills %d\n", huntLaneKills[1]);
+}
+
+static bool ThrowHuntCheck(char* why, int whyLen) {
+    if (huntLaneKills[0] < 2) { snprintf(why, (size_t)whyLen, "the stone hunter killed only %d deer", huntLaneKills[0]); return false; }
+    if (huntLaneKills[0] <= huntLaneKills[1]) {
+        snprintf(why, (size_t)whyLen, "stones didn't help: %d kills vs %d chasing", huntLaneKills[0], huntLaneKills[1]);
+        return false;
+    }
+    if (throwHitCount < 2) { snprintf(why, (size_t)whyLen, "only %ld hits", throwHitCount); return false; }
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        const Item* t = &items[i];
+        if (!t->active || t->type != ITEM_SHARP_STONE || t->state != ITEM_ON_GROUND) continue;
+        int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+        if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) {
+            snprintf(why, (size_t)whyLen, "a stone came to rest inside a wall at (%d,%d,%d)", cx, cy, cz);
+            return false;
+        }
+    }
     int v = RunStateAudit(false);
     if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
     return true;
@@ -4971,8 +5072,10 @@ static const Scenario scenarios[] = {
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",
                    NULL,        SetupThrowing, ThrowingTickStats, ThrowingPrintStats, ThrowingCheck, 40, 32},
-    {"throwscare", "Three movers throw stones at grazers: a hit grazer runs away from the thrower",
+    {"throwscare", "Three movers throw stones at grazers: a hit dazes, then it runs from the thrower; a near miss scares",
                    NULL,        SetupThrowScare, ThrowScareTickStats, ThrowScarePrintStats, ThrowScareCheck, 40, 32},
+    {"throwhunt",  "Hunting deer that outrun people: a hunter with stones dazes them from a distance, one without can only chase",
+                   NULL,        SetupThrowHunt, ThrowHuntTickStats, ThrowHuntPrintStats, ThrowHuntCheck, 40, 32},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",
