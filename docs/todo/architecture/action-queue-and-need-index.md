@@ -142,7 +142,9 @@ measurement that needs it.
    **City 1999 steps (2026-11-25):** `ACT_SEARCH_BIN` (rummage 0.2 game hours, then stow the
    empty cans until nothing more fits: pockets, backpack, a held bag, a hand) and `ACT_STOW`
    (from the hand into the bag). E on a bin = walk there + search it; E on a loose item = walk,
-   pick up, put away. A meal resumed after an interrupt walks back to its seat first.
+   pick up, put away. A meal resumed after an interrupt walks back to its seat first. Scenario
+   `bottlerun`: five bins with cans on a street, a person with a backpack; the setup queues
+   four bins as E / Shift+E would (6 cans), the fifth is left for the player.
 4. **Advertisements + autonomy per game**: objects say which need they serve; the dial per game.
 5. Later: coarse fast-forward for movers out of view.
 

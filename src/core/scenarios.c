@@ -3760,6 +3760,61 @@ static void ScroungePrintStats(void) {
            ScroungeLeftoversIn(true), ScroungeLeftoversIn(false));
 }
 
+// ---- bottlerun: City 1999's bottle run on orders (the action queue, player commands) ----
+// A street with five bins holding empty cans (and a wrapper each, not worth taking); one person
+// with a backpack. The setup queues a run past the first four bins as the player would with
+// E / Shift+E (src/entities/action_queue.c); the fifth bin is left for you.
+#define BOTTLE_BINS 5
+static int bottleBins[BOTTLE_BINS];
+static const int bottleBinX[BOTTLE_BINS] = { 7, 13, 20, 27, 35 };
+static const int bottleBinCans[BOTTLE_BINS] = { 2, 0, 3, 1, 2 };
+
+static int BottleCansCarried(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_EMPTY_CAN && ItemIsInMoverInventory(0, i)) n += items[i].stackCount;
+    return n;
+}
+
+static void SetupBottleRun(void) {
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = false;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 600.0f;
+    endlessMoverMode = false;
+    for (int b = 0; b < BOTTLE_BINS; b++) {
+        float bx = bottleBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, by = 13 * CELL_SIZE + CELL_SIZE * 0.5f;
+        bottleBins[b] = SpawnItem(bx, by, 1, ITEM_TRASH_BIN);
+        for (int k = 0; k < bottleBinCans[b]; k++) PutItemInContainer(SpawnItem(bx, by, 1, ITEM_EMPTY_CAN), bottleBins[b]);
+        PutItemInContainer(SpawnItem(bx, by, 1, ITEM_WRAPPER), bottleBins[b]);
+    }
+    BuildEntrances(); BuildGraph();
+    SpawnMoverAt(3, 11, 1);
+    int mi = moverCount - 1;
+    MoverWear(mi, SpawnItem(movers[mi].x, movers[mi].y, 1, ITEM_BACKPACK));
+    char said[128];
+    for (int b = 0; b < 4; b++)   // as E on the first bin, then Shift+E on the next three
+        QueueCommandAt(mi, bottleBinX[b], 13, 1, b > 0, said, sizeof(said));
+    currentViewZ = 1;
+}
+
+static void BottleRunPrintStats(void) {
+    printf("Bottle run: %d cans carried, queue %s; cans left per bin:", BottleCansCarried(), QueueBusy(0) ? "still running" : "done");
+    for (int b = 0; b < BOTTLE_BINS; b++) {
+        int n = 0;
+        for (int c = FirstInContainer(bottleBins[b]); c >= 0; c = NextInContainer(c)) if (items[c].type == ITEM_EMPTY_CAN) n += items[c].stackCount;
+        printf(" %d", n);
+    }
+    printf("\n");
+}
+
+static bool BottleRunCheck(char* why, int whyLen) {
+    int want = bottleBinCans[0] + bottleBinCans[1] + bottleBinCans[2] + bottleBinCans[3];
+    if (QueueBusy(0)) { snprintf(why, (size_t)whyLen, "the bottle run didn't finish"); return false; }
+    if (BottleCansCarried() != want) { snprintf(why, (size_t)whyLen, "%d cans carried, expected %d", BottleCansCarried(), want); return false; }
+    return true;
+}
+
 static bool ScroungeCheck(char* why, int whyLen) {
     for (int k = 0; k < 2; k++) {
         if (scrSearches[k] < 1 || scrMeals[k] < 1) {
@@ -3985,6 +4040,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
+    {"bottlerun",  "City 1999 bottle run on orders: five bins with empty cans, a person with a backpack searches four of them (E / Shift+E queued), the fifth is yours",
+                   NULL,        SetupBottleRun, NULL, BottleRunPrintStats, BottleRunCheck, 40, 24},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
     {"railings",   "Every railing tile: a pen with a gate, a window frame (T-junctions, cross), a lone post, one off a wall, a zigzag; 6 wandering movers",

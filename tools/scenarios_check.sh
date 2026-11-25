@@ -76,6 +76,7 @@ done <<'EOF'
 57  | 0 | --scenario heat
 51  | 0 | --scenario inventory
 58  | 0 | --scenario scrounge
+1   | 0 | --scenario bottlerun
 8   | 0 | --scenario hands-jobs
 62  | 0 | --scenario subway
 57  | 0 | --scenario subway-deep
