@@ -91,6 +91,9 @@ typedef enum {
     ITEM_PLASTIC_BAG,    // Held in one hand: a container
     ITEM_BURGER,         // City meal, a big portion: who isn't very hungry leaves some (leftovers)
     ITEM_LEFTOVERS,      // What was left of a meal: a little food per unit, spoils fast
+    ITEM_SALTPETER,      // Leached from compost and ash at the hearth; ground with charcoal into gunpowder
+    ITEM_GUNPOWDER,      // One blasting charge (blast mining: DESIGNATION_BLAST, explosion.c)
+    ITEM_COIN,           // Money lying in the world: stackCount = coins (money.h); picked up it's a number in the purse
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -101,7 +104,8 @@ typedef enum {
     ITEM_IN_STOCKPILE,
     ITEM_IN_CONTAINER,    // inside another item
     ITEM_ON_BELT,         // riding a conveyor belt (belts.c): no job may take it
-    ITEM_ON_TRAIN         // freight on a train (trains.c, Train.cargo): no job may take it
+    ITEM_ON_TRAIN,        // freight on a train (trains.c, Train.cargo): no job may take it
+    ITEM_IN_FLIGHT        // thrown, in the air or rolling (throwing.c): no job may take it
 } ItemState;
 
 // Item condition (spoilage progression)

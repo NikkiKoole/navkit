@@ -78,4 +78,9 @@ bool FindIsPinned(int row);
 int  FindPinned(int* out, int max);          // row indices, in pin order
 void FindForgetUse(void);                    // clear recent + pinned (tests)
 
+// A row's stable name across builds ("Tools/Work/Build/Wall"): path + "/" + label. Used to save
+// pins and recent to a file (src/ui/palette.c); a row that is gone simply isn't found.
+void FindRowKey(int row, char* buf, int len);
+int  FindRowByKey(const char* key);          // -1 = none
+
 #endif

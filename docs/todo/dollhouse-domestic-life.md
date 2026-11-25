@@ -70,7 +70,7 @@ Implementation:
 3. More starting food (10+ each) to bridge until first harvest
 4. Consider: auto-designate berry harvest when movers are hungry? (future)
 
-### Phase 3c: Freetime Action Queue — sit-then-eat (~1 session)
+### Phase 3c: Freetime Action Queue — sit-then-eat (~1 session) — built 2026-11-25 (`architecture/action-queue-and-need-index.md`)
 
 The first Sims behavior: movers actively seek a chair before eating. Currently eating is "walk to food, eat standing wherever." With the queue: pick up food → walk to nearby chair (optional) → sit → eat. Graceful skip if no chair.
 
@@ -127,6 +127,8 @@ Implementation:
 Three interconnected systems that together create the full Sims feel. Can be built independently, but compose into one flow: **advertisements** choose *what* to do (toilet is urgent) → **planner** resolves *how* (need boiled water, stove nearby) → **action queue** executes *the steps* (walk, pick up, work, eat). Each system is useful on its own.
 
 ### 1. Action Queue
+
+> 2026-11-25: plan to build it, checked against today's code and thousands of agents: `architecture/action-queue-and-need-index.md`.
 
 Replaces the hardcoded freetime state machine (11 FREETIME_* states) with a dynamic, mutable action sequence on each mover.
 

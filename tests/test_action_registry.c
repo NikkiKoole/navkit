@@ -4,6 +4,7 @@
 // so two tools in one menu with the same key make the second one unreachable by key.
 #include "c89spec.h"
 #include "../src/core/action_registry.c"   // not in test_unity.o (input-side data)
+#include "../src/core/global_keys.c"      // not in test_unity.o (input-side data)
 #include "../src/entities/stockpiles.h"      // FILTER_CATEGORY_KEYS (data in test_unity.o)
 #include "../src/core/selection.h"          // selection verbs (data in test_unity.o)
 #include "../src/entities/mover.h"
@@ -11,6 +12,7 @@
 #include "test_helpers.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
 static bool test_verbose = false;
 
@@ -121,6 +123,35 @@ describe(selection_verbs) {
     }
 }
 
+// Global keys (src/core/global_keys.c): each key once, none taken from the normal-mode menu
+// (D W S open Draw / Work / Sandbox), none clashing with a hover verb key, and every key runs
+// a command line
+describe(global_keys) {
+    it("no key twice, every key has a command line") {
+        for (int i = 0; i < GlobalKeyCount(); i++) {
+            const GlobalKey* a = GlobalKeyAt(i);
+            if (!a->key) continue;
+            expect(a->line != NULL && a->label != NULL);
+            for (int j = i + 1; j < GlobalKeyCount(); j++) { expect(GlobalKeyAt(j)->key != a->key); }
+        }
+    }
+    it("no clash with the mode keys or the hover verbs") {
+        for (int i = 0; i < GlobalKeyCount(); i++) {
+            int k = GlobalKeyAt(i)->key;
+            if (!k) continue;
+            expect(k != KEY_D && k != KEY_W && k != KEY_S && k != KEY_I);
+            for (int v = 0; v < SelectionVerbCount(); v++) {
+                const SelectionVerb* sv = SelectionVerbAt(v);
+                if (sv->hoverKey && !sv->shift) { expect(sv->key != k && sv->altKey != k); }
+            }
+        }
+    }
+    it("finds the key of a command line") {
+        expect(GlobalKeyForLine("save") != NULL && strcmp(GlobalKeyForLine("save"), "F5") == 0);
+        expect(GlobalKeyForLine("nope") == NULL);
+    }
+}
+
 // The dev mover verbs (selection.c): teleport, fill needs, cancel job
 static void FlatWorld(void) {
     InitTestGrid(10, 10);
@@ -166,5 +197,6 @@ int main(int argc, char* argv[]) {
     test(action_twins);
     test(selection_verbs);
     test(mover_dev_verbs);
+    test(global_keys);
     return summary();
 }

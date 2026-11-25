@@ -65,6 +65,8 @@ typedef enum {
     FREETIME_SEEKING_SCROUNGE,      // Hungry: walking to a trash bin with food in it (bin reserved)
     FREETIME_SCROUNGING,            // Rummaging in the bin (then eats what it found)
     FREETIME_FETCHING_OWN,          // Going back for something it put down for a job (a bag)
+    FREETIME_QUEUE,                 // Working through its action queue (action_queue.h): sit-then-eat, ...
+    FREETIME_PLAY,                  // In a game (tag, hide and seek, ...: chase.h); leaves it for a need
 } FreetimeState;
 
 
@@ -191,6 +193,7 @@ extern bool useStringPulling;
 extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
+extern float moverWanderPause;  // seconds a wanderer stands at its goal before the next (0 = none)
 extern int moverWanderRadius;  // wandering/spawned movers: goals within this many cells (0 = anywhere)
 // The wander radius applies (it doesn't cover the whole map)
 static inline bool MoverWanderLocal(void) {
@@ -264,6 +267,18 @@ Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance);
 extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
+extern bool yieldLetPass;            // waiting at a narrow entrance: keep waiting until the one it let out has got past
+int MoverYieldingFor(int moverIdx);  // who it is waiting for at a narrow entrance, -1 if not waiting
+// Close enough to pick up / eat / drink / use something lying at (x, y) on level z: within
+// MOVER_REACH, or anywhere in its cell. Walking ends as soon as the mover is in the goal cell, so
+// a thing near one edge can be ~0.9 cells from a mover that came in from the other side; a
+// radius alone left it standing there until its seek timed out. Jobs instead step closer
+// (TryFinalApproach in jobs.c).
+#define MOVER_REACH (CELL_SIZE * 0.75f)
+bool MoverCanReach(const Mover* m, float x, float y, int z);
+float MoverYieldWaitTime(int moverIdx);   // seconds it has waited there so far (0 = not waiting)
+float MoverNodTime(int moverIdx);         // > 0: nodding "after you" at the one it let through
+float MoverThanksTime(int moverIdx);      // > 0: was just let through, smiles back
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
 extern bool (*moverStepHold)(int moverIdx, float dirX, float dirY);   // true: stand still this tick (cars experiment: pedestrians at the kerb), NULL = never
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random

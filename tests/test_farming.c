@@ -508,7 +508,7 @@ describe(farming) {
         int wheatCount = 0, seedCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (!items[i].active) continue;
-            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT) wheatCount += items[i].stackCount;   // one stack since 2026-11-25
             if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
         }
         expect(wheatCount == 4);  // Normal wheat yield
@@ -556,7 +556,7 @@ describe(farming) {
         int wheatCount = 0, seedCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (!items[i].active) continue;
-            if (items[i].type == ITEM_WHEAT) wheatCount++;
+            if (items[i].type == ITEM_WHEAT) wheatCount += items[i].stackCount;   // one stack since 2026-11-25
             if (items[i].type == ITEM_WHEAT_SEEDS) seedCount++;
         }
         expect(wheatCount == 2);  // Frost halves: 4 -> 2
@@ -750,7 +750,9 @@ describe(farming) {
     it("quern has grind wheat recipe") {
         int count = 0;
         const Recipe* recipes = GetRecipesForWorkshop(WORKSHOP_QUERN, &count);
-        expect(count == 1);
+        expect(count == 3);   // grind wheat, grind gunpowder (blast mining), mill flour (a town mill's batch)
+        expect(recipes[1].outputType == ITEM_GUNPOWDER);
+        expect(recipes[2].inputCount == 8 && recipes[2].outputType == ITEM_FLOUR && recipes[2].outputCount == 4);
         expect(recipes != NULL);
         expect(recipes[0].inputType == ITEM_WHEAT);
         expect(recipes[0].inputCount == 2);
@@ -1022,6 +1024,44 @@ describe(farming) {
         RebuildFarmWorkCache();
         int jobId = WorkGiver_WaterCrop(0);
         expect(jobId < 0);  // No job — not dry
+    }
+
+    // =========================================================================
+    // 25b. No planting in a season the crop can't grow in (wheat in winter): the seed would
+    // sprout and be killed by the season (a town lost all its seed over one winter)
+    // =========================================================================
+    it("no planting job for wheat in winter, one in spring") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).desiredCropType = CROP_WHEAT;
+        farmActiveCells = 1;
+        int seed = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WHEAT_SEEDS);
+        expect(seed >= 0);
+        Mover* m = &movers[0];
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, (Point){3, 3, 1}, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+        dayNumber = daysPerSeason * 3 + 1;   // winter
+        RebuildFarmWorkCache();
+        expect(WorkGiver_PlantCrop(0) < 0);
+        dayNumber = 1;                       // spring
+        RebuildFarmWorkCache();
+        expect(WorkGiver_PlantCrop(0) >= 0);
+    }
+    it("wheat is not planted at the end of autumn, when winter would kill it before it ripens") {
+        timeOfDay = 8.0f;
+        dayNumber = daysPerSeason * 2 + 1;            // first day of autumn: time to ripen
+        expect(CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 3;                // last day of autumn
+        expect(!CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 1;                // last day of spring: summer follows, fine
+        expect(CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 3 + 1;            // winter
+        expect(!CropWorthPlantingNow(CROP_WHEAT));
     }
 
     // =========================================================================

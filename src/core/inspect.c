@@ -1,6 +1,7 @@
 // Save file inspector - compiled with the game binary
 // Usage: ./bin/path --inspect [filename] [options]
 
+#include "../entities/action_queue.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,8 @@
 #include "../simulation/plants.h"
 #include "../entities/furniture.h"
 #include "../entities/belts.h"
+#include "../entities/relations.h"
+#include "../entities/town.h"
 #include "../simulation/mood.h"
 #include "save_migrations.h"
 
@@ -114,6 +117,10 @@ static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
+static int insp_moverCoins[MAX_MOVERS];   // purses (v119+, money.h)
+static bool insp_forSale[MAX_STOCKPILES];   // shops (v121+, money.h)
+static int insp_till[MAX_STOCKPILES];
+static float insp_moverSocial[MAX_MOVERS];   // the social need (v120+, social.h)
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -210,6 +217,8 @@ static void print_mover(int idx) {
     printf("Thirst: %.1f%%\n", m->thirst * 100.0f);
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
     printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
+    { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCoins[m - insp_movers], mb, sizeof mb)); }
+    printf("Social: %.0f%%\n", insp_moverSocial[m - insp_movers] * 100.0f);
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
@@ -260,6 +269,11 @@ static void print_item(int idx) {
     }
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
     if (item->stackCount > 1) printf("Stack count: %d\n", item->stackCount);
+    if (itemDefs[item->type].flags & IF_SPOILS) {
+        static const char* cond[] = {"fresh", "stale", "rotten"};
+        printf("Condition: %s (%.1f game hours old)\n", item->condition < 3 ? cond[item->condition] : "?",
+               item->spoilageTimer / GameHoursToGameSeconds(1.0f));
+    }
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");
     printf("Unreachable cooldown: %.2f\n", item->unreachableCooldown);
@@ -306,6 +320,7 @@ static void print_stockpile(int idx) {
     printf("Position: (%d, %d, z%d)\n", sp->x, sp->y, sp->z);
     printf("Size: %d x %d\n", sp->width, sp->height);
     printf("Priority: %d\n", sp->priority);
+    if (insp_forSale[idx]) printf("For sale: yes, till %d coins\n", insp_till[idx]);
     printf("Free slots: %d\n", sp->freeSlotCount);
     printf("Max stack: %d\n", sp->maxStackSize);
     printf("Allowed: ");
@@ -408,7 +423,7 @@ static void print_workshop(int idx) {
         if (bill->mode == BILL_DO_X_TIMES) {
             printf(" (%d/%d)", bill->completedCount, bill->targetCount);
         } else if (bill->mode == BILL_DO_UNTIL_X) {
-            printf(" (until %d)", bill->targetCount);
+            printf(" (until %d, completed: %d)", bill->targetCount, bill->completedCount);
         } else {
             printf(" (completed: %d)", bill->completedCount);
         }
@@ -469,10 +484,22 @@ static void print_cell(int x, int y, int z) {
     }
     
     // Walkability (requires globals to be set up)
+    // IsCellWalkableAt reads the global water layer, which --inspect doesn't load: apply its
+    // water rules from the save's water here (deep water blocks, deep ice below holds you)
     bool walkable = IsCellWalkableAt(z, y, x);
+    bool deepWater = water.level >= WATER_BLOCKS_MOVEMENT;
+    bool iceBelow = false;
+    if (!walkable && !deepWater && z > 0 && !CellBlocksMovement(cell) && !CellIsSolid(cell) &&
+        !(insp_cellFlags[idx] & CELL_FLAG_WORKSHOP_BLOCK)) {
+        WaterCell below = insp_waterCells[(z-1) * insp_gridH * insp_gridW + y * insp_gridW + x];
+        iceBelow = below.isFrozen && below.level >= WATER_BLOCKS_MOVEMENT;
+        if (iceBelow) walkable = true;
+    }
+    if (deepWater) walkable = false;
     printf("Walkable: %s", walkable ? "YES" : "NO");
     if (walkable) {
-        if (CellIsLadder(cell)) printf(" (ladder)");
+        if (iceBelow) printf(" (ice below)");
+        else if (CellIsLadder(cell)) printf(" (ladder)");
         else if (CellIsRamp(cell)) printf(" (ramp)");
         else if (insp_cellFlags[idx] & CELL_FLAG_HAS_FLOOR) printf(" (constructed floor)");
         else if (z == 0) printf(" (bedrock below)");
@@ -482,7 +509,8 @@ static void print_cell(int x, int y, int z) {
             printf(" (solid below: %s)", CellTypeName(cellBelow));
         }
     } else {
-        if (CellBlocksMovement(cell)) printf(" (blocks movement)");
+        if (deepWater && !CellBlocksMovement(cell)) printf(" (deep water %d/7)", water.level);
+        else if (CellBlocksMovement(cell)) printf(" (blocks movement)");
         else if (insp_cellFlags[idx] & CELL_FLAG_WORKSHOP_BLOCK) printf(" (workshop blocks)");
         else if (z > 0) {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
@@ -1444,8 +1472,18 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= V107_SCROUNGE) {
+    if (version >= V119_MONEY) {
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V114_GUNPOWDER) {
+        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
+        static StockpileV118 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V107_SCROUNGE) {
+        // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
+        static StockpileV113 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV113), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V113_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V106_INVENTORY) {
         // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
         static StockpileV106 oldSp[MAX_STOCKPILES];
@@ -1471,6 +1509,13 @@ int InspectSaveFile(int argc, char** argv) {
         static StockpileV90 oldSp[MAX_STOCKPILES];
         fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
         for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
+    }
+    // Shops (v121+, money.h)
+    memset(insp_forSale, 0, sizeof(insp_forSale));
+    memset(insp_till, 0, sizeof(insp_till));
+    if (version >= V121_SHOPS) {
+        fread(insp_forSale, sizeof(bool), MAX_STOCKPILES, f);
+        fread(insp_till, sizeof(int), MAX_STOCKPILES, f);
     }
 
     // Gather zones
@@ -1710,6 +1755,15 @@ int InspectSaveFile(int argc, char** argv) {
         }
     }
 
+    // Action queues (v112+): not shown yet, skipped
+    if (version >= V112_ACTION_QUEUE) fseek(f, (long)sizeof(MoverQueue) * insp_moverCount, SEEK_CUR);
+    // Purses (v119+)
+    memset(insp_moverCoins, 0, sizeof(insp_moverCoins));
+    if (version >= V119_MONEY) fread(insp_moverCoins, sizeof(int), insp_moverCount, f);
+    // Social need (v120+)
+    for (int i = 0; i < MAX_MOVERS; i++) insp_moverSocial[i] = 1.0f;
+    if (version >= V120_SOCIAL) fread(insp_moverSocial, sizeof(float), insp_moverCount, f);
+
     // Animals
     fread(&insp_animalCount, 4, 1, f);
     insp_animals = malloc(insp_animalCount > 0 ? insp_animalCount * sizeof(Animal) : sizeof(Animal));
@@ -1819,6 +1873,13 @@ int InspectSaveFile(int argc, char** argv) {
         fread(&insp_beltCount, sizeof(insp_beltCount), 1, f);
         if (insp_beltCount > 0) fseek(f, insp_beltCount * (int)sizeof(Belt), SEEK_CUR);
     }
+    // Relations (v111+): skipped (not inspected yet)
+    if (version >= V111_RELATIONS && insp_moverCount > 0)
+        fseek(f, insp_moverCount * (long)sizeof(MoverRelations), SEEK_CUR);
+    // Town (v113+): skipped (not inspected yet)
+    if (version >= V113_TOWN) TownSkipSave(f);
+    // Furniture fuel (v117+): one float per furniture, skipped
+    if (version >= V117_FURNITURE_FUEL && insp_furnitureCount > 0) fseek(f, insp_furnitureCount * (long)sizeof(float), SEEK_CUR);
     
     fclose(f);
     
@@ -1950,8 +2011,13 @@ int InspectSaveFile(int argc, char** argv) {
         itemHighWaterMark = insp_itemHWM;
         RebuildContainerLists();
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
+        memcpy(stockpileForSale, insp_forSale, sizeof(insp_forSale));
+        memcpy(stockpileTill, insp_till, sizeof(insp_till));
+        ShopRecount();
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
+        memcpy(moverCoins, insp_moverCoins, sizeof(int) * insp_moverCount);
+        memcpy(moverSocial, insp_moverSocial, sizeof(float) * insp_moverCount);
         moverCount = insp_moverCount;
         // Init job pool (allocates activeJobList) then copy data
         InitJobPool();

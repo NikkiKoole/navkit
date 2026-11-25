@@ -2,7 +2,7 @@
 //
 // Run with: make bench_astar_heap
 //
-// Backs the findings in docs/todo/pathfinding/astar-priority-queue-and-extraction.md.
+// Backs the findings in docs/done/pathfinding/astar-priority-queue-and-extraction.md.
 // RunAStar() picks the next node by linear-scanning the whole nodeData array on every
 // pop (pathfinding.c:1648) and clears the full array on entry (:1623), even though a
 // working binary heap already sits unused in the same file (:227).

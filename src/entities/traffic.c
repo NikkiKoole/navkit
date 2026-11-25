@@ -1065,19 +1065,19 @@ static void DriveCar(int i, float dt) {
 // ---------------------------------------------------------------------------
 // Cars bucketed in a coarse grid (8 cells) so the touch test only compares neighbours
 #define TR_BUCKET 8
-static int bucketHead[(2048 / TR_BUCKET + 1) * (2048 / TR_BUCKET + 1)], bucketNext[MAX_CARS];
+static int trBucketHead[(2048 / TR_BUCKET + 1) * (2048 / TR_BUCKET + 1)], trBucketNext[MAX_CARS];
 
 static void Sample(void) {
     int pairs = 0, off = 0;
     int bw = gridWidth / TR_BUCKET + 1, bh = gridHeight / TR_BUCKET + 1;
-    for (int b = 0; b < bw * bh; b++) bucketHead[b] = -1;
+    for (int b = 0; b < bw * bh; b++) trBucketHead[b] = -1;
     for (int i = 0; i < carCount; i++) {
         const Car* a = &cars[i];
         if (!a->active || !a->onRoad) continue;
         int bx = (int)(a->x / CELL_SIZE) / TR_BUCKET, by = (int)(a->y / CELL_SIZE) / TR_BUCKET;
         if (bx < 0 || by < 0 || bx >= bw || by >= bh) continue;
-        bucketNext[i] = bucketHead[by * bw + bx];
-        bucketHead[by * bw + bx] = i;
+        trBucketNext[i] = trBucketHead[by * bw + bx];
+        trBucketHead[by * bw + bx] = i;
     }
     for (int i = 0; i < carCount; i++) {
         const Car* a = &cars[i];
@@ -1096,7 +1096,7 @@ static void Sample(void) {
         for (int ny = by - 1; ny <= by + 1; ny++)
         for (int nx = bx - 1; nx <= bx + 1; nx++) {
         if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
-        for (int j = bucketHead[ny * bw + nx]; j >= 0; j = bucketNext[j]) {
+        for (int j = trBucketHead[ny * bw + nx]; j >= 0; j = trBucketNext[j]) {
             if (j <= i) continue;
             const Car* b = &cars[j];
             float dx = a->x - b->x, dy = a->y - b->y;

@@ -7,6 +7,7 @@
 #include "../simulation/balance.h"
 #include "../simulation/weather.h"
 #include "../entities/items.h"
+#include "../entities/town.h"
 #include <string.h>
 
 // Grid storage
@@ -95,6 +96,16 @@ CropType CropTypeForSeed(int seedType) {
 // Growth modifiers (pure functions, no side effects)
 // =============================================================================
 
+bool CropWorthPlantingNow(CropType crop) {
+    int season = (int)GetCurrentSeason();
+    float mod = CropSeasonModifier(crop, season);
+    if (mod <= 0.0f) return false;
+    if (CropSeasonModifier(crop, (season + 1) % 4) > 0.0f) return true;   // it can carry on next season
+    int dayInSeason = daysPerSeason > 0 ? GetYearDay() % daysPerSeason : 0;
+    float hoursLeft = (float)(daysPerSeason - dayInSeason) * 24.0f - timeOfDay;
+    return hoursLeft >= CropGrowthTimeGH(crop) / mod;
+}
+
 float CropGrowthTimeGH(CropType crop) {
     switch (crop) {
         case CROP_WHEAT:   return WHEAT_GROWTH_GH;
@@ -179,6 +190,12 @@ void FarmTick(float dt) {
                 if (seasonWeedRate > 0.0f) {
                     int weedGrowth = (int)(WEED_GROWTH_PER_TICK * seasonWeedRate);
                     if (weedGrowth < 1) weedGrowth = 1;
+                    float slower = TownWeedFactor(x, y, z);   // town farms: weeded about once a crop
+                    if (slower < 1.0f) {
+                        float g = WEED_GROWTH_PER_TICK * seasonWeedRate * slower;
+                        weedGrowth = (int)g;
+                        if (GetRandomValue(0, 999) < (int)((g - weedGrowth) * 1000.0f)) weedGrowth++;
+                    }
                     int newWeed = fc->weedLevel + weedGrowth;
                     if (newWeed > 255) newWeed = 255;
                     fc->weedLevel = (uint8_t)newWeed;

@@ -13,6 +13,7 @@
 #include "../src/simulation/mood.h"
 #include "../src/entities/containers.h"
 #include "../src/entities/furniture.h"
+#include "../src/entities/action_queue.h"
 #include "../src/entities/inventory.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/balance.h"
@@ -932,6 +933,39 @@ static bool WalkToFarFood(float testDayLength, int* seekStarts) {
 }
 
 describe(seek_keeps_its_goal) {
+    it("food at the far edge of its cell is in reach when the mover comes from the other side") {
+        // Bug (play-hungry, berries 4 px into their cell): the walk ends once the mover is in
+        // the food's cell, here ~0.85 cells from it; eating wanted 0.75: it stood there until
+        // the seek timed out
+        InitTestGridFromAscii(
+            "................\n"
+            "................\n"
+            "................\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearStockpiles(); ClearJobs(); ClearPlants(); ClearFurniture();
+        InitBalance();
+        hungerEnabled = true; energyEnabled = false; bodyTempEnabled = false;
+        thirstEnabled = false; bladderEnabled = false;
+        sitToEat = false;
+        dayLength = 60.0f;
+        currentTick = 1;
+        SpawnItem(3 * CELL_SIZE + 4.0f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+        InitMover(&movers[0], 12.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){12, 1, 0}, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].hunger = 0.25f;
+        int seeks = 0, prev = FREETIME_NONE;
+        bool ate = false;
+        for (int t = 0; t < 3000 && !ate; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (movers[0].freetimeState == FREETIME_SEEKING_FOOD && prev != FREETIME_SEEKING_FOOD) seeks++;
+            ate = movers[0].freetimeState == FREETIME_EATING;
+            prev = movers[0].freetimeState;
+        }
+        sitToEat = true;
+        expect(ate);
+        expect(seeks == 1);   // the first walk reached it (no time-out and second try)
+    }
+
     it("a mover walking to a need keeps its goal when no path is found (not sent wandering)") {
         InitTestGridFromAscii(
             "..........\n"
@@ -1120,6 +1154,41 @@ describe(eating_starving_unassigns_job) {
 
         // Job should NOT be unassigned — let mover finish getting food
         expect(movers[mi].currentJobId == 0);
+    }
+
+    it("starving mover does NOT unassign a craft job that makes food (baking), but does a non-food craft") {
+        for (int food = 1; food >= 0; food--) {
+            SetupClean();
+            ClearWorkshops();
+            int mi = SetupMover(1, 1);
+            movers[mi].hunger = 0.05f;
+            int ws = CreateWorkshop(5, 5, 1, food ? WORKSHOP_STOVE : WORKSHOP_QUERN);
+            expect(ws >= 0);
+            AddBill(ws, 0, BILL_DO_FOREVER, 0);   // stove 0: Cook Meat (food); quern 0: Grind Wheat (flour, not edible)
+            ClearJobs();
+            Job* j = &jobs[0];
+            j->active = true;
+            j->type = JOBTYPE_CRAFT;
+            j->assignedMover = mi;
+            j->step = 0;
+            j->targetItem = -1;
+            j->targetStockpile = -1;
+            j->targetBlueprint = -1;
+            j->targetWorkshop = ws;
+            j->targetBillIdx = 0;
+            j->targetMineX = -1;
+            j->targetMineY = -1;
+            j->targetMineZ = -1;
+            j->carryingItem = -1;
+            j->targetItem2 = -1;
+            j->fuelItem = -1;
+            movers[mi].currentJobId = 0;
+            jobHighWaterMark = 1;
+            activeJobCount = 1;
+            ProcessFreetimeNeeds();
+            if (food) { expect(movers[mi].currentJobId == 0); }    // keeps cooking: it is the food
+            else      { expect(movers[mi].currentJobId == -1); }   // grinding flour gives way to hunger
+        }
     }
 
     it("unassign preserves mine designation progress") {
@@ -1620,6 +1689,9 @@ describe(trash) {
 static int heatSavedSeason, heatSavedDiurnal, heatSavedSurface;
 
 // 10x10 at z=0, a wall down x=3 (no way across), cold air (-10C, no day/season swing)
+bool SaveWorld(const char* filename);   // saveload.c
+bool LoadWorld(const char* filename);
+
 static void SetupHeatTest(void) {
     InitTestGridFromAscii(
         "...#......\n"
@@ -1711,6 +1783,59 @@ describe(heat) {
         movers[0].x = 2.5f * CELL_SIZE; movers[0].y = 3.5f * CELL_SIZE;   // next to the barrel
         for (int t = 0; t < 600; t++) NeedsTick();
         expect(movers[0].bodyTemp > away);
+        RestoreHeatTest();
+    }
+
+    it("a barrel burns its fuel down and goes out: no heat, no warm spot; a grate needs none") {
+        SetupHeatTest();
+        int g = SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        int b = SpawnFurniture(7, 2, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        expect(FurnitureLit(b) && !FurnitureNeedsFuel(b));   // placed with a full load
+        furnitureFuel[b] = 0.01f;
+        float savedDt = gameDeltaTime;
+        gameDeltaTime = GameHoursToGameSeconds(0.1f);
+        FurnitureFuelTick();
+        gameDeltaTime = savedDt;
+        expect(furnitureFuel[b] == 0.0f);
+        expect(!FurnitureLit(b) && FurnitureNeedsFuel(b));
+        expect(HeatLevelAt(7, 2, 0) == 0);
+        expect(!IsWarmSpot(6, 2, 0));
+        expect(FurnitureLit(g) && !FurnitureNeedsFuel(g) && IsWarmSpot(5, 5, 0));
+        FurnitureAddFuel(b, ITEM_LOG);
+        expect(FurnitureLit(b) && furnitureFuel[b] == 4.0f);
+        RestoreHeatTest();
+    }
+
+    it("a hauler brings sticks to a barrel under half full and tosses them in") {
+        SetupHeatTest();
+        bodyTempEnabled = false;   // a job, not a cold mover seeking warmth
+        int b = SpawnFurniture(1, 8, 0, FURNITURE_FIRE_BARREL, MAT_IRON);   // west of the wall, with the mover
+        furnitureFuel[b] = 1.0f;
+        int sticks = SpawnItem(1.5f * CELL_SIZE, 4.5f * CELL_SIZE, 0.0f, ITEM_STICKS);
+        items[sticks].stackCount = 3;
+        bool topped = false;
+        for (int t = 0; t < 12000 && !topped; t++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            topped = !FurnitureNeedsFuel(b) && movers[0].currentJobId < 0;
+        }
+        expect(topped);   // topped up to at least half of its 8 h, then they stop
+        expect(!items[sticks].active || items[sticks].stackCount <= 1);   // 2 h a bundle: 2 or 3 went in
+        expect(furnitureFuel[b] >= 4.0f);
+        RestoreHeatTest();
+    }
+
+    it("barrel fuel survives a save and load (v117)") {
+        SetupHeatTest();
+        SpawnFurniture(5, 5, 0, FURNITURE_HEAT_GRATE, MAT_IRON);
+        int b = SpawnFurniture(7, 2, 0, FURNITURE_FIRE_BARREL, MAT_IRON);
+        furnitureFuel[b] = 2.5f;
+        expect(SaveWorld("/tmp/test_barrel_fuel.bin"));
+        ClearFurniture();
+        expect(LoadWorld("/tmp/test_barrel_fuel.bin"));
+        int b2 = GetFurnitureAt(7, 2, 0);
+        expect(b2 >= 0 && furnitureFuel[b2] == 2.5f);
         RestoreHeatTest();
     }
 }

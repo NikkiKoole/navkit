@@ -735,7 +735,7 @@ Each is its own project; order follows the infinite-world doc, adjusted for what
 
 - `large-worlds.md`: measured costs per map size and terrain, what was fixed.
 - `../../vision/infinite-world-exploration.md`: streaming, delta saves, entity abstraction research.
-- `../pathfinding/per-chunk-edge-storage.md`: the local graph updates.
+- `../../done/pathfinding/per-chunk-edge-storage.md`: the local graph updates.
 - `unified-roadmap.md`: puts the infinite world in Era 3+.
 
 ### Steady-state tick at 2048 (2026-11-21)

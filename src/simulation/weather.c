@@ -744,6 +744,8 @@ void ResetLightningTimer(void) {
     lightningTimer = GameHoursToGameSeconds(lightningInterval);
 }
 
+void TriggerScreenShake(float intensity, float duration);   // main.c (a stub in the test build)
+
 void TriggerLightningFlash(void) {
     lightningFlashTimer = 1.0f;  // Start at max intensity
 }
@@ -837,8 +839,9 @@ static void TryLightningStrike(void) {
     extern void SetFireLevel(int x, int y, int z, int level);
     SetFireLevel(x, y, z, 5);  // Start with level 5 fire
     
-    // Trigger flash
+    // Trigger flash, and the thunder shakes the screen a little (heard everywhere, like the flash)
     TriggerLightningFlash();
+    TriggerScreenShake(3.0f, 0.35f);
 }
 
 void UpdateLightning(float dt) {

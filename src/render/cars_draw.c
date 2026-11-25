@@ -320,12 +320,12 @@ void CarsFollowCamera(float frameTime) {
 }
 
 // ---------------------------------------------------------------------------
-// The road tool's preview (ACTION_DRAW_ROAD, input.c HandleRoadTool): the plan's junctions, the
+// The road tool's preview (ACTION_DRAW_ROAD_PLAN, input.c HandleRoadTool): the plan's junctions, the
 // snap point under the mouse, the road being drawn (green: fine; orange: it breaks a rule - the
 // first problem written by the mouse)
 // ---------------------------------------------------------------------------
 void DrawRoadToolPreview(void) {
-    if (inputAction != ACTION_DRAW_ROAD || frontViewMode) return;
+    if (inputAction != ACTION_DRAW_ROAD_PLAN || frontViewMode) return;
     float CS = CELL_SIZE;
     for (int n = 0; n < rpNodeCount; n++) {
         if (!rpNodes[n].alive) continue;

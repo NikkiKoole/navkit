@@ -37,10 +37,10 @@ typedef enum {
     FURNITURE_TABLE,       // append only: saves store the type number
     FURNITURE_TAP,         // clean water without end (no plumbing yet)
     FURNITURE_HEAT_GRATE,  // city: warm air from below, walk on it (heat 1)
-    FURNITURE_FIRE_BARREL, // city: a burning oil drum, stand next to it (heat 1; no fuel yet)
+    FURNITURE_FIRE_BARREL, // city: a burning oil drum, stand next to it (heat 1 while it has fuel)
     // dreamengine's buildings (names match its NKP_FURN_*)
     FURNITURE_SINK,        // washing (bathroom, kitchen)
-    FURNITURE_DOUBLE_BED,  // a bed: one sleeper for now
+    FURNITURE_DOUBLE_BED,  // a bed for two sleepers (FurnitureDef.sleepers = 2)
     FURNITURE_FRIDGE,      // cold storage
     FURNITURE_DESK,        // flat surface + seating spot in front
     FURNITURE_SHELF,       // display (books, goods)
@@ -49,6 +49,7 @@ typedef enum {
     FURNITURE_BATH,        // washing; a bath or shower makes a bathroom (a toilet alone: a WC)
     FURNITURE_SHOWER,      // washing
     FURNITURE_PIT_LATRINE, // survival: a seat over a dug pit (toilet comfort 1; dirties the floor around)
+    FURNITURE_BOTTLE_MACHINE, // City 1999: hand in empty cans for their deposit, paid from the nearest shop's till (money.h)
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
@@ -62,6 +63,7 @@ typedef struct {
     int16_t heatTemp;     // Celsius it keeps its cell at in temperature.c (0 = none)
     uint8_t sleepers;     // movers that rest on it at once (0 = 1); a double bed: 2
     uint8_t comfort;      // CAP_TOILET: 1 pit latrine, 2 toilet (higher is preferred; 0 = 2)
+    float fuelHours;      // burns fuel: game hours a full load lasts (0 = needs none: a grate)
 } FurnitureDef;
 
 typedef struct {
@@ -109,6 +111,15 @@ bool IsWarmSpot(int x, int y, int z);
 // Food on a cell with CAP_COLD_STORAGE (a fridge) spoils at this share of the normal rate
 extern float fridgeSpoilageFactor;
 void FurnitureHeatTick(void);
+
+// Fuel (a burning barrel): furnitureFuel[i] is game hours of burning left. It burns down,
+// gives heat and draws a gathering only while lit; movers top it up (JOBTYPE_REFUEL).
+extern float furnitureFuel[MAX_FURNITURE];
+bool FurnitureLit(int fi);                   // gives its heat now (no fuel needed, or some left)
+bool FurnitureNeedsFuel(int fi);             // burns fuel and is under half full
+float FuelHoursOfItem(int itemType);         // what tossing one in adds (log 4 h, sticks 2 h, other fuel 1 h)
+void FurnitureAddFuel(int fi, int itemType);
+void FurnitureFuelTick(void);                // burn down by gameDeltaTime (sim tick)
 // Radiant heat: what a mover on or next to a heat provider feels (Celsius, 0 = none),
 // whatever the air does (snow, wind): 30 + 8 x level. Body temperature heads for it.
 int FeltHeatAt(int x, int y, int z);   // providers with heatTemp keep their cell warm (temperature.c)

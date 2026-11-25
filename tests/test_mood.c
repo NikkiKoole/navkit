@@ -1376,6 +1376,28 @@ describe(mood_weather_dirt_triggers) {
         FLOOR_DIRT(5, 5, 1) = 0;
     }
 
+    it("a slob doesn't mind a filthy floor, a tidy mover minds it more") {
+        Mover* m = SetupOutdoorMover();
+        FLOOR_DIRT(5, 5, 1) = 120;
+        TickMood(2);
+        float plain = MoodletValue(m, MOODLET_FILTHY);
+
+        m = SetupOutdoorMover();
+        m->traits[0] = TRAIT_SLOB; m->traits[1] = TRAIT_NONE;
+        FLOOR_DIRT(5, 5, 1) = 120;
+        TickMood(2);
+        expect(!HasMoodlet(m, MOODLET_FILTHY));
+
+        m = SetupOutdoorMover();
+        m->traits[0] = TRAIT_TIDY; m->traits[1] = TRAIT_NONE;
+        FLOOR_DIRT(5, 5, 1) = 120;
+        TickMood(2);
+        float tidy = MoodletValue(m, MOODLET_FILTHY);
+        expect(plain < 0.0f);
+        expect(tidy < plain);
+        FLOOR_DIRT(5, 5, 1) = 0;
+    }
+
     it("eating stale food gives 'ate stale food', fresh food does not") {
         for (int stale = 0; stale <= 1; stale++) {
             SetupClean();

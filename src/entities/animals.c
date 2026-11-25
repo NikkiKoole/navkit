@@ -18,6 +18,15 @@ bool animalRespawnEnabled = true;
 int animalTargetPopulation = 8;
 float animalSpawnIntervalGH = 24.0f;  // one respawn attempt per game day
 
+// Scares (ScareAnimal): transient, kept beside the saved Animal struct
+float animalScareHours = 1.5f;   // ~9 cells of running
+static float animalScareTimer[MAX_ANIMALS];
+static float animalScareX[MAX_ANIMALS], animalScareY[MAX_ANIMALS];
+float animalDazeHours = 1.5f;
+static float animalDazeTimer[MAX_ANIMALS];
+static float animalVelX[MAX_ANIMALS], animalVelY[MAX_ANIMALS];   // measured each tick
+float animalFleeSpeed = 1.3f;
+
 // Shared context steering instance (cleared per-animal per-tick)
 static ContextSteering steeringCtx;
 static bool steeringCtxInitialized = false;
@@ -60,6 +69,8 @@ void SpawnAnimal(AnimalType type, int spawnZ, AnimalBehavior behavior) {
             a->targetAnimalIdx = -1;
             a->markedForHunt = false;
             a->reservedByHunter = -1;
+            animalScareTimer[slot] = animalDazeTimer[slot] = 0.0f;
+            animalVelX[slot] = animalVelY[slot] = 0.0f;
             if (type == ANIMAL_PREDATOR) a->speed = 80.0f;
             return;
         }
@@ -70,7 +81,64 @@ void ClearAnimals(void) {
     animalCount = 0;
     for (int i = 0; i < MAX_ANIMALS; i++) {
         animals[i].active = false;
+        animalScareTimer[i] = animalDazeTimer[i] = 0.0f;
+        animalVelX[i] = animalVelY[i] = 0.0f;
     }
+}
+
+void ScareAnimal(int animalIdx, float fromX, float fromY) {
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) return;
+    animalScareTimer[animalIdx] = GameHoursToGameSeconds(animalScareHours);
+    animalScareX[animalIdx] = fromX;
+    animalScareY[animalIdx] = fromY;
+}
+
+bool AnimalScared(int animalIdx) {
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) return false;
+    return animalScareTimer[animalIdx] > 0.0f;
+}
+
+void DazeAnimal(int animalIdx, float fromX, float fromY) {
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) return;
+    Animal* a = &animals[animalIdx];
+    animalDazeTimer[animalIdx] = GameHoursToGameSeconds(animalDazeHours);
+    animalScareTimer[animalIdx] = 0.0f;   // scared once it comes to
+    animalScareX[animalIdx] = fromX;
+    animalScareY[animalIdx] = fromY;
+    a->velX = a->velY = 0.0f;
+}
+
+bool AnimalDazed(int animalIdx) {
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) return false;
+    return animalDazeTimer[animalIdx] > 0.0f;
+}
+
+void AnimalVelocity(int animalIdx, float* vx, float* vy) {
+    *vx = *vy = 0.0f;
+    if (animalIdx < 0 || animalIdx >= animalCount || !animals[animalIdx].active) return;
+    *vx = animalVelX[animalIdx];
+    *vy = animalVelY[animalIdx];
+}
+
+// The scare source if this animal is scared (pixels)
+static bool AnimalScareFrom(const Animal* a, float* x, float* y) {
+    int i = (int)(a - animals);
+    if (animalScareTimer[i] <= 0.0f) return false;
+    *x = animalScareX[i]; *y = animalScareY[i];
+    return true;
+}
+
+// Steering a scared animal: the danger sits just behind it (on the line to where the stone came
+// from, so a far thrower still counts as close) and it wants to be a few cells the other way.
+static void AnimalSteerScared(ContextSteering* ctx, Vector2 pos, float fromX, float fromY) {
+    float dx = fromX - pos.x, dy = fromY - pos.y;
+    float d = sqrtf(dx * dx + dy * dy);
+    if (d < 0.001f) { dx = 1.0f; dy = 0.0f; d = 1.0f; }
+    dx /= d; dy /= d;
+    Vector2 behind = { pos.x + dx * CELL_SIZE * 2.0f, pos.y + dy * CELL_SIZE * 2.0f };
+    ctx_danger_threats(ctx, pos, &behind, 1, CELL_SIZE * 6.0f, CELL_SIZE * 10.0f);
+    Vector2 away = { pos.x - dx * CELL_SIZE * 4.0f, pos.y - dy * CELL_SIZE * 4.0f };
+    ctx_interest_seek(ctx, pos, away, 1.0f);
 }
 
 int CountActiveAnimals(void) {
@@ -171,20 +239,32 @@ static void BehaviorSimpleGrazer(Animal* a, float dt) {
         TrampleGround(cx, cy, cz);
     }
 
-    // Flee from hunter if being actively hunted
-    if (a->reservedByHunter >= 0 && IsMoverHunting(a->reservedByHunter)) {
-        Mover* hunter = &movers[a->reservedByHunter];
-        if ((int)hunter->z == cz) {
-            float dx = hunter->x - a->x;
-            float dy = hunter->y - a->y;
+    // Flee from whatever scared it (a stone), else from a hunter actively hunting it
+    float threatX = 0.0f, threatY = 0.0f;
+    bool scared = AnimalScareFrom(a, &threatX, &threatY);
+    bool threat = scared;
+    if (!threat && a->reservedByHunter >= 0 && IsMoverHunting(a->reservedByHunter)
+        && (int)movers[a->reservedByHunter].z == cz) {
+        threat = true;
+        threatX = movers[a->reservedByHunter].x;
+        threatY = movers[a->reservedByHunter].y;
+    }
+    if (threat) {
+        {
+            float dx = threatX - a->x;
+            float dy = threatY - a->y;
             float distSq = dx * dx + dy * dy;
             float detectRadius = CELL_SIZE * 10.0f;
-            if (distSq < detectRadius * detectRadius && distSq > 0.01f) {
-                // Flee: move away from hunter
+            if ((scared || distSq < detectRadius * detectRadius) && distSq > 0.01f) {
+                // Flee: move away from it
                 float dist = sqrtf(distSq);
-                float fleeSpeed = a->speed * 1.3f * (60.0f / dayLength) * dt;
+                float fleeSpeed = a->speed * animalFleeSpeed * (60.0f / dayLength) * dt;
+                float ox = a->x, oy = a->y;
                 a->x -= (dx / dist) * fleeSpeed;
                 a->y -= (dy / dist) * fleeSpeed;
+                if (!IsTargetValid((int)(a->x / CELL_SIZE), (int)(a->y / CELL_SIZE), cz)) {
+                    a->x = ox; a->y = oy;   // cornered: a wall or water that way
+                }
                 // Clamp to grid bounds
                 float margin = CELL_SIZE * 0.5f;
                 if (a->x < margin) a->x = margin;
@@ -409,7 +489,10 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
             }
         }
     }
-    bool panicked = predatorCount > 0;
+    // Scared (a stone hit it): runs like from a predator (steered below)
+    float scareX = 0.0f, scareY = 0.0f;
+    bool scared = AnimalScareFrom(a, &scareX, &scareY);
+    bool panicked = predatorCount > 0 || scared;
 
     // Build boid from animal state — speed boost when fleeing
     Boid boid;
@@ -417,7 +500,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
     boid.vel = (Vector2){ a->velX, a->velY };
     float animalSpeedScale = 60.0f / dayLength;
     if (panicked) {
-        boid.maxSpeed = STEERING_MAX_SPEED * 1.3f * animalSpeedScale;
+        boid.maxSpeed = STEERING_MAX_SPEED * animalFleeSpeed * animalSpeedScale;
         boid.maxForce = STEERING_MAX_FORCE * 1.5f * animalSpeedScale;
     } else {
         boid.maxSpeed = STEERING_MAX_SPEED * animalSpeedScale;
@@ -498,6 +581,8 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
             ctx_interest_seek(&steeringCtx, boid.pos, flockTarget, 0.4f);
         }
     }
+
+    if (scared) AnimalSteerScared(&steeringCtx, boid.pos, scareX, scareY);
 
     // --- Danger: predators (large radii for intense flee) ---
     if (predatorCount > 0) {
@@ -668,6 +753,10 @@ static void BehaviorPredator(Animal* a, float dt) {
             bestPrey = i;
         }
     }
+    // Scared (a stone hit it): no hunting, run from where it came from
+    float scareX, scareY;
+    bool scared = AnimalScareFrom(a, &scareX, &scareY);
+    if (scared) bestPrey = -1;
     a->targetAnimalIdx = bestPrey;
 
     // --- Interest: pursue prey or wander ---
@@ -686,6 +775,8 @@ static void BehaviorPredator(Animal* a, float dt) {
                 0.5f);
         }
     }
+
+    if (scared) AnimalSteerScared(&steeringCtx, boid.pos, scareX, scareY);
 
     // --- Interest: velocity momentum (less than grazers for responsiveness) ---
     ctx_interest_velocity(&steeringCtx, boid.vel, 0.2f);
@@ -854,6 +945,22 @@ void AnimalsTick(float dt) {
         Animal* a = &animals[i];
         if (!a->active) continue;
 
+        if (animalScareTimer[i] > 0.0f) {
+            animalScareTimer[i] -= dt;
+            if (animalScareTimer[i] < 0.0f) animalScareTimer[i] = 0.0f;
+        }
+        float px = a->x, py = a->y;
+        if (animalDazeTimer[i] > 0.0f) {   // dazed: stands still, then comes to and runs
+            animalDazeTimer[i] -= dt;
+            a->velX = a->velY = 0.0f;
+            if (animalDazeTimer[i] <= 0.0f) {
+                animalDazeTimer[i] = 0.0f;
+                animalScareTimer[i] = GameHoursToGameSeconds(animalScareHours);
+            }
+            animalVelX[i] = animalVelY[i] = 0.0f;
+            continue;
+        }
+
         switch (a->behavior) {
         case BEHAVIOR_SIMPLE_GRAZER:
             BehaviorSimpleGrazer(a, dt);
@@ -865,5 +972,6 @@ void AnimalsTick(float dt) {
             BehaviorPredator(a, dt);
             break;
         }
+        if (dt > 0.0f) { animalVelX[i] = (a->x - px) / dt; animalVelY[i] = (a->y - py) / dt; }
     }
 }

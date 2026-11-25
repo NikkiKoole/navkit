@@ -19,6 +19,7 @@
 #define IF_FIXED          (1 << 10) // Stays where it is placed: no job hauls it (trash bin)
 #define IF_TWO_HANDED     (1 << 11) // Held, it takes both hands (log, crate, carcass)
 #define IF_WORN_BACK      (1 << 12) // Worn on the back (backpack)
+#define IF_MONEY          (1 << 13) // Coins (money.h): stackCount = coins; no job hauls them, picked up they go in the purse
 
 typedef struct {
     const char* name;     // Display name for tooltips
@@ -54,6 +55,7 @@ extern const ItemDef itemDefs[];
 #define ItemIsFixed(t)        (itemDefs[t].flags & IF_FIXED)
 #define ItemIsTwoHanded(t)    (itemDefs[t].flags & IF_TWO_HANDED)
 #define ItemIsWornOnBack(t)   (itemDefs[t].flags & IF_WORN_BACK)
+#define ItemIsMoney(t)        (itemDefs[t].flags & IF_MONEY)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)
@@ -61,6 +63,7 @@ extern const ItemDef itemDefs[];
 float ItemSpoilageLimit(int type);
 // Litres one unit takes up. Set per type where it matters (item_defs.c itemVolumeL); others
 // default to 1.5 x their weight in kg (dense things small, light things bulky enough).
+int ItemPrice(int type);     // whole coins at a shop (money.h), 0 = free
 float ItemVolume(int type);  // game seconds at the current dayLength (spoilageTimer counts game seconds)
 
 // Hydration values for drinkable items (0.0 = not drinkable, 1.0 = full hydration)

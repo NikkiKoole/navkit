@@ -64,13 +64,14 @@ typedef enum {
     ACTION_DRAW_TRACK,      // Place/remove train tracks
     ACTION_DRAW_TRAIN,      // Place/remove trains on tracks
     ACTION_DRAW_PLATFORM,   // Place/remove platforms next to tracks
-    ACTION_DRAW_ROAD,       // cars experiment: draw / remove roads of the road plan (curves, junctions where they meet)
+    ACTION_DRAW_ROAD_PLAN,       // cars experiment: draw / remove roads of the road plan (curves, junctions where they meet)
     // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,
     ACTION_WORK_DIG_RAMP,
     ACTION_WORK_REMOVE_FLOOR,
     ACTION_WORK_REMOVE_RAMP,
+    ACTION_WORK_BLAST,      // Blast mining: a gunpowder charge per designated wall (explosion.c)
     // Work > Build actions
     ACTION_WORK_CONSTRUCT,
     ACTION_WORK_FLOOR,
@@ -136,6 +137,13 @@ typedef enum {
     ACTION_SANDBOX_MOVER,       // Place mover at clicked cell
     ACTION_WORK_BELT,           // Work > Build: conveyor belt blueprints (appended: keeps other values)
     ACTION_WORK_SHAFT,          // Work > Build: elevator shaft blueprints (appended)
+    ACTION_DRAW_TOWN,           // Draw > Town (category): roads and lots (town.c, appended)
+    ACTION_DRAW_ROAD,           // Draw > Town: pave a road
+    ACTION_DRAW_LOT_HOME,       // Draw > Town: a home lot, the house appears at once
+    ACTION_DRAW_LOT_WORK,       // Draw > Town: a work lot, the workplace appears at once
+    ACTION_DRAW_LOT_MILL,       // Draw > Town: a mill (querns + granary)
+    ACTION_DRAW_LOT_FARM,       // Draw > Town: a wheat farm (field + seed store)
+    ACTION_DRAW_LOT_GRANARY,    // Draw > Town: a granary (wheat + flour for the winter)
 } InputAction;
 
 // Current input state
@@ -159,7 +167,7 @@ extern bool brushStrokeActive;     // True during continuous drag
 
 // Drag state
 extern bool isDragging;
-// Road tool (ACTION_DRAW_ROAD, cars experiment): 0 nothing yet, 1 start placed, 2 end pressed
+// Road tool (ACTION_DRAW_ROAD_PLAN, cars experiment): 0 nothing yet, 1 start placed, 2 end pressed
 // (dragging bends the road); the start / end (cells), the road class it draws (RdClass)
 extern int roadToolStage;
 extern float roadToolX1, roadToolY1, roadToolX2, roadToolY2;
@@ -202,6 +210,8 @@ void InputMode_FlipHow(void);                      // I: flip buildNow and the c
 void InputMode_StartLinking(int wsIdx);
 
 void SetSelectedFurnitureRecipe(int recipeIndex);
+void SelectBuildRecipe(int recipeIndex);       // selects it in its category (wall, ladder, furniture, ...)
+bool IsBuildRecipeSelected(int recipeIndex);    // the selected one in its category
 int GetSelectedFurnitureRecipe(void);
 
 // Get display strings for input bar

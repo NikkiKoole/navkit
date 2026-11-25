@@ -1,6 +1,6 @@
 # Capability-Based Task Resolution
 
-> Status: spec
+> Status: partial (capabilityGrid, 16 capability bits, CAP_HEAT with levels built; see "Building capabilities" / "Heat proof, built")
 
 Unified system for workshop crafting AND daily life activities. Extends [workshop-evolution-plan.md](../../todo/workshop-evolution-plan.md) with a concrete capability model that covers both job-driven production and need-driven survival.
 

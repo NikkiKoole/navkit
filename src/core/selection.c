@@ -1,4 +1,5 @@
 // selection.c - What the player has clicked on (see selection.h)
+#include "../entities/town.h"
 #include "selection.h"
 #include "../game_state.h"
 #include "../entities/mover.h"
@@ -9,6 +10,7 @@
 #include "../world/construction.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
+#include "../entities/money.h"
 #include "../entities/elevators.h"
 #include "../world/cell_defs.h"
 #include <math.h>
@@ -34,6 +36,7 @@ bool SelectionValid(void) {
         case SEL_BLUEPRINT: ok = selection.idx >= 0 && selection.idx < MAX_BLUEPRINTS && blueprints[selection.idx].active; break;
         case SEL_WORKSHOP:  ok = selection.idx >= 0 && selection.idx < MAX_WORKSHOPS && workshops[selection.idx].active; break;
         case SEL_STOCKPILE: ok = selection.idx >= 0 && selection.idx < MAX_STOCKPILES && stockpiles[selection.idx].active; break;
+        case SEL_LOT:       ok = selection.idx >= 0 && selection.idx < townLotHighWater && townLots[selection.idx].active; break;
     }
     if (!ok) ClearSelection();
     return ok;
@@ -100,6 +103,8 @@ Selection PickSelectionAt(float wx, float wy, int z) {
     if (a >= 0) return (Selection){SEL_ANIMAL, a};
     int cx = (int)floorf(wx / CELL_SIZE), cy = (int)floorf(wy / CELL_SIZE);
     if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight && z >= 0 && z < gridDepth) {
+        int lot = TownLotAt(cx, cy, z);   // the lot is what a town player means (it lists its stores)
+        if (lot >= 0) return (Selection){SEL_LOT, lot};
         int ws = FindWorkshopAt(cx, cy, z);
         if (ws >= 0) return (Selection){SEL_WORKSHOP, ws};
         int sp = GetStockpileAtGrid(cx, cy, z);
@@ -289,6 +294,12 @@ void StockpileToggleAll(int spIdx) {
     AddMessage(!anyOn ? "All filters ON" : "All filters OFF", WHITE);
 }
 
+void StockpileToggleForSale(int spIdx) {
+    if (!ActiveStockpile(spIdx)) return;
+    ShopSetForSale(spIdx, !stockpileForSale[spIdx]);
+    AddMessage(stockpileForSale[spIdx] ? "For sale: taking from it costs its price (money)" : "Not for sale: free again", WHITE);
+}
+
 void StockpileToggleMaterial(int spIdx, int materialFilterIdx) {
     Stockpile* sp = ActiveStockpile(spIdx);
     if (!sp || materialFilterIdx < 0 || materialFilterIdx >= STOCKPILE_MATERIAL_FILTER_COUNT) return;
@@ -376,6 +387,7 @@ void InputMode_StartLinking(int wsIdx);   // input_mode.c: linking a workshop is
 
 static const char* FollowLabel(int i) { return followMoverIdx == i ? "Unfollow" : "Follow"; }
 static const char* DebugLabel(int i) { return debugMoverIdx == i ? "Debug off" : "Debug"; }
+static const char* SellLabel(int i) { return (i >= 0 && i < MAX_STOCKPILES && stockpileForSale[i]) ? "Stop selling" : "Sell"; }
 static const char* DraftLabel(int i) { return (i >= 0 && i < moverCount && movers[i].isDrafted) ? "Undraft" : "Draft"; }
 static const char* DeconstructLabel(int i) {
     return (i >= 0 && i < MAX_WORKSHOPS && workshops[i].markedForDeconstruct) ? "Cancel deconstruct" : "Deconstruct";
@@ -409,6 +421,7 @@ static const SelectionVerb selectionVerbs[] = {
     { SEL_STOCKPILE, "Containers -", NULL, KEY_LEFT_BRACKET, 0, true, true, false, VerbContainersDown },
     // X: all filters on/off, only at the top filter level (input.c, next to the category keys)
     { SEL_STOCKPILE, "All on/off", NULL, KEY_X, 0, false, false, false, StockpileToggleAll },   // drawn in the filters row
+    { SEL_STOCKPILE, "Sell", SellLabel, 0, 0, false, false, false, StockpileToggleForSale },   // drawn after the steppers
 };
 #define SELECTION_VERB_COUNT ((int)(sizeof(selectionVerbs) / sizeof(selectionVerbs[0])))
 

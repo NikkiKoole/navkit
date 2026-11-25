@@ -73,22 +73,23 @@ The palette works end to end (`/` in game). In order:
 1. **The user plays with it first.** Does `/` feel right, does search rank the right things
    first, is there something they look for and can't find? Fold that in before more features.
 2. **Context (C), done as hover + `/` (the user's choice: no right mouse button).** Built
-   2026-11-24, see "Done so far". Left: verbs that take a place (spawn here, clear here, tp),
-   a cell context, and more mover verbs (today only Follow and Draft). Original plan:
+   2026-11-24, see "Done so far". Place verbs and the cell context: done 2026-11-25. Mover verbs: Follow, Draft, and (dev) Teleport, Fill needs, Cancel job,
+   Debug (b55d59f3); more later (give / drop item, rename, move-to when drafted). Original plan:
    **Right-click context.** Right-click a mover, workshop,
    stockpile or cell: the same palette cut down to what applies to it: its verbs (draft, follow,
    priority, ... from the `SelectionVerb` table), the commands that take a place (spawn here,
    clear here, tp), and its describe lines on top (`describe.c`). Mostly wiring: verbs are data,
    `FindRow.kind == FIND_VERB` rows already carry their selection kind in the path. Check first
    what right-click does in normal mode today (it should be nothing important).
-3. **Small polish** (can go along with 2):
+3. **Small polish**: done 2026-11-25 except "settings remember the last typed value" (see Done
+   so far). Original list:
    - pins and recent saved between runs: a small per-user file, not the save game
      (`FindNoteUsed` / `FindSetPinned` keep kind + ref, so they survive a rebuild);
    - the palette blocks clicks to widgets under it (shared/ui.h widgets don't check
      `ui_add_block_rect`; the dev sidebar sits left of the window so it doesn't bite yet);
    - mouse wheel sets the item brush count (now: 1, Shift 10);
    - settings remember the last typed value too (commands already do).
-4. **Fill the gaps in find**: what is still hand-written becomes rows: speed, the spawn-movers
+4. **Fill the gaps in find**: done 2026-11-25 (see Done so far). Original plan: what is still hand-written becomes rows: speed, the spawn-movers
    stepper, stockpile spawns, cutscene / shake as command rows; the global keys (input.c) as
    data with a key-clash test (step 5 of the data tidying). Then everything in the dev sidebar
    is also in find.
@@ -103,6 +104,32 @@ Recommended: 1, then 2 with 3 alongside.
 
 ## Done so far
 
+- 2026-11-25: **place verbs (hover + `/` over a cell).** `/` over empty ground: "Here: 12,7
+  (level 1)" with the cell's describe lines and Spawn item here (the spawn command's argument
+  line, run at that cell), Spawn mover here, Look here (tp), Remove loose items here (on the
+  ground, not reserved), Teleport <selected mover> here; the selection's own section follows.
+  Typing filters them first. Commands run from the palette act on that cell, not on the window
+  (`CommandSetHere` / `CommandHere` in commands.h; `spawn` uses it, so does anything later).
+- 2026-11-25: **the gaps filled (step 4; data tidying step 5).** Every dev sidebar button now runs
+  a command row: speed (pause / resume / toggle / 1-50), daylength, graph, findpath, seed, regen,
+  fillwalls, copymap, animal, agents, scatter, stockpile, balance reset, cutscene, shake, game,
+  scenario (plus the earlier clear / rain / weather / season / grid / spawnmovers). The global
+  keys are a table (`src/core/global_keys.c`): key, label, help, the command line it runs
+  (F5 `save`, F6 `load`, F7 `audit`, F8 `events`, Space `speed toggle`, Tab `overlay`, , . `level`,
+  F `follow` in normal mode); input.c runs them in one loop, the `?` panel lists the table, the
+  find palette shows a command's key ("save  F5"). Tested: no key twice, none of D W S I, no
+  clash with a hover verb. Small changes: the dev sidebar's speed buttons now unpause (like the
+  player HUD's), its Pause pauses instead of setting speed 0.
+- 2026-11-25: **palette polish.** Pins and recent survive a restart: `navkit_find.txt` in the
+  working directory (git-ignored), rows named by path + label (`FindRowKey` / `FindRowByKey`),
+  loaded on the first `/`, saved when a pin changes and when the palette closes. While the
+  palette is open the other widgets don't see the mouse (`SetMouseOffset` moves it away after
+  the palette has read it), so clicks can't fall through to the dev sidebar or inspector.
+  The item brush count is set with the mouse wheel (Shift: 10 at a time; no zoom while
+  brushing), shown on the cursor ("Log x5").
+- 2026-11-25: **mover dev verbs** (b55d59f3): Teleport (then L-click a cell), Fill needs, Cancel
+  job, Debug (path in orange + inspector shows DESC_DEBUG lines). Rows in the SelectionVerb
+  table, so the palette (hover + `/`) and the inspector show them; inspector verb buttons wrap.
 - 2026-11-24: **hover + `/` (context, C).** `/` with the mouse over a mover, animal, workshop or
   stockpile (else the selection) opens the palette with that thing on top: "Mover: Anna", up
   to three describe lines, its verbs (labels live: "Unfollow"); typing puts its matching verbs

@@ -29,6 +29,7 @@ typedef enum {
     DESIGNATION_EXPLORE,        // Walk straight line toward target (scouting)
     DESIGNATION_FARM,           // Till soil for farming
     DESIGNATION_REMOVE_BELT,    // Take down a conveyor belt (refunds a plank, drops the load)
+    DESIGNATION_BLAST,          // Blast mining: set a gunpowder charge in this wall, light it, run (JOBTYPE_BLAST)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -54,6 +55,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_EXPLORE]        = "EXPLORE",
         [DESIGNATION_FARM]           = "FARM",
         [DESIGNATION_REMOVE_BELT]    = "REMOVE_BELT",
+        [DESIGNATION_BLAST]          = "BLAST",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -73,6 +75,7 @@ typedef struct {
 #define REMOVE_FLOOR_WORK_TIME 0.4f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 0.4f   // Similar to floor removal
 #define REMOVE_BELT_WORK_TIME 0.25f  // Half of building one (0.5)
+#define BLAST_SET_WORK_TIME 0.3f     // Setting the charge in a drilled hole (then light and run)
 #define CHOP_WORK_TIME 1.2f          // Chopping mature trees takes longer
 #define CHOP_YOUNG_WORK_TIME 0.4f    // Young trees are quick to chop
 #define CHOP_FELLED_WORK_TIME 0.8f   // Chopping fallen trunks
@@ -371,6 +374,10 @@ void CompleteCleanDesignation(int x, int y, int z);
 int CountCleanDesignations(void);
 
 // Remove belt: a mover walks onto the belt and takes it down (the load drops, one plank back)
+// Blast mining: a wall the blast can break (explosion.c strength > 0), explored, not designated yet
+bool DesignateBlast(int x, int y, int z);
+bool HasBlastDesignation(int x, int y, int z);
+int CountBlastDesignations(void);
 bool DesignateRemoveBelt(int x, int y, int z);
 bool HasRemoveBeltDesignation(int x, int y, int z);
 void CancelRemoveBeltDesignation(int x, int y, int z);

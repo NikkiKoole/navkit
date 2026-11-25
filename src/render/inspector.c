@@ -6,6 +6,7 @@
 //
 // PanelContent() runs twice per frame: once to measure (draw == false, no
 // buttons) so the panel can be anchored to the bottom, once to draw.
+#include "../entities/town.h"
 #include "inspector.h"
 #include "../game_state.h"
 #include "../core/selection.h"
@@ -15,6 +16,7 @@
 #include "../entities/animals.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
+#include "../entities/money.h"
 #include "../world/designations.h"
 
 Color DescToneColor(DescTone tone);   // tooltips.c
@@ -156,6 +158,7 @@ static void StockpileContent(bool draw, float x, float* y) {
     *y += INSPECTOR_BUTTON_H;
     bx = x;
     Stepper("Containers", sp->maxContainers, draw, x, *y, &bx, spIdx, StockpileAdjustContainers);
+    if (Button(stockpileForSale[spIdx] ? "Stop selling" : "Sell", draw, &bx, *y)) StockpileToggleForSale(spIdx);   // money.h
     *y += INSPECTOR_BUTTON_H + 4;
 
     // Filters: one row per category (toggle all / open), the open one lists its items
@@ -213,6 +216,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
         case SEL_BLUEPRINT: DescribeBlueprint(selection.idx, &d); break;
         case SEL_WORKSHOP:  DescribeWorkshopStatus(selection.idx, &d); break;
         case SEL_STOCKPILE: DescribeStockpile(selection.idx, &d); break;
+        case SEL_LOT:       DescribeLot(selection.idx, &d); break;
         case SEL_NONE:      return 0;
     }
     if (d.count == 0) return 0;
@@ -281,6 +285,12 @@ void DrawSelectionHighlight(void) {
             const Stockpile* sp = &stockpiles[selection.idx];
             wx = sp->x * CELL_SIZE; wy = sp->y * CELL_SIZE; wz = sp->z;
             wcells = (float)sp->width; hcells = (float)sp->height;
+            break;
+        }
+        case SEL_LOT: {
+            const TownLot* L = &townLots[selection.idx];
+            wx = L->x1 * CELL_SIZE; wy = L->y1 * CELL_SIZE; wz = L->z;
+            wcells = (float)(L->x2 - L->x1 + 1); hcells = (float)(L->y2 - L->y1 + 1);
             break;
         }
         default: return;

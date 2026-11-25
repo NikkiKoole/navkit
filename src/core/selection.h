@@ -16,6 +16,7 @@ typedef enum {
     SEL_BLUEPRINT,
     SEL_WORKSHOP,
     SEL_STOCKPILE,
+    SEL_LOT,          // a town lot (town.c): a click inside one selects the lot, not its stores/stoves
 } SelectionKind;
 
 typedef struct {
@@ -30,7 +31,8 @@ void ClearSelection(void);
 // True if something is selected and it still exists (clears the selection if not).
 bool SelectionValid(void);
 
-// What is at world position (wx, wy) on level z: mover, then animal, then blueprint.
+// What is at world position (wx, wy) on level z: mover, then animal, then a town lot, then
+// workshop, stockpile, blueprint.
 // SEL_NONE if nothing selectable is there.
 Selection PickSelectionAt(float wx, float wy, int z);
 
@@ -57,6 +59,7 @@ void StockpileAdjustContainers(int spIdx, int delta);   // >= 0
 void StockpileToggleItem(int spIdx, int filterIdx);     // one STOCKPILE_FILTERS entry
 void StockpileToggleCategory(int spIdx, int category);  // all on unless all already on
 void StockpileToggleAll(int spIdx);                     // all off if any on, else all on
+void StockpileToggleForSale(int spIdx);                 // a shop or not (money.h)
 void StockpileToggleMaterial(int spIdx, int materialFilterIdx);   // STOCKPILE_MATERIAL_FILTERS
 // Items enabled / total in a filter category
 void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total);

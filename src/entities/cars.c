@@ -239,7 +239,7 @@ typedef struct { float f; int idx; } CarHeapNode;
 static CarHeapNode* heap = NULL;
 static int heapCap = 0, heapLen = 0;
 
-static void HeapPush(float f, int idx) {
+static void CarHeapPush(float f, int idx) {
     if (heapLen >= heapCap) {
         heapCap = heapCap ? heapCap * 2 : 4096;
         heap = realloc(heap, sizeof(CarHeapNode) * heapCap);
@@ -254,7 +254,7 @@ static void HeapPush(float f, int idx) {
     }
 }
 
-static CarHeapNode HeapPop(void) {
+static CarHeapNode CarHeapPop(void) {
     CarHeapNode top = heap[0];
     heap[0] = heap[--heapLen];
     int i = 0;
@@ -278,9 +278,9 @@ static void BuildHolonomic(int gx, int gy) {
     for (int i = 0; i < n; i++) holo[i] = -1;
     heapLen = 0;
     holo[gy * clrW + gx] = 0;
-    HeapPush(0, gy * clrW + gx);
+    CarHeapPush(0, gy * clrW + gx);
     while (heapLen > 0) {
-        CarHeapNode cur = HeapPop();
+        CarHeapNode cur = CarHeapPop();
         int ci = cur.idx;
         if ((int)cur.f != holo[ci]) continue;
         int cx = ci % clrW, cy = ci / clrW;
@@ -291,7 +291,7 @@ static void BuildHolonomic(int gx, int gy) {
             if (diag && (!NodeOk(cx + dirX[d], cy) || !NodeOk(cx, cy + dirY[d]))) continue;
             int ni = ny * clrW + nx;
             int g = holo[ci] + (diag ? 14 : 10);
-            if (holo[ni] < 0 || g < holo[ni]) { holo[ni] = g; HeapPush((float)g, ni); }
+            if (holo[ni] < 0 || g < holo[ni]) { holo[ni] = g; CarHeapPush((float)g, ni); }
         }
     }
 }
@@ -403,11 +403,11 @@ static bool HybridAStar(Car* car, float goalX, float goalY, int* outExpansions) 
     haStartX = car->x; haStartY = car->y;
     haLooseR = CarPoseBlockedMargin(car->x, car->y, car->z, car->heading, carPlanMargin) ? 1.5f * CELL_SIZE : 0.0f;
     int start = HaPoolAdd((HaNode){car->x, car->y, car->heading, 0, -1, 0, 0});
-    HeapPush(Heuristic(car->x, car->y, goalX, goalY), start);
+    CarHeapPush(Heuristic(car->x, car->y, goalX, goalY), start);
     int goal = -1, expansions = 0;
     float tol2 = (0.35f * CELL_SIZE) * (0.35f * CELL_SIZE);
     while (heapLen > 0 && expansions < HA_MAX_EXPAND) {
-        int ci = HeapPop().idx;
+        int ci = CarHeapPop().idx;
         HaNode cur = haPool[ci];
         int bin = HaBin(cur.x, cur.y, cur.h, bw, bh);
         if (bin < 0 || haClosed[bin]) continue;
@@ -429,7 +429,7 @@ static bool HybridAStar(Car* car, float goalX, float goalY, int* outExpansions) 
                 if (CarPoseBlockedMargin(nx, ny, car->z, nh, HA_WALL_DIST)) cost += HA_STEP * HA_WALL_COST;
                 float g = cur.g + cost;
                 int ni = HaPoolAdd((HaNode){nx, ny, nh, g, ci, (signed char)dir, steers[s]});
-                HeapPush(g + 1.1f * Heuristic(nx, ny, goalX, goalY), ni);
+                CarHeapPush(g + 1.1f * Heuristic(nx, ny, goalX, goalY), ni);
             }
     }
     *outExpansions = expansions;

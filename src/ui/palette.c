@@ -8,6 +8,7 @@
 #include "../core/scenarios.h"
 #include "../core/games.h"
 #include "../core/describe.h"
+#include "../entities/namegen.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../../shared/ui.h"
@@ -18,7 +19,7 @@
 // State
 // ---------------------------------------------------------------------------
 
-typedef enum { PE_HEADER, PE_INFO, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE } PalEntryKind;
+typedef enum { PE_HEADER, PE_INFO, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE, PE_PLACE } PalEntryKind;
 static bool Pickable(PalEntryKind k) { return k != PE_HEADER && k != PE_INFO; }
 typedef struct {
     PalEntryKind kind;
@@ -47,6 +48,44 @@ static struct {
 
 // The item brush: an item row picked in the palette, placed with left clicks
 static int brushItem = -1;
+static int brushCount = 1;   // items per click (mouse wheel)
+
+// Pins and recent survive a restart: a small per-user file (not the save game), rows named by
+// path + label (FindRowKey), so a row that moved or went away is simply dropped
+#define PAL_USE_FILE "navkit_find.txt"
+static bool useLoaded;
+
+static void LoadUse(void) {
+    useLoaded = true;
+    FILE* f = fopen(PAL_USE_FILE, "r");
+    if (!f) return;
+    char line[256];
+    int recentRows[FIND_MAX_RECENT], nRecent = 0;
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strncmp(line, "pin ", 4) == 0) {
+            int row = FindRowByKey(line + 4);
+            if (row >= 0) FindSetPinned(row, true);
+        } else if (strncmp(line, "recent ", 7) == 0 && nRecent < FIND_MAX_RECENT) {
+            int row = FindRowByKey(line + 7);
+            if (row >= 0) recentRows[nRecent++] = row;
+        }
+    }
+    fclose(f);
+    for (int i = nRecent - 1; i >= 0; i--) FindNoteUsed(recentRows[i]);   // file: most recent first
+}
+
+static void SaveUse(void) {
+    FILE* f = fopen(PAL_USE_FILE, "w");
+    if (!f) return;
+    int rows[FIND_MAX_PINNED];
+    char key[FIND_PATH_LEN + FIND_LABEL_LEN + 2];
+    int n = FindPinned(rows, FIND_MAX_PINNED);
+    for (int i = 0; i < n; i++) { FindRowKey(rows[i], key, sizeof(key)); fprintf(f, "pin %s\n", key); }
+    n = FindRecent(rows, FIND_MAX_RECENT);
+    for (int i = 0; i < n; i++) { FindRowKey(rows[i], key, sizeof(key)); fprintf(f, "recent %s\n", key); }
+    fclose(f);
+}
 
 // What the mouse was over when / was pressed (or the selection): its verbs and a few describe
 // lines go on top of the palette, and its verbs run on it
@@ -54,7 +93,30 @@ static struct {
     SelectionKind kind;
     int idx;
     DescLines desc;
+    bool fromHover;          // the mouse was on it (else: the selection)
 } ctx;
+
+// The cell the mouse was over when / was pressed: its place verbs, and the "here" of commands
+// run from the palette (src/ui/commands.h CommandSetHere)
+static struct { bool valid; int x, y, z; DescLines desc; } cell;
+
+typedef enum { PV_SPAWN_ITEM, PV_SPAWN_MOVER, PV_LOOK, PV_REMOVE_ITEMS, PV_TELEPORT, PV_COUNT } PlaceVerb;
+static const struct { const char* name; const char* help; } placeVerbs[PV_COUNT] = {
+    [PV_SPAWN_ITEM]   = { "Spawn item here",         "spawn <count> <item> on this cell" },
+    [PV_SPAWN_MOVER]  = { "Spawn mover here",        "A new mover stands here" },
+    [PV_LOOK]         = { "Look here",               "Centre the camera on this cell (tp)" },
+    [PV_REMOVE_ITEMS] = { "Remove loose items here", "Items lying on this cell (not reserved, not in a stockpile)" },
+    [PV_TELEPORT]     = { "Teleport selected here",  "The selected mover jumps to this cell" },
+};
+static bool PlaceVerbShown(int v) {
+    if (v == PV_TELEPORT) return SelectionValid() && selection.kind == SEL_MOVER;
+    return true;
+}
+static const char* PlaceVerbLabel(int v) {
+    if (v == PV_TELEPORT && SelectionValid() && selection.kind == SEL_MOVER)
+        return TextFormat("Teleport %s here", MoverDisplayName(selection.idx));
+    return placeVerbs[v].name;
+}
 
 static const char* CtxKindLabel(SelectionKind k) {
     switch (k) {
@@ -63,6 +125,7 @@ static const char* CtxKindLabel(SelectionKind k) {
         case SEL_WORKSHOP:  return "Workshop";
         case SEL_STOCKPILE: return "Stockpile";
         case SEL_BLUEPRINT: return "Blueprint";
+        case SEL_LOT:       return "Lot";
         default:            return "";
     }
 }
@@ -71,11 +134,12 @@ static void PickContext(void) {
     ctx.kind = SEL_NONE;
     ctx.idx = -1;
     ctx.desc.count = 0;
+    ctx.fromHover = true;
     if (hoveredMover >= 0)          { ctx.kind = SEL_MOVER;     ctx.idx = hoveredMover; }
     else if (hoveredAnimal >= 0)    { ctx.kind = SEL_ANIMAL;    ctx.idx = hoveredAnimal; }
     else if (hoveredWorkshop >= 0)  { ctx.kind = SEL_WORKSHOP;  ctx.idx = hoveredWorkshop; }
     else if (hoveredStockpile >= 0) { ctx.kind = SEL_STOCKPILE; ctx.idx = hoveredStockpile; }
-    else if (SelectionValid())      { ctx.kind = selection.kind; ctx.idx = selection.idx; }
+    else if (SelectionValid())      { ctx.kind = selection.kind; ctx.idx = selection.idx; ctx.fromHover = false; }
     switch (ctx.kind) {
         case SEL_MOVER:     DescribeMover(ctx.idx, DESC_PLAYER, &ctx.desc); break;
         case SEL_ANIMAL:    DescribeAnimal(ctx.idx, &ctx.desc); break;
@@ -84,6 +148,12 @@ static void PickContext(void) {
         case SEL_BLUEPRINT: DescribeBlueprint(ctx.idx, &ctx.desc); break;
         default: break;
     }
+    // The cell under the mouse (the palette window will cover it)
+    Vector2 g = ScreenToGrid(GetMousePosition());
+    cell.x = (int)g.x; cell.y = (int)g.y; cell.z = currentViewZ;
+    cell.valid = cell.x >= 0 && cell.x < gridWidth && cell.y >= 0 && cell.y < gridHeight;
+    cell.desc.count = 0;
+    if (cell.valid) DescribeCell(cell.x, cell.y, cell.z, &cell.desc);
 }
 
 // A verb row that applies to the context thing
@@ -100,6 +170,7 @@ bool Palette_IsOpen(void) { return pal.open; }
 
 void Palette_Open(void) {
     FindBuildIndex();
+    if (!useLoaded) LoadUse();
     pal.open = true;
     pal.query[0] = '\0';
     pal.qlen = 0;
@@ -109,9 +180,15 @@ void Palette_Open(void) {
     pal.cmdRow = -1;
     brushItem = -1;
     PickContext();
+    if (cell.valid) CommandSetHere(cell.x, cell.y, cell.z);
 }
 
-void Palette_Close(void) { pal.open = false; pal.cmdRow = -1; }
+void Palette_Close(void) {
+    if (pal.open) SaveUse();
+    CommandClearHere();
+    pal.open = false;
+    pal.cmdRow = -1;
+}
 
 // ---------------------------------------------------------------------------
 // Settings: show and change a value in place
@@ -202,12 +279,36 @@ static void AddCommandChoices(void) {
     }
 }
 
+static bool WordMatch(const char* text, const char* q) {   // a word of text starts with q
+    size_t n = strlen(q);
+    for (const char* c = text; *c; c++)
+        if ((c == text || c[-1] == ' ') && strncasecmp(c, q, n) == 0) return true;
+    return false;
+}
+
+// "Here: 12,7 (level 1)", a few describe lines, the place verbs (filtered by the query)
+static void AddCellSection(bool filtered) {
+    if (!cell.valid || (ctx.fromHover && ctx.kind != SEL_NONE)) return;
+    bool any = false;
+    for (int v = 0; v < PV_COUNT; v++) {
+        if (!PlaceVerbShown(v) || (filtered && !WordMatch(PlaceVerbLabel(v), pal.query))) continue;
+        if (!any) {
+            // (describe line 0 is "Cell (x, y, z)": the header says that already)
+            Add(PE_HEADER, -1, TextFormat("Here: %d,%d (level %d)", cell.x, cell.y, cell.z));
+            if (!filtered) for (int i = 1; i < cell.desc.count && i < 4; i++) Add(PE_INFO, -1, cell.desc.lines[i].text);
+            any = true;
+        }
+        Add(PE_PLACE, v, PlaceVerbLabel(v));
+    }
+}
+
 static void BuildEntries(void) {
     pal.count = 0;
     pal.nearMiss = false;
     if (pal.cmdRow >= 0) {
         AddCommandChoices();
     } else if (pal.qlen > 0) {
+        AddCellSection(true);
         // The hovered thing's verbs that match come first
         bool any = false;
         for (int r = 0; r < FindCount(); r++) {
@@ -221,6 +322,7 @@ static void BuildEntries(void) {
         else if (any && n > 0) Add(PE_HEADER, -1, "Everything");
         for (int i = 0; i < n; i++) if (!IsCtxVerb(hits[i])) Add(PE_ROW, hits[i], FindRowAt(hits[i])->label);
     } else {
+        if (pal.path[0] == '\0') AddCellSection(false);
         if (pal.path[0] == '\0' && ctx.kind != SEL_NONE) {
             // The hovered (or selected) thing: who it is, a few lines about it, what you can do
             Add(PE_HEADER, -1, TextFormat("%s: %s", CtxKindLabel(ctx.kind), ctx.desc.count ? ctx.desc.lines[0].text : ""));
@@ -328,7 +430,8 @@ static void ActivateRow(int row) {
         }
         case FIND_ITEM:
             brushItem = r->ref;
-            AddMessage(TextFormat("%s: L-click places (Shift: 10), R-click or Esc stops", r->label), SKYBLUE);
+            brushCount = 1;
+            AddMessage(TextFormat("%s: L-click places, wheel sets how many, R-click or Esc stops", r->label), SKYBLUE);
             Palette_Close();
             break;
         case FIND_SCENARIO:
@@ -341,6 +444,51 @@ static void ActivateRow(int row) {
             break;
         default: break;
     }
+}
+
+static int CommandRowNamed(const char* name) {
+    for (int r = 0; r < FindCount(); r++)
+        if (FindRowAt(r)->kind == FIND_COMMAND && strcmp(FindRowAt(r)->name, name) == 0) return r;
+    return -1;
+}
+
+static void ActivatePlace(int v) {
+    switch (v) {
+        case PV_SPAWN_ITEM: {   // type the count and item; spawn runs at this cell (CommandHere)
+            int row = CommandRowNamed("spawn");
+            if (row < 0) return;
+            pal.cmdRow = row;
+            SetQuery("1 ");
+            pal.sel = 0;
+            pal.scroll = 0;
+            return;
+        }
+        case PV_SPAWN_MOVER: {
+            int before = moverCount;
+            SpawnMoverAt(cell.x, cell.y, cell.z);
+            if (moverCount > before) AddMessage(TextFormat("Spawned %s at %d,%d", MoverDisplayName(moverCount - 1), cell.x, cell.y), GREEN);
+            else AddMessage("Can't stand there", YELLOW);
+            break;
+        }
+        case PV_LOOK: CommandRunLine(TextFormat("tp %d %d %d", cell.x, cell.y, cell.z)); break;
+        case PV_REMOVE_ITEMS: {
+            int removed = 0;
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                Item* it = &items[i];
+                if (!it->active || it->state != ITEM_ON_GROUND || it->reservedBy != -1) continue;
+                if ((int)(it->x / CELL_SIZE) != cell.x || (int)(it->y / CELL_SIZE) != cell.y || (int)it->z != cell.z) continue;
+                DeleteItem(i);
+                removed++;
+            }
+            AddMessage(TextFormat("Removed %d item%s", removed, removed == 1 ? "" : "s"), removed ? GREEN : GRAY);
+            break;
+        }
+        case PV_TELEPORT:
+            if (SelectionValid() && selection.kind == SEL_MOVER) MoverTeleportTo(selection.idx, cell.x, cell.y, cell.z);
+            break;
+        default: break;
+    }
+    Palette_Close();
 }
 
 static void Activate(int i) {
@@ -360,6 +508,7 @@ static void Activate(int i) {
             break;
         }
         case PE_ROW: ActivateRow(e->row); break;
+        case PE_PLACE: ActivatePlace(e->row); break;
         case PE_CHOICE: {
             // Complete the word being typed; run when that was the last argument
             const char* partial;
@@ -428,15 +577,28 @@ static bool UpdateBrush(void) {
     if (UpdateTeleportPick()) return true;
     if (brushItem < 0) return false;
     if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { brushItem = -1; return true; }
+    float wheel = GetMouseWheelMove();   // the wheel sets the count (no zoom while brushing)
+    if (wheel != 0) {
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        brushCount += (wheel > 0 ? 1 : -1) * (shift ? 10 : 1);
+        if (brushCount < 1) brushCount = 1;
+        if (brushCount > 100) brushCount = 100;
+        return true;
+    }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ui_wants_mouse()) {
-        bool many = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        CommandRunLine(TextFormat("spawn %d %s", many ? 10 : 1, itemDefs[brushItem].name));
+        CommandRunLine(TextFormat("spawn %d %s", brushCount, itemDefs[brushItem].name));
         return true;
     }
     return false;
 }
 
+// While the palette is open the other widgets (dev sidebar, inspector) must not see the mouse:
+// shared/ui.h widgets read GetMousePosition() themselves while drawing. The palette reads the
+// real position here, then moves the mouse far away for the rest of the frame.
+#define PAL_HIDE_MOUSE (-100000)
+
 bool Palette_Update(void) {
+    SetMouseOffset(0, 0);
     if (!pal.open) {
         // '/' opens (the character, so any keyboard layout works); other typed characters
         // are nobody else's when the console is closed
@@ -518,6 +680,7 @@ bool Palette_Update(void) {
                 else if (s->type == SETTING_CHOICE) SettingStep(s, 1, false);
             } else if (shift && pal.entries[hover].kind == PE_ROW) {
                 FindSetPinned(pal.entries[hover].row, !FindIsPinned(pal.entries[hover].row));   // Shift+click pins
+                SaveUse();
             } else {
                 pal.sel = hover;
                 Activate(hover);
@@ -527,11 +690,14 @@ bool Palette_Update(void) {
     bool pinKey = IsKeyPressed(KEY_ENTER) && shift;
     if ((IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && hover >= 0) || pinKey) {
         int i = pinKey ? pal.sel : hover;
-        if (i >= 0 && i < pal.count && pal.entries[i].kind == PE_ROW)
+        if (i >= 0 && i < pal.count && pal.entries[i].kind == PE_ROW) {
             FindSetPinned(pal.entries[i].row, !FindIsPinned(pal.entries[i].row));
+            SaveUse();
+        }
     } else if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
         Activate(pal.count > 0 ? pal.sel : -1);
     }
+    if (pal.open) SetMouseOffset(PAL_HIDE_MOUSE, PAL_HIDE_MOUSE);
     return true;
 }
 
@@ -557,7 +723,7 @@ static void DrawBrushLabel(void) {
         return;
     }
     if (brushItem < 0) return;
-    const char* t = TextFormat("%s  (L-click place, Shift 10, R-click stop)", itemDefs[brushItem].name);
+    const char* t = TextFormat("%s x%d  (L-click place, wheel count, R-click stop)", itemDefs[brushItem].name, brushCount);
     DrawTextShadow(t, (int)m.x + 16, (int)m.y + 12, PAL_FONT, SKYBLUE);
 }
 
@@ -604,6 +770,10 @@ void Palette_Draw(void) {
                 DrawTextShadow(TextFormat("%s  >", e->text), (int)lx, (int)ty, PAL_FONT, WHITE);
                 break;
             case PE_CHOICE: DrawTextShadow(e->text, (int)lx, (int)ty, PAL_FONT, WHITE); break;
+            case PE_PLACE:
+                DrawTextShadow(e->text, (int)lx, (int)ty, PAL_FONT, WHITE);
+                DrawRight("here", right, ty, PAL_MUTED);
+                break;
             case PE_ROW: {
                 const FindRow* fr = FindRowAt(e->row);
                 bool pin = FindIsPinned(e->row);
@@ -653,6 +823,8 @@ void Palette_Draw(void) {
     if (pal.cmdRow >= 0) {   // command mode: the usage made from its argument spec
         CommandUsage(CommandAt(FindRowAt(pal.cmdRow)->ref), usage, sizeof(usage));
         about = usage;
+    } else if (pal.sel < pal.count && pal.entries[pal.sel].kind == PE_PLACE) {
+        about = placeVerbs[pal.entries[pal.sel].row].help;
     } else if (pal.sel < pal.count && pal.entries[pal.sel].kind == PE_ROW) {
         const FindRow* fr = FindRowAt(pal.entries[pal.sel].row);
         about = fr->help ? TextFormat("%s: %s", fr->path, fr->help) : fr->path;

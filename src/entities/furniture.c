@@ -27,7 +27,7 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_TAP]        = { "Tap",        0.0f,    false, 11, CAP_WATER_SOURCE },
     // City heat: a grate is walked on (no cost), a barrel is stood next to
     [FURNITURE_HEAT_GRATE] = { "Heating Grate", 0.0f, false, 0,  CAP_HEAT, 1, 40 },
-    [FURNITURE_FIRE_BARREL]= { "Burning Barrel", 0.0f, true, 0,  CAP_HEAT, 1, 150 },
+    [FURNITURE_FIRE_BARREL]= { "Burning Barrel", 0.0f, true, 0,  CAP_HEAT, 1, 150, 0, 0, 8.0f },   // 8 h on a full load
     // dreamengine's buildings. The fridge stays walkable: food is put on its cell.
     [FURNITURE_SINK]       = { "Sink",       0.0f,    false, 16, CAP_WASHING | CAP_WATER_SOURCE },
     [FURNITURE_DOUBLE_BED] = { "Double Bed", 1.0f,    false, 12, CAP_SLEEPING, 0, 0, 2 },
@@ -39,6 +39,7 @@ static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_BATH]       = { "Bath",       0.0f,    false, 20, CAP_WASHING },
     [FURNITURE_SHOWER]     = { "Shower",     0.0f,    false, 11, CAP_WASHING },
     // Survival toilet ladder (docs/todo/gameplay/survival-toilet.md): bush < latrine < toilet
+    [FURNITURE_BOTTLE_MACHINE] = { "Bottle Machine", 0.0f, false, 16, 0 },
     [FURNITURE_PIT_LATRINE]= { "Pit Latrine", 0.0f,   false, 11, CAP_TOILET, 0, 0, 0, 1 },
 };
 
@@ -60,6 +61,7 @@ void ClearFurniture(void) {
         furniture[i].occupant = -1;
     }
     furnitureCount = 0;
+    memset(furnitureFuel, 0, sizeof(furnitureFuel));
     CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
     CLEAR_GRID_LAYER(capabilityGrid, 0);
 }
@@ -89,6 +91,7 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
     f->type = type;
     f->material = material;
     f->occupant = -1;
+    furnitureFuel[idx] = furnitureDefs[type].fuelHours;   // placed lit, with a full load
     furnitureCount++;
 
     const FurnitureDef* def = &furnitureDefs[type];
@@ -262,7 +265,7 @@ int HeatLevelAt(int x, int y, int z) {
     if (!(CAPABILITY(x, y, z) & CAP_HEAT)) return 0;
     int level = 0;
     int fi = GetFurnitureAt(x, y, z);
-    if (fi >= 0) level = furnitureDefs[furniture[fi].type].heatLevel;
+    if (fi >= 0 && FurnitureLit(fi)) level = furnitureDefs[furniture[fi].type].heatLevel;
     // A fire workshop's fuel tile: gives heat only while it burns
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         const Workshop* ws = &workshops[w];
@@ -280,7 +283,7 @@ bool IsWarmSpot(int x, int y, int z) {
     // On the cell: only a provider you stand on (a grate), not a workshop's fire
     if (CAPABILITY(x, y, z) & CAP_HEAT) {
         int fi = GetFurnitureAt(x, y, z);
-        if (fi >= 0 && furnitureDefs[furniture[fi].type].heatLevel > 0) return true;
+        if (fi >= 0 && furnitureDefs[furniture[fi].type].heatLevel > 0 && FurnitureLit(fi)) return true;
     }
     static const int dirs[4][2] = {{0,-1},{0,1},{-1,0},{1,0}};
     for (int d = 0; d < 4; d++) {
@@ -305,10 +308,59 @@ void FurnitureHeatTick(void) {
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active) continue;
         int t = furnitureDefs[furniture[i].type].heatTemp;
-        if (t <= 0) continue;
+        if (t <= 0 || !FurnitureLit(i)) continue;
         const Furniture* f = &furniture[i];
         // Only raises (like ApplyFireHeat): a hotter fire nearby stays
         if (t > GetTemperature(f->x, f->y, f->z)) SetTemperature(f->x, f->y, f->z, t);
+    }
+}
+
+// --- Fuel ---
+
+float furnitureFuel[MAX_FURNITURE];
+
+bool FurnitureLit(int fi) {
+    if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active) return false;
+    return furnitureDefs[furniture[fi].type].fuelHours <= 0.0f || furnitureFuel[fi] > 0.0f;
+}
+
+bool FurnitureNeedsFuel(int fi) {
+    if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active) return false;
+    float full = furnitureDefs[furniture[fi].type].fuelHours;
+    return full > 0.0f && furnitureFuel[fi] < full * 0.5f;
+}
+
+float FuelHoursOfItem(int itemType) {
+    if (itemType == ITEM_LOG) return 4.0f;
+    if (itemType == ITEM_STICKS) return 2.0f;
+    return 1.0f;
+}
+
+void FurnitureAddFuel(int fi, int itemType) {
+    if (fi < 0 || fi >= MAX_FURNITURE || !furniture[fi].active) return;
+    float full = furnitureDefs[furniture[fi].type].fuelHours;
+    if (full <= 0.0f) return;
+    bool wasOut = furnitureFuel[fi] <= 0.0f;
+    furnitureFuel[fi] += FuelHoursOfItem(itemType);
+    if (furnitureFuel[fi] > full) furnitureFuel[fi] = full;   // a full barrel spills the rest
+    if (wasOut) EventLog("%s at (%d,%d,%d) lit again", furnitureDefs[furniture[fi].type].name,
+                         furniture[fi].x, furniture[fi].y, furniture[fi].z);
+}
+
+void FurnitureFuelTick(void) {
+    if (furnitureCount == 0 || gameDeltaTime <= 0.0f) return;
+    float hours = gameDeltaTime / GameHoursToGameSeconds(1.0f);
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active || furnitureDefs[furniture[i].type].fuelHours <= 0.0f) continue;
+        if (furnitureFuel[i] <= 0.0f) continue;
+        furnitureFuel[i] -= hours;
+        if (furnitureFuel[i] <= 0.0f) {
+            furnitureFuel[i] = 0.0f;
+            // gone out: its heat stops (the cell cools down), gatherings round it end (talk.c)
+            DestabilizeTemperature(furniture[i].x, furniture[i].y, furniture[i].z);
+            EventLog("%s at (%d,%d,%d) went out", furnitureDefs[furniture[i].type].name,
+                     furniture[i].x, furniture[i].y, furniture[i].z);
+        }
     }
 }
 

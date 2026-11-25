@@ -5060,7 +5060,79 @@ describe(building_job_execution) {
         // Mover should be idle
         expect(MoverIsIdle(m));
     }
-    
+
+    it("a builder works a wall from beside it, so the finished wall doesn't pop them out") {
+        // docs/done/bugs/wall-build-pop.md: the builder stood on the blueprint cell and the
+        // finished wall pushed them to the first walkable neighbour (north first), whichever
+        // side they came from.
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        Mover* m = &movers[0];
+        Point goal = {0, 3, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        for (int i = 0; i < 3; i++)
+            SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        CreateRecipeBlueprint(5, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        float beforeX = m->x, beforeY = m->y;
+        bool built = false;
+        for (int i = 0; i < 6000 && !built; i++) {
+            beforeX = m->x; beforeY = m->y;
+            Tick();
+            AssignJobs();
+            JobsTick();
+            built = (GRID(5, 3, 0) == CELL_WALL);
+        }
+        expect(built);
+        // No jump in the tick the wall appeared (a walking step is a few pixels)
+        float jump = sqrtf((m->x - beforeX) * (m->x - beforeX) + (m->y - beforeY) * (m->y - beforeY));
+        expect(jump < CELL_SIZE * 0.5f);
+        // Standing beside the wall, not in it
+        int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE);
+        int manhattan = (cx > 5 ? cx - 5 : 5 - cx) + (cy > 3 ? cy - 3 : 3 - cy);
+        expect(manhattan == 1);
+    }
+
+    it("a railing is built from sticks like a wall and stops walking only") {
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        Mover* m = &movers[0];
+        Point goal = {0, 1, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STICKS);
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STICKS);
+        expect(CreateRecipeBlueprint(5, 1, 0, CONSTRUCTION_RAILING) >= 0);
+        for (int i = 0; i < 6000 && GRID(5, 1, 0) != CELL_RAILING; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        expect(GRID(5, 1, 0) == CELL_RAILING);
+        expect(!IsCellWalkableAt(0, 1, 5));
+        expect(CountBlueprints() == 0);
+    }
+
     it("should cancel haul job when blueprint is cancelled") {
         InitTestGridFromAscii(
             "......\n"
@@ -14709,6 +14781,48 @@ describe(construction_cancellation) {
     }
 }
 
+// Game rules each game's start sets, and which game runs: saved since v115 (a load used to
+// keep whatever the session had, so a dollhouse save loaded at startup had no talk)
+extern bool talkEnabled, autoGatherings, moodEnabled, toiletsPlumbed;
+extern char runningGameName[];
+extern float tideWaveHours, beltSpeed;
+extern int tideBeachReach;
+describe(game_rules_save) {
+    it("talk, gatherings, mood, job distance, plumbing, the running game, tide wave, belt speed and day length survive a load") {
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n");
+        ClearMovers();
+        ClearItems();
+        talkEnabled = true; autoGatherings = false; moodEnabled = false;
+        jobDistanceWeight = 0.7f; toiletsPlumbed = true;
+        strcpy(runningGameName, "dollhouse");
+        tideWaveHours = 5.0f; tideBeachReach = 9; beltSpeed = 4.0f;   // v116
+        dayLength = 360.0f;                                          // v118
+        expect(SaveWorld("/tmp/test_game_rules_save.bin"));
+
+        talkEnabled = false; autoGatherings = true; moodEnabled = true;
+        jobDistanceWeight = 0.0f; toiletsPlumbed = false;
+        runningGameName[0] = '\0';
+        tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
+        dayLength = 60.0f;
+        expect(LoadWorld("/tmp/test_game_rules_save.bin"));
+
+        expect(talkEnabled == true);
+        expect(autoGatherings == false);
+        expect(moodEnabled == false);
+        expect(jobDistanceWeight > 0.69f && jobDistanceWeight < 0.71f);
+        expect(toiletsPlumbed == true);
+        expect(strcmp(runningGameName, "dollhouse") == 0);
+        expect(tideWaveHours == 5.0f && tideBeachReach == 9 && beltSpeed == 4.0f);
+        expect(dayLength == 360.0f);
+        tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
+        dayLength = 60.0f;
+        moodEnabled = true; autoGatherings = false; talkEnabled = false;   // test defaults back
+        jobDistanceWeight = 0.0f; toiletsPlumbed = true; runningGameName[0] = '\0';
+    }
+}
+
 describe(belt_removal_job) {
     it("a mover walks onto a marked belt and takes it down: the load drops, one plank back") {
         InitGridFromAsciiWithChunkSize(
@@ -15105,6 +15219,7 @@ int main(int argc, char* argv[]) {
     test(table_construction);
     test(workshop_linked_inputs);
     test(belt_removal_job);
+    test(game_rules_save);
     
     return summary();
 }

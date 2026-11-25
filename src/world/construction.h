@@ -113,6 +113,8 @@ typedef enum {
     CONSTRUCTION_SHAFT,                  // 1 stage: 4 planks + 2 cordage (elevator shaft, one level up)
     CONSTRUCTION_PIT_LATRINE,            // 1 stage: 4 sticks (furniture: a seat over a dug pit)
     CONSTRUCTION_TOILET,                 // 1 stage: 3 planks or 3 clay (furniture)
+    CONSTRUCTION_RAILING,                // 1 stage: 2 sticks or 2 planks (CELL_RAILING: stops walking only)
+    CONSTRUCTION_FIRE_BARREL,            // 1 stage: 4 planks (furniture: a burning barrel, built empty)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

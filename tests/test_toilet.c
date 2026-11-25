@@ -108,6 +108,21 @@ describe(survival_toilet) {
         expect(fi >= 0 && furniture[fi].type == FURNITURE_TOILET);
     }
 
+    it("a burning barrel is built from planks and starts empty, waiting for fuel") {
+        SetupGround();
+        expect(constructionRecipes[CONSTRUCTION_FIRE_BARREL].stages[0].inputs[0].alternatives[0].itemType == ITEM_PLANKS);
+        int bp = CreateRecipeBlueprint(4, 4, 1, CONSTRUCTION_FIRE_BARREL);
+        expect(bp >= 0);
+        FillStage(bp);
+        CompleteBlueprint(bp);
+        int fi = GetFurnitureAt(4, 4, 1);
+        expect(fi >= 0 && furniture[fi].type == FURNITURE_FIRE_BARREL);
+        expect(!FurnitureLit(fi));
+        expect(FurnitureNeedsFuel(fi));
+        FurnitureAddFuel(fi, ITEM_LOG);
+        expect(FurnitureLit(fi));
+    }
+
     it("the latrine and the toilet are furniture you build in place") {
         expect(constructionRecipes[CONSTRUCTION_PIT_LATRINE].buildCategory == BUILD_FURNITURE);
         expect(constructionRecipes[CONSTRUCTION_TOILET].buildCategory == BUILD_FURNITURE);

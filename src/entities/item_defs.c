@@ -22,13 +22,24 @@ _Static_assert(ITEM_GRASS_TUNIC == 57 && ITEM_LEATHER_COAT == 60 && ITEM_POCKET_
 // (ContainerDef.capacityL), so this decides what fits in a pocket.
 static const float itemVolumeL[ITEM_TYPE_COUNT] = {
     [ITEM_SODA] = 0.4f,  [ITEM_SNACK] = 0.3f,  [ITEM_BURGER] = 0.5f,  [ITEM_LEFTOVERS] = 0.3f,
-    [ITEM_EMPTY_CAN] = 0.4f, [ITEM_WRAPPER] = 0.1f,
+    [ITEM_EMPTY_CAN] = 0.4f, [ITEM_WRAPPER] = 0.1f, [ITEM_COIN] = 0.0002f,
     [ITEM_PLASTIC_BAG] = 0.2f, [ITEM_BACKPACK] = 3.0f, [ITEM_POCKET_JACKET] = 3.0f,
     [ITEM_BERRIES] = 0.1f, [ITEM_DRIED_BERRIES] = 0.1f, [ITEM_WATER] = 0.5f, [ITEM_BOILED_WATER] = 0.5f,
     [ITEM_SANDWICH] = 0.4f, [ITEM_BREAD] = 1.0f, [ITEM_SHARP_STONE] = 0.3f,
     [ITEM_SHORT_STRING] = 0.2f, [ITEM_CORDAGE] = 0.5f, [ITEM_STICKS] = 1.5f,
     [ITEM_LEAVES] = 3.0f, [ITEM_GRASS] = 3.0f, [ITEM_DRIED_GRASS] = 3.0f,   // light but bulky
 };
+
+// Price in whole coins at a shop (money.h; 0 = free). A first guess for the city goods; the
+// empty can is its deposit (what a bottle machine pays, money step 3).
+static const int itemPrice[ITEM_TYPE_COUNT] = {
+    [ITEM_SODA] = 2, [ITEM_SNACK] = 3, [ITEM_BURGER] = 5, [ITEM_EMPTY_CAN] = 1,
+};
+
+int ItemPrice(int type) {
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return 0;
+    return itemPrice[type];
+}
 
 float ItemVolume(int type) {
     if (type < 0 || type >= ITEM_TYPE_COUNT) return 0.0f;
@@ -129,6 +140,9 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_PLASTIC_BAG]    = { "Plastic Bag",  SPRITE_crate_red,      IF_CONTAINER, 1, MAT_NONE, 0.05f, 0.0f, 0.0f },
     // Big portion (nutrition 1.0): leftovers unless very hungry; leftovers spoil within half a day
     [ITEM_BURGER]         = { "Burger",       SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.3f, 1.0f, 48.0f },
+    [ITEM_SALTPETER]      = { "Saltpeter",    SPRITE_gravel,         IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_GUNPOWDER]      = { "Gunpowder",    SPRITE_dirt,           IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
+    [ITEM_COIN]           = { "Money",        SPRITE_middle_dot,     IF_STACKABLE | IF_MONEY, 255, MAT_NONE, 0.0f, 0.0f, 0.0f },
     [ITEM_LEFTOVERS]      = { "Leftovers",    SPRITE_division,       IF_STACKABLE | IF_EDIBLE | IF_SPOILS, 10, MAT_NONE, 0.05f, LEFTOVER_UNIT_NUTRITION, 12.0f },
 };
 #undef MN

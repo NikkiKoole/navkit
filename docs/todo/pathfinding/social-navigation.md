@@ -1,6 +1,6 @@
 # Social Navigation
 
-> Status: spec
+> Status: partial (2026-11-25: ladder queues in `service-points-and-queues.md`; yielding + lane preference in `../social/noticing.md`; left: congestion-aware door cost, personal space by relation)
 
 Crowd behavior and social movement features.
 
@@ -29,11 +29,13 @@ No queue structs needed — existing avoidance + pathfinder cost feedback handle
   cost cut a 1500-agent evacuation from 245 s (density cost only) to 52.7 s. See
   [3d-crowd-bottlenecks.md](../../research/3d-crowd-bottlenecks.md).
 
-## Phase 2 - Full Social Navigation (future)
+## Phase 2 - Full Social Navigation (partly built, see `../social/noticing.md`)
 
-- [ ] **Yielding**: Agents give way to each other
-- [ ] **Lane Preference**: Keep-right/left for counter-flow
-- [ ] **Personal Space**: Context-dependent spacing
+- [x] **Yielding**: doorways wait until the one let through has passed, by patience (2026-11-25)
+- [x] **Lane Preference**: polite passing: oncoming movers drift aside early, keep right when dead
+  ahead (scenario `hallway`: close contacts -77%)
+- [ ] **Personal Space**: context-dependent spacing (by relation) not yet; steering round
+  talks/gatherings and round disliked movers is built
 
 ---
 

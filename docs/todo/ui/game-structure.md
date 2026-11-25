@@ -61,8 +61,10 @@ byte-identical, same profile section names). Games are repeatable with `--seed` 
 
 **Left:**
 - Per-game system selection (a game says which simulations run).
-- `gameMode` save migration: saves should record which game they belong to
-  (touches `saveload.c` / `inspect.c`).
+- ~~`gameMode` save migration~~: done 2026-11-25 (save v115): a save records the running game
+  (`runningGameName`, its play bar comes back on load) and the rules each game's start sets that
+  weren't saved: `talkEnabled`, `autoGatherings`, `moodEnabled`, `jobDistanceWeight`,
+  `toiletsPlumbed`. Older survival saves get survival's rules.
 
 ### 6. Selection, inspector panel, tabbed HUD — first version done
 

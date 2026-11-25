@@ -1,4 +1,8 @@
 // games.c - The games this engine hosts (see games.h)
+#include "../entities/talk.h"
+#include "../world/support.h"
+#include "../entities/relations.h"
+#include "../entities/town.h"
 #include "games.h"
 #include "scenarios.h"
 #include "../game_state.h"
@@ -195,6 +199,9 @@ static void SetSurvivalRules(void) {
         }
     }
     gameMode = GAME_MODE_SURVIVAL;
+    talkEnabled = true;       // idle settlers stop to chat, walk together, mingle (talk.c)
+    autoGatherings = true;    // and gather round a burning fire
+    autoGames = true;         // and start games of tag, hide and seek, follow the leader (activity.c)
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
@@ -215,6 +222,7 @@ static void SetSurvivalRules(void) {
 
 // Randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover with supplies
 static void StartSurvival(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     // Randomize seed
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
@@ -299,6 +307,7 @@ static Point IslandStartCell(Point want, Point anchor) {
 }
 
 static void StartIsland(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
     InitGridWithSizeAndChunkSize(ISLAND_SIZE, ISLAND_SIZE, 16, 16);
     ClearAnimals();
@@ -354,6 +363,7 @@ static void StartIsland(void) {
 
 // Small apartment, 2 movers, kitchen, bathroom, food
 static void StartDollhouse(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
 
     // A city flat (concrete) on a small plot: 14x10 under a roof, a railed balcony, a pond
@@ -496,6 +506,7 @@ static void StartDollhouse(void) {
     ClearMovers();
     SpawnMoverAt(ox + 3, oy + 2, z);
     SpawnMoverAt(ox + 4, oy + 2, z);
+    RelationSetPair(moverCount - 2, moverCount - 1, 60.0f, 100.0f);   // they live together: partners
 
     // Food supplies: meat on the fridge, bread and water pots next to it
     float sx = (ox + 2) * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -538,6 +549,9 @@ static void StartDollhouse(void) {
         }
     }
     gameMode = GAME_MODE_SANDBOX;
+    talkEnabled = true;       // the residents stop to chat (talk.c)
+    autoGatherings = true;    // and gather round the cooking, a fire, a heater
+    autoGames = true;         // and start games (activity.c)
     hungerEnabled = true;
     energyEnabled = true;
     thirstEnabled = true;
@@ -551,14 +565,79 @@ static void StartDollhouse(void) {
 }
 
 // ---------------------------------------------------------------------------
+// town: draw roads and lots, buildings appear at once (docs/vision/town.md)
+// ---------------------------------------------------------------------------
+
+#define TOWN_SIZE 128
+
+static void StartTown(void) {
+    ScenarioResetWorldSized(NULL, TOWN_SIZE, TOWN_SIZE);   // flat grass, walking level z=1
+    ResetTime();
+    // A main street in from the west edge: where newcomers will arrive
+    int midY = TOWN_SIZE / 2;
+    TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 34, midY + 1, 1, NULL);
+    // Starter homes (setting townStarter): 7x6 lots along the street, alternating sides
+    for (int i = 0; i < townStarter; i++) {
+        int x = 6 + (i / 2) * 9;
+        if (i % 2 == 0) TownAddLot(LOT_HOME, x, midY - 7, x + 6, midY - 2, 1, NULL);
+        else            TownAddLot(LOT_HOME, x, midY + 2, x + 6, midY + 7, 1, NULL);
+    }
+    if (townStarter > 0) {   // and the grain chain at the east end: bakery, mill, farm
+        // Workplaces sized for 12 people: 2 stoves bake ~40 loaves a day, 2 querns grind ~20 flour
+        // (they eat ~16); bigger ones hired everyone and left nobody free to carry goods around
+        TownAddLot(LOT_WORK, 59, midY - 8, 65, midY - 2, 1, NULL);
+        TownAddLot(LOT_MILL, 59, midY + 2, 65, midY + 7, 1, NULL);
+        // A farm big enough for a winter stock (12 people eat ~32 wheat a day; winter is 7 days
+        // without a harvest) and a granary to keep it in: barn row + 99 wheat cells, granary 15x6
+        TownAddLot(LOT_FARM, 74, midY - 10, 85, midY - 2, 1, NULL);
+        TownAddLot(LOT_GRANARY, 74, midY + 2, 88, midY + 7, 1, NULL);
+    }
+    BuildEntrances();
+    BuildGraph();
+
+    dayLength = 360.0f;               // 6-minute day, walking 3x: as the dollhouse
+    balance.baseMoverSpeed = 900.0f;
+    // A temperate climate: no 40 C summers for the wheat (the default 15 +- 25 C is survival's
+    // harsh one). Winter still stops it. No weather: rain on a flat map with no drainage floods
+    // the whole town (water 7/7 everywhere after a week); irrigated farms get their water anyway.
+    weatherEnabled = false;
+    baseSurfaceTemp = 12;
+    seasonalAmplitude = 10;
+    diurnalAmplitude = 4;
+    gameMode = GAME_MODE_SANDBOX;     // nobody dies
+    talkEnabled = true;
+    autoGatherings = true;
+    autoGames = true;
+    hungerEnabled = true;
+    energyEnabled = true;
+    thirstEnabled = true;
+    bladderEnabled = true;
+    toiletsPlumbed = true;            // mains water
+    moodEnabled = true;
+    bodyTempEnabled = false;
+    toolRequirementsEnabled = false;
+    jobDistanceWeight = 0.2f;
+    gameOverTriggered = false;
+    currentViewZ = 1;
+    followMoverIdx = -1;
+    zoom = 1.0f;
+    offset.x = GetScreenWidth() / 2.0f - (TOWN_SIZE / 2) * CELL_SIZE * zoom;
+    offset.y = GetScreenHeight() / 2.0f - midY * CELL_SIZE * zoom;
+}
+
+// ---------------------------------------------------------------------------
 // sandbox: the flat startup map, no needs, every tool; free drawing and testing
 // ---------------------------------------------------------------------------
 
 static void StartSandbox(void) {
+    supportEnabled = true;   // structural support (support.c); set before the world is generated: it settles it
     ScenarioResetWorldSized(NULL, 32, 32);   // flat 32x32 dirt map, same as startup
     ResetTime();
     balance.baseMoverSpeed = 200.0f;         // balance.c default (survival/dollhouse change it)
     gameMode = GAME_MODE_SANDBOX;
+    talkEnabled = false;
+    autoGatherings = false;
+    autoGames = false;
     hungerEnabled = false;
     energyEnabled = false;
     thirstEnabled = false;
@@ -581,9 +660,9 @@ static void StartSandbox(void) {
 // ---------------------------------------------------------------------------
 
 GameToolContext GameToolContextNow(void) {
-    GameToolContext c = {itemCount > 0, false, false, false, false, false, false};
+    GameToolContext c = {itemCount > 0, false, false, false, false, false, false, false, false};
     for (int i = 0; i < itemHighWaterMark && (!c.hasGrass || !c.hasLeaves || !c.hasRocks || !c.hasPlanks ||
-                                              !c.hasSticks || !c.hasClay); i++) {
+                                              !c.hasSticks || !c.hasClay || !c.hasGunpowder || !c.hasLogs); i++) {
         if (!items[i].active) continue;
         if (items[i].type == ITEM_GRASS) c.hasGrass = true;
         if (items[i].type == ITEM_LEAVES) c.hasLeaves = true;
@@ -591,6 +670,8 @@ GameToolContext GameToolContextNow(void) {
         if (items[i].type == ITEM_PLANKS) c.hasPlanks = true;
         if (items[i].type == ITEM_STICKS) c.hasSticks = true;
         if (items[i].type == ITEM_CLAY) c.hasClay = true;
+        if (items[i].type == ITEM_GUNPOWDER) c.hasGunpowder = true;
+        if (items[i].type == ITEM_LOG) c.hasLogs = true;
     }
     return c;
 }
@@ -602,6 +683,9 @@ static bool HasGrass(const GameToolContext* c)  { return c->hasGrass; }
 static bool HasPlanks(const GameToolContext* c) { return c->hasPlanks; }
 static bool HasSticks(const GameToolContext* c) { return c->hasSticks; }
 static bool HasPlanksOrClay(const GameToolContext* c) { return c->hasPlanks || c->hasClay; }
+static bool HasGunpowder(const GameToolContext* c) { return c->hasGunpowder; }
+static bool HasLogsOrPlanks(const GameToolContext* c) { return c->hasLogs || c->hasPlanks; }
+static bool HasSticksOrPlanks(const GameToolContext* c) { return c->hasSticks || c->hasPlanks; }
 
 // The early-game designations every game offers in its play HUD
 #define BASIC_TOOLS \
@@ -616,15 +700,27 @@ static bool HasPlanksOrClay(const GameToolContext* c) { return c->hasPlanks || c
     {HUD_TAB_BUILD,  "Build Grass Pile", ACTION_WORK_FURNITURE, CONSTRUCTION_GRASS_PILE, HasGrass}, \
     {HUD_TAB_BUILD,  "Build Pit Latrine", ACTION_WORK_FURNITURE, CONSTRUCTION_PIT_LATRINE, HasSticks}, \
     {HUD_TAB_BUILD,  "Build Toilet",     ACTION_WORK_FURNITURE, CONSTRUCTION_TOILET,      HasPlanksOrClay}, \
+    {HUD_TAB_BUILD,  "Build Ladder",     ACTION_WORK_LADDER,    CONSTRUCTION_LADDER,      HasLogsOrPlanks}, \
+    {HUD_TAB_BUILD,  "Build Railing",    ACTION_WORK_CONSTRUCT, CONSTRUCTION_RAILING,     HasSticksOrPlanks}, \
+    {HUD_TAB_BUILD,  "Build Fire Barrel", ACTION_WORK_FURNITURE, CONSTRUCTION_FIRE_BARREL, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}
 
 static const GameTool survivalTools[] = {
     {HUD_TAB_NATURE, "Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war
+    {HUD_TAB_NATURE, "Blast Rock", ACTION_WORK_BLAST, -1, HasGunpowder},   // once there's gunpowder
     BASIC_TOOLS,
 };
 static const GameTool dollhouseTools[] = { BASIC_TOOLS };
 static const GameTool sandboxTools[]   = { BASIC_TOOLS };
+static const GameTool townTools[] = {
+    {HUD_TAB_BUILD, "Road", ACTION_DRAW_ROAD,     -1, NULL},
+    {HUD_TAB_BUILD, "Home", ACTION_DRAW_LOT_HOME, -1, NULL},
+    {HUD_TAB_BUILD, "Bakery", ACTION_DRAW_LOT_WORK, -1, NULL},
+    {HUD_TAB_BUILD, "Mill",   ACTION_DRAW_LOT_MILL, -1, NULL},
+    {HUD_TAB_BUILD, "Granary", ACTION_DRAW_LOT_GRANARY, -1, NULL},
+    {HUD_TAB_NATURE, "Farm",  ACTION_DRAW_LOT_FARM, -1, NULL},
+};
 #undef BASIC_TOOLS
 #define TOOLS(list) list, (int)(sizeof(list) / sizeof(list[0]))
 
@@ -641,11 +737,14 @@ static const GameDef games[] = {
                   StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  true,  TOOLS(sandboxTools)},
+    {"town",      "Town",      "Draw roads, homes and bakeries: they appear at once, people move in and bake their bread",
+                  StartTown,      false, true,  TOOLS(townTools)},
 };
 #undef TOOLS
 #define GAME_COUNT ((int)(sizeof(games) / sizeof(games[0])))
 
 static const GameDef* currentGame = NULL;
+extern char runningGameName[SAVED_GAME_NAME_LEN];   // saveload.c (saved since v115)
 
 int GameCount(void) { return GAME_COUNT; }
 
@@ -665,10 +764,18 @@ const char** GameNames(void) {
     return names;
 }
 
-const GameDef* GameCurrent(void) { return currentGame; }
+const GameDef* GameCurrent(void) {
+    // A load sets runningGameName (saveload.c, v115+): follow it, with that game's build "how"
+    const char* cur = currentGame ? currentGame->name : "";
+    if (strcmp(cur, runningGameName) != 0) {
+        currentGame = runningGameName[0] ? GameFind(runningGameName) : NULL;
+        if (currentGame) buildNow = currentGame->buildNow;
+    }
+    return currentGame;
+}
 
 const GameDef* GameActive(void) {
-    if (currentGame) return currentGame;
+    if (GameCurrent()) return currentGame;
     return GameFind(gameMode == GAME_MODE_SURVIVAL ? "survival" : "sandbox");
 }
 
@@ -694,6 +801,7 @@ bool StartGame(const char* name) {
     buildNow = g->buildNow;
     if (!devUI) InputMode_ExitToNormal();
     currentGame = g;
+    snprintf(runningGameName, SAVED_GAME_NAME_LEN, "%s", g->name);
     TraceLog(LOG_INFO, "Game '%s': %d movers on %dx%dx%d", g->name, moverCount, gridWidth, gridHeight, gridDepth);
     return true;
 }

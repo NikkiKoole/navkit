@@ -1,4 +1,5 @@
 #include "designations.h"
+#include "../simulation/explosion.h"
 #include "grid.h"
 #include "cell_defs.h"
 #include "material.h"
@@ -2765,6 +2766,14 @@ void CompleteBlueprint(int blueprintIdx) {
                 SetWallSourceItem(x, y, z, ITEM_GLASS);
                 ClearWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_SMOOTH);
+            } else if (bp->recipeIndex == CONSTRUCTION_RAILING) {
+                // Stops walking only: light, sight, air and water pass (rooms flood through it)
+                GRID(x, y, z) = CELL_RAILING;
+                SetWallMaterial(x, y, z, finalMat);
+                SetWallSourceItem(x, y, z, finalSource);
+                ClearWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_SMOOTH);
+                InvalidateRooms();
             } else if (finalMat == MAT_DIRT) {
                 GRID(x, y, z) = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
@@ -2854,8 +2863,11 @@ void CompleteBlueprint(int blueprintIdx) {
         else if (bp->recipeIndex == CONSTRUCTION_TABLE) ft = FURNITURE_TABLE;
         else if (bp->recipeIndex == CONSTRUCTION_PIT_LATRINE) ft = FURNITURE_PIT_LATRINE;
         else if (bp->recipeIndex == CONSTRUCTION_TOILET) ft = FURNITURE_TOILET;
+        else if (bp->recipeIndex == CONSTRUCTION_FIRE_BARREL) ft = FURNITURE_FIRE_BARREL;
         if (ft != FURNITURE_NONE) {
-            SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+            int fi = SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+            // a built barrel starts empty (unlit): haulers fill it (JOBTYPE_REFUEL)
+            if (fi >= 0 && ft == FURNITURE_FIRE_BARREL) furnitureFuel[fi] = 0.0f;
         }
         bp->active = false;
         bp->assignedBuilder = -1;
@@ -2965,4 +2977,35 @@ void CompleteRemoveBeltDesignation(int x, int y, int z) {
         SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_PLANKS);
     }
     CancelRemoveBeltDesignation(x, y, z);
+}
+
+// =============================================================================
+// Blast mining (adjacent designation, JOBTYPE_BLAST; the blast itself: explosion.c)
+// =============================================================================
+
+bool DesignateBlast(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (!IsExplored(x, y, z)) return false;
+    if (!CellIsSolid(GRID(x, y, z)) || ExplosionCellStrength(x, y, z) <= 0.0f) return false;
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_BLAST;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_BLAST);
+    return true;
+}
+
+bool HasBlastDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    return DESIGNATION(x, y, z).type == DESIGNATION_BLAST;
+}
+
+int CountBlastDesignations(void) {
+    int n = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if (DESIGNATION(x, y, z).type == DESIGNATION_BLAST) n++;
+    return n;
 }

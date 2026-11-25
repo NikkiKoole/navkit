@@ -15,6 +15,12 @@ const CommandDef* CommandFind(const char* name);      // case-insensitive, NULL 
 void Commands_RegisterWithConsole(void);              // each row becomes a console command
 bool CommandRunLine(const char* line);                // "clear water": parse + run (false: bad line)
 
+// "Here": the cell a command that takes a place uses (spawn). Normally the cell under the mouse;
+// the find palette sets the cell the mouse was over when / was pressed (its window covers the map).
+void CommandSetHere(int x, int y, int z);
+void CommandClearHere(void);
+bool CommandHere(int* x, int* y, int* z);   // false: no cell (mouse off the map)
+
 // Dev sidebar: a button that runs a command line (the sidebar keeps its own layout and labels)
 bool  CommandButton(float x, float y, const char* label, const char* line);
 float CommandButtonInline(float x, float y, const char* label, const char* line);   // returns width

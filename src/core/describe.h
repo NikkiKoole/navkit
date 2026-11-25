@@ -67,6 +67,7 @@ const char* HungerLabel(float hunger, DescTone* tone);
 const char* ThirstLabel(float thirst, DescTone* tone);
 const char* BladderLabel(float bladder, DescTone* tone);
 const char* EnergyLabel(float energy, DescTone* tone);
+const char* SocialLabel(float social, DescTone* tone);   // the social need (social.h)
 const char* BodyTempLabel(float bodyTemp, DescTone* tone);
 DescTone MoodTone(float mood);
 
@@ -105,6 +106,11 @@ void WorkshopRecipeSummary(int wsIdx, int recipeIdx, char* buf, size_t size);
 // Stockpile: title, priority, stack size, containers, storage (bad when overfull),
 // fill meter. Filters are shown by the screens that edit them.
 void DescribeStockpile(int spIdx, DescLines* out);
+// A town lot (town.c): a home's people and pantry, a workplace's hours, staff and stores, a
+// farm's field, a granary's stock. Used by the inspector and --describe-lot.
+void DescribeLot(int lot, DescLines* out);
+// The town in one line (people, homeless, jobless, food) for the play HUD's overview bar
+void DescribeTownOverview(char* buf, int len);
 // "[|||||     ] 50%": ratio 0..1 as a text meter `width` bars wide
 void DescFillMeter(char* out, size_t outSize, float ratio, int width);
 

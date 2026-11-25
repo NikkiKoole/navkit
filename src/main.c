@@ -11,6 +11,7 @@
 #include "core/pie_menu.h"
 #include "entities/jobs.h"
 #include "entities/workshops.h"
+#include "entities/town.h"
 #include "assets/fonts/comic_embedded.h"
 #include "assets/fonts/times_roman_embedded.h"
 #include "sound/sound_phrase.h"
@@ -29,6 +30,8 @@
 #include "render/world_batch.h"
 void rlDrawRenderBatchActive(void);   // rlgl (part of raylib): flush pending draws
 #include "render/play_hud.h"
+#include "world/support.h"
+#include "core/effects.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -570,6 +573,7 @@ void GenerateCurrentTerrain(void) {
         case 24: GenerateIsland(); break;
     }
     SyncMaterialsToTerrain();
+    if (supportEnabled) SupportSettleWorld();   // generators leave the odd floating lump: it drops now
 }
 
 // ============================================================================
@@ -785,6 +789,7 @@ void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
 void DrawSteam(void);
+void DrawGasClouds(void);
 void DrawTemperature(void);
 void DrawSimSources(void);
 void DrawWaterFlow(void);
@@ -799,6 +804,7 @@ void DrawTrains(void);
 void DrawElevators(void);
 void DrawBelts(void);
 void DrawJobLines(void);
+void DrawEffects(void);   // render/effects_draw.c
 void DrawItems(void);
 void DrawLightSources(void);
 void DrawGatherZones(void);
@@ -966,6 +972,12 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--profile") == 0) doProfile = true;
     bool doDayBudget = false;   // --day-budget: where the movers' days go (src/core/day_budget.c)
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--day-budget") == 0) doDayBudget = true;
+    // --validate N: check the sim activity counters against the grids every N ticks (the
+    // windowed game does it every 60 s; drift = a system's count of active cells is wrong).
+    // --check always validates once at the end and fails on drift.
+    int validateEvery = 0, counterDrifts = 0;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--validate") == 0) validateEvery = (i + 1 < argc && argv[i + 1][0] != '-') ? atoi(argv[++i]) : 600;
     double setupMs = 0;
     if (scenarioName) {
         double setupStart = WallMs();
@@ -1007,6 +1019,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int t = 0; t < ticks; t++) {
         double tickStart = GetTime();
         SimStep(TICK_DT);   // the same tick the windowed game runs (src/core/sim_step.c)
+        if (validateEvery > 0 && (t + 1) % validateEvery == 0 && !ValidateSimActivityCounts()) {
+            printf("  (counter drift after tick %d)\n", t + 1);
+            counterDrifts++;
+        }
         if (doProfile) HeadlessProfileAccumulate();
         PROFILE_FRAME_END();  // Store profiler data for this tick
         for (int i = 0; i < moverCount; i++) {
@@ -1047,6 +1063,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
     }
     
+    // --dump-events FILE: the event log (core/event_log.c) after the run
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--dump-events") == 0) EventLogDump(argv[i + 1]);
+
     // --describe-mover N|all: the mover as the game describes it (same lines as
     // the hover tooltip, src/core/describe.c), after the run. --ticks 0 = as loaded.
     for (int i = 1; i + 1 < argc; i++) {
@@ -1062,6 +1082,32 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
         if (!all && (only < 0 || only >= moverCount || !movers[only].active))
             printf("\nNo active mover %s (%d movers)\n", argv[i + 1], moverCount);
+    }
+
+    // The simulation activity counters (water/fire/smoke/steam cells): the windowed loop checks
+    // them every 60 s; a headless run checks once at the end and prints any drift
+    if (!ValidateSimActivityCounts()) printf("Simulation activity counters drifted (see the warnings above)\n");
+
+    // --events FILE: the event log (event_log.c: job lifecycle, item deletes, explosions, ...)
+    // written to FILE after the run, as F8 does in the game
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--events") != 0) continue;
+        EventLogDump(argv[i + 1]);
+        printf("Event log (%d entries) written to %s\n", EventLogCount(), argv[i + 1]);
+    }
+
+    // --describe-lot N|all: a town lot as the inspector describes it (src/core/describe.c), after the run
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--describe-lot") != 0) continue;
+        bool all = strcmp(argv[i + 1], "all") == 0;
+        int only = all ? -1 : atoi(argv[i + 1]);
+        for (int l = 0; l < townLotHighWater; l++) {
+            if ((!all && l != only) || !townLots[l].active) continue;
+            DescLines d;
+            DescribeLot(l, &d);
+            printf("\n");
+            for (int k = 0; k < d.count; k++) printf("%s\n", d.lines[k].text);
+        }
     }
 
     // --describe-cell X,Y,Z: the cell as the game describes it (room, materials, ...), after
@@ -1088,6 +1134,11 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("Stuck (no progress > 2s): %d\n", stuckAfter);
     printf("Arrivals (reached goal): %d (%.1f per mover per game-minute)\n", arrivals,
            activeMovers > 0 && ticks > 0 ? arrivals / (double)activeMovers / (ticks * TICK_DT / 60.0) : 0.0);
+    if (townLotHighWater > 0) {
+        char townLine[256];
+        TownSummary(townLine, sizeof(townLine));
+        printf("%s\n", townLine);
+    }
     printf("Pathfinding: %d FindPath calls, %.1f ms total (%.3f ms each)\n",
            findPathCalls, findPathTotalMs, findPathCalls ? findPathTotalMs / findPathCalls : 0.0);
     if (trainChoicesConsidered > 0 || trainDecisions > 0)
@@ -1171,6 +1222,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             checkFailures++;
         }
         if (arrivals < minArrivals) { printf("FAIL: %d arrivals, expected at least %d\n", arrivals, minArrivals); checkFailures++; }
+        if (!ValidateSimActivityCounts()) counterDrifts++;   // prints which counter drifted
+        if (counterDrifts > 0) { printf("FAIL: sim activity counters drifted (%d check%s)\n", counterDrifts, counterDrifts > 1 ? "s" : ""); checkFailures++; }
         char why[256] = {0};
         if (scenario && scenario->check && !scenario->check(why, (int)sizeof(why))) {
             printf("FAIL: %s\n", why);
@@ -1350,6 +1403,7 @@ Vector2 GetScreenShakeOffset(void) {
 // ============================================================================
 
 int main(int argc, char** argv) {
+    townSpawnMover = SpawnMoverAt;   // town newcomers get names and looks
     // Check for --inspect mode (runs without GUI)
     if (argc >= 2 && strcmp(argv[1], "--inspect") == 0) {
         return InspectSaveFile(argc, argv);
@@ -1417,7 +1471,7 @@ int main(int argc, char** argv) {
                 }
             }
             if (!headlessFile && !scenarioName && !gameName) {
-                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--mover N] ...\n", argv[0]);
+                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--events <logfile>] [--mover N] ...\n", argv[0]);
                 return 1;
             }
             return RunHeadless(headlessFile, scenarioName, gameName, headlessTicks, argc, argv);
@@ -1731,7 +1785,9 @@ int main(int argc, char** argv) {
             UpdateCutscene(frameTime);
         }
 
-        if (!paused && !IsCutsceneActive()) {
+        if (FxHitStopFrame()) {
+            accumulator = 0.0f;   // hit stop: a big blast holds the picture a few frames (core/effects.c)
+        } else if (!paused && !IsCutsceneActive()) {
             bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
             float tickDt = useFixedTimestep ? TICK_DT : frameTime;
             
@@ -1824,6 +1880,7 @@ int main(int argc, char** argv) {
         DrawSteam();
         DrawTemperature();
         WorldBatchEnd();
+        DrawGasClouds();     // smoke + steam as dithered clouds (effects on): own shader, after the batch
         DrawSimSources();
         DrawWaterFlow();
         PROFILE_END(DrawCells);
@@ -1873,6 +1930,7 @@ int main(int argc, char** argv) {
         DrawCars();
         DrawElevators();
         DrawJobLines();
+        DrawEffects();   // blasts, dust, chunks, sparks (render/effects_draw.c)
 
         // Phase 5: Mist overlay (after all world elements, before UI)
         DrawMist();
@@ -2200,6 +2258,10 @@ int main(int argc, char** argv) {
                             case ACTION_WORK_MINE:
                                 fillColor = (Color){255, 150, 0, 80};
                                 lineColor = ORANGE;
+                                break;
+                            case ACTION_WORK_BLAST:
+                                fillColor = (Color){230, 40, 40, 80};
+                                lineColor = RED;
                                 break;
                             case ACTION_WORK_CONSTRUCT:
                                 fillColor = (Color){0, 200, 200, 80};

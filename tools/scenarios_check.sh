@@ -9,9 +9,6 @@
 #
 # Games (src/core/games.c) run here too. Headless runs use a fixed seed (0 unless
 # --seed), so survival and dollhouse are deterministic like the scenarios.
-#
-# Known: mood allows 1 mover in a non-walkable cell - a mover stands on a ramp that
-# deep water floods (docs/bugs/mover-on-flooded-ramp.md).
 
 BIN=${BIN:-./build/bin/path}
 TICKS=${TICKS:-3000}
@@ -41,8 +38,38 @@ done <<'EOF'
 77  | 0 | --scenario ladder-oneway
 175 | 0 | --scenario door-oneway
 98  | 0 | --scenario oneway-tiers
-85  | 1 | --scenario mood
+85  | 0 | --scenario mood
+240 | 0 | --scenario faces
+49  | 0 | --scenario social
+300 | 0 | --scenario hallway
+216 | 0 | --scenario doorway
+160 | 0 | --scenario gathering
+75  | 0 | --scenario social-ties
+40  | 0 | --scenario garden-party
+240 | 0 | --scenario tag
+26  | 0 | --scenario hide-and-seek
+107 | 0 | --scenario mingle
+14  | 0 | --scenario campfire
+27  | 0 | --scenario follow-leader
+53  | 0 | --scenario pack-hunt
+33  | 0 | --scenario cover
+103 | 0 | --scenario personal-space
+105 | 0 | --scenario hunt-cover
+46  | 0 | --scenario play-hungry
+26  | 0 | --scenario playtime
 38  | 0 | --scenario crafting
+0   | 0 | --scenario explosions
+0   | 0 | --scenario collapse
+0   | 0 | --scenario blasting
+0   | 0 | --scenario powder-fire
+0   | 0 | --scenario flood
+0   | 0 | --scenario landslide
+0   | 0 | --scenario flashfire
+0   | 0 | --scenario gasroom
+0   | 0 | --scenario firedamp
+0   | 0 | --scenario throwing
+0   | 0 | --scenario throwscare
+0   | 0 | --scenario throwhunt
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long
 60  | 0 | --set scenarioMovers 16 --scenario train-long
@@ -54,7 +81,9 @@ done <<'EOF'
 67  | 0 | --scenario transfer
 57  | 0 | --scenario transit-chain
 10  | 0 | --scenario belt
-10  | 0 | --scenario belt-lift
+# belt-lift: 2 haulers, 9-12 at 3000 ticks depending on small timing changes (polite passing
+# nudges: 12 -> 9); both finish all the work, 117-119 arrivals, by tick 18000
+7   | 0 | --scenario belt-lift
 31  | 0 | --scenario belt-build
 17  | 0 | --scenario belt-workshop
 0   | 0 | --scenario belt-play
@@ -65,6 +94,7 @@ done <<'EOF'
 57  | 0 | --scenario heat
 51  | 0 | --scenario inventory
 58  | 0 | --scenario scrounge
+1   | 0 | --scenario bottlerun
 8   | 0 | --scenario hands-jobs
 0   | 0 | --scenario cars
 0   | 0 | --scenario cars-town
@@ -82,9 +112,13 @@ done <<'EOF'
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit
-24  | 0 | --game dollhouse
+# dollhouse: the residents stop to talk (talk.c), so they walk less: 28 -> 20
+16  | 0 | --game dollhouse
 2   | 0 | --game survival
 23  | 0 | --game island
+# town: 6 starter homes (2 beds each), newcomers every 0.1 h walk in from the west edge; with the
+# grain chain (farm, mill, bakery) people spend long stretches tilling: 35 -> 23 arrivals
+18  | 0 | --set townArrivalGH 0.1 --set townStarter 6 --game town
 EOF
 
 echo

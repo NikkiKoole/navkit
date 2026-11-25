@@ -19,7 +19,11 @@
 #include "action_registry.h"
 #include "pie_menu.h"
 #include "selection.h"
+#include "global_keys.h"
+#include "../entities/action_queue.h"
+#include "../ui/commands.h"
 #include "../entities/elevators.h"
+#include "../entities/town.h"
 #include "../entities/belts.h"
 
 // Forward declaration
@@ -643,6 +647,23 @@ static void ExecuteDesignateRemoveRamp(int x1, int y1, int x2, int y2, int z) {
     if (count > 0) {
         AddMessage(TextFormat("Designated %d ramp%s for removal", count, count > 1 ? "s" : ""), ORANGE);
     }
+}
+
+// Blast mining: one gunpowder charge per designated wall; the blaster lights it and runs
+static void ExecuteDesignateBlast(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (DesignateBlast(dx, dy, z)) count++;
+    if (count > 0) AddMessage(TextFormat("Marked %d wall%s for blasting (one gunpowder each)", count, count > 1 ? "s" : ""), ORANGE);
+}
+
+static void ExecuteCancelBlast(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (HasBlastDesignation(dx, dy, z)) { CancelDesignation(dx, dy, z); count++; }
+    if (count > 0) AddMessage(TextFormat("Cancelled %d blast%s", count, count > 1 ? "s" : ""), ORANGE);
 }
 
 static void ExecuteCancelRemoveRamp(int x1, int y1, int x2, int y2, int z) {
@@ -2039,6 +2060,7 @@ RECT_TOOL(ExecuteDesignateChannel)   RECT_TOOL(ExecuteCancelChannel)
 RECT_TOOL(ExecuteDesignateDigRamp)   RECT_TOOL(ExecuteCancelDigRamp)
 RECT_TOOL(ExecuteDesignateRemoveFloor) RECT_TOOL(ExecuteCancelRemoveFloor)
 RECT_TOOL(ExecuteDesignateRemoveRamp)  RECT_TOOL(ExecuteCancelRemoveRamp)
+RECT_TOOL(ExecuteDesignateBlast)     RECT_TOOL(ExecuteCancelBlast)
 RECT_TOOL(ExecuteDesignateBuild)     RECT_TOOL(ExecuteCancelBuild)
 RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
 RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
@@ -2146,6 +2168,26 @@ static void Tool_RemoveTrain(const ToolArgs* a) {
     }
 }
 
+// Town: roads and lots (town.c); buildings appear at once
+static void Tool_TownRoad(const ToolArgs* a) {
+    const char* why = NULL;
+    if (TownAddRoad(a->x1, a->y1, a->x2, a->y2, a->z, &why) < 0) AddMessage(TextFormat("No road: %s", why), RED);
+}
+static void Tool_TownRemoveRoad(const ToolArgs* a) {
+    int n = TownRemoveRoadsIn(a->x1, a->y1, a->x2, a->y2, a->z);
+    if (n > 0) AddMessage(TextFormat("Removed %d road%s", n, n > 1 ? "s" : ""), ORANGE);
+}
+static void Tool_TownLot(const ToolArgs* a) {
+    const char* why = NULL;
+    LotKind kind = (LotKind)a->param;
+    int lot = TownAddLot(kind, a->x1, a->y1, a->x2, a->y2, a->z, &why);
+    if (lot < 0) AddMessage(TextFormat("No %s: %s", TownLotKindName(kind), why), RED);
+}
+static void Tool_TownRemoveLot(const ToolArgs* a) {
+    int n = TownRemoveLotsIn(a->x1, a->y1, a->x2, a->y2, a->z);
+    if (n > 0) AddMessage(TextFormat("Removed %d lot%s", n, n > 1 ? "s" : ""), ORANGE);
+}
+
 #define WS_DRAW(w)  {Tool_PlaceWorkshop, NULL, w, NULL}
 #define WS_WORK(w)  {Tool_PlaceWorkshopBlueprint, Tool_CancelWorkshopBlueprint, w, NULL}
 #define SOIL(s)     {Tool_Soil, NULL, s, Tool_PileSoilAtMouse}
@@ -2187,6 +2229,12 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_DRAW_TRACK]         = PAIR(PlaceTrack, RemoveTrack),
     [ACTION_DRAW_PLATFORM]      = PAIR(PlacePlatform, RemovePlatform),
     [ACTION_DRAW_TRAIN]         = PAIR(SpawnTrain, RemoveTrain),
+    [ACTION_DRAW_ROAD]          = PAIR(TownRoad, TownRemoveRoad),
+    [ACTION_DRAW_LOT_HOME]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_HOME, NULL},
+    [ACTION_DRAW_LOT_WORK]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_WORK, NULL},
+    [ACTION_DRAW_LOT_MILL]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_MILL, NULL},
+    [ACTION_DRAW_LOT_FARM]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_FARM, NULL},
+    [ACTION_DRAW_LOT_GRANARY]   = {Tool_TownLot, Tool_TownRemoveLot, LOT_GRANARY, NULL},
 
     // Work: designations and blueprints the movers carry out
     [ACTION_WORK_MINE]          = PAIR(ExecuteDesignateMine, ExecuteCancelMine),
@@ -2194,6 +2242,7 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_WORK_DIG_RAMP]      = PAIR(ExecuteDesignateDigRamp, ExecuteCancelDigRamp),
     [ACTION_WORK_REMOVE_FLOOR]  = PAIR(ExecuteDesignateRemoveFloor, ExecuteCancelRemoveFloor),
     [ACTION_WORK_REMOVE_RAMP]   = PAIR(ExecuteDesignateRemoveRamp, ExecuteCancelRemoveRamp),
+    [ACTION_WORK_BLAST]         = PAIR(ExecuteDesignateBlast, ExecuteCancelBlast),
     [ACTION_WORK_CONSTRUCT]     = PAIR(ExecuteDesignateBuild, ExecuteCancelBuild),
     [ACTION_WORK_LADDER]        = PAIR(ExecuteDesignateLadder, ExecuteCancelBuild),
     [ACTION_WORK_FLOOR]         = PAIR(ExecuteDesignateFloor, ExecuteCancelBuild),
@@ -2350,6 +2399,16 @@ static int* OptRecipeVar(int category) {
         default: return NULL;
     }
 }
+void SelectBuildRecipe(int recipeIndex) {
+    const ConstructionRecipe* r = GetConstructionRecipe(recipeIndex);
+    int* var = r ? OptRecipeVar(r->buildCategory) : NULL;
+    if (var) *var = recipeIndex;
+}
+bool IsBuildRecipeSelected(int recipeIndex) {
+    const ConstructionRecipe* r = GetConstructionRecipe(recipeIndex);
+    int* var = r ? OptRecipeVar(r->buildCategory) : NULL;
+    return var && *var == recipeIndex;
+}
 static const char* OptRecipeCategoryLabel(int category) {
     switch (category) {
         case BUILD_WALL: return "Wall";
@@ -2414,7 +2473,7 @@ static const ActionOption optRoad = { .label = "Class", .style = OPT_NUMBERED,
     .count = OptRoadCount, .nameAt = OptRoadName, .get = OptRoadGet, .set = OptRoadSet };
 
 static const ActionOption* const actionOptions[] = {
-    [ACTION_DRAW_ROAD]       = &optRoad,
+    [ACTION_DRAW_ROAD_PLAN]       = &optRoad,
     [ACTION_DRAW_WALL]       = &optMaterial,
     [ACTION_DRAW_FLOOR]      = &optMaterial,
     [ACTION_DRAW_RAMP]       = &optRamp,
@@ -2869,18 +2928,12 @@ void HandleInput(void) {
     // Global controls (always active)
     // ========================================================================
 
-    // Follow mover (F) - toggles follow for hovered mover (paused)
-    // Only in normal mode to avoid consuming draw/work/sandbox action keys.
-    if (inputMode == MODE_NORMAL && IsKeyPressed(KEY_F)) {
-        // Hovered mover, else the selected one (src/core/selection.c)
-        int target = (hoveredMover >= 0 && hoveredMover < moverCount) ? hoveredMover
-                   : (selection.kind == SEL_MOVER && SelectionValid()) ? selection.idx : -1;
-        if (target >= 0) {
-            ToggleMoverFollow(target);
-        } else if (followMoverIdx >= 0) {
-            followMoverIdx = -1;
-            AddMessage("Follow: off", GRAY);
-        }
+    // The global keys (src/core/global_keys.c): each runs a command line (src/ui/commands.c):
+    // F follow (normal mode only: the tools use F), , . level, Tab overlay, Space pause, F5-F8
+    for (int i = 0; i < GlobalKeyCount(); i++) {
+        const GlobalKey* gk = GlobalKeyAt(i);
+        if (!gk->key || !gk->line || (gk->normalOnly && inputMode != MODE_NORMAL)) continue;
+        if (IsKeyPressed(gk->key)) CommandRunLine(gk->line);
     }
 
     // Click-to-move for drafted movers (right-click while following a drafted mover)
@@ -2929,10 +2982,6 @@ void HandleInput(void) {
     //     offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     // }
 
-    // Z-level
-    if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;
-    if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
-
     // Front view mode toggle (no keybind — toggled via UI only)
     // frontViewMode can still be set programmatically or via inspector
     // Front view depth scrolling (,/. scroll Y-slice instead of z-level)
@@ -2944,69 +2993,13 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_LEFT_BRACKET) && frontViewDepth > 1) frontViewDepth--;
     }
 
-    // Toggle the dev overlay. It sits on top of whatever game runs and does not
-    // change its rules (src/core/games.h); a new game is started from the games list.
-    if (IsKeyPressed(KEY_TAB)) {
-        devUI = !devUI;
-        if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
-    }
-
-    // Pause
-    if (IsKeyPressed(KEY_SPACE)) paused = !paused;
-
-    // Save/Load
-    if (IsKeyPressed(KEY_F5)) {
-        system("mkdir -p saves");
-        if (SaveWorld("saves/debug_save.bin")) {
-            AddMessage("World saved", GREEN);
-            time_t now = time(NULL);
-            struct tm* t = localtime(&now);
-            char cmd[256];
-            char timestamp[32];
-            snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d-%02d-%02d",
-                t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-            snprintf(cmd, sizeof(cmd), "gzip -c saves/debug_save.bin > saves/%s.bin.gz", timestamp);
-            system(cmd);
-            // Dump event log alongside save
-            char logPath[128];
-            snprintf(logPath, sizeof(logPath), "saves/%s.events.log", timestamp);
-            EventLogDump(logPath);
-            // Auto-audit: warn if violations found
-            int violations = RunStateAudit(true);
-            if (violations > 0) {
-                char auditMsg[64];
-                snprintf(auditMsg, sizeof(auditMsg), "Audit: %d violations (see console)", violations);
-                AddMessage(auditMsg, RED);
-            }
-        }
-    }
-    if (IsKeyPressed(KEY_F6)) {
-        if (LoadWorld("saves/debug_save.bin")) {
-            InputMode_Reset();
-            AddMessage("World loaded", GREEN);
-        }
-    }
-
-    // Audit / Event log
-    if (IsKeyPressed(KEY_F7)) {
-        int violations = RunStateAudit(true);
-        if (violations == 0) {
-            AddMessage("Audit: 0 violations", GREEN);
-        }
-    }
-    if (IsKeyPressed(KEY_F8)) {
-        EventLogDump("navkit_events.log");
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Event log dumped (%d entries)", EventLogCount());
-        AddMessage(msg, GREEN);
-    }
 
     // ========================================================================
     // Navigation: ESC, re-tap mode key
     // Handle before ui_wants_mouse check since bar buttons trigger pending keys
     // ========================================================================
     
-    if (inputAction == ACTION_DRAW_ROAD && roadToolStage > 0 && CheckKey(KEY_ESCAPE)) { roadToolStage = 0; return; }
+    if (inputAction == ACTION_DRAW_ROAD_PLAN && roadToolStage > 0 && CheckKey(KEY_ESCAPE)) { roadToolStage = 0; return; }
     if (CheckKey(KEY_ESCAPE)) {
         if (showQuitConfirm) {
             // Second ESC while quit confirm shown = quit
@@ -3046,6 +3039,16 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
+        // E: the selected mover does what fits the cell under the mouse (eat that, sit there, go
+        // there); Shift+E adds it to its queue (src/entities/action_queue.c)
+        if (CheckKey(KEY_E) && selection.kind == SEL_MOVER && SelectionValid()) {
+            Vector2 g = ScreenToGrid(GetMousePosition());
+            bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+            char said[128];
+            if (QueueCommandAt(selection.idx, (int)g.x, (int)g.y, z, shift, said, sizeof(said))) AddMessage(said, SKYBLUE);
+            else AddMessage(said[0] ? said : "Nothing to do there", GRAY);
+            return;
+        }
         // D while hovering a mover drafts/undrafts (before D = draw mode): the mover verbs (selection.c)
         if (hoveredMover >= 0 && hoveredMover < moverCount && RunSelectionVerbKeys(SEL_MOVER, hoveredMover)) return;
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
@@ -3251,7 +3254,7 @@ void HandleInput(void) {
     
     // Skip grid interactions if UI wants mouse
     if (ui_wants_mouse()) return;
-    if (inputAction == ACTION_DRAW_ROAD && !frontViewMode) { HandleRoadTool(); return; }   // (its own clicks: no drag rectangle)
+    if (inputAction == ACTION_DRAW_ROAD_PLAN && !frontViewMode) { HandleRoadTool(); return; }   // (its own clicks: no drag rectangle)
 
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     
@@ -3390,23 +3393,6 @@ void HandleInput(void) {
 // The tools' keys show in the bar (registry + tool options), commands in the console's help.
 // ============================================================================
 
-static const struct { const char* keys; const char* help; } globalKeyHelp[] = {
-    { NULL,          "--- View ---" },
-    { "Esc",         "Back / exit menu" },
-    { ", / .",       "Level down / up" },
-    { "Scroll",      "Zoom in / out" },
-    { "Middle-drag", "Pan view" },
-    { "Space",       "Pause / resume" },
-    { "F",           "Follow the hovered (or selected) mover" },
-    { NULL,          "--- General ---" },
-    { "L-click",     "Select a mover, animal, workshop, stockpile" },
-    { "Tab",         "Dev overlay (tools, settings)" },
-    { "`",           "Console (type help)" },
-    { "I",           "Build tools: instant / by order (Work bar)" },
-    { "F5 / F6",     "Quick save / quick load" },
-    { "F7",          "State audit" },
-    { "F8",          "Dump the event log" },
-};
 
 static const char* HelpKeyName(int key) {
     if (key >= KEY_A && key <= KEY_Z) { static char b[2][2]; static int k; k ^= 1; b[k][0] = (char)('A' + (key - KEY_A)); b[k][1] = 0; return b[k]; }
@@ -3423,9 +3409,10 @@ static const char* HelpKeyName(int key) {
 
 int InputHelpLines(char lines[][64], int max) {
     int n = 0;
-    for (int i = 0; i < (int)(sizeof(globalKeyHelp) / sizeof(globalKeyHelp[0])) && n < max; i++) {
-        if (globalKeyHelp[i].keys) snprintf(lines[n++], 64, "%-13s %s", globalKeyHelp[i].keys, globalKeyHelp[i].help);
-        else snprintf(lines[n++], 64, "%s", globalKeyHelp[i].help);
+    for (int i = 0; i < GlobalKeyCount() && n < max; i++) {   // src/core/global_keys.c
+        const GlobalKey* gk = GlobalKeyAt(i);
+        if (gk->label) snprintf(lines[n++], 64, "%-13s %s", gk->label, gk->help);
+        else snprintf(lines[n++], 64, "%s", gk->help);
     }
     static const struct { SelectionKind kind; const char* title; } kinds[] = {
         { SEL_MOVER, "--- Hovering a mover ---" },

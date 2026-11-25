@@ -25,6 +25,7 @@
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
+#include "../simulation/vapour.h"
 #include "../simulation/temperature.h"
 #include "../simulation/weather.h"
 #include "../simulation/groundwear.h"
@@ -77,13 +78,14 @@ _Static_assert(sizeof(FireCell) <= 64 && sizeof(SmokeCell) <= 64 && sizeof(Steam
 SparseLayer fireLayer  = { NULL, 0, sizeof(FireCell),  zeroElem, 0, "fire" };
 SparseLayer smokeLayer = { NULL, 0, sizeof(SmokeCell), zeroElem, 0, "smoke" };
 SparseLayer steamLayer = { NULL, 0, sizeof(SteamCell), zeroElem, 0, "steam" };
+SparseLayer vapourLayer = { NULL, 0, sizeof(VapourCell), zeroElem, 0, "vapour" };
 SparseLayer farmLayer  = { NULL, 0, sizeof(FarmCell),  zeroElem, 0, "farm" };
 
 SparseLayer waterFlowLayer = { NULL, 0, sizeof(WaterFlowCell), zeroElem, 0, "waterFlow" };
 SparseLayer oneWayLayer    = { NULL, 0, sizeof(uint8_t), zeroElem, 0, "oneWay" };
 
 static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer, &fireLayer, &smokeLayer,
-                                             &steamLayer, &farmLayer, &waterFlowLayer, &oneWayLayer };
+                                             &steamLayer, &farmLayer, &waterFlowLayer, &oneWayLayer, &vapourLayer };
 #define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
 
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {

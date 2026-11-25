@@ -77,6 +77,8 @@ Recipe hearthRecipes[] = {
     { "Brew Tea",     ITEM_WATER, 2, ITEM_DRIED_GRASS, 4, ITEM_NONE, 0, ITEM_HERBAL_TEA, 2, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Press Juice",  ITEM_WATER, 2, ITEM_BERRIES, 6, ITEM_NONE, 0, ITEM_BERRY_JUICE, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Make Lye",     ITEM_ASH, 2, ITEM_WATER, 1, ITEM_NONE, 0, ITEM_LYE, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Old nitre beds: water through compost and wood ash, boiled down to saltpeter (for gunpowder)
+    { "Leach Saltpeter", ITEM_COMPOST, 2, ITEM_ASH, 1, ITEM_WATER, 1, ITEM_SALTPETER, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
@@ -114,6 +116,12 @@ int compostPileRecipeCount = sizeof(compostPileRecipes) / sizeof(compostPileReci
 // Quern recipes: grind grain into flour
 Recipe quernRecipes[] = {
     { "Grind Wheat", ITEM_WHEAT, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_FLOUR, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Black powder without sulfur: weaker, fine for blasting rock (one gunpowder = one charge).
+    // One of each: a recipe takes an input's count from one stack, and saltpeter often lies in two
+    { "Grind Gunpowder", ITEM_SALTPETER, 1, ITEM_CHARCOAL, 1, ITEM_NONE, 0, ITEM_GUNPOWDER, 1, ITEM_NONE, 0, 1.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // A batch: a town mill's querns (town.c). A miller works ~2.5 grinds a day between meals and
+    // sleep: one flour a grind could not feed a town. Appended: bills store the index.
+    { "Mill Flour", ITEM_WHEAT, 8, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_FLOUR, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int quernRecipeCount = sizeof(quernRecipes) / sizeof(quernRecipes[0]);
 
@@ -137,6 +145,8 @@ Recipe tailorRecipes[] = {
     { "Sew Flax Tunic",   ITEM_LINEN, 2,   ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_FLAX_TUNIC, 1,   ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Sew Leather Vest", ITEM_LEATHER, 2,  ITEM_NONE, 0,  ITEM_NONE, 0, ITEM_LEATHER_VEST, 1, ITEM_NONE, 0, 2.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
     { "Sew Leather Coat", ITEM_LEATHER, 2,  ITEM_CLOTH, 1, ITEM_NONE, 0, ITEM_LEATHER_COAT, 1, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
+    // Clothing with pockets (a small container, inventory.c): worn like a tunic. Append only: bills store the index
+    { "Sew Pocket Jacket", ITEM_CLOTH, 3,  ITEM_CORDAGE, 1, ITEM_NONE, 0, ITEM_POCKET_JACKET, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0 },
 };
 int tailorRecipeCount = sizeof(tailorRecipes) / sizeof(tailorRecipes[0]);
 
@@ -164,6 +174,8 @@ Recipe stoveRecipes[] = {
     { "Boil Water",  ITEM_WATER, 1, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BOILED_WATER, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
     { "Brew Tea",    ITEM_WATER, 1, ITEM_DRIED_GRASS, 2, ITEM_NONE, 0, ITEM_HERBAL_TEA, 1, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
     { "Cook Lentils",ITEM_LENTILS, 2, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_COOKED_LENTILS, 1, ITEM_NONE, 0, 1.5f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, 0, 0 },
+    // A batch: a town bakery's stoves (town.c) feed ~20 people per baker. Appended: bills store the index.
+    { "Bake Loaves", ITEM_FLOUR, 4, ITEM_NONE, 0, ITEM_NONE, 0, ITEM_BREAD, 4, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT, 0, 0, CAP_PREP_SURFACE, 0 },
 };
 int stoveRecipeCount = sizeof(stoveRecipes) / sizeof(stoveRecipes[0]);
 

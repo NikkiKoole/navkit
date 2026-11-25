@@ -368,3 +368,18 @@ void FindSetPinned(int row, bool on) {
 }
 
 void FindForgetUse(void) { recentCount = 0; pinnedCount = 0; }
+
+void FindRowKey(int row, char* buf, int len) {
+    const FindRow* r = FindRowAt(row);
+    if (!r) { if (len > 0) buf[0] = '\0'; return; }
+    snprintf(buf, (size_t)len, "%s/%s", r->path, r->label);
+}
+
+int FindRowByKey(const char* key) {
+    char k[FIND_PATH_LEN + FIND_LABEL_LEN + 2];
+    for (int i = 0; i < rowCount; i++) {
+        FindRowKey(i, k, sizeof(k));
+        if (strcmp(k, key) == 0) return i;
+    }
+    return -1;
+}

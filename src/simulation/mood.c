@@ -17,6 +17,7 @@
 #include "rooms.h"
 #include "weather.h"
 #include "floordirt.h"
+#include "../entities/social.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +53,9 @@ const MoodletDef moodletDefs[MOODLET_TYPE_COUNT] = {
     [MOODLET_ENJOYING_SUN]      = { "Enjoying the sun",    1.0f,  2.0f },
     [MOODLET_FILTHY]            = { "Filthy surroundings", -1.0f, 2.0f },
     [MOODLET_ATE_STALE_FOOD]    = { "Ate stale food",     -1.0f,  6.0f },
+    [MOODLET_LONELY]            = { "Lonely",             -1.0f,  0.5f },  // refreshed while low
+    [MOODLET_VERY_LONELY]       = { "Very lonely",        -2.0f,  0.5f },
+    [MOODLET_GOOD_COMPANY]      = { "Good company",        1.0f,  2.0f },  // refreshed while in company
 };
 
 // --- Trait definitions ---
@@ -115,9 +119,10 @@ const TraitDef traitDefs[TRAIT_COUNT] = {
     // Patience: no moodlet effect; read by MoverPatience() (mover.c) for queues
     [TRAIT_PATIENT] = { "Patient", "Waits calmly in lines", {0} },
     [TRAIT_IMPATIENT] = { "Impatient", "Hates waiting in lines", {0} },
-    // Trash: no moodlet effect; read by the trash disposal in needs.c
-    [TRAIT_TIDY] = { "Tidy", "Takes trash to a bin, even a far one", {0} },
-    [TRAIT_SLOB] = { "Slob", "Drops trash on the spot", {0} },
+    // Trash: read by the trash disposal in needs.c; dirt: a slob never gets "filthy" (below)
+    [TRAIT_TIDY] = { "Tidy", "Takes trash to a bin, even a far one; minds dirt",
+        { [MOODLET_FILTHY] = 1.5f } },
+    [TRAIT_SLOB] = { "Slob", "Drops trash on the spot, doesn't mind dirt", {0} },
     [TRAIT_SCAVENGER] = { "Scavenger", "Lives off what others throw away", {0} },
 };
 
@@ -511,7 +516,8 @@ static void UpdateWeatherAndDirtMoodlets(Mover* m, int moverIdx, float dt) {
     }
 
     // Dirt: the floor under the mover (only constructed floors collect dirt)
-    if (floorDirtEnabled && FLOOR_DIRT(cx, cy, cz) >= FILTHY_DIRT_THRESHOLD) {
+    if (floorDirtEnabled && FLOOR_DIRT(cx, cy, cz) >= FILTHY_DIRT_THRESHOLD &&
+        m->traits[0] != TRAIT_SLOB && m->traits[1] != TRAIT_SLOB) {
         AddMoodlet(m, MOODLET_FILTHY);
     }
 }
@@ -531,6 +537,17 @@ static void UpdateContinuousMoodlets(Mover* m, int moverIdx, float dt) {
 
     // Rain, storm, sun, dirty floor (periodic)
     UpdateWeatherAndDirtMoodlets(m, moverIdx, dt);
+
+    // Company (social.h): lonely while low, good company while with others and plenty of it
+    if (SocialActive()) {
+        float s = moverSocial[moverIdx];
+        if (s < SOCIAL_VERY_LONELY) { AddMoodlet(m, MOODLET_VERY_LONELY); RemoveMoodlet(m, MOODLET_LONELY); }
+        else if (s < SOCIAL_LONELY) { AddMoodlet(m, MOODLET_LONELY); RemoveMoodlet(m, MOODLET_VERY_LONELY); }
+        else if (s > SOCIAL_GOOD_COMPANY) {
+            int with[1];
+            if (SocialCompany(moverIdx, with, 1) > 0) AddMoodlet(m, MOODLET_GOOD_COMPANY);
+        }
+    }
 }
 
 // --- Trait assignment ---

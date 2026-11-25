@@ -1,4 +1,6 @@
 #include "jobs.h"
+#include "../simulation/vapour.h"
+#include "../simulation/explosion.h"
 #include "inventory.h"
 #include "items.h"
 #include "item_defs.h"
@@ -22,7 +24,10 @@
 #include "butchering.h"
 #include "tool_quality.h"
 #include "../simulation/farming.h"
+#include "throwing.h"
 #include <math.h>
+#include "town.h"
+#include "furniture.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -143,6 +148,8 @@ static int cleanCacheCount = 0;
 
 static OnTileDesignationEntry removeBeltCache[MAX_DESIGNATION_CACHE];
 static int removeBeltCacheCount = 0;
+static AdjacentDesignationEntry blastCache[MAX_DESIGNATION_CACHE];
+static int blastCacheCount = 0;
 
 static OnTileDesignationEntry harvestBerryCache[MAX_DESIGNATION_CACHE];
 static int harvestBerryCacheCount = 0;
@@ -172,6 +179,7 @@ static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool removeBeltCacheDirty = true;
+static bool blastCacheDirty = true;
 static bool harvestBerryCacheDirty = true;
 static bool knapCacheDirty = true;
 static bool digRootsCacheDirty = true;
@@ -192,6 +200,7 @@ static void RebuildGatherReedsDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
 static void RebuildRemoveBeltDesignationCache(void);
+static void RebuildBlastDesignationCache(void);
 static void RebuildHarvestBerryDesignationCache(void);
 static void RebuildKnapDesignationCache(void);
 static void RebuildDigRootsDesignationCache(void);
@@ -230,6 +239,7 @@ static float JobDistance(int moverIdx, int x, int y, int z) {
 }
 
 static bool JobInRange(int moverIdx, int x, int y, int z) {
+    if (!TownJobAllowed(moverIdx, x, y, z)) return false;   // a town worker on shift works at their workplace
     if (jobRangeLimit < 0.0f) return true;
     if (JobDistance(moverIdx, x, y, z) <= jobRangeLimit) return true;
     jobRangeSkipped = true;
@@ -284,6 +294,7 @@ static inline void PhaseMoverEnd(int moverIdx, bool was) {
 static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_RemoveBelt(int moverIdx);
+static int WorkGiver_Blast(int moverIdx);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -341,6 +352,8 @@ static DesignationJobSpec designationSpecs[] = {
      tillCache, &tillCacheCount, &tillCacheDirty},
     {DESIGNATION_REMOVE_BELT, JOBTYPE_REMOVE_BELT, RebuildRemoveBeltDesignationCache, WorkGiver_RemoveBelt,
      removeBeltCache, &removeBeltCacheCount, &removeBeltCacheDirty},
+    {DESIGNATION_BLAST, JOBTYPE_BLAST, RebuildBlastDesignationCache, WorkGiver_Blast,
+     blastCache, &blastCacheCount, &blastCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -490,6 +503,12 @@ static void RebuildCleanDesignationCache(void) {
     if (!cleanCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount, true);
     cleanCacheDirty = false;
+}
+
+static void RebuildBlastDesignationCache(void) {
+    if (!blastCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_BLAST, blastCache, &blastCacheCount, true);
+    blastCacheDirty = false;
 }
 
 static void RebuildRemoveBeltDesignationCache(void) {
@@ -1157,7 +1176,11 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
         MaterialType mat = GetWallMaterial(job->targetMineX, job->targetMineY, job->targetMineZ);
         float speed = GetJobToolSpeedMultiplier(JOBTYPE_MINE, mat, mover->equippedTool);
         JobRunResult r = RunWorkProgress(job, d, mover, dt, MINE_WORK_TIME, false, speed);
-        if (r == JOBRUN_DONE) CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+        if (r == JOBRUN_DONE) {
+            bool natural = IsWallNatural(job->targetMineX, job->targetMineY, job->targetMineZ);
+            CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+            VapourMinedRock(job->targetMineX, job->targetMineY, job->targetMineZ, mat, natural);   // firedamp?
+        }
         return r;
     }
     return JOBRUN_FAIL;
@@ -2519,6 +2542,173 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Refuel job driver: fetch one fuel item, walk next to the barrel, toss it in (it burns)
+static int RefuelTarget(const Job* job) {
+    int fi = GetFurnitureAt(job->targetMineX, job->targetMineY, job->targetMineZ);
+    return (fi >= 0 && GetFurnitureDef(furniture[fi].type)->fuelHours > 0.0f) ? fi : -1;
+}
+
+JobRunResult RunJob_Refuel(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    (void)dt;
+    int fi = RefuelTarget(job);
+    if (fi < 0) return JOBRUN_FAIL;   // the barrel is gone
+
+    Point stand = { job->targetAdjX, job->targetAdjY, job->targetMineZ };
+    float standX = stand.x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float standY = stand.y * CELL_SIZE + CELL_SIZE * 0.5f;
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)item->z;
+        float dx = mover->x - item->x, dy = mover->y - item->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            itemIdx = TakeFromStockpileSlot(itemIdx, 1);   // one unit out of a stockpile stack
+            if (itemIdx < 0) return JOBRUN_FAIL;
+            if (items[itemIdx].stackCount > 1) {           // one unit off a stack on the ground
+                int one = SplitStack(itemIdx, 1);
+                if (one < 0) return JOBRUN_FAIL;
+                ReleaseItemReservation(itemIdx);
+                items[one].reservedBy = (int)(mover - movers);
+                itemIdx = one;
+            }
+            item = &items[itemIdx];
+            if (item->containedIn != -1) ExtractItemFromContainer(itemIdx);
+            item->state = ITEM_CARRIED;
+            MoverMakeHandsFor((int)(mover - movers), itemIdx);
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+            mover->goal = stand;
+            mover->needsRepath = true;
+        }
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        float dx = mover->x - standX, dy = mover->y - standY;
+        float distSq = dx * dx + dy * dy;
+
+        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
+            mover->goal = stand;
+            mover->needsRepath = true;
+        }
+        TryFinalApproach(mover, standX, standY, stand.x, stand.y, DROP_RADIUS);
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) return JOBRUN_FAIL;
+
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+
+        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+            int type = items[itemIdx].type;
+            job->carryingItem = -1;
+            DeleteItem(itemIdx);   // into the fire
+            FurnitureAddFuel(fi, type);
+            return JOBRUN_DONE;
+        }
+        return JOBRUN_RUNNING;
+    }
+    return JOBRUN_FAIL;
+}
+
+// WorkGiver_Refuel: the nearest burning barrel under half full that nobody is already
+// refuelling gets the nearest reachable fuel item (sticks, a log, ...)
+int WorkGiver_Refuel(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canHaul) return -1;
+    int moverZ = (int)m->z;
+
+    for (int fi = 0; fi < MAX_FURNITURE; fi++) {
+        if (!FurnitureNeedsFuel(fi)) continue;
+        const Furniture* f = &furniture[fi];
+        if (f->z != moverZ) continue;
+        if (!JobInRange(moverIdx, f->x, f->y, f->z)) continue;
+
+        bool pending = false;   // one refuel trip at a time per barrel
+        for (int j = 0; j < activeJobCount && !pending; j++) {
+            Job* other = GetJob(activeJobList[j]);
+            pending = other && other->type == JOBTYPE_REFUEL && other->targetMineX == f->x &&
+                      other->targetMineY == f->y && other->targetMineZ == f->z;
+        }
+        if (pending) continue;
+
+        // Where to stand: the walkable neighbour nearest the mover (the barrel blocks its cell)
+        static const int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+        int standX = -1, standY = -1;
+        float bestStand = 1e30f;
+        for (int d = 0; d < 4; d++) {
+            int ax = f->x + dirs[d][0], ay = f->y + dirs[d][1];
+            if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
+            if (!IsCellWalkableAt(f->z, ay, ax)) continue;
+            float ddx = (ax + 0.5f) * CELL_SIZE - m->x, ddy = (ay + 0.5f) * CELL_SIZE - m->y;
+            if (ddx * ddx + ddy * ddy < bestStand) { bestStand = ddx * ddx + ddy * ddy; standX = ax; standY = ay; }
+        }
+        if (standX < 0) continue;
+
+        int bestItemIdx = -1;
+        float bestDistSq = 1e30f;
+        for (int j = 0; j < itemHighWaterMark; j++) {
+            Item* item = &items[j];
+            if (!item->active || item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if (!ItemIsFuel(item->type)) continue;
+            if ((int)item->z != moverZ) continue;
+            int cellX = (int)(item->x / CELL_SIZE), cellY = (int)(item->y / CELL_SIZE);
+            if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+            if (!IsExplored(cellX, cellY, (int)item->z)) continue;
+            if (IsPassiveWorkshopWorkTile(cellX, cellY, (int)item->z)) continue;   // a fire's own fuel
+            float dx = item->x - m->x, dy = item->y - m->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) { bestDistSq = distSq; bestItemIdx = j; }
+        }
+        if (bestItemIdx < 0) continue;
+
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), moverZ };
+        Point itemCell = { (int)(items[bestItemIdx].x / CELL_SIZE), (int)(items[bestItemIdx].y / CELL_SIZE), moverZ };
+        Point tempPath[MAX_PATH];
+        if (FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH) == 0) {
+            SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+            continue;
+        }
+        if (!ReserveItem(bestItemIdx, moverIdx)) continue;
+
+        int jobId = CreateJob(JOBTYPE_REFUEL);
+        if (jobId < 0) { ReleaseItemReservation(bestItemIdx); return -1; }
+        Job* job = GetJob(jobId);
+        job->assignedMover = moverIdx;
+        job->targetItem = bestItemIdx;
+        job->targetMineX = f->x; job->targetMineY = f->y; job->targetMineZ = f->z;
+        job->targetAdjX = standX; job->targetAdjY = standY;
+        job->step = STEP_MOVING_TO_PICKUP;
+
+        m->currentJobId = jobId;
+        m->goal = itemCell;
+        m->needsRepath = true;
+        RemoveMoverFromIdleList(moverIdx);
+        return jobId;
+    }
+    return -1;
+}
+
 // Ignite workshop job driver: walk to workshop work tile, do short active work, set passiveReady
 JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -2605,6 +2795,100 @@ JobRunResult RunJob_RemoveBelt(Job* job, void* moverPtr, float dt) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, REMOVE_BELT_WORK_TIME, true, 1.0f);
         if (r == JOBRUN_DONE) CompleteRemoveBeltDesignation(tx, ty, tz);
         return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Somewhere to stand out of a blast's reach: the nearest walkable cell on this level at least
+// minDist cells from the charge, by a walking search (4 neighbours, up to 2000 cells)
+static bool FindBlastShelter(int fromX, int fromY, int z, int cx, int cy, float minDist, int* outX, int* outY) {
+    enum { CAP = 2000 };
+    static int qx[CAP], qy[CAP];
+    static const int dx4[4] = { 1, -1, 0, 0 }, dy4[4] = { 0, 0, 1, -1 };
+    int head = 0, tail = 0;
+    qx[tail] = fromX; qy[tail++] = fromY;
+    while (head < tail) {
+        int x = qx[head], y = qy[head++];
+        float ddx = (float)(x - cx), ddy = (float)(y - cy);
+        if (ddx * ddx + ddy * ddy >= minDist * minDist) { *outX = x; *outY = y; return true; }
+        for (int d = 0; d < 4 && tail < CAP; d++) {
+            int nx = x + dx4[d], ny = y + dy4[d];
+            if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight || !IsCellWalkableAt(z, ny, nx)) continue;
+            bool seen = false;
+            for (int k = 0; k < tail && !seen; k++) seen = qx[k] == nx && qy[k] == ny;
+            if (seen) continue;
+            qx[tail] = nx; qy[tail++] = ny;
+        }
+    }
+    return false;
+}
+
+// Blast job driver: fetch gunpowder -> carry it to the wall -> set the charge -> light it ->
+// walk out of reach (explosion.c does the bang after blastFuse seconds)
+JobRunResult RunJob_Blast(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    if (job->step == STEP_FLEEING) {
+        // job->progress counts game seconds here; done once clear (or the fuse surely burned down)
+        job->progress += dt;
+        int gx = job->targetAdjX, gy = job->targetAdjY;
+        if (mover->goal.x != gx || mover->goal.y != gy || mover->goal.z != tz) {
+            mover->goal = (Point){ gx, gy, tz };
+            mover->needsRepath = true;
+        }
+        float ddx = mover->x / CELL_SIZE - (gx + 0.5f), ddy = mover->y / CELL_SIZE - (gy + 0.5f);
+        if ((ddx * ddx + ddy * ddy < 0.5f * 0.5f) || job->progress > blastFuse + 1.0f) return JOBRUN_DONE;
+        return JOBRUN_RUNNING;
+    }
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_BLAST) return JOBRUN_FAIL;
+    if (ExplosionCellStrength(tx, ty, tz) <= 0.0f) {   // mined or blasted away meanwhile
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        // Still a stack (merged into one meanwhile): take one off (as RunJob_PlantCrop does with seeds)
+        int gi = job->targetItem;
+        if (gi >= 0 && items[gi].active && items[gi].stackCount > 1) {
+            int single = SplitStack(gi, 1);
+            if (single >= 0) {
+                ReleaseItemReservation(gi);
+                ReserveItem(single, (int)(mover - movers));
+                job->targetItem = single;
+            }
+        }
+        return RunPickupStep(job, mover, (Point){ job->targetAdjX, job->targetAdjY, tz });
+    }
+    if (job->step == STEP_CARRYING) {
+        JobRunResult r = RunCarryStep(job, mover, job->targetAdjX, job->targetAdjY, tz);
+        if (r == JOBRUN_DONE) {
+            job->step = STEP_SETTING_CHARGE;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+        return r;
+    }
+    if (job->step == STEP_SETTING_CHARGE) {
+        int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, BLAST_SET_WORK_TIME, true, 1.0f);
+        if (r != JOBRUN_DONE) return r;
+        DeleteItem(itemIdx);
+        job->carryingItem = -1;
+        CancelDesignation(tx, ty, tz);
+        ExplosionLightFuse(tx, ty, tz, blastPower, blastFuse);
+        EventLog("Mover %d lit a charge at (%d,%d,z%d)", (int)(mover - movers), tx, ty, tz);
+        // Run: out of reach on this level (the blast is weaker past walls, but don't count on it)
+        int mx = (int)(mover->x / CELL_SIZE), my = (int)(mover->y / CELL_SIZE), sx, sy;
+        if (!FindBlastShelter(mx, my, tz, tx, ty, blastPower + 2.0f, &sx, &sy)) { sx = mx; sy = my; }
+        job->targetAdjX = sx;
+        job->targetAdjY = sy;
+        job->targetMineX = job->targetMineY = -1;   // the designation is gone (CancelJob: nothing to release)
+        job->step = STEP_FLEEING;
+        job->progress = 0.0f;
+        mover->goal = (Point){ sx, sy, tz };
+        mover->needsRepath = true;
+        return JOBRUN_RUNNING;
     }
     return JOBRUN_FAIL;
 }
@@ -2699,12 +2983,51 @@ JobRunResult RunJob_DeconstructWorkshop(Job* job, void* moverPtr, float dt) {
 // Hunt job steps
 #define HUNT_STEP_CHASING  0
 #define HUNT_STEP_ATTACKING 1
+#define HUNT_STEP_WINDUP   2   // standing, about to throw the stone at it
+#define HUNT_STEP_FETCH    3   // walking to a stone (job->targetItem, reserved)
 #define HUNT_CHASE_TIMEOUT 30.0f  // Fail if can't reach animal in 30s
 #define HUNT_RETARGET_INTERVAL 1.0f  // Re-path every 1s while chasing
+#define HUNT_STONE_RADIUS  10.0f  // cells: a hunter fetches a stone this close before the chase
+#define HUNT_THROW_MIN     2.5f   // cells: closer than this it just goes for it
+#define HUNT_THROW_CHECK   0.25f  // seconds between "would a throw from here hit it?" checks
+#define HUNT_WINDUP        0.35f  // seconds winding up
 
-// Hunt job driver: chase animal -> attack when adjacent -> kill
+// Hunters throw stones (throwing.c): a hit dazes the animal, they walk in while it stands still.
+// The stone thrown is kept in job->targetMineX (targetMineY/Z stay -1, so no designation code
+// takes it for a cell; targetItem would be released on a cancel while someone else may own it).
+bool huntThrowStones = true;
+
+// Put the stone down, forget the thrown one (job done)
+static void HuntLetGoOfStones(Job* job, int moverIdx) {
+    if (job->carryingItem >= 0) { ThrowDropHeld(moverIdx, job->carryingItem); job->carryingItem = -1; }
+    if (job->targetItem >= 0) {
+        if (items[job->targetItem].active && items[job->targetItem].reservedBy == moverIdx)
+            ReleaseItemReservation(job->targetItem);
+        job->targetItem = -1;
+    }
+    job->targetMineX = -1;
+}
+
+// Fetch a stone to throw: in its hands or pockets (taken out at its feet), else one lying close
+static bool HuntFetchStone(Job* job, Mover* mover, int moverIdx, int stoneIdx) {
+    if (stoneIdx < 0 || !ItemThrowable(stoneIdx)) return false;
+    const char* why = "";
+    int s = ThrowReadyItem(moverIdx, stoneIdx, &why);
+    if (s < 0 || items[s].reservedBy >= 0) return false;
+    if (items[s].state != ITEM_ON_GROUND && items[s].state != ITEM_IN_STOCKPILE) return false;
+    ReserveItem(s, moverIdx);
+    job->targetItem = s;
+    job->step = HUNT_STEP_FETCH;
+    mover->goal = (Point){ (int)(items[s].x / CELL_SIZE), (int)(items[s].y / CELL_SIZE), (int)items[s].z };
+    mover->needsRepath = true;
+    return true;
+}
+
+// Hunt job driver: (fetch a stone) -> chase animal (throwing the stone from a distance: a hit
+// dazes it; fetch it again after a miss) -> attack when adjacent -> kill
 JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
+    int moverIdx = (int)(mover - movers);
     int animalIdx = job->targetAnimalIdx;
 
     // Validate target animal
@@ -2717,7 +3040,84 @@ JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
     int animalCellY = (int)(target->y / CELL_SIZE);
     int animalCellZ = (int)target->z;
 
+    if (job->step == HUNT_STEP_FETCH) {
+        int s = job->targetItem;
+        bool usable = s >= 0 && items[s].active && items[s].reservedBy == moverIdx &&
+                      (items[s].state == ITEM_ON_GROUND || items[s].state == ITEM_IN_STOCKPILE);
+        if (!usable || AnimalDazed(animalIdx)) {   // gone, or no time for it now
+            if (usable) ReleaseItemReservation(s);
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+            return JOBRUN_RUNNING;
+        }
+        if (ThrowPickUp(moverIdx, s)) {
+            job->carryingItem = s;
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+            job->progress = HUNT_THROW_CHECK;   // check right away
+            return JOBRUN_RUNNING;
+        }
+        Point g = { (int)(items[s].x / CELL_SIZE), (int)(items[s].y / CELL_SIZE), (int)items[s].z };
+        if (mover->goal.x != g.x || mover->goal.y != g.y || mover->goal.z != g.z) {
+            mover->goal = g;
+            mover->needsRepath = true;
+        }
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > 3.0f) {   // can't get to it: forget it
+            ReleaseItemReservation(s);
+            job->targetItem = -1;
+            job->targetMineX = -1;
+            job->step = HUNT_STEP_CHASING;
+        }
+        return JOBRUN_RUNNING;
+    }
+
+    if (job->step == HUNT_STEP_WINDUP) {
+        job->progress += dt;
+        mover->timeWithoutProgress = 0.0f;
+        if (job->progress < HUNT_WINDUP) return JOBRUN_RUNNING;
+        int s = job->carryingItem;
+        if (s >= 0 && !AnimalDazed(animalIdx) && ThrowAtAnimal(moverIdx, s, animalIdx, true)) {
+            job->carryingItem = -1;
+            job->targetMineX = s;   // pick it up again if it missed
+        }
+        job->step = HUNT_STEP_CHASING;
+        job->progress = 0.0f;
+        return JOBRUN_RUNNING;
+    }
+
     if (job->step == HUNT_STEP_CHASING) {
+        // Throwing: with a stone in hand, from far enough, at an animal that isn't dazed yet
+        if (huntThrowStones && !AnimalDazed(animalIdx) && (int)mover->z == animalCellZ) {
+            float tdx = (target->x - mover->x) / CELL_SIZE, tdy = (target->y - mover->y) / CELL_SIZE;
+            bool far = tdx * tdx + tdy * tdy >= HUNT_THROW_MIN * HUNT_THROW_MIN;
+            int held = job->carryingItem;
+            if (held >= 0 && far) {
+                job->progress += dt;
+                if (job->progress >= HUNT_THROW_CHECK) {
+                    job->progress = 0.0f;
+                    if (ThrowAtAnimal(moverIdx, held, animalIdx, false)) {
+                        job->step = HUNT_STEP_WINDUP;
+                        mover->goal = (Point){ (int)(mover->x / CELL_SIZE), (int)(mover->y / CELL_SIZE), (int)mover->z };
+                        mover->needsRepath = true;
+                        return JOBRUN_RUNNING;
+                    }
+                }
+            } else if (held < 0) {
+                int thrown = job->targetMineX;
+                if (thrown >= 0 && items[thrown].active && items[thrown].state == ITEM_IN_FLIGHT) {
+                    // still flying: see where it comes down
+                } else if (thrown >= 0 && items[thrown].active && items[thrown].reservedBy < 0 &&
+                           (int)items[thrown].z == (int)mover->z && ItemThrowable(thrown) &&
+                           HuntFetchStone(job, mover, moverIdx, thrown)) {
+                    return JOBRUN_RUNNING;   // missed: fetch it again
+                } else {
+                    job->targetMineX = -1;
+                }
+            }
+        }
+
         // Update goal to animal's current position
         if (mover->goal.x != animalCellX || mover->goal.y != animalCellY || mover->goal.z != animalCellZ) {
             mover->goal = (Point){animalCellX, animalCellY, animalCellZ};
@@ -2777,6 +3177,7 @@ JobRunResult RunJob_Hunt(Job* job, void* moverPtr, float dt) {
             // Kill the animal — spawns carcass
             KillAnimal(animalIdx);
             job->targetAnimalIdx = -1;
+            HuntLetGoOfStones(job, moverIdx);
             return JOBRUN_DONE;
         }
         return JOBRUN_RUNNING;
@@ -2999,9 +3400,11 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
                     break;
             }
 
-            // Spawn yield
-            for (int i = 0; i < yieldCount; i++) {
-                SpawnItem(px, py, (float)tz, yieldType);
+            // Spawn yield as one stack: one haul trip instead of one per grain (a town farm's
+            // 188 single wheat a round outran its haulers), and a quern can grind a stack of 2+
+            if (yieldCount > 0) {
+                int yIdx = SpawnItem(px, py, (float)tz, yieldType);
+                if (yIdx >= 0) items[yIdx].stackCount = yieldCount;
             }
             // Always spawn 1 seed (self-sustaining)
             if (seedType != ITEM_NONE) {
@@ -3021,6 +3424,7 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
             fc->frostDamaged = 0;
 
             EventLog("Harvested crop %d at (%d,%d,z%d) yield=%d frost=%d", crop, tx, ty, tz, yieldCount, frost);
+            TownNoteHarvest(tx, ty, tz);   // a town farm's first harvest ends the wheat import
         }
         return r;
     }
@@ -3439,6 +3843,9 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_FILL_WATER_POT] = RunJob_FillWaterPot,
     [JOBTYPE_WATER_CROP] = RunJob_WaterCrop,
     [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
+    [JOBTYPE_THROW] = RunJob_Throw,
+    [JOBTYPE_BLAST] = RunJob_Blast,
+    [JOBTYPE_REFUEL] = RunJob_Refuel,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
@@ -4148,6 +4555,7 @@ static bool IsItemHaulable(Item* item, int itemIdx) {
     if (item->unreachableCooldown > 0.0f) return false;
     if (!ItemTypeIsValidForJobs(item->type)) return false;
     if (ItemIsFixed(item->type)) return false;   // a trash bin stays where it stands
+    if (ItemIsMoney(item->type)) return false;   // coins: whoever picks them up keeps them (money.h)
     if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
     int cellX = (int)(item->x / CELL_SIZE);
     int cellY = (int)(item->y / CELL_SIZE);
@@ -4213,6 +4621,8 @@ static void AssignJobs_P2_Crafting(void) {
 
     if (workshopsNeedingCrafters > 0) {
         int moversToCheck = workshopsNeedingCrafters;
+        // Town workplaces take only their own workers: the first idle movers may not be them
+        if (townLotHighWater > 0) moversToCheck = idleMoverCount;
         if (moversToCheck > idleMoverCount) moversToCheck = idleMoverCount;
 
         int* idleCopy = (int*)malloc(moversToCheck * sizeof(int));
@@ -4259,6 +4669,28 @@ static void AssignJobs_P2b_PassiveDelivery(void) {
             free(idleCopy);
         }
     }
+}
+
+// Burning barrels under half full (furniture fuel): an idle hauler brings fuel
+__attribute__((noinline))
+static void AssignJobs_P2g_Refuel(void) {
+    bool any = false;
+    for (int fi = 0; fi < MAX_FURNITURE && !any; fi++) any = FurnitureNeedsFuel(fi);
+    if (!any) return;
+    int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+    if (!idleCopy) return;
+    int idleCopyCount = idleMoverCount;
+    memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+    for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+        int moverIdx = idleCopy[i];
+        if (!moverIsInIdleList[moverIdx]) continue;
+        if (PhaseMoverSkip(moverIdx)) continue;
+        bool rs = PhaseMoverBegin();
+        int jobId = WorkGiver_Refuel(moverIdx);
+        PhaseMoverEnd(moverIdx, rs);
+        if (jobId >= 0) break;   // one trip per barrel: the next pass picks the next barrel
+    }
+    free(idleCopy);
 }
 
 __attribute__((noinline))
@@ -4684,6 +5116,7 @@ static const JobPhase jobPhases[] = {
     {AssignJobs_P2_Crafting,             1, "Band_P2_Crafting"},
     {AssignJobs_P2b_PassiveDelivery,     1, "Band_P2b_PassiveDelivery"},
     {AssignJobs_P2c_Ignition,            1, "Band_P2c_Ignition"},
+    {AssignJobs_P2g_Refuel,              1, "Band_P2g_Refuel"},
     {AssignJobs_P2d_Hunt,                2, "Band_P2d_Hunt"},
     {AssignJobs_P2e_Clothing,           -1, "Band_P2e_Clothing"},
     {AssignJobs_P2f_WaterPot,           -1, "Band_P2f_WaterPot"},
@@ -4808,6 +5241,11 @@ void AssignJobs(void) {
     PROFILE_BEGIN(Jobs_P2c_Ignition);
     AssignJobs_P2c_Ignition();
     PROFILE_END(Jobs_P2c_Ignition);
+    if (idleMoverCount == 0) return;
+
+    PROFILE_BEGIN(Jobs_P2g_Refuel);
+    AssignJobs_P2g_Refuel();
+    PROFILE_END(Jobs_P2g_Refuel);
     if (idleMoverCount == 0) return;
 
     PROFILE_BEGIN(Jobs_P2d_Hunt);
@@ -5704,6 +6142,8 @@ int WorkGiver_PlantCrop(int moverIdx) {
     for (int i = 0; i < farmCacheNeedsPlantCount; i++) {
         int x = farmCacheNeedsPlant[i].x, y = farmCacheNeedsPlant[i].y, z = farmCacheNeedsPlant[i].z;
         const FarmCell* fc = &FARM(x, y, z);
+        // Not when the season would kill it before it ripens: the seed would be lost
+        if (!CropWorthPlantingNow((CropType)fc->desiredCropType)) continue;
         float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
         float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
         float dx = tileX - m->x;
@@ -6755,6 +7195,76 @@ static int WorkGiver_RemoveBelt(int moverIdx) {
     return jobId;
 }
 
+// WorkGiver_Blast: nearest blast designation + nearest gunpowder; miners do it
+static int WorkGiver_Blast(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canMine || blastCacheCount == 0) return -1;
+    int bx = -1, by = -1, bz = -1;
+    float bestDistSq = 1e30f;
+    for (int i = 0; i < blastCacheCount; i++) {
+        AdjacentDesignationEntry* e = &blastCache[i];
+        Designation* d = GetDesignation(e->x, e->y, e->z);
+        if (!d || d->type != DESIGNATION_BLAST || d->assignedMover != -1 || d->unreachableCooldown > 0.0f) continue;
+        float dx = (e->adjX + 0.5f) * CELL_SIZE - m->x, dy = (e->adjY + 0.5f) * CELL_SIZE - m->y;
+        if (dx * dx + dy * dy < bestDistSq) { bestDistSq = dx * dx + dy * dy; bx = e->x; by = e->y; bz = e->z; }
+    }
+    if (bx < 0 || !JobInRange(moverIdx, bx, by, bz)) return -1;
+
+    int bestItem = -1;
+    float bestItemDistSq = 1e30f;
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        Item* it = &items[j];
+        if (!it->active || it->type != ITEM_GUNPOWDER || it->reservedBy != -1 || it->containedIn >= 0) continue;
+        if (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE) continue;
+        if (it->unreachableCooldown > 0.0f) continue;
+        if (!IsExplored((int)(it->x / CELL_SIZE), (int)(it->y / CELL_SIZE), (int)it->z)) continue;
+        float dx = it->x - m->x, dy = it->y - m->y;
+        if (dx * dx + dy * dy < bestItemDistSq) { bestItemDistSq = dx * dx + dy * dy; bestItem = j; }
+    }
+    if (bestItem < 0) return -1;
+
+    Item* it = &items[bestItem];
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point itemCell = { (int)(it->x / CELL_SIZE), (int)(it->y / CELL_SIZE), (int)it->z };
+    Point tempPath[MAX_PATH];
+    if (FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH) <= 0) {
+        SetItemUnreachableCooldown(bestItem, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
+    int adjX, adjY;
+    if (!FindReachableAdjacentTile(bx, by, bz, itemCell, &adjX, &adjY)) {
+        Designation* d = GetDesignation(bx, by, bz);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    int jobId = CreateJob(JOBTYPE_BLAST);
+    if (jobId < 0) return -1;
+    // One charge is one gunpowder: take one off a stack now, so other blasters can take the rest
+    if (items[bestItem].stackCount > 1) {
+        int single = SplitStack(bestItem, 1);
+        if (single >= 0) bestItem = single;
+    }
+    ReserveItem(bestItem, moverIdx);
+    Designation* d = GetDesignation(bx, by, bz);
+    d->assignedMover = moverIdx;
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestItem;
+    job->targetMineX = bx;
+    job->targetMineY = by;
+    job->targetMineZ = bz;
+    job->targetAdjX = adjX;
+    job->targetAdjY = adjY;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+    m->currentJobId = jobId;
+    m->goal = itemCell;
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+
 // WorkGiver_Craft: Find workshop with runnable bill and available materials
 // Returns job ID if successful, -1 if no job available
 int WorkGiver_Craft(int moverIdx) {
@@ -6781,6 +7291,7 @@ int WorkGiver_Craft(int moverIdx) {
         if (!ws->active) continue;
         if (workshopDefs[ws->type].passive) continue;  // Passive workshops don't use crafters
         if (ws->assignedCrafter >= 0) continue;  // Already has crafter
+        if (!TownMayCraftAt(w, moverIdx)) continue;  // town: its own workers, while open
         if (!JobInRange(moverIdx, ws->workTileX, ws->workTileY, ws->z)) continue;
 
         // Find first non-suspended bill that can run
@@ -8020,8 +8531,36 @@ int WorkGiver_Build(int moverIdx) {
     Point tempPath[MAX_PATH];
     int tempLen = 0;
 
-    if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
-        // Blueprint cell is walkable - path directly to it (e.g. building wall on ground)
+    const ConstructionRecipe* bpRecipe = GetConstructionRecipe(bp->recipeIndex);
+    bool buildsWall = bpRecipe && bpRecipe->buildCategory == BUILD_WALL;
+    if (IsCellWalkableAt(bp->z, bp->y, bp->x) && buildsWall) {
+        // A wall on walkable ground: work from the neighbour nearest the builder, so the
+        // finished wall doesn't shove them out of its cell to some arbitrary side
+        // (docs/done/bugs/wall-build-pop.md). The cell itself when no neighbour is reachable.
+        int dx[] = {1, -1, 0, 0};
+        int dy[] = {0, 0, 1, -1};
+        bool tried[4] = {false, false, false, false};
+        for (int n = 0; n < 4 && tempLen == 0; n++) {
+            int best = -1;
+            float bestD = 1e30f;
+            for (int i = 0; i < 4; i++) {
+                if (tried[i]) continue;
+                int ax = bp->x + dx[i], ay = bp->y + dy[i];
+                if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) { tried[i] = true; continue; }
+                if (!IsCellWalkableAt(bp->z, ay, ax)) { tried[i] = true; continue; }
+                float ddx = (ax + 0.5f) * CELL_SIZE - m->x, ddy = (ay + 0.5f) * CELL_SIZE - m->y;
+                float d = ddx * ddx + ddy * ddy + (moverCell.z != bp->z ? 1.0f : 0.0f);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best < 0) break;
+            tried[best] = true;
+            Point adjCell = { bp->x + dx[best], bp->y + dy[best], bp->z };
+            tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
+            if (tempLen > 0) goalCell = adjCell;
+        }
+        if (tempLen == 0) tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+    } else if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
+        // Blueprint cell is walkable - path directly to it (e.g. a floor on ground)
         tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
     } else {
         // Blueprint cell is not walkable (e.g. floor over air) - find adjacent walkable cell
@@ -8540,6 +9079,9 @@ int WorkGiver_Hunt(int moverIdx) {
     m->currentJobId = jobId;
     m->goal = goalCell;
     m->needsRepath = true;
+
+    // A stone to throw first (hands, pockets, or lying close by)
+    if (huntThrowStones) HuntFetchStone(job, m, moverIdx, ThrowFindItem(moverIdx, HUNT_STONE_RADIUS));
 
     RemoveMoverFromIdleList(moverIdx);
 

@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 110
+#define CURRENT_SAVE_VERSION 121
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -104,6 +104,46 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v110: one-way layer (grid.h oneWayLayer, one byte per cell: one-way ladders) after the
 // track connections grid. Older saves: every cell both ways.
 #define V110_ONE_WAY 110
+// v111: relations (relations.h MoverRelations, one per saved mover) after the conveyor belts.
+// Older saves: nobody knows anybody.
+#define V111_RELATIONS 111
+// v112: each mover's action queue (action_queue.h MoverQueue), right after the mover paths.
+// Older saves: every queue empty (nobody was in FREETIME_QUEUE).
+#define V112_ACTION_QUEUE 112
+#define V113_TOWN 113            // town roads + lots (town.c), after the relations
+// v114: saltpeter and gunpowder (blast mining): stockpile allowedTypes grows from
+// V113_ITEM_TYPE_COUNT. DESIGNATION_BLAST and JOBTYPE_BLAST are appended (no size change).
+#define V114_GUNPOWDER 114
+// v115: game rules after the springs settings: talkEnabled, autoGatherings, moodEnabled,
+// jobDistanceWeight, toiletsPlumbed, and the running game's name (char[16], "" = none).
+// Older saves: survival-mode saves get survival's rules; others keep the session's values.
+#define V115_GAME_RULES 115
+#define SAVED_GAME_NAME_LEN 16
+// v116: tide wave + surf settings (tideWaveHours, tideWaveAngle, tideSurf, tideSurfReach,
+// tideSurfPeriod, tideSurfHeight, tideBeachReach) and beltSpeed, after the v115 game rules.
+// Older saves: the startup defaults.
+#define V116_TIDE_WAVE_BELT 116
+// v117: furniture fuel (furniture.c furnitureFuel: game hours a burning barrel has left), one
+// float per saved furniture in save order, after the town. Older saves: full.
+#define V117_FURNITURE_FUEL 117
+// v118: dayLength (game seconds per day) after beltSpeed. Older saves: 360 (the games' pace) if
+// they ran a game or survival rules, else the session's value.
+#define V118_DAY_LENGTH 118
+// v119: money (money.h): ITEM_COIN appended (stockpile allowedTypes grows from
+// V118_ITEM_TYPE_COUNT) and one int per saved mover (moverCoins, the purse) right after the
+// action queues. Older saves: empty purses.
+#define V119_MONEY 119
+// v120: the social need (social.h moverSocial: one float per saved mover) right after the
+// purses. Older saves: everyone 1 (plenty of company). Moodlets Lonely / Very lonely / Good
+// company appended (fixed-size moodlet slots: no size change).
+#define V120_SOCIAL 120
+// v121: shops (money.h): stockpileForSale (MAX_STOCKPILES bools) and stockpileTill (MAX_STOCKPILES
+// ints) right after the stockpiles. Older saves: nothing for sale, empty tills.
+#define V121_SHOPS 121
+#define V118_ITEM_TYPE_COUNT 85
+#define V113_ITEM_TYPE_COUNT 83
+_Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
+_Static_assert(ITEM_COIN == V118_ITEM_TYPE_COUNT, "v119 item types start where v118's ended");
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)
 _Static_assert(offsetof(Mover, setAside) == MOVER_V108_SIZE, "Mover v108 layout must be a prefix of Mover");
 static inline void FreadLegacyIntsAsU8(uint8_t* dst, size_t n, FILE* f) {
@@ -416,6 +456,50 @@ typedef struct {
     int freeSlotCount;
     bool rejectsRotten;
 } StockpileV106;
+
+// V113 Stockpile struct (v107-v113: allowedTypes V113_ITEM_TYPE_COUNT)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V113_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V105_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV113;
+
+// V118 Stockpile struct (v114-v118: allowedTypes V118_ITEM_TYPE_COUNT)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V118_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V105_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV118;
 
 // Copy an old stockpile (StockpileV90 / V103 / V104) into a Stockpile; item types the old
 // save didn't know are not allowed, materials it didn't know are

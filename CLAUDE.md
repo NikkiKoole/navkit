@@ -105,6 +105,10 @@ legacy names like `entrances`/`use8Dir` are macros onto it) and answers its worl
 
 Pathfinding (A*, HPA*), movers (agents with avoidance), jobs (designations → work), stockpiles (filtered storage), workshops (crafting), simulations (water/fire/smoke).
 
+Explosions, structural support (unsupported walls fall), landslides, fuel vapour / firedamp
+with flash fires and rooms blowing out, and the dithered effects layer: code map, scenarios and
+what's next in `docs/todo/world/explosions.md` ("Where we are").
+
 ## Walkability Model (DF-style)
 
 Movers stand **on top** of solid ground, not inside it:
@@ -197,7 +201,9 @@ Console commands live in one table in `src/ui/commands.c` (name, group, help, ty
 from `src/core/command_args.h`: int / float range, choice, item by name, name from another
 table; plus a run function). One row gives you a console command with parsing, usage text and
 error messages made from its spec. Dev sidebar buttons that do a command run the line through
-the table (`CommandButton(x, y, "Clear Water", "clear water")`). **Add new commands as a row
+the table (`CommandButton(x, y, "Clear Water", "clear water")`). Global keys (F5-F8, Space, Tab, , . F)
+are rows in `src/core/global_keys.c` that run a command line: add a key there, not as an
+`IsKeyPressed` block in input.c. **Add new commands as a row
 there**, not with `Console_RegisterCmd` + strcmp parsing. Every command, tool, setting, verb, item, scenario
 and game is also a row in the find index (`src/core/find_index.c`, filled by `src/ui/find.c`;
 console `find <text>`, `find /<path>`; in game `/` opens the find palette, `src/ui/palette.c`): new
@@ -213,12 +219,22 @@ same lines (after the run; `--ticks 0` = as loaded from `--load`). Need labels (
 "Parched", ...) live there too (`HungerLabel` etc.). **New screens that show an entity should
 call its describe function** rather than formatting fields again. Done: movers, animals, items, cells, water, blueprints, designations, stations, workshops, stockpiles.
 
+## Social behaviour
+
+Movers notice each other (`src/entities/notice.c`) and act on it: polite passing, talks and
+gatherings (also round fires by themselves), walks, greetings, doorway manners, relations
+(saved), mingling, and games (tag, hide and seek, follow the leader in `chase.c`). What's built,
+settings, scenarios and next steps: `docs/todo/social/noticing.md`; code patterns:
+`src/entities/CLAUDE.md` "Social behaviour".
+
 ## Selection and the inspector panel
 
 Left-click in normal mode selects a mover, animal, workshop, stockpile or blueprint (`src/core/selection.c`);
 `src/render/inspector.c` outlines it and shows a fixed panel bottom-right: the describe lines
 plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
 ...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
+With a mover selected, **E** puts what fits the cell under the mouse in its action queue (eat
+that, sit there, go there; Shift+E appends): `src/entities/action_queue.c`.
 New per-entity actions go there too; object-level ones as a row in the `SelectionVerb` table
 (name, label, key, run): the hover keys, the inspector's button row and the `?` help panel read it.
 
@@ -257,6 +273,12 @@ hooks for headless runs (ladders uses them for queue length).
 ./build/bin/path --headless --load save.bin.gz --ticks 100
 ./build/bin/path --headless --scenario <name> --ticks 100   # see Scenarios
 ```
+
+`--events FILE` (any headless run) writes the event log to FILE after the run (what F8 does in game).
+
+`--validate [N]` (any headless run) checks the sim activity counters against the grids every N
+ticks (default 600; the windowed game does it every 60 s) and prints any drift. `--check` always
+validates once at the end and fails on drift, so `make scenarios-check` covers it.
 
 `--day-budget` (any headless run) prints where the movers' days go: game hours per mover per
 day sleeping, working, walking to work, walking to needs (split by food/drink/toilet/bed),

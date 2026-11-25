@@ -1,4 +1,5 @@
 #include "stockpiles.h"
+#include "money.h"
 #include "mover.h"
 #include "items.h"
 #include "stacking.h"
@@ -95,6 +96,9 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_CHEST,        FILTER_CAT_CONTAINER, "Chest",        BROWN},
     {ITEM_BACKPACK,     FILTER_CAT_CONTAINER, "Backpack",     DARKGREEN},
     {ITEM_PLASTIC_BAG,  FILTER_CAT_CONTAINER, "Plastic Bag",  LIGHTGRAY},
+    // Blasting (in Craft)
+    {ITEM_SALTPETER,    FILTER_CAT_CRAFT,     "Saltpeter",    RAYWHITE},
+    {ITEM_GUNPOWDER,    FILTER_CAT_CRAFT,     "Gunpowder",    DARKGRAY},
     // Tool
     {ITEM_DIGGING_STICK,FILTER_CAT_TOOL,      "Digging Stick",BROWN},
     {ITEM_STONE_AXE,    FILTER_CAT_TOOL,      "Stone Axe",    GRAY},
@@ -161,6 +165,7 @@ void ClearStockpiles(void) {
         stockpiles[i].active = false;
     }
     stockpileCount = 0;
+    ShopResetAll();   // money.h: no shops
 }
 
 // =============================================================================
@@ -342,6 +347,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) {
             Stockpile* sp = &stockpiles[i];
+            ShopReset(i);   // money.h: a new stockpile sells nothing
             sp->x = x;
             sp->y = y;
             sp->z = z;
@@ -403,6 +409,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
 void DeleteStockpile(int index) {
     if (index >= 0 && index < MAX_STOCKPILES && stockpiles[index].active) {
         Stockpile* sp = &stockpiles[index];
+        ShopReset(index);   // money.h
         
         // Spill container contents and drop all ITEM_IN_STOCKPILE items to ground
         int totalSlots = sp->width * sp->height;

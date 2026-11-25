@@ -535,9 +535,9 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
-        .action = ACTION_DRAW_ROAD,   // (cars experiment: the cars-city road plan; input.c HandleRoadTool)
-        .name = "ROAD",
-        .barDisplayText = "Road",
+        .action = ACTION_DRAW_ROAD_PLAN,   // (cars experiment: the cars-city road plan; input.c HandleRoadTool)
+        .name = "ROAD PLAN",
+        .barDisplayText = "Road plan",
         .barKey = 'r',
         .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
@@ -646,6 +646,18 @@ const ActionDef ACTION_REGISTRY[] = {
         .requiredSubMode = SUBMODE_DIG,
         .parentAction = ACTION_NONE,
         .canDrag = false,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_BLAST,
+        .name = "BLAST",
+        .barDisplayText = "Blast",
+        .barKey = 'b',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
         .canErase = true
     },
     
@@ -1330,6 +1342,98 @@ const ActionDef ACTION_REGISTRY[] = {
         .requiredSubMode = SUBMODE_NONE,
         .parentAction = ACTION_NONE,
         .canDrag = false,
+        .canErase = true
+    },
+
+    // DRAW > CITY (category): town roads and lots (town.c, docs/vision/town.md)
+    {
+        .action = ACTION_DRAW_TOWN,
+        .name = "CITY",
+        .barDisplayText = "City",
+        .barKey = 'c',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_ROAD,
+        .hints = { "L-drag pave a road", "R-drag remove roads" },
+        .name = "ROAD",
+        .barDisplayText = "Road",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_HOME,
+        .hints = { "L-drag a home lot along a road", "R-drag remove lots" },
+        .name = "HOME",
+        .barDisplayText = "Home",
+        .barKey = 'h',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_WORK,
+        .hints = { "L-drag a bakery lot along a road", "R-drag remove lots" },
+        .name = "BAKERY",
+        .barDisplayText = "Bakery",
+        .barKey = 'b',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_MILL,
+        .hints = { "L-drag a mill lot along a road", "R-drag remove lots" },
+        .name = "MILL",
+        .barDisplayText = "Mill",
+        .barKey = 'm',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_FARM,
+        .hints = { "L-drag a wheat farm along a road", "R-drag remove lots" },
+        .name = "FARM",
+        .barDisplayText = "Farm",
+        .barKey = 'f',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_LOT_GRANARY,
+        .hints = { "L-drag a granary lot along a road", "R-drag remove lots" },
+        .name = "GRANARY",
+        .barDisplayText = "Granary",
+        .barKey = 'g',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
         .canErase = true
     },
 

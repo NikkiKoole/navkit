@@ -1,4 +1,5 @@
 // core/saveload.c - Save and Load functions
+#include "../entities/action_queue.h"
 #include "../game_state.h"
 
 // Forward declarations
@@ -9,6 +10,9 @@ void RebuildPostLoadState(void);
 #include "../entities/furniture.h"
 #include "../entities/inventory.h"   // RecalcAllCarried
 #include "../entities/belts.h"
+#include "../entities/relations.h"
+#include "../entities/town.h"
+#include "../entities/social.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -26,6 +30,7 @@ void RebuildPostLoadState(void);
 #include "../world/material.h"
 #include "../world/biome.h"
 #include "../entities/tool_quality.h"
+#include "../entities/throwing.h"
 #include "../entities/namegen.h"
 #include "save_migrations.h"
 #include "../entities/cars.h"
@@ -126,6 +131,11 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
 #define MARKER_VIEW     0x56494557  // "VIEW"
 #define MARKER_SETTINGS 0x53455454  // "SETT"
 #define MARKER_END      0x454E4421  // "END!"
+
+// The running game's name (games.c sets it in StartGame, GameCurrent reads it): saved since
+// v115 so a load brings back that game's play bar. Lives here, not in games.c, so the test
+// build (no games.c) links.
+char runningGameName[SAVED_GAME_NAME_LEN] = "";
 
 // Settings save/load macro table
 // X-macro for all tweakable simulation settings
@@ -486,6 +496,8 @@ bool SaveWorld(const char* filename) {
     
     // Stockpiles
     fwrite(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    fwrite(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);   // v121: shops (money.h)
+    fwrite(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
     
     // Gather zones
     fwrite(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);
@@ -503,6 +515,9 @@ bool SaveWorld(const char* filename) {
     for (int i = 0; i < moverCount; i++) {
         fwrite(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
     }
+    fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
+    fwrite(moverCoins, sizeof(int), moverCount, f);           // v119: purses (money.h)
+    fwrite(moverSocial, sizeof(float), moverCount, f);        // v120: the social need (social.h)
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -542,6 +557,16 @@ bool SaveWorld(const char* filename) {
     // Conveyor belts (v98+); items riding them are saved as ITEM_ON_BELT with the items
     fwrite(&beltCount, sizeof(beltCount), 1, f);
     fwrite(belts, sizeof(Belt), beltCount, f);
+
+    // Relations (v111+): who knows whom, one MoverRelations per saved mover
+    fwrite(moverRelations, sizeof(MoverRelations), moverCount, f);
+
+    // Town (v113+): roads, lots, who owns which bed (town.c)
+    TownSave(f);
+
+    // Furniture fuel (v117+): one float per saved furniture, in the order written above
+    for (int i = 0; i < MAX_FURNITURE; i++)
+        if (furniture[i].active) fwrite(&furnitureFuel[i], sizeof(float), 1, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -584,6 +609,25 @@ bool SaveWorld(const char* filename) {
     // v103+: springs
     fwrite(&springTrickle, sizeof(bool), 1, f);
     fwrite(&springRate, sizeof(float), 1, f);
+    // v115+: game rules each game's start sets (a load used to keep the session's values)
+    // and which game is running (its play bar tools)
+    fwrite(&talkEnabled, sizeof(bool), 1, f);
+    fwrite(&autoGatherings, sizeof(bool), 1, f);
+    fwrite(&moodEnabled, sizeof(bool), 1, f);
+    fwrite(&jobDistanceWeight, sizeof(float), 1, f);
+    fwrite(&toiletsPlumbed, sizeof(bool), 1, f);
+    fwrite(runningGameName, 1, SAVED_GAME_NAME_LEN, f);
+    // v116+: tide wave + surf, belt speed (a load used to keep the session's values)
+    fwrite(&tideWaveHours, sizeof(float), 1, f);
+    fwrite(&tideWaveAngle, sizeof(float), 1, f);
+    fwrite(&tideSurf, sizeof(bool), 1, f);
+    fwrite(&tideSurfReach, sizeof(int), 1, f);
+    fwrite(&tideSurfPeriod, sizeof(float), 1, f);
+    fwrite(&tideSurfHeight, sizeof(int), 1, f);
+    fwrite(&tideBeachReach, sizeof(int), 1, f);
+    fwrite(&beltSpeed, sizeof(float), 1, f);
+    // v118+: day length (a load used to fall back to time.c's 60 s: days ran 6x fast)
+    fwrite(&dayLength, sizeof(float), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -636,6 +680,7 @@ void RebuildPostLoadState(void) {
     RebuildCapabilityGrid();   // not saved: prep surfaces of tables, counters, ...
     RebuildContainerLists();   // contents lists follow containedIn (old saves have none)
     RecalcAllCarried();        // carried weight per mover (inventory.c, not saved)
+    ThrowLandAll();            // flights aren't saved: things in the air lie where they are
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (furniture[i].active && furniture[i].occupant >= 0) {
             if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {
@@ -1042,8 +1087,18 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= V107_SCROUNGE) {
+    if (version >= V119_MONEY) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= V114_GUNPOWDER) {
+        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
+        static StockpileV118 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V107_SCROUNGE) {
+        // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
+        static StockpileV113 oldSp[MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV113), MAX_STOCKPILES, f);
+        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V113_ITEM_TYPE_COUNT, V105_MAT_COUNT);
     } else if (version >= V106_INVENTORY) {
         // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
         static StockpileV106 oldSp[MAX_STOCKPILES];
@@ -1069,6 +1124,13 @@ bool LoadWorld(const char* filename) {
         static StockpileV90 oldSp[MAX_STOCKPILES];
         fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
         for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
+    }
+    // Shops (v121+, money.h): older saves sell nothing
+    ShopResetAll();
+    if (version >= V121_SHOPS) {
+        fread(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);
+        fread(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
+        ShopRecount();
     }
 
     // Clear transient reservation counts (not meaningful across save/load)
@@ -1324,6 +1386,16 @@ bool LoadWorld(const char* filename) {
         }
     }
 
+    // Action queues (v112+), after the mover block; older saves: all empty
+    QueueResetAll();
+    if (version >= V112_ACTION_QUEUE) fread(moverQueues, sizeof(MoverQueue), moverCount, f);
+    // Purses (v119+), after the queues; older saves: empty
+    MoneyResetAll();
+    if (version >= V119_MONEY) fread(moverCoins, sizeof(int), moverCount, f);
+    // The social need (v120+), after the purses; older saves: plenty of company
+    SocialResetAll();
+    if (version >= V120_SOCIAL) fread(moverSocial, sizeof(float), moverCount, f);
+
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);
     if (animalCount > 0) {
@@ -1478,6 +1550,26 @@ bool LoadWorld(const char* filename) {
         if (beltCount > 0) fread(belts, sizeof(Belt), beltCount, f);
     }
     BeltsAfterLoad();
+
+    // Relations (v111+). Older saves: nobody knows anybody.
+    ClearRelations();
+    if (version >= V111_RELATIONS && moverCount > 0) fread(moverRelations, sizeof(MoverRelations), moverCount, f);
+
+    // Town (v113+). Older saves: no town.
+    ClearTown();
+    if (version >= V113_TOWN && !TownLoad(f)) {
+        printf("ERROR: bad town section\n");
+        AddMessage("Bad town section in save", RED);
+        fclose(f);
+        return false;
+    }
+
+    // Furniture fuel (v117+). The furniture loaded into slots 0..furnitureCount-1 in save order.
+    // Older saves: every fuel-burning piece full.
+    for (int i = 0; i < furnitureCount && i < MAX_FURNITURE; i++) {
+        if (version >= V117_FURNITURE_FUEL) fread(&furnitureFuel[i], sizeof(float), 1, f);
+        else furnitureFuel[i] = furniture[i].active ? GetFurnitureDef(furniture[i].type)->fuelHours : 0.0f;
+    }
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);
@@ -1571,6 +1663,41 @@ bool LoadWorld(const char* filename) {
         fread(&springRate, sizeof(float), 1, f);
     } else {
         springTrickle = false;   // saved with taps
+    }
+    if (version >= V115_GAME_RULES) {
+        fread(&talkEnabled, sizeof(bool), 1, f);
+        fread(&autoGatherings, sizeof(bool), 1, f);
+        fread(&moodEnabled, sizeof(bool), 1, f);
+        fread(&jobDistanceWeight, sizeof(float), 1, f);
+        fread(&toiletsPlumbed, sizeof(bool), 1, f);
+        fread(runningGameName, 1, SAVED_GAME_NAME_LEN, f);
+        runningGameName[SAVED_GAME_NAME_LEN - 1] = '\0';   // GameCurrent() picks it up
+    } else if (gameMode == GAME_MODE_SURVIVAL) {
+        // Older survival saves: survival's rules (games.c SetSurvivalRules)
+        talkEnabled = true;
+        autoGatherings = true;
+        moodEnabled = true;
+        jobDistanceWeight = 0.2f;
+        toiletsPlumbed = false;
+    }
+    if (version >= V116_TIDE_WAVE_BELT) {
+        fread(&tideWaveHours, sizeof(float), 1, f);
+        fread(&tideWaveAngle, sizeof(float), 1, f);
+        fread(&tideSurf, sizeof(bool), 1, f);
+        fread(&tideSurfReach, sizeof(int), 1, f);
+        fread(&tideSurfPeriod, sizeof(float), 1, f);
+        fread(&tideSurfHeight, sizeof(int), 1, f);
+        fread(&tideBeachReach, sizeof(int), 1, f);
+        fread(&beltSpeed, sizeof(float), 1, f);
+    } else {
+        // the startup defaults (tide.c, belts.c)
+        tideWaveHours = 2.0f; tideWaveAngle = 0.0f; tideSurf = true; tideSurfReach = 6;
+        tideSurfPeriod = 1.5f; tideSurfHeight = 2; tideBeachReach = 3; beltSpeed = 1.5f;
+    }
+    if (version >= V118_DAY_LENGTH) {
+        fread(&dayLength, sizeof(float), 1, f);
+    } else if (runningGameName[0] || gameMode == GAME_MODE_SURVIVAL) {
+        dayLength = 360.0f;   // every game's pace (games.c)
     }
     TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 

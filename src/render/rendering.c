@@ -7,6 +7,10 @@
 #include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
+#include "../simulation/vapour.h"
+#include "../entities/notice.h"
+#include "../entities/talk.h"
+#include "../entities/chase.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/item_defs.h"
@@ -16,8 +20,10 @@
 #include "../simulation/farming.h"
 #include "../simulation/mood.h"
 #include "../core/sim_manager.h"
+#include "../core/effects.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/throwing.h"
 #include "../entities/elevators.h"
 #include "../simulation/balance.h"
 #include <math.h>
@@ -105,6 +111,21 @@ static Color MaterialTint(MaterialType mat) {
     }
 }
 
+// The rail-* sprites are white: every material needs a colour (MaterialTint leaves stone
+// and metal white, their wall sprites carry the colour)
+static Color RailingTint(MaterialType mat) {
+    switch (mat) {
+        case MAT_IRON:    return (Color){120, 125, 135, 255};
+        case MAT_GRANITE: return (Color){165, 160, 155, 255};
+        case MAT_BRICK:   return (Color){170, 85, 60, 255};
+        case MAT_NONE:    return WHITE;
+        default: {
+            Color t = MaterialTint(mat);
+            return (t.r == 255 && t.g == 255 && t.b == 255) ? (Color){200, 200, 200, 255} : t;
+        }
+    }
+}
+
 // Sprite and tint per furniture type (top-down and side views). New types without art yet
 // get an existing sprite and a tint, so each still reads as itself.
 static int FurnitureSprite(FurnitureType type) {
@@ -125,6 +146,7 @@ static int FurnitureSprite(FurnitureType type) {
         case FURNITURE_SHELF:       return SPRITE_upper_half;   // placeholder, tinted brown
         case FURNITURE_SOFA:        return SPRITE_chair;        // placeholder, tinted red
         case FURNITURE_TILL:        return SPRITE_counter;      // placeholder, tinted yellow
+        case FURNITURE_BOTTLE_MACHINE: return SPRITE_counter;   // placeholder, tinted green
         case FURNITURE_BATH:        return SPRITE_lower_half;   // placeholder, tinted white-blue
         case FURNITURE_SHOWER:      return SPRITE_tile_border;  // placeholder, tinted light blue
         case FURNITURE_PIT_LATRINE: return SPRITE_toilet;       // placeholder, tinted earth brown
@@ -144,6 +166,7 @@ static Color FurnitureTint(FurnitureType type) {
         case FURNITURE_SHELF:       return (Color){170, 120, 70, 255};
         case FURNITURE_SOFA:        return (Color){200, 70, 70, 255};
         case FURNITURE_TILL:        return (Color){240, 210, 90, 255};
+        case FURNITURE_BOTTLE_MACHINE: return (Color){110, 200, 120, 255};
         case FURNITURE_BATH:        return (Color){230, 240, 255, 255};
         case FURNITURE_SHOWER:      return (Color){150, 210, 240, 255};
         case FURNITURE_PIT_LATRINE: return (Color){140, 100, 60, 255};
@@ -529,7 +552,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                 CellType cellHere = GRID(x, y, z);
 
                 // Draw floor from below if the cell below is solid and current is air/walkable
-                if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                if (CellIsSolid(cellBelow) && !IsCutawayWall(cellHere)) {   // a railing shows the ground round it
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                     Rectangle src = SpriteGetRect(sprite);
@@ -544,7 +567,7 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                     }
                 }
                 // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
-                else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !IsCutawayWall(cellHere)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                     Rectangle src = SpriteGetRect(sprite);
@@ -702,6 +725,7 @@ static void DrawCellGrid(void) {
             if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
+            if (cell == CELL_RAILING) tint = MultiplyColor(tint, RailingTint(GetWallMaterial(x, y, z)));
             if (cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
             }
@@ -1288,8 +1312,71 @@ static void DrawFire(void) {
     WorldBatchSetKind(WB_KIND_PLAIN);
 }
 
+// Smoke / steam drawn as one dithered cloud (render/effects_draw.c) when the effects setting is
+// on: one texel per visible cell, r = density on the viewed level, g = the strongest below it.
+bool DrawGasDithered(int slot, int minX, int minY, int w, int h, const unsigned char* rgba,
+                     Color dense, Color thin, Color deep);
+static bool DrawGasCloud(int slot, int (*levelAt)(int, int, int), const SparseLayer* layer,
+                         Color dense, Color thin, Color deep) {
+    if (!effectsEnabled) return false;
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    int w = maxX - minX, h = maxY - minY;
+    if (w <= 0 || h <= 0) return true;
+    static unsigned char* buf = NULL;
+    static int bufCap = 0;
+    if (w * h * 4 > bufCap) { bufCap = w * h * 4; buf = realloc(buf, (size_t)bufCap); }
+    memset(buf, 0, (size_t)(w * h * 4));
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    bool any = false;
+    for (int y = minY; y < maxY; y++)
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(layer, x, y)) continue;
+            unsigned char* px = &buf[((y - minY) * w + (x - minX)) * 4];
+            int cur = levelAt(x, y, z);
+            int deep = 0;
+            for (int zd = VisLowest(x, y, zStart, false); zd <= z - 1; zd++) {
+                int l = levelAt(x, y, zd);
+                if (l > deep) deep = l;
+            }
+            if (cur > 0) px[0] = (unsigned char)(40 + cur * 30);    // level 1 thin .. 7 thick
+            if (deep > 0) px[1] = (unsigned char)(30 + deep * 25);
+            px[3] = 255;
+            any = any || cur > 0 || deep > 0;
+        }
+    if (!any) return true;
+    return DrawGasDithered(slot, minX, minY, w, h, buf, dense, thin, deep);
+}
+
+// The dithered clouds draw with their own shader, so after the world batch has drawn the terrain
+// (main.c, right after WorldBatchEnd); DrawSmoke / DrawSteam inside the batch then draw nothing
+void DrawGasClouds(void);
+void DrawGasClouds(void) {
+    // Smoke below the viewed level: the same grey, just thinner (fewer pixels), not darkened
+    if (smokeActiveCells > 0)
+        DrawGasCloud(0, GetSmokeLevel, &smokeLayer, (Color){ 72, 70, 74, 255 }, (Color){ 104, 102, 106, 255 },
+                     (Color){ 92, 90, 96, 255 });
+    if (steamActiveCells > 0)
+        DrawGasCloud(1, GetSteamLevel, &steamLayer, (Color){ 236, 238, 242, 255 }, (Color){ 200, 205, 214, 255 },
+                     (Color){ 176, 180, 190, 255 });
+    // Fuel vapour: a faint oily shimmer (real fumes are near invisible; the player needs to see it)
+    if (VapourActive()) {
+        DrawGasCloud(2, GetPetrolLevel, &vapourLayer, (Color){ 176, 168, 96, 255 }, (Color){ 150, 150, 92, 255 },
+                     (Color){ 128, 126, 80, 255 });
+        // Firedamp: a cold blue-grey haze under the roof of a mine
+        DrawGasCloud(3, GetFiredampLevel, &vapourLayer, (Color){ 150, 172, 196, 255 }, (Color){ 120, 140, 168, 255 },
+                     (Color){ 100, 116, 140, 255 });
+    }
+}
+
+bool GasCloudsAvailable(void);   // render/effects_draw.c
+static bool GasCloudsDrawLater(void) { return effectsEnabled && GasCloudsAvailable(); }
+
 static void DrawSmoke(void) {
     if (smokeActiveCells == 0) return;
+    if (GasCloudsDrawLater()) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -1333,6 +1420,7 @@ static void DrawSmoke(void) {
 
 static void DrawSteam(void) {
     if (steamActiveCells == 0) return;
+    if (GasCloudsDrawLater()) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -1705,31 +1793,59 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
 }
 
 // --- Mover faces --------------------------------------------------------------
-// Which head sprite a mover shows: a view (where it looks) x a mouth (head_<view>_<mouth>
-// slices in worksheet8x8.ase). Facing is render-only for now: toward the next waypoint
-// (where it is heading, steady under avoidance pushes, also while paused), front with no
-// path. Later the noticing layer sets it apart from walking (docs/todo/social/noticing.md).
+// A mover's face: the blank head (head_back) with the inside (6x6 within the outline) of a
+// front face (head_front_<mouth>, worksheet8x8.ase) drawn over it, moved 1 pixel toward where
+// it looks; what moves onto the outline is clipped. So only the front faces are drawn by hand.
+// Facing is render-only for now: toward the next waypoint (where it is heading, steady under
+// avoidance pushes, also while paused); standing still, at the mover it noticed most
+// (notice.c), else front (docs/todo/social/noticing.md).
 enum { FACE_FRONT, FACE_LEFT, FACE_RIGHT, FACE_UP, FACE_DOWN, FACE_VIEW_COUNT };
 enum { MOUTH_GRIN, MOUTH_FLAT, MOUTH_SMALL, MOUTH_SMILE, MOUTH_SAD, MOUTH_OPEN, MOUTH_CLOSE, MOUTH_COUNT };
-static const int faceSprites[FACE_VIEW_COUNT][MOUTH_COUNT] = {
-    {SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
-     SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close},
-    {SPRITE_head_left_grin, SPRITE_head_left_flat, SPRITE_head_left_small, SPRITE_head_left_smile,
-     SPRITE_head_left_sad, SPRITE_head_left_open, SPRITE_head_left_close},
-    {SPRITE_head_right_grin, SPRITE_head_right_flat, SPRITE_head_right_small, SPRITE_head_right_smile,
-     SPRITE_head_right_sad, SPRITE_head_right_open, SPRITE_head_right_close},
-    {SPRITE_head_up_grin, SPRITE_head_up_flat, SPRITE_head_up_small, SPRITE_head_up_smile,
-     SPRITE_head_up_sad, SPRITE_head_up_open, SPRITE_head_up_close},
-    {SPRITE_head_down_grin, SPRITE_head_down_flat, SPRITE_head_down_small, SPRITE_head_down_smile,
-     SPRITE_head_down_sad, SPRITE_head_down_open, SPRITE_head_down_close},
+static const int faceMouthSprites[MOUTH_COUNT] = {
+    SPRITE_head_front_grin, SPRITE_head_front_flat, SPRITE_head_front_small, SPRITE_head_front_smile,
+    SPRITE_head_front_sad, SPRITE_head_front_open, SPRITE_head_front_close,
 };
+static const signed char faceShift[FACE_VIEW_COUNT][2] = { {0, 0}, {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
+
+// Draw the face into dest (the 8x8 head scaled up): blank head, then the shifted inside.
+static void DrawMoverFace(Rectangle dest, int view, int mouth, Color tint) {
+    FastSprite(atlas, SpriteGetRect(SPRITE_head_back), dest, tint);
+    Rectangle f = SpriteGetRect(faceMouthSprites[mouth]);
+    int sx = faceShift[view][0], sy = faceShift[view][1];
+    float px = dest.width / f.width, py = dest.height / f.height;   // screen size of one sprite pixel
+    float inW = f.width - 2, inH = f.height - 2;                     // the inside, within the outline
+    Rectangle src = { f.x + 1 + (sx < 0 ? 1 : 0), f.y + 1 + (sy < 0 ? 1 : 0),
+                      inW - (sx ? 1 : 0), inH - (sy ? 1 : 0) };
+    Rectangle dst = { dest.x + (1 + (sx > 0 ? 1 : 0)) * px, dest.y + (1 + (sy > 0 ? 1 : 0)) * py,
+                      src.width * px, src.height * py };
+    FastSprite(atlas, src, dst, tint);
+}
 static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
 
 static int MoverFaceView(int i, const Mover* m) {
-    if (m->pathLength <= 0 || m->pathIndex < 0) return moverFaceView[i] = FACE_FRONT;
-    Point wp = moverPaths[i][m->pathIndex];
-    float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
-    float dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    float dx, dy, lookX, lookY;
+    int yieldTo = MoverYieldingFor(i);
+    if (TalkLookAt(i, &lookX, &lookY)) {   // in a conversation: look at its middle
+        dx = lookX - m->x;
+        dy = lookY - m->y;
+    } else if (yieldTo >= 0) {              // waiting at a doorway: look at who it lets through
+        dx = movers[yieldTo].x - m->x;
+        dy = movers[yieldTo].y - m->y;
+    } else if (NoticeGlanceAt(i, NULL) >= 0) {   // a glance / greeting (or looking away)
+        bool away = false;
+        int g = NoticeGlanceAt(i, &away);
+        dx = (movers[g].x - m->x) * (away ? -1.0f : 1.0f);
+        dy = (movers[g].y - m->y) * (away ? -1.0f : 1.0f);
+    } else if (m->pathLength > 0 && m->pathIndex >= 0) {
+        Point wp = moverPaths[i][m->pathIndex];
+        dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+        dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+    } else {
+        int seen = NoticeTop(i);   // standing still: look at who it noticed most
+        if (seen < 0) return moverFaceView[i] = FACE_FRONT;
+        dx = movers[seen].x - m->x;
+        dy = movers[seen].y - m->y;
+    }
     float ax = fabsf(dx), ay = fabsf(dy);
     if (ax + ay < 1.0f) return moverFaceView[i];   // on the waypoint: keep looking the same way
     int last = moverFaceView[i];
@@ -1740,8 +1856,25 @@ static int MoverFaceView(int i, const Mover* m) {
     return moverFaceView[i] = side ? (dx < 0 ? FACE_LEFT : FACE_RIGHT) : (dy < 0 ? FACE_UP : FACE_DOWN);
 }
 
-static int MoverMouth(const Mover* m) {
+static int MoverMouth(int i, const Mover* m) {
     if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
+    if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
+    if (MoverNodTime(i) > 0.0f || MoverThanksTime(i) > 0.0f) return MOUTH_SMILE;   // "after you" / thanks
+    float gp = 0.0f;
+    int greet = NoticeGreeting(i, &gp);
+    if (greet == GREET_HI) return gp < 0.35f ? MOUTH_OPEN : MOUTH_SMILE;   // "hi!", then a smile
+    if (greet == GREET_NOD) return MOUTH_SMILE;
+    if (greet == GREET_AWAY) return MOUTH_FLAT;
+    if (MoverIsWatching(i)) return MOUTH_SMILE;   // enjoying the show
+    if (HideIsCounting(i)) return MOUTH_CLOSE;   // eyes shut, counting
+    if (HideIsHidden(i)) return MOUTH_SMALL;     // holding its breath
+    if (ChaseIsFleeing(i)) return ChaseStamina(i) > 0.3f ? MOUTH_OPEN : MOUTH_FLAT;   // running / worn out
+    if (MoverYieldingFor(i) >= 0) {   // waiting at a doorway: how it takes it depends on its patience
+        float waited = MoverYieldWaitTime(i), patience = MoverPatience(m);
+        if (patience > 1.0f) return MOUTH_SMILE;
+        if (patience < 1.0f) return waited > 2.0f ? MOUTH_SAD : MOUTH_FLAT;
+        return waited > 3.0f ? MOUTH_FLAT : MOUTH_GRIN;
+    }
     if (m->mood > 0.4f) return MOUTH_SMILE;
     if (m->mood < -0.45f) return MOUTH_SAD;
     if (m->mood < -0.15f) return MOUTH_FLAT;
@@ -1865,8 +1998,17 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
-        Rectangle src = SpriteGetRect(moverFaces ? faceSprites[MoverFaceView(i, m)][MoverMouth(m)]
-                                                 : SPRITE_head);
+        if (MoverCrouching(i)) {   // ducked down behind cover: smaller, a bit in shadow
+            moverSize *= 0.8f;
+            moverColor = MultiplyColor(moverColor, (Color){200, 200, 200, 255});
+        }
+        float nod = MoverNodTime(i);   // "after you": dips one sprite pixel and back
+        if (moverFaces && nod > 0.0f) sy += sinf(nod / 0.6f * 3.14159265f) * moverSize / 8.0f;
+        float gp = 0.0f;               // a greeting: the same nod, in the second half
+        int greet = NoticeGreeting(i, &gp);
+        if (moverFaces && (greet == GREET_NOD || greet == GREET_HI) && gp > 0.4f)
+            sy += sinf((gp - 0.4f) / 0.6f * 3.14159265f) * moverSize / 8.0f;
+        Rectangle src = SpriteGetRect(moverFaces ? SPRITE_head_back : SPRITE_head);   // silhouette for clothes
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 
         // Draw clothing outline behind mover (larger tinted sprite)
@@ -1892,7 +2034,8 @@ static void DrawMovers(void) {
             DrawRectangleLinesEx(draftDest, 1.0f, (Color){255, 60, 60, 180});
         }
 
-        FastSprite(atlas, src, dest, moverColor);
+        if (moverFaces) DrawMoverFace(dest, MoverFaceView(i, m), MoverMouth(i, m), moverColor);
+        else FastSprite(atlas, src, dest, moverColor);
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);
     }
@@ -2005,6 +2148,8 @@ static void DrawAnimals(void) {
         float bobFreq = 2.5f;
         float bobAmp = 0.08f;
         float bob = sinf(a->animPhase * bobFreq * 2.0f * PI) * bobAmp * CELL_SIZE * zoom;
+        bool dazed = AnimalDazed(i);
+        if (dazed) bob = animalSize * 0.25f;   // head down on the ground
         float headSize = animalSize * 0.7f;
         float headX = sx - headSize/2;
         float headY = sy - headSize * 0.3f + bob;
@@ -2439,6 +2584,36 @@ static void DrawJobLines(void) {
     }
 }
 
+// Thrown things (throwing.c): a shadow on the ground under it, the item raised above the shadow
+// by its height (half a cell per level: enough to read the arc from above)
+static void DrawThrownItems(Color skyColor) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    for (int f = 0; f < ThrowFlightCount(); f++) {
+        int idx, shadowZ;
+        float x, y, h;
+        if (!ThrowFlightInfo(f, &idx, &x, &y, &h, &shadowZ)) continue;
+        if (shadowZ > viewZ || shadowZ < viewZ - MAX_VISIBLE_DEPTH) continue;
+        int cx = (int)x, cy = (int)y;
+        if (shadowZ < viewZ && !IsCellVisibleFromAbove(cx, cy, shadowZ + 1, viewZ)) continue;
+        float sx = offset.x + x * size, sy = offset.y + y * size;
+        // Shadow: smaller and fainter the higher it is
+        float sh = size * (0.45f - fminf(h, 4.0f) * 0.05f);
+        unsigned char a = (unsigned char)(110.0f / (1.0f + h * 0.5f));
+        FastSprite(atlas, SpriteGetRect(SPRITE_middle_dot), (Rectangle){ sx - sh / 2, sy - sh / 2, sh, sh }, (Color){ 0, 0, 0, a });
+        // The item
+        Item* item = &items[idx];
+        int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
+        float itemSize = size * ITEM_SIZE_GROUND;
+        float lift = h * size * 0.5f;
+        Color lightTint = GetLightColor(cx, cy, shadowZ, skyColor);
+        Color tint = MultiplyColor(MaterialTint((MaterialType)item->material), lightTint);
+        tint = MultiplyColor(tint, ItemTypeTint(item->type));
+        if (shadowZ < viewZ) tint = MultiplyColor(tint, GetDepthTint(shadowZ, viewZ));
+        FastSprite(atlas, SpriteGetRect(sprite), (Rectangle){ sx - itemSize / 2, sy - lift - itemSize / 2, itemSize, itemSize }, tint);
+    }
+}
+
 static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -2450,6 +2625,7 @@ static void DrawItems(void) {
         if (!item->active) continue;
         if (item->state == ITEM_CARRIED) continue;
         if (item->state == ITEM_IN_STOCKPILE) continue;
+        if (item->state == ITEM_IN_FLIGHT) continue;   // DrawThrownItems
 
         int itemZ = (int)item->z;
         if (itemZ > viewZ || itemZ < viewZ - MAX_VISIBLE_DEPTH) continue;
@@ -2499,6 +2675,7 @@ static void DrawItems(void) {
             FastSprite(atlas, src, dest, tint);
         }
     }
+    DrawThrownItems(skyColor);
 }
 
 static void DrawLightSources(void) {
@@ -3028,6 +3205,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_EXPLORE]        = {100, 200, 255, 200},
     [DESIGNATION_FARM]           = {120, 80, 40, 200},
     [DESIGNATION_REMOVE_BELT]    = {230, 120, 60, 200},
+    [DESIGNATION_BLAST]          = {220, 40, 40, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -3050,6 +3228,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_EXPLORE]        = {80, 180, 240, 255},
     [DESIGNATION_FARM]           = {100, 60, 20, 255},
     [DESIGNATION_REMOVE_BELT]    = {210, 100, 40, 255},
+    [DESIGNATION_BLAST]          = {255, 60, 30, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -3065,6 +3244,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_PLANT_SAPLING]  = {80, 200, 100, 180},
     [JOBTYPE_CLEAN]          = {200, 230, 255, 180},
     [JOBTYPE_REMOVE_BELT]    = {230, 120, 60, 180},
+    [JOBTYPE_BLAST]          = {220, 40, 40, 180},
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 

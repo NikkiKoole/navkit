@@ -27,9 +27,22 @@
 #include "../simulation/tide.h"
 #include "state_audit.h"
 #include "../entities/inventory.h"
+#include "../entities/money.h"
 #include "../simulation/temperature.h"
 #include <string.h>
 #include <strings.h>
+#include "../entities/notice.h"
+#include "../simulation/fire.h"
+#include "../simulation/explosion.h"
+#include "../simulation/vapour.h"
+#include "../world/support.h"
+#include "../entities/talk.h"
+#include "../entities/relations.h"
+#include "../entities/chase.h"
+#include "../entities/activity.h"
+#include "../entities/town.h"
+#include "../entities/action_queue.h"
+#include "../entities/throwing.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -37,8 +50,13 @@
 // needs + speed) don't leak into the next.
 // ---------------------------------------------------------------------------
 typedef struct {
-    bool hunger, thirst, energy, endless, preferDiffZ, mood;
-    float dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed, carWidth, carMaxSpeed;
+    bool hunger, thirst, energy, endless, preferDiffZ, mood, talk, autoGather;
+    float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
+    bool support;
+    float animalFlee; bool huntThrow, animalRespawn;
+    int baseTemp, seasonAmp, dayAmp;   // climate (town sets a mild one)
+    bool weather;
+    float carWidth, carMaxSpeed;   // cars experiment (the cars scenario wants a 2x2 car; cars-city a top speed)
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -61,9 +79,12 @@ static void SpawnGroundCrowd(int n) {
 static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
-                                           endlessMoverMode, preferDifferentZ, moodEnabled,
-                                           dayLength, balance.baseMoverSpeed, jobDistanceWeight,
-                                           trainSpeed, carWidth, carMaxSpeed};
+                                           endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled, autoGatherings,
+                                           moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
+                                           trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
+                                           animalRespawnEnabled,
+                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, weatherEnabled,
+                                           carWidth, carMaxSpeed};
         haveSavedSettings = true;
         return;
     }
@@ -73,10 +94,22 @@ static void SnapshotOrRestoreSettings(void) {
     endlessMoverMode = savedSettings.endless;
     preferDifferentZ = savedSettings.preferDiffZ;
     moodEnabled = savedSettings.mood;
+    talkEnabled = savedSettings.talk;
+    autoGatherings = savedSettings.autoGather;
+    autoGames = false;   // movers starting games by themselves: a scenario that wants it sets it
+    moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
     trainSpeed = savedSettings.trainSpeed;
+    supportEnabled = savedSettings.support;
+    animalFleeSpeed = savedSettings.animalFlee;
+    huntThrowStones = savedSettings.huntThrow;
+    animalRespawnEnabled = savedSettings.animalRespawn;
+    baseSurfaceTemp = savedSettings.baseTemp;
+    seasonalAmplitude = savedSettings.seasonAmp;
+    diurnalAmplitude = savedSettings.dayAmp;
+    weatherEnabled = savedSettings.weather;
     carWidth = savedSettings.carWidth;
     carMaxSpeed = savedSettings.carMaxSpeed;
 }
@@ -127,6 +160,7 @@ void ScenarioResetWorld(const char* terrain) {
     ClearStockpiles();
     ClearWorkshops();
     ClearFurniture();
+    ClearTown();
     ClearWater();
     // Designations + blueprints before generating: some generators place them
     InitDesignations();
@@ -211,7 +245,1096 @@ static void SetupFaces(void) {
     AddMessage("Faces: columns are sad, flat, grin, smile; they look where they walk", GREEN);
 }
 
+// social: 10 movers wandering a plaza with two wall pieces (line of sight), noticing each
+// other (notice.c). Standing between goals they look at whoever they noticed most.
+// Headless stats: noticed per mover, how often attention switches, standing movers looking.
+static long socialTalkTicks, socialIntrusions, socialGroupTicks, socialBigGroupTicks;
+static long socialTicks, socialNoticedSum, socialSwitches, socialFlickBacks, socialStanding, socialStandingLooking;
+static int socialPrevTop[MAX_MOVERS], socialPrevPrevTop[MAX_MOVERS];
+
+static void SetupSocial(void) {
+    socialTalkTicks = socialIntrusions = socialGroupTicks = socialBigGroupTicks = 0;
+    socialTicks = socialNoticedSum = socialSwitches = socialFlickBacks = socialStanding = socialStandingLooking = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) socialPrevTop[i] = socialPrevPrevTop[i] = -1;
+    for (int y = 6; y <= 12; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
+    for (int y = 20; y <= 26; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    talkEnabled = true;
+    moverWanderPause = 3.0f;   // stand a while between goals: that is when they look around
+    int n = scenarioMovers > 0 ? scenarioMovers : 10;
+    for (int i = 0; i < n; i++) SpawnMoverAt(4 + (i % 5) * 6, 4 + (i / 5) * 20 % 28, 1);
+    currentViewZ = 1;
+    AddMessage("Social: movers notice each other; standing still they look at who they noticed", GREEN);
+}
+
+static void SocialTickStats(void) {
+    socialTicks++;
+    for (int t = 0; t < MAX_TALKS; t++) {
+        if (!talks[t].active) continue;
+        socialGroupTicks++;
+        if (talks[t].count >= 3) socialBigGroupTicks++;
+    }
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        socialNoticedSum += moverNotice[i].count;
+        if (MoverTalk(i) >= 0) socialTalkTicks++;
+        else if (movers[i].pathIndex >= 0) {   // a walker inside a conversation's circle
+            for (int t = 0; t < MAX_TALKS; t++) {
+                if (!talks[t].active || talks[t].z != (int)movers[i].z) continue;
+                float dx = movers[i].x - talks[t].centerX, dy = movers[i].y - talks[t].centerY;
+                float in = talks[t].radius * 0.8f;
+                if (dx * dx + dy * dy < in * in) socialIntrusions++;
+            }
+        }
+        int top = NoticeTop(i);
+        if (top != socialPrevTop[i] && socialPrevTop[i] >= 0 && top >= 0) {
+            socialSwitches++;
+            if (top == socialPrevPrevTop[i]) socialFlickBacks++;   // A -> B -> A
+        }
+        if (top != socialPrevTop[i]) { socialPrevPrevTop[i] = socialPrevTop[i]; socialPrevTop[i] = top; }
+        if (movers[i].pathLength <= 0 || movers[i].pathIndex < 0) {
+            socialStanding++;
+            if (top >= 0) socialStandingLooking++;
+        }
+    }
+}
+
+static void SocialPrintStats(void) {
+    int active = CountActiveMovers();
+    double minutes = socialTicks / (double)TICK_RATE / 60.0;
+    printf("Noticing: %s, radius %.1f cells, every %d ticks\n", noticeEnabled ? "on" : "off",
+           noticeRadius, noticeEveryTicks);
+    printf("Avg movers noticed per mover: %.2f\n",
+           socialTicks && active ? socialNoticedSum / (double)(socialTicks * active) : 0.0);
+    printf("Attention switches per mover per minute: %.1f\n",
+           minutes > 0 && active ? socialSwitches / (minutes * active) : 0.0);
+    {   // Relations after the run
+        int known = 0, familiar = 0, liked = 0, disliked = 0;
+        for (int i = 0; i < moverCount; i++)
+            for (int k = 0; k < moverRelations[i].count; k++) {
+                const Relation* r = RelationGet(i, moverRelations[i].r[k].other);
+                if (!r) continue;
+                known++;
+                if (r->familiarity >= 15.0f) familiar++;
+                if (r->like >= 20.0f) liked++;
+                if (r->like <= -20.0f) disliked++;
+            }
+        printf("Relations: %d known (%.1f per mover), %d familiar, %d liked, %d disliked\n", known,
+               active ? known / (double)active : 0.0, familiar, liked, disliked);
+    }
+    printf("Talks started: %ld (%.1f per mover per minute), time spent talking: %.0f%%\n", talkStartedCount,
+           minutes > 0 && active ? talkStartedCount / (minutes * active) : 0.0,
+           socialTicks && active ? 100.0 * socialTalkTicks / (socialTicks * active) : 0.0);
+    printf("Joined a running talk: %ld; talks with 3+ people: %.0f%% of talk time\n", talkJoinedCount,
+           socialGroupTicks ? 100.0 * socialBigGroupTicks / socialGroupTicks : 0.0);
+    printf("Walkers inside a conversation's circle (give room %s): %ld ticks\n", talkGiveRoom ? "on" : "off",
+           socialIntrusions);
+    printf("  of which back to the one before (A->B->A): %.1f\n",
+           minutes > 0 && active ? socialFlickBacks / (minutes * active) : 0.0);
+    printf("Standing mover-ticks: %ld, ", socialStanding);
+    printf("Standing still looking at someone: %.0f%% of standing mover-ticks\n",
+           socialStanding ? 100.0 * socialStandingLooking / socialStanding : 0.0);
+}
+
+static bool SocialCheck(char* why, int whyLen) {
+    if (noticeEnabled && socialNoticedSum == 0) {
+        snprintf(why, (size_t)whyLen, "nobody noticed anybody");
+        return false;
+    }
+    return true;
+}
+
+// hallway: a 3-wide corridor 30 long, 12 movers wandering it: two-way traffic all the time.
+// Compare politePassing on/off: close contacts (two walking movers within half a cell) and
+// arrivals (throughput).
+static long hallTicks, hallContacts;
+
+static void SetupHallway(void) {
+    hallTicks = hallContacts = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            if (x >= 1 && x <= 30 && y >= 14 && y <= 16) continue;
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 12;
+    for (int i = 0; i < n; i++) SpawnMoverAt(1 + (i * 29) / (n > 1 ? n - 1 : 1), 14 + i % 3, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hallway: %d movers in a 3-wide corridor (polite passing %s)", n,
+                          politePassing ? "on" : "off"), GREEN);
+}
+
+static void HallwayTickStats(void) {
+    hallTicks++;
+    float r = CELL_SIZE * 0.5f;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* a = &movers[i];
+        if (!a->active || a->pathIndex < 0) continue;
+        for (int j = i + 1; j < moverCount; j++) {
+            const Mover* b = &movers[j];
+            if (!b->active || b->pathIndex < 0 || (int)b->z != (int)a->z) continue;
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (dx * dx + dy * dy < r * r) hallContacts++;
+        }
+    }
+}
+
+static void HallwayPrintStats(void) {
+    int active = CountActiveMovers();
+    double minutes = hallTicks / (double)TICK_RATE / 60.0;
+    printf("Polite passing: %s (radius %.1f, sideways %.2f, slow %.2f)\n", politePassing ? "on" : "off",
+           passRadius, passStrength, passSlow);
+    printf("Close contacts (walking pairs within half a cell): %ld ticks, %.1f per mover per minute\n",
+           hallContacts, minutes > 0 && active ? hallContacts / (minutes * active) : 0.0);
+}
+
+// doorway: two rooms split by a wall with one door (a 1-wide gap), 16 movers wandering both:
+// traffic through the door both ways. Tunnel yielding makes one wait; compare yieldLetPass
+// on/off: bumping the one it waited for in the second after the wait, and arrivals.
+static const int doorwayX = 16, doorwayY = 16;
+static long doorwayTicks, doorwayContacts, doorwayWaitTicks, doorwayPassContacts, doorwayWaits, doorwayNods;
+static bool doorwayNodding[MAX_MOVERS];
+static int doorwayLastFor[MAX_MOVERS], doorwaySince[MAX_MOVERS];   // whom it last waited for, ticks since
+
+static void SetupDoorway(void) {
+    doorwayTicks = doorwayContacts = doorwayWaitTicks = doorwayPassContacts = doorwayWaits = doorwayNods = 0;
+    memset(doorwayNodding, 0, sizeof(doorwayNodding));
+    for (int i = 0; i < MAX_MOVERS; i++) { doorwayLastFor[i] = -1; doorwaySince[i] = 1 << 20; }
+    for (int y = 0; y < gridHeight; y++) {
+        GRID(doorwayX, y, 1) = CELL_WALL;
+        SetWallMaterial(doorwayX, y, 1, MAT_GRANITE);
+    }
+    GRID(doorwayX, doorwayY, 1) = CELL_DOOR;
+    SetWallMaterial(doorwayX, doorwayY, 1, MAT_OAK);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 16;
+    for (int i = 0; i < n; i++) SpawnMoverAt(i % 2 ? 20 + (i / 2) % 8 : 4 + (i / 2) % 8, 8 + (i / 2) * 2 % 16, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Doorway: %d movers, two rooms, one door (let them pass %s)", n,
+                          yieldLetPass ? "on" : "off"), GREEN);
+}
+
+static void DoorwayTickStats(void) {
+    doorwayTicks++;
+    float r = CELL_SIZE * 0.5f;
+    float dcx = (doorwayX + 0.5f) * CELL_SIZE, dcy = (doorwayY + 0.5f) * CELL_SIZE, near = CELL_SIZE * 2.5f;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* a = &movers[i];
+        if (!a->active) continue;
+        bool nodding = MoverNodTime(i) > 0.0f;
+        if (nodding && !doorwayNodding[i]) doorwayNods++;
+        doorwayNodding[i] = nodding;
+        int yf = MoverYieldingFor(i);
+        if (yf >= 0) {
+            if (doorwaySince[i] > 0) doorwayWaits++;   // a new wait
+            doorwayWaitTicks++;
+            doorwayLastFor[i] = yf;
+            doorwaySince[i] = 0;
+        } else if (doorwayLastFor[i] >= 0 && ++doorwaySince[i] <= TICK_RATE) {
+            // the second after a wait ends: do the two bump while passing?
+            const Mover* b = &movers[doorwayLastFor[i]];
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (b->active && dx * dx + dy * dy < r * r) doorwayPassContacts++;
+        }
+        if (a->pathIndex < 0) continue;
+        if (fabsf(a->x - dcx) > near || fabsf(a->y - dcy) > near) continue;
+        for (int j = i + 1; j < moverCount; j++) {
+            const Mover* b = &movers[j];
+            if (!b->active || b->pathIndex < 0) continue;
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (dx * dx + dy * dy < r * r) doorwayContacts++;
+        }
+    }
+}
+
+static void DoorwayPrintStats(void) {
+    printf("Tunnel yielding: %s, let them pass: %s\n", useTunnelYielding ? "on" : "off", yieldLetPass ? "on" : "off");
+    printf("Mover-ticks waiting at the door: %ld\n", doorwayWaitTicks);
+    printf("\"After you\" nods: %ld\n", doorwayNods);
+    printf("Waits: %ld; bumping the one it waited for in the second after: %ld ticks\n", doorwayWaits,
+           doorwayPassContacts);
+    printf("Close contacts near the door (walking pairs within half a cell): %ld ticks\n", doorwayContacts);
+}
+
+// gathering: a performer in the middle of the plaza, 30 movers wandering: onlookers come and
+// stand in rings round it (talk.c, TALK_WATCH), walkers steer round the crowd.
+static long gatherTicks, gatherWatchSum, gatherWatchMax, gatherRingCount[4], gatherIntrusions;
+
+static void SetupGathering(void) {
+    gatherTicks = gatherWatchSum = gatherWatchMax = gatherIntrusions = 0;
+    memset(gatherRingCount, 0, sizeof(gatherRingCount));
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    talkEnabled = true;
+    moverWanderPause = 2.0f;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the performer
+    int n = scenarioMovers > 0 ? scenarioMovers : 30;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 6) * 5, 2 + (i / 6) * 6 % 28, 1);
+    GatheringStart(0, 1e9f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Gathering: a performer and %d movers on a plaza", n), GREEN);
+}
+
+static void GatheringTickStats(void) {
+    gatherTicks++;
+    for (int t = 0; t < MAX_TALKS; t++) {
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->kind != TALK_WATCH) continue;
+        gatherWatchSum += tk->count;
+        if (tk->count > gatherWatchMax) gatherWatchMax = tk->count;
+        for (int k = 0; k < tk->count; k++) {
+            float dx = movers[tk->members[k]].x - tk->slotX[k], dy = movers[tk->members[k]].y - tk->slotY[k];
+            if (dx * dx + dy * dy < 4.0f && tk->spot[k] / 64 < 4) gatherRingCount[tk->spot[k] / 64]++;
+        }
+        float in = 1.5f * CELL_SIZE * 0.8f;   // inside the first ring
+        for (int i = 0; i < moverCount; i++) {
+            if (!movers[i].active || MoverTalk(i) >= 0 || movers[i].pathIndex < 0) continue;
+            float dx = movers[i].x - tk->centerX, dy = movers[i].y - tk->centerY;
+            if (dx * dx + dy * dy < in * in) gatherIntrusions++;
+        }
+    }
+}
+
+static void GatheringPrintStats(void) {
+    printf("Onlookers: avg %.1f, most %ld; came to watch: %ld times\n",
+           gatherTicks ? gatherWatchSum / (double)gatherTicks : 0.0, gatherWatchMax, watchJoinedCount);
+    printf("Standing in place by ring (mover-ticks): 1st %ld, 2nd %ld, 3rd %ld\n", gatherRingCount[0],
+           gatherRingCount[1], gatherRingCount[2]);
+    printf("Walkers inside the first ring (give room %s): %ld ticks\n", talkGiveRoom ? "on" : "off", gatherIntrusions);
+}
+
+static bool GatheringCheck(char* why, int whyLen) {
+    if (watchJoinedCount == 0) { snprintf(why, (size_t)whyLen, "nobody came to watch"); return false; }
+    return true;
+}
+
+// social-ties: 12 movers on the plaza with relations set up front: two groups of four friends
+// (like 60), four strangers, and two pairs of enemies across the groups (like -60). Compare
+// socialSeek / socialAvoid on/off: how far apart friends, enemies and strangers stay.
+static double tiesFriendSum, tiesEnemySum, tiesStrangerSum;
+static long tiesFriendN, tiesEnemyN, tiesStrangerN, tiesEnemyClose, tiesTicks;
+static int tiesKind[16][16];   // 1 friends, -1 enemies, 0 strangers
+static int tiesBiggestWalk;
+static double tiesSlotDistSum; static long tiesSlotDistN;
+
+static void SetupSocialTies(void) {
+    tiesFriendSum = tiesEnemySum = tiesStrangerSum = 0.0;
+    tiesFriendN = tiesEnemyN = tiesStrangerN = tiesEnemyClose = tiesTicks = 0;
+    tiesBiggestWalk = 0;
+    tiesSlotDistSum = 0.0; tiesSlotDistN = 0;
+    memset(tiesKind, 0, sizeof(tiesKind));
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    talkEnabled = true;
+    moverWanderPause = 3.0f;
+    for (int i = 0; i < 12; i++) SpawnMoverAt(4 + (i % 4) * 7, 4 + (i / 4) * 10, 1);
+    for (int g = 0; g < 2; g++)
+        for (int a = g * 4; a < g * 4 + 4; a++)
+            for (int b = a + 1; b < g * 4 + 4; b++) {
+                RelationSetPair(a, b, 60.0f, 80.0f);
+                tiesKind[a][b] = tiesKind[b][a] = 1;
+            }
+    RelationSetPair(0, 4, -60.0f, 60.0f); tiesKind[0][4] = tiesKind[4][0] = -1;
+    RelationSetPair(1, 5, -60.0f, 60.0f); tiesKind[1][5] = tiesKind[5][1] = -1;
+    currentViewZ = 1;
+    AddMessage("Social ties: two groups of friends (0-3, 4-7), strangers 8-11, enemies 0-4 and 1-5", GREEN);
+}
+
+static void SocialTiesTickStats(void) {
+    tiesTicks++;
+    for (int t = 0; t < MAX_TALKS; t++)
+        if (talks[t].active && talks[t].kind == TALK_WALK) {
+            if (talks[t].count > tiesBiggestWalk) tiesBiggestWalk = talks[t].count;
+            for (int k = 1; k < talks[t].count; k++) {   // how far each follower is from its spot
+                float sx, sy;
+                if (!TalkWalkSlot(t, k, &sx, &sy)) continue;
+                const Mover* f = &movers[talks[t].members[k]];
+                tiesSlotDistSum += sqrtf((f->x - sx) * (f->x - sx) + (f->y - sy) * (f->y - sy)) / CELL_SIZE;
+                tiesSlotDistN++;
+            }
+        }
+    for (int a = 0; a < 12 && a < moverCount; a++)
+        for (int b = a + 1; b < 12 && b < moverCount; b++) {
+            if (!movers[a].active || !movers[b].active) continue;
+            float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+            float d = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+            if (tiesKind[a][b] == 1) { tiesFriendSum += d; tiesFriendN++; }
+            else if (tiesKind[a][b] == -1) { tiesEnemySum += d; tiesEnemyN++; if (d < 1.5f) tiesEnemyClose++; }
+            else { tiesStrangerSum += d; tiesStrangerN++; }
+        }
+}
+
+static void SocialTiesPrintStats(void) {
+    printf("Seek friends: %s, avoid the disliked: %s\n", socialSeek ? "on" : "off", socialAvoid ? "on" : "off");
+    printf("Avg distance (cells): friends %.1f, strangers %.1f, enemies %.1f\n",
+           tiesFriendN ? tiesFriendSum / tiesFriendN : 0.0, tiesStrangerN ? tiesStrangerSum / tiesStrangerN : 0.0,
+           tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
+    printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
+    printf("Talks started: %ld, walks: %ld (joined by %ld more), biggest walking group: %d\n", talkStartedCount,
+           walkStartedCount, walkJoinedCount, tiesBiggestWalk);
+    printf("Walking followers: %.2f cells from their spot on average\n", tiesSlotDistN ? tiesSlotDistSum / tiesSlotDistN : 0.0);
+    printf("Glances: %ld, greetings: %ld\n", glanceCount, greetCount);
+}
+
+// garden-party: a lawn with a stone patio, a campfire in the middle, two tables with chairs and a
+// buffet (food stockpile). 14 guests who know each other (four couples, a trio of friends,
+// acquaintances, one feud): they get hungry and eat at the buffet, talk, seek their friends,
+// keep away from the one they fell out with, and gather round the fire.
+#define GP_FIRE_X 16
+#define GP_FIRE_Y 16
+static long gpTicks, gpAtFireSum, gpAtFireMax, gpTalkSum, gpMeals, gpDarkTicks, gpDarkFireSum;
+static long gpMealsSeated;
+static double gpTableLikeSum, gpFireLikeSum; static long gpTableLikeN, gpFireLikeN;
+static int gpLastDined[MAX_MOVERS];   // gpTicks when it last sat eating at a table
+static long gpWalkTicks, gpWalkDistN; static double gpWalkDistSum; static long gpWalkSide, gpWalkBehind;
+static float gpPrevHunger[MAX_MOVERS];
+
+static void SetupGardenParty(void) {
+    gpTicks = gpAtFireSum = gpAtFireMax = gpTalkSum = gpMeals = gpDarkTicks = gpDarkFireSum = 0;
+    gpWalkTicks = gpWalkDistN = gpWalkSide = gpWalkBehind = 0; gpWalkDistSum = 0.0;
+    gpMealsSeated = 0;
+    gpTableLikeSum = gpFireLikeSum = 0.0; gpTableLikeN = gpFireLikeN = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) gpLastDined[i] = -100;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
+    balance.baseMoverSpeed = 600.0f;    // (before the guests spawn: they take it from here)
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = socialSeek = socialAvoid = true;
+    moverWanderPause = 4.0f;
+    // Patio: stone ground, no grass (nothing for the fire to catch on) round the fire
+    for (int y = GP_FIRE_Y - 5; y <= GP_FIRE_Y + 5; y++)
+        for (int x = GP_FIRE_X - 5; x <= GP_FIRE_X + 5; x++) {
+            SetWallMaterial(x, y, 0, MAT_GRANITE);
+            SetVegetation(x, y, 0, VEG_NONE);
+        }
+    CreateWorkshop(GP_FIRE_X, GP_FIRE_Y, 1, WORKSHOP_GROUND_FIRE);   // the campfire (its sprite)...
+    SetFireSource(GP_FIRE_X, GP_FIRE_Y, 1, true);                      // ...burning for good
+    // Two tables with chairs on the lawn, a buffet (food stockpile) between them
+    for (int t = 0; t < 2; t++) {   // two tables, a chair on each side (eat sitting: sitToEat, table talk)
+        int tx = t ? 24 : 7, ty = 7;
+        SpawnFurniture(tx, ty, 1, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(tx - 1, ty, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx + 1, ty, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx, ty - 1, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx, ty + 1, 1, FURNITURE_CHAIR, MAT_OAK);
+    }
+    CreateStockpile(13, 5, 1, 6, 1);
+    for (int i = 0; i < 6; i++) {
+        int idx = SpawnItem((13 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1,
+                            i % 2 ? ITEM_BREAD : ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int i = 0; i < 14; i++) SpawnMoverAt(4 + (i % 7) * 4, 24 + (i / 7) * 3, 1);
+    for (int i = 0; i < moverCount; i++) {
+        movers[i].hunger = 0.35f + 0.3f * (i % 5) / 4.0f;   // some peckish already
+        gpPrevHunger[i] = movers[i].hunger;
+    }
+    for (int i = 0; i < moverCount; i++)            // everyone has met
+        for (int j = i + 1; j < moverCount; j++) RelationSetPair(i, j, 10.0f, 30.0f);
+    for (int c = 0; c < 8; c += 2) RelationSetPair(c, c + 1, 70.0f, 100.0f);   // four couples
+    RelationSetPair(8, 9, 45.0f, 80.0f); RelationSetPair(8, 10, 45.0f, 80.0f); RelationSetPair(9, 10, 45.0f, 80.0f);
+    RelationSetPair(0, 2, 35.0f, 70.0f); RelationSetPair(4, 6, 35.0f, 70.0f);   // couples who are friends
+    RelationSetPair(3, 8, -45.0f, 60.0f);                                       // the feud
+    GatheringStartAt((GP_FIRE_X + 0.5f) * CELL_SIZE, (GP_FIRE_Y + 0.5f) * CELL_SIZE, 1, 1e9f, "the fire", 30.0f, 90.0f);
+    currentViewZ = 1;
+    AddMessage("Garden party: a campfire, two tables, a buffet, 14 guests (4 couples, a trio, a feud: 3 and 8)", GREEN);
+}
+
+static void GardenPartyTickStats(void) {
+    gpTicks++;
+    int atFire = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (MoverIsWatching(i)) atFire++;
+        if (MoverTalk(i) >= 0 && !MoverIsWatching(i) && !MoverIsWalkingWith(i)) gpTalkSum++;
+        if (MoverIsWalkingWith(i)) gpWalkTicks++;
+        if (MoverDiningAt(i) >= 0) gpLastDined[i] = (int)gpTicks;
+        if (movers[i].hunger > gpPrevHunger[i] + 0.05f) {
+            gpMeals++;
+            if (gpTicks - gpLastDined[i] <= 2) gpMealsSeated++;   // eaten in a seat at a table
+        }
+        gpPrevHunger[i] = movers[i].hunger;
+    }
+    for (int t = 0; t < MAX_TALKS; t++) {   // walking pairs: how far apart, side by side or one behind
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->kind != TALK_WALK || tk->count < 2) continue;
+        const Mover* L = &movers[tk->members[0]]; const Mover* F = &movers[tk->members[1]];
+        float dx = F->x - L->x, dy = F->y - L->y;
+        gpWalkDistSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE; gpWalkDistN++;
+        int li = tk->members[0];
+        if (L->pathIndex >= 0) {
+            Point wp = moverPaths[li][L->pathIndex];
+            float hx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - L->x, hy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - L->y;
+            float hl = sqrtf(hx * hx + hy * hy);
+            if (hl > 0.5f) { if (fabsf((dx * hx + dy * hy) / hl) < CELL_SIZE * 0.4f) gpWalkSide++; else gpWalkBehind++; }
+        }
+    }
+    // neighbours: diners at the same table, people next to each other round the fire (how they like them)
+    for (int a = 0; a < moverCount; a++)
+        for (int b = 0; b < moverCount; b++) {
+            if (a == b || !movers[a].active || !movers[b].active) continue;
+            if (MoverDiningAt(a) >= 0 && MoverDiningAt(a) == MoverDiningAt(b)) {
+                gpTableLikeSum += RelationLike(a, b); gpTableLikeN++;
+            } else if (MoverIsWatching(a) && MoverIsWatching(b) && MoverTalk(a) == MoverTalk(b)) {
+                float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+                if (dx * dx + dy * dy < (1.6f * CELL_SIZE) * (1.6f * CELL_SIZE)) { gpFireLikeSum += RelationLike(a, b); gpFireLikeN++; }
+            }
+        }
+    gpAtFireSum += atFire;
+    if (IsSkyDark()) { gpDarkTicks++; gpDarkFireSum += atFire; }
+    if (atFire > gpAtFireMax) gpAtFireMax = atFire;
+}
+
+static void GardenPartyPrintStats(void) {
+    int active = CountActiveMovers();
+    printf("At the fire: avg %.1f, most %ld; in a chat (not the fire): %.0f%% of the time; meals: %ld\n",
+           gpTicks ? gpAtFireSum / (double)gpTicks : 0.0, gpAtFireMax,
+           gpTicks && active ? 100.0 * gpTalkSum / ((double)gpTicks * active) : 0.0, gpMeals);
+    printf("At the fire by day: avg %.1f, after dark: avg %.1f\n",
+           gpTicks > gpDarkTicks ? (gpAtFireSum - gpDarkFireSum) / (double)(gpTicks - gpDarkTicks) : 0.0,
+           gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
+    printf("Talks started: %ld, joined: %ld; glances: %ld, greetings: %ld\n", talkStartedCount, talkJoinedCount,
+           glanceCount, greetCount);
+    printf("Spots by friends: %s; how much neighbours like each other: at a table %+.1f, next to each other at the fire %+.1f\n",
+           spotByFriends ? "on" : "off", gpTableLikeN ? gpTableLikeSum / gpTableLikeN : 0.0,
+           gpFireLikeN ? gpFireLikeSum / gpFireLikeN : 0.0);
+    printf("Meals at a table: %ld of %ld (sit to eat %s); table talk: %.1f diner-minutes\n", gpMealsSeated, gpMeals,
+           sitToEat ? "on" : "off", tableTalkTicks / (double)TICK_RATE / 60.0);
+    printf("Walks: %ld started, %.0f%% of the time walking with someone; pair %.2f cells apart, side by side %.0f%%\n",
+           walkStartedCount, gpTicks && active ? 100.0 * gpWalkTicks / ((double)gpTicks * active) : 0.0,
+           gpWalkDistN ? gpWalkDistSum / gpWalkDistN : 0.0,
+           gpWalkSide + gpWalkBehind ? 100.0 * gpWalkSide / (gpWalkSide + gpWalkBehind) : 0.0);
+    int fuel = 0;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) fuel += GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 0) + GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 1);
+    printf("Fuel round the fire (should be 0 apart from the fire itself): %d\n", fuel);
+}
+
+static bool GardenPartyCheck(char* why, int whyLen) {
+    if (gpMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    if (gpAtFireMax == 0) { snprintf(why, (size_t)whyLen, "nobody came to the fire"); return false; }
+    return true;
+}
+
+// tag: a plaza with stone pillars, 8 players: "it" chases the nearest player it notices,
+// the others run when it comes close (chase.c). Compare fleeSmart on/off: how long a chase
+// lasts, how far the runners keep from "it".
+static long tagTicks, tagFleeTicks, tagDistN;
+static double tagDistSum;
+
+static void SetupTag(void) {
+    tagTicks = tagFleeTicks = tagDistN = 0;
+    tagDistSum = 0.0;
+    for (int py = 6; py < gridHeight - 4; py += 8)    // 2x2 pillars to dodge round
+        for (int px = 6; px < gridWidth - 4; px += 8)
+            for (int dy = 0; dy < 2; dy++)
+                for (int dx = 0; dx < 2; dx++) {
+                    GRID(px + dx, py + dy, 1) = CELL_WALL;
+                    SetWallMaterial(px + dx, py + dy, 1, MAT_GRANITE);
+                }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    for (int i = 0; i < n; i++) SpawnMoverAt(3 + (i % 4) * 8, 3 + (i / 4) * 8 % 28, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    ChaseSetIt(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Tag: %d players, mover 0 is it (smart fleeing %s)", n, fleeSmart ? "on" : "off"), GREEN);
+}
+
+// play-hungry: a game of tag with hunger on and berries lying by the side of the field. Playing
+// is a free-time state: a player that gets hungry leaves the game to eat; the game goes on with
+// the others and ends when one is left. Check: players left, they ate, nobody starved.
+static long phMeals, phPlayersEnd;
+static float phLowestHunger;
+static int phPrevState[MAX_MOVERS];
+
+static void SetupPlayHungry(void) {
+    phMeals = phPlayersEnd = 0;
+    phLowestHunger = 1.0f;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    CreateStockpile(2, 2, 1, 4, 4);
+    for (int i = 0; i < 16; i++) {   // 4 px into the cell: guards food reach (MoverCanReach)
+        int idx = SpawnItem((2 + i % 4) * CELL_SIZE + 4, (2 + i / 4) * CELL_SIZE + 4, 1, ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    for (int i = 0; i < n; i++) {
+        SpawnMoverAt(12 + (i % 4) * 3, 12 + (i / 4) * 4, 1);
+        movers[moverCount - 1].hunger = 0.33f + 0.05f * i;   // hungry one after the other
+        phPrevState[moverCount - 1] = FREETIME_NONE;
+    }
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    ChaseSetIt(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Tag with hunger on: %d players leave the game to eat (berries top left)", n), GREEN);
+}
+
+static void PlayHungryTickStats(void) {
+    phPlayersEnd = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (movers[i].freetimeState == FREETIME_EATING && phPrevState[i] != FREETIME_EATING) phMeals++;
+        phPrevState[i] = movers[i].freetimeState;
+        if (movers[i].hunger < phLowestHunger) phLowestHunger = movers[i].hunger;
+        if (ChaseIsPlaying(i)) phPlayersEnd++;
+    }
+}
+
+static void PlayHungryPrintStats(void) {
+    printf("Play: left the game %ld times, meals %ld, still playing %ld, lowest hunger %.2f\n",
+           playLeftCount, phMeals, phPlayersEnd, phLowestHunger);
+}
+
+static bool PlayHungryCheck(char* why, int whyLen) {
+    if (playLeftCount == 0) { snprintf(why, (size_t)whyLen, "nobody left the game to eat"); return false; }
+    if (phMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    // 0.1: food out of reach (a mover standing by it until the seek timed out) gave 0.05
+    if (phLowestHunger <= 0.1f) { snprintf(why, (size_t)whyLen, "someone went hungry while playing (%.2f)", phLowestHunger); return false; }
+    return true;
+}
+
+static void TagTickStats(void) {
+    tagTicks++;
+    int it = ChaseIt();
+    if (it < 0) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!ChaseIsPlaying(i) || i == it) continue;
+        if (ChaseIsFleeing(i)) tagFleeTicks++;
+        float dx = movers[i].x - movers[it].x, dy = movers[i].y - movers[it].y;
+        tagDistSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+        tagDistN++;
+    }
+}
+
+static void TagPrintStats(void) {
+    double minutes = tagTicks / (double)TICK_RATE / 60.0;
+    printf("Smart fleeing: %s; tags: %ld (%.1f per minute), a chase lasts %.1f s on average\n", fleeSmart ? "on" : "off",
+           tagCount, minutes > 0 ? tagCount / minutes : 0.0, tagCount ? tagChaseSecondsSum / tagCount : 0.0);
+    printf("Runners: %.0f%% of the time fleeing, %.1f cells from it on average\n",
+           tagDistN ? 100.0 * tagFleeTicks / tagDistN : 0.0, tagDistN ? tagDistSum / tagDistN : 0.0);
+}
+
+static bool TagCheck(char* why, int whyLen) {
+    if (tagCount == 0) { snprintf(why, (size_t)whyLen, "nobody got tagged"); return false; }
+    return true;
+}
+
+// hide-and-seek: a yard with wall pieces, corners, little huts and pillars; 8 players, the
+// seeker counts in the middle (chase.c). Compare hideSmart on/off: how long hiders stay hidden.
+static long hsTicks, hsHiddenSeenFromHome, hsHiddenTicks;
+
+static void HsWall(int x0, int y0, int x1, int y1) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_OAK);
+        }
+}
+
+static void SetupHideAndSeek(void) {
+    hsTicks = hsHiddenSeenFromHome = hsHiddenTicks = 0;
+    HsWall(4, 4, 9, 4);   HsWall(4, 5, 4, 8);          // an L corner
+    HsWall(22, 4, 27, 4); HsWall(27, 5, 27, 8);        // and another
+    HsWall(4, 22, 4, 27); HsWall(5, 27, 9, 27);
+    HsWall(22, 27, 27, 27); HsWall(27, 22, 27, 26);
+    // two huts (3x3 inside) with one opening each
+    HsWall(12, 2, 16, 2); HsWall(12, 3, 12, 6); HsWall(16, 3, 16, 6); HsWall(12, 6, 13, 6); HsWall(15, 6, 16, 6);
+    HsWall(15, 25, 19, 25); HsWall(15, 26, 15, 29); HsWall(19, 26, 19, 29); HsWall(15, 29, 19, 29);
+    GRID(17, 25, 1) = CELL_AIR;   // its door
+    HsWall(9, 13, 9, 19); HsWall(23, 13, 23, 19);       // long walls either side
+    HsWall(13, 10, 14, 11); HsWall(19, 20, 20, 21);     // pillars
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the first seeker
+    for (int i = 1; i < n; i++) SpawnMoverAt(14 + i % 5, 14 + (i / 5) * 4, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    HideSeekStart(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hide and seek: %d players (smart hiding %s)", n, hideSmart ? "on" : "off"), GREEN);
+}
+
+static void HideAndSeekTickStats(void) {
+    hsTicks++;
+    int s = HideSeeker();
+    if (s < 0) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!HideIsHidden(i)) continue;
+        hsHiddenTicks++;
+        int x = (int)(movers[i].x / CELL_SIZE), y = (int)(movers[i].y / CELL_SIZE);
+        if (HasLineOfSight(16, 16, x, y, 1)) hsHiddenSeenFromHome++;
+    }
+}
+
+static void HideAndSeekPrintStats(void) {
+    printf("Smart hiding: %s; rounds: %ld, found: %ld, found after %.1f s of seeking on average\n",
+           hideSmart ? "on" : "off", hideRounds, hideFoundCount,
+           hideFoundCount ? hideFoundSecondsSum / hideFoundCount : 0.0);
+    printf("Hidden in sight of home (the middle): %.0f%% of hidden time\n",
+           hsHiddenTicks ? 100.0 * hsHiddenSeenFromHome / hsHiddenTicks : 0.0);
+}
+
+static bool HideAndSeekCheck(char* why, int whyLen) {
+    if (hideFoundCount == 0) { snprintf(why, (size_t)whyLen, "nobody was found"); return false; }
+    return true;
+}
+
+// mingle: 20 guests on a lawn: two circles of six friends, eight strangers, four friendships
+// across the circles. Talks form and break up; with mingling people move between groups.
+// Compare setting mingle on/off: switches, how many different people each guest talks with,
+// time spent in a group.
+#define MINGLE_GUESTS 20
+static long mgTicks, mgInGroup;
+static unsigned char mgTalked[MINGLE_GUESTS][MINGLE_GUESTS];
+
+static void SetupMingle(void) {
+    mgTicks = mgInGroup = 0;
+    memset(mgTalked, 0, sizeof(mgTalked));
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = true;
+    walkChance = 0.0f;                    // walks off: mingling on its own
+    moverWanderPause = 3.0f;
+    talkChance = 0.1f;
+    for (int i = 0; i < MINGLE_GUESTS; i++) SpawnMoverAt(4 + (i % 5) * 6, 4 + (i / 5) * 7, 1);
+    for (int g = 0; g < 2; g++)
+        for (int a = g * 6; a < g * 6 + 6; a++)
+            for (int b = a + 1; b < g * 6 + 6; b++) RelationSetPair(a, b, 50.0f, 80.0f);
+    RelationSetPair(0, 6, 45.0f, 70.0f); RelationSetPair(1, 7, 45.0f, 70.0f);
+    RelationSetPair(2, 12, 40.0f, 60.0f); RelationSetPair(8, 15, 40.0f, 60.0f);
+    currentViewZ = 1;
+    AddMessage("Mingle: two circles of friends (0-5, 6-11), strangers 12-19, a few friendships across", GREEN);
+}
+
+static void MingleTickStats(void) {
+    mgTicks++;
+    for (int a = 0; a < MINGLE_GUESTS && a < moverCount; a++) {
+        int t = MoverTalk(a);
+        if (t < 0 || talks[t].kind == TALK_WALK) continue;
+        mgInGroup++;
+        for (int k = 0; k < talks[t].count; k++) {
+            int b = talks[t].members[k];
+            if (b != a && b < MINGLE_GUESTS) mgTalked[a][b] = 1;
+        }
+    }
+}
+
+static void MinglePrintStats(void) {
+    int partners = 0, n = moverCount < MINGLE_GUESTS ? moverCount : MINGLE_GUESTS;
+    for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) partners += mgTalked[a][b];
+    printf("Mingle: %s; moves to another group: %ld; talks started: %ld\n", mingleEnabled ? "on" : "off", mingleCount,
+           talkStartedCount);
+    printf("Different people each guest talked with: %.1f on average; time in a group: %.0f%%\n",
+           n ? partners / (double)n : 0.0, mgTicks && n ? 100.0 * mgInGroup / ((double)mgTicks * n) : 0.0);
+}
+
+// personal-space: 16 on a lawn, 0-7 old friends, 8-15 strangers to everyone. They wander,
+// talk and pass each other. Compare setting personalSpace on/off: how far apart talkers stand,
+// and how often two walkers come within a cell when they pass, friends vs strangers.
+enum { PS_FRIENDS, PS_KNOWN, PS_STRANGERS, PS_CLASSES };
+static double psTalkDist[PS_CLASSES];
+static long psTalkN[PS_CLASSES], psNear[PS_CLASSES], psClose[PS_CLASSES];
+
+static int PsClass(int a, int b) {
+    float like = RelationLike(a, b), fam = RelationFamiliarity(a, b);
+    if (like >= 20.0f) return PS_FRIENDS;
+    return fam < 20.0f ? PS_STRANGERS : PS_KNOWN;
+}
+
+static void SetupPersonalSpace(void) {
+    memset(psTalkDist, 0, sizeof(psTalkDist));
+    memset(psTalkN, 0, sizeof(psTalkN)); memset(psNear, 0, sizeof(psNear)); memset(psClose, 0, sizeof(psClose));
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = true;
+    walkChance = 0.0f;
+    moverWanderPause = 2.0f;
+    talkChance = 0.1f;
+    for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 4) * 7, 4 + (i / 4) * 7, 1);
+    for (int a = 0; a < 8; a++)
+        for (int b = a + 1; b < 8; b++) RelationSetPair(a, b, 50.0f, 80.0f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Personal space %s: friends 0-7, strangers 8-15", personalSpace ? "on" : "off"), GREEN);
+}
+
+static void PersonalSpaceTickStats(void) {
+    for (int a = 0; a < moverCount; a++) {
+        if (!movers[a].active) continue;
+        int ta = MoverTalk(a);
+        for (int b = a + 1; b < moverCount; b++) {
+            if (!movers[b].active || (int)movers[b].z != (int)movers[a].z) continue;
+            float dx = (movers[b].x - movers[a].x) / CELL_SIZE, dy = (movers[b].y - movers[a].y) / CELL_SIZE;
+            float d = sqrtf(dx * dx + dy * dy);
+            int c = PsClass(a, b);
+            if (ta >= 0 && MoverTalk(b) == ta && talks[ta].kind == TALK_CHAT && talks[ta].count == 2 &&
+                movers[a].pathIndex < 0 && movers[b].pathIndex < 0) {   // a pair, both in their spot
+                psTalkDist[c] += d; psTalkN[c]++;
+            } else if (ta < 0 && MoverTalk(b) < 0 && movers[a].pathIndex >= 0 && movers[b].pathIndex >= 0 && d < 2.5f) {
+                psNear[c]++;                   // two walkers within 2.5 cells ...
+                if (d < 1.0f) psClose[c]++;    // ... and within one
+            }
+        }
+    }
+}
+
+static void PersonalSpacePrintStats(void) {
+    static const char* names[PS_CLASSES] = {"friends", "known", "strangers"};
+    printf("Personal space: %s\n", personalSpace ? "on" : "off");
+    for (int c = 0; c < PS_CLASSES; c++)
+        printf("  %-9s talking pair %.2f cells apart (%ld ticks); passing: within 1 cell %.0f%% of the time within 2.5 (%ld ticks)\n",
+               names[c], psTalkN[c] ? psTalkDist[c] / psTalkN[c] : 0.0, psTalkN[c],
+               psNear[c] ? 100.0 * psClose[c] / psNear[c] : 0.0, psNear[c]);
+}
+
+// campfire: a ground fire burning for good and a burning barrel on a lawn, 12 wanderers: the
+// world starts gatherings round them by itself (game rule autoGatherings, talk.c).
+static long cfTicks, cfAtFire, cfAtBarrel;
+
+static void SetupCampfire(void) {
+    cfTicks = cfAtFire = cfAtBarrel = 0;
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    autoGatherings = true;
+    moverWanderPause = 3.0f;
+    for (int y = 10; y <= 18; y++)          // fuel-free ground round the fire
+        for (int x = 6; x <= 14; x++) { SetWallMaterial(x, y, 0, MAT_GRANITE); SetVegetation(x, y, 0, VEG_NONE); }
+    int ws = CreateWorkshop(10, 14, 1, WORKSHOP_GROUND_FIRE);
+    if (ws >= 0 && workshops[ws].fuelTileX >= 0)
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, true);
+    SpawnFurniture(24, 14, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    for (int k = 0; k < 2; k++) {   // sticks by the barrel: it burns fuel (2 h a bundle), the wanderers top it up
+        int sticks = SpawnItem(26.5f * CELL_SIZE, (14.5f + k) * CELL_SIZE, 1.0f, ITEM_STICKS);
+        if (sticks >= 0) items[sticks].stackCount = 20;
+    }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int i = 0; i < 12; i++) SpawnMoverAt(4 + (i % 6) * 4, 4 + (i / 6) * 20, 1);
+    currentViewZ = 1;
+    AddMessage("Campfire: a fire and a burning barrel; people gather round them by themselves", GREEN);
+}
+
+static void CampfireTickStats(void) {
+    cfTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        int t = MoverTalk(i);
+        if (t < 0 || !MoverIsWatching(i)) continue;
+        if (talks[t].centerX < 17 * CELL_SIZE) cfAtFire++; else cfAtBarrel++;
+    }
+}
+
+static void CampfirePrintStats(void) {
+    printf("Gatherings started by the world: %ld; round the fire avg %.1f, round the barrel avg %.1f\n",
+           autoGatheringsStarted, cfTicks ? cfAtFire / (double)cfTicks : 0.0, cfTicks ? cfAtBarrel / (double)cfTicks : 0.0);
+}
+
+static bool CampfireCheck(char* why, int whyLen) {
+    if (autoGatheringsStarted < 2) { snprintf(why, (size_t)whyLen, "no gathering round the fire and the barrel"); return false; }
+    return true;
+}
+
+// follow-leader: the tag plaza (pillars), 6 players in a line: the leader winds round, the others
+// follow its route (chase.c). Compare followTrail on/off: how far followers stray from the route.
+static long flTicks, flDistN, flGapN;
+static double flDistSum, flGapSum, flDistMax;
+
+static void SetupFollowLeader(void) {
+    flTicks = flDistN = flGapN = 0;
+    flDistSum = flGapSum = flDistMax = 0.0;
+    for (int py = 6; py < gridHeight - 4; py += 8)
+        for (int px = 6; px < gridWidth - 4; px += 8)
+            for (int dy = 0; dy < 2; dy++)
+                for (int dx = 0; dx < 2; dx++) {
+                    GRID(px + dx, py + dy, 1) = CELL_WALL;
+                    SetWallMaterial(px + dx, py + dy, 1, MAT_GRANITE);
+                }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 6, players[FOLLOW_MAX];
+    if (n > FOLLOW_MAX) n = FOLLOW_MAX;
+    for (int i = 0; i < n; i++) { SpawnMoverAt(4 + i, 4, 1); players[i] = moverCount - 1; }
+    FollowLeaderStart(players, n);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Follow the leader: %d players (following the trail %s)", n, followTrail ? "on" : "off"), GREEN);
+}
+
+static void FollowLeaderTickStats(void) {
+    flTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        float d;
+        if (FollowTrailDistance(i, &d)) { flDistSum += d; flDistN++; if (d > flDistMax) flDistMax = d; }
+        int k = FollowPlace(i);
+        if (k > 0) {
+            for (int j = 0; j < moverCount; j++)
+                if (FollowPlace(j) == k - 1) {
+                    float dx = movers[i].x - movers[j].x, dy = movers[i].y - movers[j].y;
+                    flGapSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE; flGapN++;
+                }
+        }
+    }
+}
+
+static void FollowLeaderPrintStats(void) {
+    printf("Following the trail: %s; followers %.2f cells from the leader's route on average (worst %.1f)\n",
+           followTrail ? "on" : "off", flDistN ? flDistSum / flDistN : 0.0, flDistMax);
+    printf("Gap to the one ahead: %.2f cells on average; leader changes: %ld\n", flGapN ? flGapSum / flGapN : 0.0,
+           followLeaderChanges);
+}
+
+// pack-hunt: an arena with pillars and railings (half-height: see across, can't cross), 4
+// hunters on 1 runner (chase.c). The runner is faster when fresh and tires; caught, it turns up
+// again far away. Compare packTactics on/off: seconds to a catch.
+static void PhWall(int x0, int y0, int x1, int y1, CellType c) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) { GRID(x, y, 1) = c; SetWallMaterial(x, y, 1, c == CELL_RAILING ? MAT_OAK : MAT_GRANITE); }
+}
+
+static void SetupPackHunt(void) {
+    PhWall(7, 7, 8, 8, CELL_WALL);   PhWall(23, 7, 24, 8, CELL_WALL);
+    PhWall(7, 23, 8, 24, CELL_WALL); PhWall(23, 23, 24, 24, CELL_WALL);
+    PhWall(15, 15, 16, 16, CELL_WALL);                       // pillars
+    PhWall(11, 4, 20, 4, CELL_RAILING);  PhWall(11, 27, 20, 27, CELL_RAILING);
+    PhWall(4, 11, 4, 20, CELL_RAILING);  PhWall(27, 11, 27, 20, CELL_RAILING);   // railings
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int hunters[4];
+    for (int k = 0; k < 4; k++) { SpawnMoverAt(2 + k, 2, 1); hunters[k] = moverCount - 1; }
+    SpawnMoverAt(16, 12, 1);
+    for (int k = 0; k < 4; k++) ChaseSetPlayer(hunters[k], true);
+    ChaseSetPlayer(moverCount - 1, true);
+    PackHuntStart(hunters, 4, moverCount - 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Pack hunt: 4 hunters (0-3) on 1 runner (4), tactics %s", packTactics ? "on" : "off"), GREEN);
+}
+
+static void PackHuntPrintStats(void) {
+    printf("Pack tactics: %s; catches: %ld, a catch takes %.1f s on average\n", packTactics ? "on" : "off",
+           packCatches, packCatches ? packCatchSecondsSum / packCatches : 0.0);
+    printf("Only by sight: %s; got away: %ld; ducked behind cover: %ld (crouched %.1f s each), flushed out: %ld\n",
+           packStealth ? "on" : "off", packEscapes, packDucks, packDucks ? packDuckSecondsSum / packDucks : 0.0, packFlushed);
+}
+
+static bool PackHuntCheck(char* why, int whyLen) {
+    if (packCatches == 0) { snprintf(why, (size_t)whyLen, "the pack never caught the runner"); return false; }
+    return true;
+}
+
+// cover: hide and seek in a garden with only low cover (railing pieces, bush clumps, tables):
+// nothing to hide behind but things you can see over. Hiders crouch in their spot. Compare
+// setting cover on/off: how long hiders stay hidden, and how much of their hidden time the
+// seeker had them in plain sight (in range and line of sight, but they were behind cover).
+static long cvHiddenTicks, cvInSightTicks, cvCoveredTicks;
+
+static void SetupCover(void) {
+    cvHiddenTicks = cvInSightTicks = cvCoveredTicks = 0;
+    PhWall(5, 6, 8, 6, CELL_RAILING);   PhWall(23, 6, 26, 6, CELL_RAILING);
+    PhWall(5, 25, 8, 25, CELL_RAILING); PhWall(23, 25, 26, 25, CELL_RAILING);
+    PhWall(13, 9, 18, 9, CELL_RAILING); PhWall(13, 22, 18, 22, CELL_RAILING);
+    PhWall(9, 13, 9, 18, CELL_RAILING); PhWall(22, 13, 22, 18, CELL_RAILING);
+    static const int bushes[][2] = {{3, 15}, {3, 16}, {4, 16}, {28, 15}, {28, 16}, {27, 15},
+                                    {15, 3}, {16, 3}, {16, 4}, {15, 28}, {16, 28}, {15, 27},
+                                    {11, 11}, {20, 20}, {11, 20}, {20, 11}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    BuildEntrances();
+    BuildGraph();
+    SpawnFurniture(6, 11, 1, FURNITURE_TABLE, MAT_OAK);  SpawnFurniture(25, 11, 1, FURNITURE_TABLE, MAT_OAK);
+    SpawnFurniture(6, 20, 1, FURNITURE_TABLE, MAT_OAK);  SpawnFurniture(25, 20, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the first seeker
+    for (int i = 1; i < n; i++) SpawnMoverAt(14 + i % 5, 14 + (i / 5) * 4, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    HideSeekStart(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Cover: hide and seek with only low cover, %d players (crouching hides: %s)", n, coverEnabled ? "on" : "off"), GREEN);
+}
+
+static void CoverTickStats(void) {
+    int s = HideSeeker();
+    if (s < 0 || HideIsCounting(s)) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!HideIsHidden(i)) continue;
+        cvHiddenTicks++;
+        float dx = (movers[i].x - movers[s].x) / CELL_SIZE, dy = (movers[i].y - movers[s].y) / CELL_SIZE;
+        if (dx * dx + dy * dy > noticeRadius * noticeRadius) continue;
+        int sx = (int)(movers[s].x / CELL_SIZE), sy = (int)(movers[s].y / CELL_SIZE);
+        if (!CanSeeCell(sx, sy, (int)(movers[i].x / CELL_SIZE), (int)(movers[i].y / CELL_SIZE), 1)) continue;
+        cvInSightTicks++;   // the seeker is in range with a clear line
+        if (!CanSeeMover(s, i)) cvCoveredTicks++;   // ... but it's crouched behind cover
+    }
+}
+
+static void CoverPrintStats(void) {
+    printf("Cover: %s; rounds: %ld, found: %ld, found after %.1f s of seeking on average\n",
+           coverEnabled ? "on" : "off", hideRounds, hideFoundCount,
+           hideFoundCount ? hideFoundSecondsSum / hideFoundCount : 0.0);
+    printf("Seeker in range with a clear line: %.1f%% of hidden time; of that, behind cover: %.0f%%\n",
+           cvHiddenTicks ? 100.0 * cvInSightTicks / cvHiddenTicks : 0.0,
+           cvInSightTicks ? 100.0 * cvCoveredTicks / cvInSightTicks : 0.0);
+}
+
+// hunt-cover: the pack hunt in an overgrown garden: wall pieces to break sight, bush clumps,
+// railings and tables to duck behind. Compare packStealth on/off: catches, how long a catch
+// takes, how often the runner ducks, is flushed out, gets away.
+static long hcTicks, hcLost;
+static void HuntCoverTickStats(void) {
+    hcTicks++;
+    if (PackLost(NULL)) hcLost++;
+}
+
+static void HuntCoverPrintStats(void) {
+    PackHuntPrintStats();
+    printf("Out of the pack's sight: %.1f%% of the time\n", hcTicks ? 100.0 * hcLost / hcTicks : 0.0);
+}
+
+static void SetupHuntCover(void) {
+    hcTicks = hcLost = 0;
+    PhWall(6, 6, 6, 10, CELL_WALL);    PhWall(25, 21, 25, 25, CELL_WALL);
+    PhWall(12, 14, 16, 14, CELL_WALL); PhWall(17, 19, 21, 19, CELL_WALL);
+    PhWall(21, 5, 25, 5, CELL_WALL);   PhWall(6, 26, 10, 26, CELL_WALL);   // wall pieces
+    PhWall(10, 9, 13, 9, CELL_RAILING); PhWall(19, 24, 22, 24, CELL_RAILING);
+    PhWall(27, 11, 27, 15, CELL_RAILING); PhWall(3, 17, 3, 21, CELL_RAILING);   // railings
+    static const int bushes[][2] = {{8, 8}, {9, 8}, {8, 9}, {23, 7}, {24, 7}, {23, 8},
+                                    {7, 23}, {8, 23}, {8, 24}, {23, 22}, {23, 23}, {22, 23},
+                                    {15, 16}, {16, 17}, {16, 16}, {4, 12}, {28, 19}, {14, 28}, {18, 3}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    for (int k = 0; k < 6; k++) {   // hedges along the wall pieces
+        GRID(7, 6 + k, 1) = CELL_BUSH;  GRID(24, 20 + k, 1) = CELL_BUSH;
+        GRID(11 + k, 15, 1) = CELL_BUSH; GRID(16 + k, 18, 1) = CELL_BUSH;
+    }
+    BuildEntrances();
+    BuildGraph();
+    SpawnFurniture(12, 21, 1, FURNITURE_TABLE, MAT_OAK); SpawnFurniture(20, 11, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int hunters[4];
+    for (int k = 0; k < 4; k++) { SpawnMoverAt(2 + k, 2, 1); hunters[k] = moverCount - 1; }
+    SpawnMoverAt(16, 12, 1);
+    for (int k = 0; k < 4; k++) ChaseSetPlayer(hunters[k], true);
+    ChaseSetPlayer(moverCount - 1, true);
+    PackHuntStart(hunters, 4, moverCount - 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hunt in cover: 4 hunters (0-3) on 1 runner (4), only by sight %s", packStealth ? "on" : "off"), GREEN);
+}
+
+// Six friends on a lawn with hiding places, food in a corner: they start games by themselves
+// (autoGames: tag, hide and seek, follow the leader), leave them to eat, play again later
+static long ptTicks, ptPlaying, ptMeals;
+static float ptLowestHunger;
+static int ptPrevState[MAX_MOVERS];
+
+static void SetupPlaytime(void) {
+    ptTicks = ptPlaying = ptMeals = 0;
+    ptLowestHunger = 1.0f;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;
+    endlessMoverMode = true;
+    moverWanderPause = 1.0f;
+    noticeEnabled = true;
+    talkEnabled = true;
+    autoGatherings = false;
+    autoGames = true;
+    PhWall(9, 9, 9, 13, CELL_WALL); PhWall(20, 18, 24, 18, CELL_WALL);   // places to hide behind
+    PhWall(14, 24, 18, 24, CELL_RAILING);
+    int bushes[][2] = {{6, 20}, {7, 20}, {25, 8}, {25, 9}, {16, 6}, {28, 26}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    SpawnFurniture(13, 15, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    CreateStockpile(2, 2, 1, 3, 3);
+    for (int i = 0; i < 9; i++) {
+        int idx = SpawnItem((2 + i % 3) * CELL_SIZE + 4, (2 + i / 3) * CELL_SIZE + 4, 1, ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    int n = scenarioMovers > 0 ? scenarioMovers : 6;
+    int first = moverCount;
+    for (int i = 0; i < n; i++) {
+        SpawnMoverAt(13 + (i % 3) * 2, 11 + (i / 3) * 2, 1);
+        movers[moverCount - 1].hunger = 0.45f + 0.08f * (i % 6);
+        ptPrevState[moverCount - 1] = FREETIME_NONE;
+    }
+    for (int a = first; a < moverCount; a++)   // they all know and like each other
+        for (int b = a + 1; b < moverCount; b++) RelationSetPair(a, b, 60.0f, 60.0f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Playtime: %d friends start games by themselves (autoGames %s)", n, autoGames ? "on" : "off"), GREEN);
+}
+
+static void PlaytimeTickStats(void) {
+    ptTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (movers[i].freetimeState == FREETIME_EATING && ptPrevState[i] != FREETIME_EATING) ptMeals++;
+        ptPrevState[i] = movers[i].freetimeState;
+        if (movers[i].hunger < ptLowestHunger) ptLowestHunger = movers[i].hunger;
+        if (MoverActivity(i) >= 0) ptPlaying++;
+    }
+}
+
+static void PlaytimePrintStats(void) {
+    long starts = 0;
+    for (int k = 0; k < ACT_KIND_COUNT; k++) starts += autoGameStarts[k];
+    printf("Games by themselves: %s; started %ld (tag %ld, hide and seek %ld, follow the leader %ld), declined %ld\n",
+           autoGames ? "on" : "off", starts, autoGameStarts[ACT_TAG], autoGameStarts[ACT_HIDE_SEEK],
+           autoGameStarts[ACT_FOLLOW_LEADER], autoGameDeclined);
+    printf("Joined a running game %ld times; %.1f players per game on average\n",
+           autoGameJoins, starts ? (double)autoGamePlayersSum / starts : 0.0);
+    printf("Ended %ld, lasting %.0f s on average; playing %.0f%% of the time; left a game %ld times\n",
+           autoGameEnded, autoGameEnded ? autoGameSecondsSum / autoGameEnded : 0.0,
+           ptTicks && moverCount ? 100.0 * ptPlaying / ((double)ptTicks * moverCount) : 0.0, playLeftCount);
+    printf("Meals %ld, lowest hunger %.2f, talks started %ld\n", ptMeals, ptLowestHunger, talkStartedCount);
+}
+
+static bool PlaytimeCheck(char* why, int whyLen) {
+    int kinds = 0;
+    long starts = 0;
+    for (int k = 0; k < ACT_KIND_COUNT; k++) { starts += autoGameStarts[k]; if (autoGameStarts[k] > 0) kinds++; }
+    bool day = ptTicks >= 21600;   // a game day (dayLength 360): several games, more than one kind
+    if (starts < (day ? 3 : 1)) { snprintf(why, (size_t)whyLen, "only %ld games started", starts); return false; }
+    if (day && kinds < 2) { snprintf(why, (size_t)whyLen, "only one kind of game played"); return false; }
+    if (day && ptMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    if (ptLowestHunger <= 0.1f) { snprintf(why, (size_t)whyLen, "someone went hungry (%.2f)", ptLowestHunger); return false; }
+    return true;
+}
+
 static void SetupLadders(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -235,6 +1358,7 @@ static void SetupLadders(void) {
 // 96 movers 7.3 vs 6.9 (both ladders saturated). With the second ladder far away
 // (18,2) a detour never paid.
 static void SetupLadderChoice(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -255,6 +1379,7 @@ static void SetupLadderChoice(void) {
 // 16 movers wandering between the levels: every climb up uses the first, every climb
 // down the second (--check fails on a climb against the direction).
 static void SetupLadderOneWay(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     BuildLadderDeck();
     AddLadderAt(18, 16);
@@ -278,6 +1403,7 @@ static void SetupLadderOneWay(void) {
 // to the ground (28,16). Movers wander between levels: up the north ladders tier by tier,
 // down the south ladders or the pole. --check fails on a climb against a ladder.
 static void SetupOneWayTiers(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     ResetLadderStats();
     static const int tierX[3] = {10, 16, 22};
     for (int t = 0; t < 3; t++) {
@@ -1894,6 +3020,7 @@ static bool BeltCheck(char* why, int whyLen) {
 // (16,9) and on along the deck into B. Chute: rock stacks pre-stocked in C (deck) ride
 // east, DOWN two levels at (34,15) and into D on the ground.
 static void SetupBeltLift(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     hungerEnabled = thirstEnabled = energyEnabled = false;
     const int deckZ = 3;
     for (int y = 0; y < gridHeight; y++)
@@ -2110,6 +3237,7 @@ static bool ElevatorGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevator(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     elevShaftX[0] = ELEV_TOWER_X0 + ELEV_TOWER_W / 2;     elevShaftY[0] = ELEV_TOWER_Y0 + ELEV_TOWER_H / 2;
     elevShaftX[1] = ELEV_TOWER_X0 + ELEV_TOWER_W - 3;     elevShaftY[1] = ELEV_TOWER_Y0 + 2;
     for (int z = 2; z <= ELEV_TOP; z++)
@@ -2207,6 +3335,7 @@ static bool ElevTallGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorTall(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     for (int z = 2; z <= ET_TOP; z++)
         for (int y = ET_Y0; y < ET_Y0 + ET_W; y++)
             for (int x = ET_X0; x < ET_X0 + ET_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
@@ -2292,6 +3421,7 @@ static bool ElevStairsGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorStairs(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     for (int z = 2; z <= ES_TOP; z++)
         for (int y = ES_Y0; y < ES_Y0 + ES_W; y++)
             for (int x = ES_X0; x < ES_X0 + ES_W; x++) { GRID(x, y, z) = CELL_AIR; SET_FLOOR(x, y, z); }
@@ -2418,6 +3548,7 @@ static bool ElevBuildGoalPicker(int moverIdx, Point* goal) {
 }
 
 static void SetupElevatorBuild(void) {
+    supportEnabled = false;   // a pathing rig: its decks stand on nothing (ladders, shafts)
     hungerEnabled = thirstEnabled = energyEnabled = false;
     for (int z = 2; z <= 3; z++)
         for (int y = 5; y <= 14; y++)
@@ -2880,6 +4011,7 @@ static const int trashBinX[3] = { 8, 18, 36 };
 // The stand: a 3x2 stockpile, top row `top`, bottom row `bottom`; an empty slot gets a full
 // stack (a delivery). Items go into the stockpile slots (in the shop), not on the ground.
 static int trashStand = -1;
+#define TRASH_START_COINS 200   // plenty for the scenario's days (a meal and a drink: 5 coins)
 static void StandRestock(ItemType top, ItemType bottom) {
     if (trashStand < 0 || !stockpiles[trashStand].active) return;
     for (int dy = 0; dy < 2; dy++)
@@ -2905,6 +4037,7 @@ static void SetupTrash(void) {
     balance.baseMoverSpeed = 600.0f;    // (before the movers spawn: they take it from here)
     endlessMoverMode = true;            // wander between meals: foot traffic
     trashStand = CreateStockpile(TRASH_STAND_X, TRASH_STAND_Y, 1, 3, 2);
+    ShopSetForSale(trashStand, true);   // money.h: a snack costs 3 coins, a soda 2
     TrashRestock();
     for (int b = 0; b < 3; b++)
         trashBins[b] = SpawnItem(trashBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, 11 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_TRASH_BIN);
@@ -2916,6 +4049,7 @@ static void SetupTrash(void) {
         m->thirst = 0.20f + 0.02f * i;
         if (i == 0) { m->traits[0] = TRAIT_SLOB; m->traits[1] = TRAIT_NONE; }
         if (i == 1) { m->traits[0] = TRAIT_TIDY; m->traits[1] = TRAIT_NONE; }
+        MoverAddCoins(moverCount - 1, TRASH_START_COINS);   // the passers-by have money to spend
     }
     currentViewZ = 1;
 }
@@ -2944,6 +4078,7 @@ static void TrashPrintStats(void) {
     for (int i = 0; i < moverCount; i++) if (movers[i].active && movers[i].heldTrash != ITEM_NONE) held++;
     printf("Trash: bin A (by the stand) %d, bin B (12 cells) %d, bin C (far end) %d, litter %d, in hand %d\n",
            TrashInBin(trashBins[0]), TrashInBin(trashBins[1]), TrashInBin(trashBins[2]), TrashLitter(), held);
+    if (trashStand >= 0) printf("Stand: till %d coins (snack 3, soda 2)\n", stockpileTill[trashStand]);
 }
 
 static bool TrashCheck(char* why, int whyLen) {
@@ -2981,6 +4116,10 @@ static void SetupHeat(void) {
     heatBarrel = (Point){33, 12, 1};
     SpawnFurniture(heatGrate.x, heatGrate.y, 1, FURNITURE_HEAT_GRATE, MAT_IRON);
     SpawnFurniture(heatBarrel.x, heatBarrel.y, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    for (int k = 0; k < 2; k++) {   // sticks by the barrel: it burns fuel (2 h a bundle), the movers top it up
+        int sticks = SpawnItem((heatBarrel.x + 2.5f) * CELL_SIZE, (heatBarrel.y + 0.5f + k) * CELL_SIZE, 1.0f, ITEM_STICKS);
+        if (sticks >= 0) items[sticks].stackCount = 20;
+    }
     BuildEntrances(); BuildGraph();
     for (int i = 0; i < 8; i++) {
         SpawnMoverAt(4 + i * 4, 4 + (i % 2) * 14, 1);
@@ -3156,6 +4295,95 @@ static void ScroungePrintStats(void) {
     }
     printf("Leftovers: %d units in bins, %d elsewhere (pockets, hands, ground)\n",
            ScroungeLeftoversIn(true), ScroungeLeftoversIn(false));
+}
+
+// ---- bottlerun: City 1999's bottle run on orders (the action queue, player commands) ----
+// A street with five bins holding empty cans (and a wrapper each, not worth taking); one person
+// with a backpack and an empty purse, a bit hungry. At the west end a snack stand (for sale,
+// 20 coins in its till) and a bottle machine next to it (money.h). The setup queues a run past
+// the first three bins and then the machine, as the player would with E / Shift+E
+// (src/entities/action_queue.c): 5 cans become 5 coins, and once the queue is done hunger
+// takes him to the stand, where a snack costs 3. The last two bins are left for you.
+#define BOTTLE_BINS 5
+static int bottleBins[BOTTLE_BINS];
+static int bottleStand = -1, bottleMachine = -1;
+#define BOTTLE_STAND_TILL 20
+static const int bottleBinX[BOTTLE_BINS] = { 7, 13, 20, 27, 35 };
+static const int bottleBinCans[BOTTLE_BINS] = { 2, 0, 3, 1, 2 };
+
+static int BottleCansCarried(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_EMPTY_CAN && ItemIsInMoverInventory(0, i)) n += items[i].stackCount;
+    return n;
+}
+
+static void SetupBottleRun(void) {
+    hungerEnabled = true; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    bodyTempEnabled = false;
+    dayLength = 360.0f;
+    balance.baseMoverSpeed = 600.0f;
+    endlessMoverMode = true;   // wander when there's nothing to do
+    // The stand (snacks, for sale) and the bottle machine, paid from the stand's till
+    bottleStand = CreateStockpile(1, 15, 1, 2, 1);
+    ShopSetForSale(bottleStand, true);
+    stockpileTill[bottleStand] = BOTTLE_STAND_TILL;
+    for (int x = 1; x <= 2; x++) {
+        int it = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 15 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_SNACK);
+        items[it].stackCount = ItemMaxStack(ITEM_SNACK);
+        PlaceItemInStockpile(bottleStand, x, 15, it);
+    }
+    bottleMachine = SpawnFurniture(4, 15, 1, FURNITURE_BOTTLE_MACHINE, MAT_NONE);
+    for (int b = 0; b < BOTTLE_BINS; b++) {
+        float bx = bottleBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, by = 13 * CELL_SIZE + CELL_SIZE * 0.5f;
+        bottleBins[b] = SpawnItem(bx, by, 1, ITEM_TRASH_BIN);
+        for (int k = 0; k < bottleBinCans[b]; k++) PutItemInContainer(SpawnItem(bx, by, 1, ITEM_EMPTY_CAN), bottleBins[b]);
+        PutItemInContainer(SpawnItem(bx, by, 1, ITEM_WRAPPER), bottleBins[b]);
+    }
+    BuildEntrances(); BuildGraph();
+    SpawnMoverAt(3, 11, 1);
+    int mi = moverCount - 1;
+    MoverWear(mi, SpawnItem(movers[mi].x, movers[mi].y, 1, ITEM_BACKPACK));
+    movers[mi].hunger = 0.25f;   // peckish (seeks food) but not starving: the queue comes first
+    char said[128];
+    for (int b = 0; b < 3; b++)   // as E on the first bin, then Shift+E on the next two ...
+        QueueCommandAt(mi, bottleBinX[b], 13, 1, b > 0, said, sizeof(said));
+    QueueCommandAt(mi, 4, 15, 1, true, said, sizeof(said));   // ... and Shift+E on the machine
+    currentViewZ = 1;
+}
+
+static int BottleSnacksLeft(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_SNACK && items[i].state == ITEM_IN_STOCKPILE) n += items[i].stackCount;
+    return n;
+}
+
+static void BottleRunPrintStats(void) {
+    printf("Bottle run: purse %d coins, stand till %d, snacks sold %d, hunger %.0f%%\n", MoverCoins(0),
+           bottleStand >= 0 ? stockpileTill[bottleStand] : 0, 2 * ItemMaxStack(ITEM_SNACK) - BottleSnacksLeft(), movers[0].hunger * 100.0f);
+    printf("Bottle run: %d cans carried, queue %s; cans left per bin:", BottleCansCarried(), QueueBusy(0) ? "still running" : "done");
+    for (int b = 0; b < BOTTLE_BINS; b++) {
+        int n = 0;
+        for (int c = FirstInContainer(bottleBins[b]); c >= 0; c = NextInContainer(c)) if (items[c].type == ITEM_EMPTY_CAN) n += items[c].stackCount;
+        printf(" %d", n);
+    }
+    printf("\n");
+}
+
+static bool BottleRunCheck(char* why, int whyLen) {
+    int cans = bottleBinCans[0] + bottleBinCans[1] + bottleBinCans[2];   // the three bins searched
+    int sold = 2 * ItemMaxStack(ITEM_SNACK) - BottleSnacksLeft();
+    int price = ItemPrice(ITEM_SNACK);
+    if (!movers[0].active) { snprintf(why, (size_t)whyLen, "the collector is gone"); return false; }
+    if (QueueBusy(0)) { snprintf(why, (size_t)whyLen, "the bottle run didn't finish"); return false; }
+    if (BottleCansCarried() != 0) { snprintf(why, (size_t)whyLen, "%d cans still carried (not cashed in)", BottleCansCarried()); return false; }
+    if (sold < 1) { snprintf(why, (size_t)whyLen, "no snack bought (purse %d coins)", MoverCoins(0)); return false; }
+    if (MoverCoins(0) != cans - sold * price || stockpileTill[bottleStand] != BOTTLE_STAND_TILL - cans + sold * price) {
+        snprintf(why, (size_t)whyLen, "money doesn't add up: purse %d, till %d (%d cans, %d snacks)", MoverCoins(0), stockpileTill[bottleStand], cans, sold);
+        return false;
+    }
+    return true;
 }
 
 static bool ScroungeCheck(char* why, int whyLen) {
@@ -3335,7 +4563,7 @@ static void TownDisc(float cx, float cy, float r, bool open) {
 }
 
 // A road `width` cells wide along the centreline (x0,y0)-(x1,y1) (cell units)
-static void TownRoad(float x0, float y0, float x1, float y1, float width) {
+static void CarsTownRoad(float x0, float y0, float x1, float y1, float width) {
     float dx = x1 - x0, dy = y1 - y0, L = sqrtf(dx * dx + dy * dy);
     int n = (int)(L / 0.25f) + 1;
     for (int i = 0; i <= n; i++) TownDisc(x0 + dx * i / n, y0 + dy * i / n, width * 0.5f, true);
@@ -3351,29 +4579,29 @@ static void BuildCarsTown(void) {
         }
     // Ring road, centreline x 9..183, y 9..119, corners rounded (radius 14)
     const float rx0 = 9, ry0 = 9, rx1 = 183, ry1 = 119, rr = 14, rw = 5;
-    TownRoad(rx0 + rr, ry0, rx1 - rr, ry0, rw);
-    TownRoad(rx0 + rr, ry1, rx1 - rr, ry1, rw);
-    TownRoad(rx0, ry0 + rr, rx0, ry1 - rr, rw);
-    TownRoad(rx1, ry0 + rr, rx1, ry1 - rr, rw);
+    CarsTownRoad(rx0 + rr, ry0, rx1 - rr, ry0, rw);
+    CarsTownRoad(rx0 + rr, ry1, rx1 - rr, ry1, rw);
+    CarsTownRoad(rx0, ry0 + rr, rx0, ry1 - rr, rw);
+    CarsTownRoad(rx1, ry0 + rr, rx1, ry1 - rr, rw);
     const float cxs[4] = {rx0 + rr, rx1 - rr, rx1 - rr, rx0 + rr}, cys[4] = {ry0 + rr, ry0 + rr, ry1 - rr, ry1 - rr};
     for (int k = 0; k < 4; k++)
         for (int a = 0; a < 24; a++) {
             float a0 = (k * 90 + 180 + a * 3.75f) * CAR_DEG, a1 = a0 + 3.75f * CAR_DEG;
-            TownRoad(cxs[k] + rr * cosf(a0), cys[k] + rr * sinf(a0), cxs[k] + rr * cosf(a1), cys[k] + rr * sinf(a1), rw);
+            CarsTownRoad(cxs[k] + rr * cosf(a0), cys[k] + rr * sinf(a0), cxs[k] + rr * cosf(a1), cys[k] + rr * sinf(a1), rw);
         }
     // Downtown grid: streets on centrelines x 32,52,72,92,112 and y 22,42,62,82
-    for (int i = 0; i < 5; i++) TownRoad(32 + 20 * i, 22, 32 + 20 * i, 82, 5);
-    for (int j = 0; j < 4; j++) TownRoad(32, 22 + 20 * j, 112, 22 + 20 * j, 5);
-    TownRoad(72, ry0, 72, 22, 5);        // north to the ring
-    TownRoad(rx0, 42, 32, 42, 5);        // west to the ring
-    TownRoad(52, 82, 52, TownCountryY(52), 5);   // south to the country road
+    for (int i = 0; i < 5; i++) CarsTownRoad(32 + 20 * i, 22, 32 + 20 * i, 82, 5);
+    for (int j = 0; j < 4; j++) CarsTownRoad(32, 22 + 20 * j, 112, 22 + 20 * j, 5);
+    CarsTownRoad(72, ry0, 72, 22, 5);        // north to the ring
+    CarsTownRoad(rx0, 42, 32, 42, 5);        // west to the ring
+    CarsTownRoad(52, 82, 52, TownCountryY(52), 5);   // south to the country road
     // Diagonal boulevard through a roundabout to the ring's east side
-    TownRoad(112, 82, 150, 44, 5);
-    TownRoad(150, 44, rx1, 44, 5);
+    CarsTownRoad(112, 82, 150, 44, 5);
+    CarsTownRoad(150, 44, rx1, 44, 5);
     TownDisc(131, 63, 9.0f, true);
     TownDisc(131, 63, 4.0f, false);      // the island
     // Winding country road, ring west side to ring east side
-    for (float x = rx0; x < rx1; x += 1.0f) TownRoad(x, TownCountryY(x), x + 1.0f, TownCountryY(x + 1.0f), 5);
+    for (float x = rx0; x < rx1; x += 1.0f) CarsTownRoad(x, TownCountryY(x), x + 1.0f, TownCountryY(x + 1.0f), 5);
     // Lots
     CarsCarve(56, 46, 67, 57);  CarsCarve(60, 44, 63, 45);     // A home, drive north onto y 42
     CarsCarve(150, 14, 170, 28); CarsCarve(158, 11, 162, 13);   // B mall, off the ring's north side
@@ -4196,6 +5424,986 @@ static bool RailingsCheck(char* why, int whyLen) {
     return true;
 }
 
+// explosions: a flat field with two lit charges. Left: a charge on open ground (power 6, 2 s)
+// with loose things round it at 3 cells (leaves, sticks, planks, a rock, a log), a mover in the
+// open, a mover behind a granite wall (sheltered), and a wooden fence 2 cells away (breaks).
+// Right: a granite hill (z1-3) with a charge drilled into its face (power 8, 4 s): blast mining.
+// Check: light things fly further than heavy ones, the open mover is knocked back, the sheltered
+// one isn't, the fence and some granite broke, the state audit is clean.
+#define BOOM_ITEMS 5
+static int boomItem[BOOM_ITEMS];
+static float boomItemX[BOOM_ITEMS], boomItemY[BOOM_ITEMS];
+static int boomOpenMover, boomShelteredMover;
+static bool boomKnocked[2];
+static float boomCalmX[2], boomCalmY[2], boomStartX[2], boomStartY[2], boomThrown[2];   // thrown: cells, when the knock ended
+static int boomGraniteBefore;
+
+static int BoomCountGranite(void) {
+    int n = 0;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 30; x <= 44; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == MAT_GRANITE) n++;
+    return n;
+}
+
+static void SetupExplosions(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;   // they stand where they are put
+    // Granite wall shielding the mover north of the field charge (2 high)
+    for (int x = 8; x <= 16; x++)
+        for (int z = 1; z <= 2; z++) { GRID(x, 12, z) = CELL_WALL; SetWallMaterial(x, 12, z, MAT_GRANITE); }
+    // Wooden fence 2 cells south of the charge
+    for (int x = 11; x <= 13; x++) { GRID(x, 18, 1) = CELL_WALL; SetWallMaterial(x, 18, 1, MAT_OAK); }
+    // Granite hill
+    for (int z = 1; z <= 3; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 30; x <= 44; x++) {
+                GRID(x, y, z) = CELL_WALL;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
+                SetWallNatural(x, y, z);
+            }
+    boomGraniteBefore = BoomCountGranite();
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+
+    // Loose things 3 cells from the charge at (12,16,1), each in its own direction
+    static const ItemType kinds[BOOM_ITEMS] = { ITEM_LEAVES, ITEM_STICKS, ITEM_PLANKS, ITEM_ROCK, ITEM_LOG };
+    static const int ix[BOOM_ITEMS] = { 9, 15, 9, 15, 12 }, iy[BOOM_ITEMS] = { 16, 16, 14, 14, 13 };
+    for (int i = 0; i < BOOM_ITEMS; i++) {
+        boomItemX[i] = (ix[i] + 0.5f) * CELL_SIZE;
+        boomItemY[i] = (iy[i] + 0.5f) * CELL_SIZE;
+        boomItem[i] = SpawnItemWithMaterial(boomItemX[i], boomItemY[i], 1.0f, kinds[i], DefaultMaterialForItemType(kinds[i]));
+    }
+    // The log at (12,13) lies against the shelter wall: the blast pushes it into the wall, it stays
+    // Movers: one in the open (3 cells east, 2 south), one behind the granite wall
+    boomOpenMover = moverCount;
+    SpawnMoverAt(14, 18, 1);
+    boomShelteredMover = moverCount;
+    SpawnMoverAt(12, 10, 1);
+    for (int k = 0; k < 2; k++) {
+        int m = k == 0 ? boomOpenMover : boomShelteredMover;
+        boomKnocked[k] = false;
+        boomThrown[k] = 0.0f;
+        boomCalmX[k] = boomStartX[k] = movers[m].x;
+        boomCalmY[k] = boomStartY[k] = movers[m].y;
+    }
+    ExplosionLightFuse(12, 16, 1, 6.0f, 2.0f);
+    ExplosionLightFuse(30, 16, 2, 8.0f, 4.0f);   // drilled into the hill's face
+    currentViewZ = 1;
+    AddMessage("Explosions: a charge in the field (2 s) and one drilled into the granite hill (4 s)", ORANGE);
+}
+
+static void ExplosionsTickStats(void) {
+    for (int k = 0; k < 2; k++) {
+        int m = k == 0 ? boomOpenMover : boomShelteredMover;
+        if (m >= moverCount || !movers[m].active) continue;
+        if (MoverKnocked(m)) {
+            if (!boomKnocked[k]) { boomStartX[k] = boomCalmX[k]; boomStartY[k] = boomCalmY[k]; }
+            boomKnocked[k] = true;
+            float dx = movers[m].x - boomStartX[k], dy = movers[m].y - boomStartY[k];
+            boomThrown[k] = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+        } else if (!boomKnocked[k]) { boomCalmX[k] = movers[m].x; boomCalmY[k] = movers[m].y; }
+    }
+}
+
+static float BoomItemMoved(int i) {
+    const Item* it = &items[boomItem[i]];
+    if (boomItem[i] < 0 || !it->active) return -1.0f;
+    float dx = it->x - boomItemX[i], dy = it->y - boomItemY[i];
+    return sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+}
+
+static float BoomMoverMoved(int k) { return boomThrown[k]; }
+
+static void ExplosionsPrintStats(void) {
+    static const char* names[BOOM_ITEMS] = { "leaves", "sticks", "planks", "rock", "log" };
+    printf("Explosions: items moved (cells):");
+    for (int i = 0; i < BOOM_ITEMS; i++) printf(" %s %.1f", names[i], BoomItemMoved(i));
+    printf("\n  open mover knocked %s (%.1f cells), sheltered mover knocked %s\n",
+           boomKnocked[0] ? "yes" : "no", BoomMoverMoved(0), boomKnocked[1] ? "yes" : "no");
+    int fence = 0;
+    for (int x = 11; x <= 13; x++) if (GRID(x, 18, 1) != CELL_WALL) fence++;
+    printf("  fence cells broken %d/3, granite cells blasted %d, fuses left %d\n",
+           fence, boomGraniteBefore - BoomCountGranite(), ExplosionFuseCount());
+}
+
+static bool ExplosionsCheck(char* why, int whyLen) {
+    if (ExplosionFuseCount() != 0) { snprintf(why, (size_t)whyLen, "a fuse never went off"); return false; }
+    float leaves = BoomItemMoved(0), rock = BoomItemMoved(3);
+    if (leaves < 0.0f || rock < 0.0f || leaves <= rock + 1.0f) {
+        snprintf(why, (size_t)whyLen, "leaves moved %.1f cells, rock %.1f (want leaves > rock + 1)", leaves, rock);
+        return false;
+    }
+    if (!boomKnocked[0] || BoomMoverMoved(0) < 0.5f) {
+        snprintf(why, (size_t)whyLen, "the open mover wasn't knocked back (%.1f cells)", BoomMoverMoved(0));
+        return false;
+    }
+    if (boomKnocked[1]) { snprintf(why, (size_t)whyLen, "the mover behind the granite wall was knocked"); return false; }
+    int fence = 0;
+    for (int x = 11; x <= 13; x++) if (GRID(x, 18, 1) != CELL_WALL) fence++;
+    if (fence == 0) { snprintf(why, (size_t)whyLen, "the wooden fence held"); return false; }
+    int blasted = boomGraniteBefore - BoomCountGranite();
+    if (blasted < 5) { snprintf(why, (size_t)whyLen, "only %d granite cells blasted (want >= 5)", blasted); return false; }
+    if (GRID(12, 12, 1) != CELL_WALL) { snprintf(why, (size_t)whyLen, "the granite shelter wall broke"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// throwing: four lanes, a mover at the west end of each with a sharp stone, throwing it at a
+// goal cell again and again (it fetches the stone where it came to rest and throws from there).
+// 0 open ground, 8 cells. 1 far (13 cells) with a granite wall 3 cells behind the goal: long
+// throws bounce off it. 2 a 2-high wall in the way: the thrower lobs over it. 3 the goal on top
+// of a 2-high granite block (z3): throwing uphill. Prints per lane how close the stones come
+// down to the goal; --check: every lane threw, lane 0 mostly lands near, nothing in a wall,
+// the state audit is clean.
+#define THROW_LANES 4
+static int throwLaneMover[THROW_LANES], throwLaneItem[THROW_LANES];
+static int throwLaneGoal[THROW_LANES][3];
+static bool throwLaneFlying[THROW_LANES];
+static int throwLaneThrows[THROW_LANES], throwLaneNear[THROW_LANES], throwLaneOnLevel[THROW_LANES];
+static float throwLaneMissSum[THROW_LANES];
+static int throwInWall;
+static const int throwLaneStartY[THROW_LANES] = { 5, 12, 19, 27 };
+
+static void ThrowWallBox(int x0, int y0, int x1, int y1, int z0, int z1) {
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); }
+}
+
+static void ThrowLaneOrder(int k) {
+    ThrowOrder(throwLaneMover[k], throwLaneItem[k], throwLaneGoal[k][0], throwLaneGoal[k][1], throwLaneGoal[k][2], NULL);
+}
+
+static void SetupThrowing(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;   // they stand where they are put
+    ThrowWallBox(20, 9, 20, 15, 1, 2);    // lane 1: the wall behind the goal
+    ThrowWallBox(8, 17, 8, 21, 1, 2);     // lane 2: the wall in the way
+    ThrowWallBox(12, 25, 16, 29, 1, 2);   // lane 3: the block (top at z3)
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    const int* laneY = throwLaneStartY;
+    static const int goal[THROW_LANES][3] = { { 12, 5, 1 }, { 17, 12, 1 }, { 13, 19, 1 }, { 14, 27, 3 } };
+    for (int k = 0; k < THROW_LANES; k++) {
+        throwLaneMover[k] = moverCount;
+        SpawnMoverAt(4, laneY[k], 1);
+        throwLaneItem[k] = SpawnItemWithMaterial(3.5f * CELL_SIZE, (laneY[k] + 0.5f) * CELL_SIZE, 1.0f,
+                                                 ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+        for (int a = 0; a < 3; a++) throwLaneGoal[k][a] = goal[k][a];
+        throwLaneFlying[k] = false;
+        throwLaneThrows[k] = throwLaneNear[k] = throwLaneOnLevel[k] = 0;
+        throwLaneMissSum[k] = 0.0f;
+        ThrowLaneOrder(k);
+    }
+    throwInWall = 0;
+    currentViewZ = 1;
+    AddMessage("Throwing: four movers throw a stone at a goal again and again (open, far + wall behind, over a wall, uphill)", GREEN);
+}
+
+static void ThrowingTickStats(void) {
+    for (int k = 0; k < THROW_LANES; k++) {
+        int it = throwLaneItem[k], m = throwLaneMover[k];
+        if (it < 0 || !items[it].active || m >= moverCount || !movers[m].active) continue;
+        if (items[it].state == ITEM_IN_FLIGHT) { throwLaneFlying[k] = true; continue; }
+        if (throwLaneFlying[k]) {   // came to rest: how close?
+            throwLaneFlying[k] = false;
+            const Item* t = &items[it];
+            float dx = t->x / CELL_SIZE - (throwLaneGoal[k][0] + 0.5f), dy = t->y / CELL_SIZE - (throwLaneGoal[k][1] + 0.5f);
+            float d = sqrtf(dx * dx + dy * dy);
+            bool onLevel = (int)t->z == throwLaneGoal[k][2];
+            throwLaneThrows[k]++;
+            throwLaneMissSum[k] += d;
+            if (onLevel) throwLaneOnLevel[k]++;
+            if (onLevel && d <= 1.5f) throwLaneNear[k]++;
+            int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+            if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) throwInWall++;
+            // Back to the throwing spot for the next one (the mover walks back to fetch it)
+            items[it].x = 3.5f * CELL_SIZE;
+            items[it].y = (throwLaneStartY[k] + 0.5f) * CELL_SIZE;
+            items[it].z = 1.0f;
+        }
+        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0) ThrowLaneOrder(k);
+    }
+}
+
+static void ThrowingPrintStats(void) {
+    static const char* names[THROW_LANES] = { "open 8", "far 13 + wall behind", "over a wall", "uphill (z3)" };
+    printf("Throwing: %ld throws, %ld bounces, %d stones ended in a wall\n", throwCount, throwBounceCount, throwInWall);
+    for (int k = 0; k < THROW_LANES; k++) {
+        int n = throwLaneThrows[k];
+        printf("  lane %d %-22s throws %3d  within 1.5 cells %3d (%3.0f%%)  on the goal's level %3d  mean miss %.1f cells\n",
+               k, names[k], n, throwLaneNear[k], n ? 100.0f * throwLaneNear[k] / n : 0.0f, throwLaneOnLevel[k],
+               n ? throwLaneMissSum[k] / n : 0.0f);
+    }
+}
+
+static bool ThrowingCheck(char* why, int whyLen) {
+    for (int k = 0; k < THROW_LANES; k++)
+        if (throwLaneThrows[k] < 3) { snprintf(why, (size_t)whyLen, "lane %d threw only %d times", k, throwLaneThrows[k]); return false; }
+    if (throwLaneNear[0] * 2 < throwLaneThrows[0]) {
+        snprintf(why, (size_t)whyLen, "open lane: only %d of %d throws within 1.5 cells", throwLaneNear[0], throwLaneThrows[0]);
+        return false;
+    }
+    if (throwInWall > 0) { snprintf(why, (size_t)whyLen, "%d stones came to rest inside a wall", throwInWall); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// throwscare: three movers each with a sharp stone and a grazer about 8 cells east of them. A
+// mover throws at the cell its grazer stands on; a hit dazes it, then it runs off east (away
+// from the thrower); a stone coming down next to it scares it right away. Headless: the stone goes back to the thrower and it throws again at wherever the
+// grazer is now (out of range: it walks closer first). Prints throws, hits and how far the grazers
+// got; --check: stones hit, hit grazers ran, nothing in a wall, the state audit is clean.
+#define SCARE_LANES 3
+static int scareMover[SCARE_LANES], scareItem[SCARE_LANES], scareAnimal[SCARE_LANES];
+static int scareThrows[SCARE_LANES], scareHits[SCARE_LANES];
+static bool scareFlying[SCARE_LANES];
+static long scareHitsSeen;
+static float scareStartX[SCARE_LANES], scareFarthest[SCARE_LANES];
+static const int scareLaneY[SCARE_LANES] = { 6, 16, 26 };
+
+static void ScareOrder(int k) {
+    const Animal* a = &animals[scareAnimal[k]];
+    if (!a->active) return;
+    ThrowOrder(scareMover[k], scareItem[k], (int)(a->x / CELL_SIZE), (int)(a->y / CELL_SIZE), (int)a->z, NULL);
+}
+
+static void SetupThrowScare(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    animalRespawnEnabled = false;
+    for (int k = 0; k < SCARE_LANES; k++) {
+        int y = scareLaneY[k];
+        scareMover[k] = moverCount;
+        SpawnMoverAt(4, y, 1);
+        scareItem[k] = SpawnItemWithMaterial(4.5f * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 1.0f,
+                                             ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+        SpawnAnimal(ANIMAL_GRAZER, 1, BEHAVIOR_SIMPLE_GRAZER);
+        scareAnimal[k] = animalCount - 1;
+        Animal* a = &animals[scareAnimal[k]];
+        a->x = 12.5f * CELL_SIZE; a->y = (y + 0.5f) * CELL_SIZE; a->z = 1.0f;
+        a->targetCellX = 12; a->targetCellY = y;
+        a->state = ANIMAL_IDLE; a->stateTimer = 0.0f;
+        scareStartX[k] = scareFarthest[k] = 12.5f;
+        scareThrows[k] = scareHits[k] = 0;
+        scareFlying[k] = false;
+        ScareOrder(k);
+    }
+    scareHitsSeen = 0;
+    throwInWall = 0;
+    currentViewZ = 1;
+    AddMessage("Throwing at animals: a hit grazer runs away from the thrower", GREEN);
+}
+
+static void ThrowScareTickStats(void) {
+    for (int k = 0; k < SCARE_LANES; k++) {
+        int it = scareItem[k], m = scareMover[k];
+        const Animal* a = &animals[scareAnimal[k]];
+        if (a->active && a->x / CELL_SIZE > scareFarthest[k]) scareFarthest[k] = a->x / CELL_SIZE;
+        if (it < 0 || !items[it].active || !movers[m].active) continue;
+        if (items[it].state == ITEM_IN_FLIGHT) { scareFlying[k] = true; continue; }
+        if (scareFlying[k]) {
+            scareFlying[k] = false;
+            scareThrows[k]++;
+            if (AnimalDazed(scareAnimal[k]) && throwHitCount > scareHitsSeen) scareHits[k]++;
+            scareHitsSeen = throwHitCount;
+            const Item* t = &items[it];
+            int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+            if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) throwInWall++;
+            items[it].x = movers[m].x; items[it].y = movers[m].y; items[it].z = movers[m].z;   // hand it back
+        }
+        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0 && !AnimalScared(scareAnimal[k]) &&
+            !AnimalDazed(scareAnimal[k])) ScareOrder(k);
+    }
+}
+
+static void ThrowScarePrintStats(void) {
+    printf("Throwing at animals: %ld throws, %ld hits, %ld near misses that scared, %d stones ended in a wall\n",
+           throwCount, throwHitCount, throwStartleCount, throwInWall);
+    for (int k = 0; k < SCARE_LANES; k++)
+        printf("  lane %d: throws %3d  hits %3d  grazer ran from x %.1f to x %.1f\n",
+               k, scareThrows[k], scareHits[k], scareStartX[k], scareFarthest[k]);
+}
+
+static bool ThrowScareCheck(char* why, int whyLen) {
+    int hit = 0;
+    for (int k = 0; k < SCARE_LANES; k++) {
+        if (scareThrows[k] < 2) { snprintf(why, (size_t)whyLen, "lane %d threw only %d times", k, scareThrows[k]); return false; }
+        if (scareHits[k] > 0) {
+            hit++;
+            if (scareFarthest[k] < scareStartX[k] + 4.0f) {
+                snprintf(why, (size_t)whyLen, "lane %d: grazer hit but only got to x %.1f", k, scareFarthest[k]);
+                return false;
+            }
+        }
+    }
+    if (hit < 2) { snprintf(why, (size_t)whyLen, "only %d of %d grazers were hit", hit, SCARE_LANES); return false; }
+    if (throwInWall > 0) { snprintf(why, (size_t)whyLen, "%d stones came to rest inside a wall", throwInWall); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// throwhunt: hunting deer that outrun people (animalFleeSpeed 4). Two lanes walled apart, a
+// hunter at the west end and a marked deer 13 cells east in each. Lane 0 has a pile of sharp
+// stones by the hunter: it fetches one, throws from a distance (a hit dazes the deer), walks
+// in and kills it, fetching the stone again after a miss. Lane 1 has no stones: it can only
+// run after the deer. Headless: each kill puts a new marked deer back in its lane. Prints
+// kills, throws and hits per lane; --check: the stone lane killed, more than the chase lane,
+// no stone stuck in a wall, the state audit is clean.
+#define HUNTLANES 2
+static int huntLaneMover[HUNTLANES], huntLaneDeer[HUNTLANES], huntLaneKills[HUNTLANES];
+static int huntLaneCarcasses[HUNTLANES];
+static long huntLaneThrows0;
+static const int huntLaneY[HUNTLANES] = { 7, 23 };
+
+static void ThrowHuntDeer(int k) {
+    SpawnAnimal(ANIMAL_GRAZER, 1, BEHAVIOR_SIMPLE_GRAZER);
+    int d = animalCount - 1;
+    for (int i = 0; i < animalCount; i++)   // SpawnAnimal reuses the first free slot
+        if (animals[i].active && !animals[i].markedForHunt && i != huntLaneDeer[1 - k]) { d = i; break; }
+    Animal* a = &animals[d];
+    // 13 cells from the hunter, at the end of the lane away from it
+    const Mover* h = huntLaneMover[k] < moverCount ? &movers[huntLaneMover[k]] : NULL;
+    float hx = h ? h->x / CELL_SIZE : 4.5f;
+    int ax = hx < gridWidth / 2 ? (int)hx + 13 : (int)hx - 13;
+    a->x = (ax + 0.5f) * CELL_SIZE; a->y = (huntLaneY[k] + 0.5f) * CELL_SIZE; a->z = 1.0f;
+    a->targetCellX = ax; a->targetCellY = huntLaneY[k];
+    a->state = ANIMAL_IDLE; a->stateTimer = 0.0f;
+    a->markedForHunt = true;
+    a->reservedByHunter = -1;
+    huntLaneDeer[k] = d;
+}
+
+static void SetupThrowHunt(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    animalRespawnEnabled = false;
+    animalFleeSpeed = 4.0f;
+    huntThrowStones = true;
+    ThrowWallBox(0, 15, gridWidth - 1, 16, 1, 2);   // keeps the lanes apart
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    huntLaneDeer[0] = huntLaneDeer[1] = -1;
+    for (int k = 0; k < HUNTLANES; k++) {
+        huntLaneMover[k] = moverCount;
+        SpawnMoverAt(4, huntLaneY[k], 1);
+        huntLaneMover[k] = moverCount - 1;
+        huntLaneKills[k] = huntLaneCarcasses[k] = 0;
+        ThrowHuntDeer(k);
+    }
+    int pile = SpawnItemWithMaterial(3.5f * CELL_SIZE, (huntLaneY[0] + 1.5f) * CELL_SIZE, 1.0f,
+                                     ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+    if (pile >= 0) items[pile].stackCount = 5;
+    huntLaneThrows0 = 0;
+    currentViewZ = 1;
+    AddMessage("Hunting fast deer: the hunter with stones (top) dazes them from a distance; the other (bottom) can only chase", GREEN);
+}
+
+static void ThrowHuntTickStats(void) {
+    for (int k = 0; k < HUNTLANES; k++) {
+        int d = huntLaneDeer[k];
+        if (d >= 0 && animals[d].active) continue;
+        huntLaneKills[k]++;
+        ThrowHuntDeer(k);
+    }
+}
+
+static void ThrowHuntPrintStats(void) {
+    printf("Hunting fast deer (flee speed %.1f): %ld throws, %ld hits (dazed), %ld near misses\n",
+           animalFleeSpeed, throwCount, throwHitCount, throwStartleCount);
+    printf("  lane 0 (stones):    kills %d\n", huntLaneKills[0]);
+    printf("  lane 1 (no stones): kills %d\n", huntLaneKills[1]);
+}
+
+static bool ThrowHuntCheck(char* why, int whyLen) {
+    if (huntLaneKills[0] < 2) { snprintf(why, (size_t)whyLen, "the stone hunter killed only %d deer", huntLaneKills[0]); return false; }
+    if (huntLaneKills[0] <= huntLaneKills[1]) {
+        snprintf(why, (size_t)whyLen, "stones didn't help: %d kills vs %d chasing", huntLaneKills[0], huntLaneKills[1]);
+        return false;
+    }
+    if (throwHitCount < 2) { snprintf(why, (size_t)whyLen, "only %ld hits", throwHitCount); return false; }
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        const Item* t = &items[i];
+        if (!t->active || t->type != ITEM_SHARP_STONE || t->state != ITEM_ON_GROUND) continue;
+        int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+        if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) {
+            snprintf(why, (size_t)whyLen, "a stone came to rest inside a wall at (%d,%d,%d)", cx, cy, cz);
+            return false;
+        }
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// collapse: structural support. Three charges on fuses take the foot out of three structures:
+// a granite pillar with an arm at the top (2 s), a granite roof slab on one pillar with a
+// mover under it (3 s), a wooden deck on one post with a log on it (4 s). Each piece creaks
+// (dust), falls collapseWarning seconds later and lands as walls; the deck breaks into planks.
+// Check: nothing left hanging, the slab came down and its mover was pushed out (not buried),
+// the deck and the log came down, the state audit is clean.
+static int collapseMover;
+static int collapseLog;
+static bool collapseKnocked;
+
+static int CollapseCount(int x0, int x1, int y0, int y1, int z, MaterialType m) {
+    int n = 0;
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == m) n++;
+    return n;
+}
+
+static void SetupCollapse(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    supportEnabled = true;
+    collapseKnocked = false;
+    // A: pillar with an arm
+    for (int z = 1; z <= 5; z++) { GRID(8, 8, z) = CELL_WALL; SetWallMaterial(8, 8, z, MAT_GRANITE); }
+    for (int x = 9; x <= 11; x++) { GRID(x, 8, 5) = CELL_WALL; SetWallMaterial(x, 8, 5, MAT_GRANITE); }
+    // B: roof slab (z3, 15 x 3) on one pillar at its east end
+    for (int z = 1; z <= 2; z++) { GRID(34, 11, z) = CELL_WALL; SetWallMaterial(34, 11, z, MAT_GRANITE); }
+    for (int y = 10; y <= 12; y++)
+        for (int x = 20; x <= 34; x++) { GRID(x, y, 3) = CELL_WALL; SetWallMaterial(x, y, 3, MAT_GRANITE); }
+    // C: wooden deck (z4) on one post, a log on it
+    for (int z = 1; z <= 3; z++) { GRID(40, 22, z) = CELL_WALL; SetWallMaterial(40, 22, z, MAT_OAK); }
+    for (int y = 20; y <= 24; y++)
+        for (int x = 40; x <= 44; x++) { SET_FLOOR(x, y, 4); SetFloorMaterial(x, y, 4, MAT_OAK); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    collapseLog = SpawnItemWithMaterial(43.5f * CELL_SIZE, 23.5f * CELL_SIZE, 4.0f, ITEM_LOG, MAT_OAK);
+    collapseMover = moverCount;
+    SpawnMoverAt(22, 11, 1);
+    ExplosionLightFuse(8, 8, 1, 5.0f, 2.0f);
+    ExplosionLightFuse(34, 11, 1, 5.0f, 3.0f);
+    ExplosionLightFuse(40, 22, 1, 4.0f, 4.0f);
+    currentViewZ = 1;
+    AddMessage("Collapse: three charges take the foot out of a pillar (2 s), a roof slab (3 s) and a deck (4 s)", ORANGE);
+}
+
+static void CollapseTickStats(void) {
+    if (collapseMover < moverCount && MoverKnocked(collapseMover)) collapseKnocked = true;
+}
+
+static void CollapsePrintStats(void) {
+    printf("Collapse: pillar+arm granite at z5 %d (was 4), roof granite at z3 %d (was 45) / at z1 %d\n",
+           CollapseCount(8, 11, 8, 8, 5, MAT_GRANITE), CollapseCount(20, 34, 10, 12, 3, MAT_GRANITE),
+           CollapseCount(20, 34, 10, 12, 1, MAT_GRANITE));
+    int deck = 0;
+    for (int y = 20; y <= 24; y++) for (int x = 40; x <= 44; x++) if (HAS_FLOOR(x, y, 4)) deck++;
+    printf("  deck floors left %d (was 25), log at z%d, roof mover knocked %s, unsupported cells %d, pending %d\n",
+           deck, collapseLog >= 0 ? (int)items[collapseLog].z : -1, collapseKnocked ? "yes" : "no",
+           SupportCountUnsupported(), SupportPendingCount());
+}
+
+static bool CollapseCheck(char* why, int whyLen) {
+    if (ExplosionFuseCount() != 0 || SupportPendingCount() != 0) {
+        snprintf(why, (size_t)whyLen, "still waiting: %d fuses, %d collapses", ExplosionFuseCount(), SupportPendingCount());
+        return false;
+    }
+    int un = SupportCountUnsupported();
+    if (un != 0) { snprintf(why, (size_t)whyLen, "%d structure cells left hanging", un); return false; }
+    if (CollapseCount(8, 11, 8, 8, 5, MAT_GRANITE) != 0) { snprintf(why, (size_t)whyLen, "the pillar's arm is still up"); return false; }
+    if (CollapseCount(20, 34, 10, 12, 3, MAT_GRANITE) != 0) { snprintf(why, (size_t)whyLen, "the roof slab is still up"); return false; }
+    if (CollapseCount(20, 33, 10, 12, 1, MAT_GRANITE) < 30) { snprintf(why, (size_t)whyLen, "the roof slab didn't land on the ground"); return false; }
+    for (int y = 20; y <= 24; y++)
+        for (int x = 40; x <= 44; x++)
+            if (HAS_FLOOR(x, y, 4)) { snprintf(why, (size_t)whyLen, "deck floor at %d,%d still up", x, y); return false; }
+    if (collapseLog < 0 || !items[collapseLog].active || (int)items[collapseLog].z >= 4) {
+        snprintf(why, (size_t)whyLen, "the log on the deck didn't come down"); return false;
+    }
+    if (!collapseKnocked) { snprintf(why, (size_t)whyLen, "the mover under the roof wasn't pushed aside"); return false; }
+    const Mover* m = &movers[collapseMover];
+    if (CellIsSolid(GRID((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z))) {
+        snprintf(why, (size_t)whyLen, "the mover under the roof is buried"); return false;
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// blasting: blast mining end to end. A granite hill (z1-3) with 4 walls on its face marked
+// for blasting; 3 gunpowder lie by the stockpile and a hearth + quern make 2 more: the hearth
+// leaches one saltpeter from compost, ash and water, the quern grinds it and the saltpeter
+// already there, each with a charcoal (Leach Saltpeter, Grind Gunpowder). 3 miners fetch a charge each,
+// set it, light it and get clear before the bang. Check: every mark blasted (the 4th charge
+// came from the chain), nobody was caught by a blast, nothing hanging, the state audit is clean.
+static int blastGraniteBefore;
+static bool blastSomeoneKnocked;
+
+static int BlastCountGranite(void) {
+    int n = 0;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 4; y <= 28; y++)
+            for (int x = 30; x <= 44; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == MAT_GRANITE) n++;
+    return n;
+}
+
+static int RecipeByName(WorkshopType type, const char* name) {
+    for (int i = 0; i < workshopDefs[type].recipeCount; i++)
+        if (strcmp(workshopDefs[type].recipes[i].name, name) == 0) return i;
+    return -1;
+}
+
+// One stack of n on (x, y): a recipe takes its count of an input from one stack
+static void SpawnPile(int x, int y, ItemType type, int n) {
+    int idx = SpawnItem((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 1.0f, type);
+    if (idx >= 0) items[idx].stackCount = n;
+}
+
+static void SetupBlasting(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    toolRequirementsEnabled = false;
+    blastSomeoneKnocked = false;
+    for (int z = 1; z <= 3; z++)
+        for (int y = 4; y <= 28; y++)
+            for (int x = 30; x <= 44; x++) {
+                GRID(x, y, z) = CELL_WALL;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
+                SetWallNatural(x, y, z);
+            }
+    blastGraniteBefore = BlastCountGranite();
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    // Saltpeter and gunpowder only: the raw things lie by their workshop, rubble stays where it lands
+    int sp = CreateStockpile(4, 4, 1, 6, 6);
+    for (int t = 0; t < ITEM_TYPE_COUNT && sp >= 0; t++)
+        SetStockpileFilter(sp, (ItemType)t, t == ITEM_SALTPETER || t == ITEM_GUNPOWDER);
+    int hearth = CreateWorkshop(14, 5, 1, WORKSHOP_HEARTH);
+    int quern = CreateWorkshop(14, 12, 1, WORKSHOP_QUERN);
+    if (hearth >= 0) AddBill(hearth, RecipeByName(WORKSHOP_HEARTH, "Leach Saltpeter"), BILL_DO_X_TIMES, 1);
+    if (quern >= 0) AddBill(quern, RecipeByName(WORKSHOP_QUERN, "Grind Gunpowder"), BILL_DO_X_TIMES, 2);
+    SpawnPile(11, 5, ITEM_COMPOST, 2);
+    SpawnPile(11, 6, ITEM_ASH, 1);
+    SpawnPile(12, 6, ITEM_WATER, 1);
+    SpawnPile(11, 12, ITEM_CHARCOAL, 2);
+    SpawnPile(5, 5, ITEM_SALTPETER, 1);    // + the one leached: two grinds
+    SpawnPile(5, 7, ITEM_GUNPOWDER, 3);
+    for (int k = 0; k < 4; k++) DesignateBlast(30, 7 + k * 6, 1);   // one more than the gunpowder ready
+    for (int i = 0; i < 3; i++) SpawnMoverAt(20, 8 + i * 6, 1);
+    currentViewZ = 1;
+    AddMessage("Blasting: 4 walls marked, 3 gunpowder ready, a hearth and a quern make 2 more", ORANGE);
+}
+
+static void BlastingTickStats(void) {
+    for (int i = 0; i < moverCount; i++) if (movers[i].active && MoverKnocked(i)) blastSomeoneKnocked = true;
+}
+
+static int BlastCountItems(ItemType t) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == t) n += items[i].stackCount;
+    return n;
+}
+
+static void BlastingPrintStats(void) {
+    EventLogDump("/private/tmp/claude-501/-Users-nikkikoole-Projects-navkit/3a468705-3aac-436e-805d-780b1cc7def2/scratchpad/blast_events.log");   // DBG
+    printf("Blasting: marks left %d, fuses %d, granite blasted %d, gunpowder left %d, saltpeter %d, compost %d, "
+           "someone caught by a blast %s, unsupported %d\n",
+           CountBlastDesignations(), ExplosionFuseCount(), blastGraniteBefore - BlastCountGranite(),
+           BlastCountItems(ITEM_GUNPOWDER), BlastCountItems(ITEM_SALTPETER), BlastCountItems(ITEM_COMPOST),
+           blastSomeoneKnocked ? "yes" : "no", SupportCountUnsupported());
+}
+
+static bool BlastingCheck(char* why, int whyLen) {
+    if (CountBlastDesignations() != 0) { snprintf(why, (size_t)whyLen, "%d walls still marked for blasting", CountBlastDesignations()); return false; }
+    if (ExplosionFuseCount() != 0) { snprintf(why, (size_t)whyLen, "a fuse is still burning"); return false; }
+    int blasted = blastGraniteBefore - BlastCountGranite();
+    if (blasted < 20) { snprintf(why, (size_t)whyLen, "only %d granite cells blasted (want >= 20 for 4 charges)", blasted); return false; }
+    if (BlastCountItems(ITEM_COMPOST) > 0) { snprintf(why, (size_t)whyLen, "the hearth didn't leach the compost"); return false; }
+    if (blastSomeoneKnocked) { snprintf(why, (size_t)whyLen, "a blaster was caught by a blast"); return false; }
+    int un = SupportCountUnsupported();
+    if (un) { snprintf(why, (size_t)whyLen, "%d structure cells hanging", un); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// powder-fire: gunpowder and fire. A grass fire is lit 5 cells west of a single gunpowder (A);
+// 3 cells east of A lies a pile of 8 (B, one charge of twice the power); far east, past a
+// firebreak (no grass) and behind a granite wall, one more (C). The fire creeps through the
+// grass to A and B (a spark, or A's blast reaching B: whichever comes first). Check: A and B
+// went off, C is still there, the state audit is clean.
+static int powderC;
+
+static int PowderCount(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_GUNPOWDER) n += items[i].stackCount;
+    return n;
+}
+
+static void SetupPowderFire(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    for (int y = 8; y <= 24; y++)
+        for (int z = 1; z <= 3; z++) { GRID(36, y, z) = CELL_WALL; SetWallMaterial(36, y, z, MAT_GRANITE); }
+    // A firebreak: no grass in x 30..34, so the fire stops there
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 30; x <= 34; x++) SetVegetation(x, y, 0, VEG_NONE);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    SpawnItem(20.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    int b = SpawnItem(23.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    if (b >= 0) items[b].stackCount = 8;
+    powderC = SpawnItem(42.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    IgniteCell(15, 16, 0);   // the grass burns in the soil cell (z0) under the walking level
+    currentViewZ = 1;
+    AddMessage("Powder fire: a grass fire creeps toward gunpowder (1, a pile of 8, and 1 behind a wall)", ORANGE);
+}
+
+static void PowderFirePrintStats(void) {
+    printf("Powder fire: explosions %d, gunpowder left %d (want 1: the one behind the wall), fuses %d, fire cells %d\n",
+           ExplosionCount(), PowderCount(), ExplosionFuseCount(), fireActiveCells);
+}
+
+static bool PowderFireCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions (want the single one and the pile)", ExplosionCount()); return false; }
+    if (PowderCount() != 1 || !items[powderC].active || items[powderC].type != ITEM_GUNPOWDER) {
+        snprintf(why, (size_t)whyLen, "gunpowder left %d: want only the one behind the wall", PowderCount()); return false;
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// flood: blasting into water. A granite hill holds a pond (3 levels deep, open to the sky) and,
+// behind a wall 2 cells thick, a dry tunnel out to the field. A charge drilled into the wall
+// (3 s) opens it: the pond runs into the tunnel and out. A second pond dug into the field gets a
+// charge over its middle (1.5 s): the water is thrown out over the bank and runs back.
+// Check: water in the tunnel, the field pond's water thrown out, state audit clean.
+static int floodSplashThrown, floodTunnelMost;
+
+static int FloodWaterIn(int x0, int x1, int y0, int y1, int z0, int z1) {
+    int n = 0;
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) n += GetWaterLevel(x, y, z);
+    return n;
+}
+
+static void SetupFlood(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    waterEnabled = true;
+    floodSplashThrown = floodTunnelMost = 0;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 6; y <= 26; y++)
+            for (int x = 16; x <= 40; x++) {
+                GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z);
+            }
+    // The pond: x 18..24, y 10..22, open to the sky, water 3 levels deep
+    for (int z = 1; z <= 4; z++)
+        for (int y = 10; y <= 22; y++)
+            for (int x = 18; x <= 24; x++) {
+                GRID(x, y, z) = CELL_AIR; SetWallMaterial(x, y, z, MAT_NONE); ClearWallNatural(x, y, z);
+                if (z <= 3) SetWaterLevel(x, y, z, WATER_MAX_LEVEL);
+            }
+    // The tunnel: x 27..40 at y 15..16, z1, out to the field (the wall x 25..26 holds the pond)
+    for (int y = 15; y <= 16; y++)
+        for (int x = 27; x <= 40; x++) { GRID(x, y, 1) = CELL_AIR; SetWallMaterial(x, y, 1, MAT_NONE); ClearWallNatural(x, y, 1); }
+    // The field pond: dug into the ground (z0), x 4..10, y 12..20, full
+    for (int y = 12; y <= 20; y++)
+        for (int x = 4; x <= 10; x++) {
+            GRID(x, y, 0) = CELL_AIR; SetWallMaterial(x, y, 0, MAT_NONE); SetVegetation(x, y, 0, VEG_NONE);
+            SetWaterLevel(x, y, 0, WATER_MAX_LEVEL);
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    ExplosionLightFuse(26, 16, 1, 5.0f, 3.0f);   // drilled into the wall's tunnel face
+    ExplosionLightFuse(7, 16, 1, 5.0f, 1.5f);    // just over the field pond
+    currentViewZ = 1;
+    AddMessage("Flood: a charge over a pond in the field (1.5 s), one drilled into the wall holding a pond back from a tunnel (3 s)", ORANGE);
+}
+
+static void FloodTickStats(void) {
+    // Before the wall goes (the hill pond's water reaches the whole field later)
+    if (ExplosionCount() == 1) {
+        int thrown = FloodWaterIn(0, 15, 0, gridHeight - 1, 0, 3) - FloodWaterIn(4, 10, 12, 20, 0, 0);
+        if (thrown > floodSplashThrown) floodSplashThrown = thrown;
+    }
+    int tunnel = FloodWaterIn(27, 40, 15, 16, 1, 1);
+    if (tunnel > floodTunnelMost) floodTunnelMost = tunnel;
+}
+
+static void FloodPrintStats(void) {
+    printf("Flood: explosions %d, water in the tunnel %d (most %d), in the hill pond %d (was %d), field pond %d (was %d), thrown out of it %d\n",
+           ExplosionCount(), FloodWaterIn(27, 40, 15, 16, 1, 1), floodTunnelMost, FloodWaterIn(18, 24, 10, 22, 1, 4),
+           7 * 13 * 3 * 7, FloodWaterIn(4, 10, 12, 20, 0, 0), 7 * 7 * 9, floodSplashThrown);
+}
+
+static bool FloodCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions", ExplosionCount()); return false; }
+    if (floodTunnelMost < 20) { snprintf(why, (size_t)whyLen, "the tunnel stayed dry"); return false; }
+    if (FloodWaterIn(18, 24, 10, 22, 1, 4) > 7 * 13 * 3 * 7 / 2) { snprintf(why, (size_t)whyLen, "the hill pond didn't run out"); return false; }
+    if (floodSplashThrown < 20) { snprintf(why, (size_t)whyLen, "the field charge threw only %d water out of its pond", floodSplashThrown); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// landslide: a flat-topped dirt hill (4 levels) with a sheer west face and a sand bank by it;
+// a charge on top near the edge (2 s) shakes the face loose: dirt slides off the edge, lands at
+// the foot and sets off a bit more. A mover stands at the foot (pushed aside when dirt lands on
+// him), one on top. The granite hill further on has the same face and never slides.
+// Check: some dirt slid (not the whole face), nobody inside a wall, granite face whole, audit clean.
+static int SlideWallsAt(int x0, int x1, int y0, int y1, int z0, int z1, MaterialType m) {
+    int n = 0;
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == m) n++;
+    return n;
+}
+
+static void SetupLandslide(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    landslidesEnabled = true;
+    supportEnabled = true;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 4; y <= 27; y++) {
+            for (int x = 16; x <= 28; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_DIRT); SetWallNatural(x, y, z); }
+            for (int x = 36; x <= 44; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z); }
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    SpawnMoverAt(15, 16, 1);   // at the foot of the face
+    SpawnMoverAt(22, 20, 5);   // on top
+    ExplosionLightFuse(18, 16, 5, 4.0f, 2.0f);   // on top, 2 cells from the edge
+    ExplosionLightFuse(38, 16, 5, 4.0f, 2.5f);   // the same on the granite hill
+    currentViewZ = 2;
+    AddMessage("Landslide: a charge on a dirt hill near its edge (2 s), the same on a granite hill (2.5 s)", ORANGE);
+}
+
+static void LandslidePrintStats(void) {
+    printf("Landslide: explosions %d, slides %d (pending %d), dirt beyond the face %d, granite beyond its face %d\n",
+           ExplosionCount(), LandslideCount(), LandslidePendingCount(),
+           SlideWallsAt(0, 15, 0, gridHeight - 1, 1, 4, MAT_DIRT), SlideWallsAt(30, 35, 0, gridHeight - 1, 1, 4, MAT_GRANITE));
+}
+
+static bool LandslideCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions", ExplosionCount()); return false; }
+    if (SlideWallsAt(0, 15, 0, gridHeight - 1, 1, 4, MAT_DIRT) < 3) { snprintf(why, (size_t)whyLen, "hardly any dirt slid off the face"); return false; }
+    if (LandslideCount() > 150) { snprintf(why, (size_t)whyLen, "%d slides: the whole face came down", LandslideCount()); return false; }
+    if (SlideWallsAt(30, 35, 0, gridHeight - 1, 1, 4, MAT_GRANITE) > 0) { snprintf(why, (size_t)whyLen, "granite slid"); return false; }
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        int mx = (int)(movers[i].x / CELL_SIZE), my = (int)(movers[i].y / CELL_SIZE), mz = (int)movers[i].z;
+        if (CellIsSolid(GRID(mx, my, mz))) { snprintf(why, (size_t)whyLen, "mover %d is inside a wall", i); return false; }
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// flashfire: petrol vapour. A leak on bare ground (8 s) by a pit dug into the field: the fumes
+// spread over the ground, run into the pit and pool there. At 10 s a spark at the far edge of the
+// cloud (someone lights a pipe): the flame runs back through the whole cloud and down into the
+// pit (a mover stands in it, one by the leak: both pushed), leaving the ground hot and a little
+// smoke. Check: the cloud reached the pit, it burned through (more than 40 cells), nothing is
+// left, the movers were pushed, audit clean.
+static int flashMostCells, flashPitMost;
+static bool flashKnocked[2];
+static int flashMover[2];
+
+static void SetupFlashFire(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    vapourEnabled = true;
+    flashMostCells = flashPitMost = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) SetVegetation(x, y, 0, VEG_NONE);   // bare: no grass fire
+    // The pit: x 16..23, y 12..20, one level into the ground
+    for (int y = 12; y <= 20; y++)
+        for (int x = 16; x <= 23; x++) { GRID(x, y, 0) = CELL_AIR; SetWallMaterial(x, y, 0, MAT_NONE); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int k = 0; k < 2; k++) { flashKnocked[k] = false; flashMover[k] = moverCount; SpawnMoverAt(k == 0 ? 18 : 12, k == 0 ? 16 : 18, k == 0 ? 0 : 1); }
+    VapourLeak(13, 16, 1, 20.0f, 8.0f);
+    VapourSpark(7, 16, 1, 10.0f);   // someone lights a pipe at the edge of the cloud
+    currentViewZ = 1;
+    AddMessage("Flash fire: petrol fumes leak by a pit (8 s); a spark at the cloud's edge at 10 s", ORANGE);
+}
+
+static void FlashFireTickStats(void) {
+    int n = VapourCellCount();
+    if (n > flashMostCells) flashMostCells = n;
+    int pit = 0;
+    for (int y = 12; y <= 20; y++) for (int x = 16; x <= 23; x++) pit += GetVapourLevel(x, y, 0);
+    if (pit > flashPitMost) flashPitMost = pit;
+    for (int k = 0; k < 2; k++) if (MoverKnocked(flashMover[k])) flashKnocked[k] = true;
+}
+
+static void FlashFirePrintStats(void) {
+    printf("Flash fire: vapour cells %d (most %d), in the pit most %d, burned %d, burning %d, leaks %d, movers pushed %d %d\n",
+           VapourCellCount(), flashMostCells, flashPitMost, VapourBurnedCells(), VapourBurningCount(), VapourLeakCount(),
+           flashKnocked[0], flashKnocked[1]);
+}
+
+static bool FlashFireCheck(char* why, int whyLen) {
+    if (flashPitMost < 20) { snprintf(why, (size_t)whyLen, "the fumes didn't pool in the pit (%d)", flashPitMost); return false; }
+    if (VapourBurnedCells() < 40) { snprintf(why, (size_t)whyLen, "only %d cells burned", VapourBurnedCells()); return false; }
+    if (VapourCellCount() > 0 || VapourBurningCount() > 0) { snprintf(why, (size_t)whyLen, "vapour left: %d cells", VapourCellCount()); return false; }
+    if (!flashKnocked[0] || !flashKnocked[1]) { snprintf(why, (size_t)whyLen, "a mover in the cloud wasn't pushed"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// gasroom: fuel vapour in a closed room. A brick house (8 x 6 inside, a roof of planks over it)
+// with a window in its east wall and a door in its south wall; fumes leak inside for 6 s, a
+// spark at 9 s. The flame runs through the room and the pressure blows the window out with a jet
+// of flame; a mover outside the window is knocked over. Brick (3) holds. An oak shed next door,
+// no window, filled thick (8 s of twice the leak), a spark at 11 s: its door blows out, knocking
+// over the mover outside it. Check: the window and the shed's door gone, the brick walls
+// standing, both movers knocked, audit clean.
+static int gasMover[2];
+static bool gasKnocked[2];
+
+static void GasHouse(int x0, int y0, MaterialType wall, bool window) {
+    for (int y = y0; y <= y0 + 7; y++)
+        for (int x = x0; x <= x0 + 9; x++) {
+            bool edge = x == x0 || x == x0 + 9 || y == y0 || y == y0 + 7;
+            if (edge) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, wall); }
+            SET_FLOOR(x, y, 2); SetFloorMaterial(x, y, 2, MAT_OAK);   // the roof
+        }
+    if (window) { GRID(x0 + 9, y0 + 3, 1) = CELL_WINDOW; SetWallMaterial(x0 + 9, y0 + 3, 1, MAT_GLASS); }
+    GRID(x0 + 4, y0 + 7, 1) = CELL_DOOR; SetWallMaterial(x0 + 4, y0 + 7, 1, MAT_OAK);
+}
+
+static void SetupGasRoom(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    vapourEnabled = true;
+    supportEnabled = false;   // the roofs are loose planks laid over the walls
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) SetVegetation(x, y, 0, VEG_NONE);
+    GasHouse(8, 10, MAT_BRICK, true);
+    GasHouse(26, 10, MAT_OAK, false);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    InvalidateRooms();
+    for (int k = 0; k < 2; k++) { gasKnocked[k] = false; gasMover[k] = moverCount; SpawnMoverAt(k == 0 ? 19 : 30, k == 0 ? 13 : 19, 1); }
+    VapourLeak(10, 12, 1, 20.0f, 6.0f);
+    VapourSpark(15, 15, 1, 9.0f);
+    VapourLeak(28, 12, 1, 40.0f, 8.0f);   // the shed fills up thick
+    VapourSpark(33, 15, 1, 11.0f);
+    currentViewZ = 1;
+    AddMessage("Gas room: fumes leak inside a brick house with a window and a closed oak shed; sparks at 9 s and 11 s", ORANGE);
+}
+
+static void GasRoomTickStats(void) {
+    for (int k = 0; k < 2; k++) if (MoverKnocked(gasMover[k])) gasKnocked[k] = true;
+}
+
+static int GasWallsStanding(int x0, int y0, MaterialType m) {
+    int n = 0;
+    for (int y = y0; y <= y0 + 7; y++)
+        for (int x = x0; x <= x0 + 9; x++)
+            if (GRID(x, y, 1) == CELL_WALL && GetWallMaterial(x, y, 1) == m) n++;
+    return n;
+}
+
+static void GasRoomPrintStats(void) {
+    printf("Gas room: vents %d, burned %d, brick walls %d (of 30), oak walls %d (of 31), window %s, doors %s/%s, movers knocked %d %d\n",
+           VapourVentCount(), VapourBurnedCells(), GasWallsStanding(8, 10, MAT_BRICK), GasWallsStanding(26, 10, MAT_OAK),
+           GRID(17, 13, 1) == CELL_WINDOW ? "whole" : "gone", GRID(12, 17, 1) == CELL_DOOR ? "whole" : "gone",
+           GRID(30, 17, 1) == CELL_DOOR ? "whole" : "gone", gasKnocked[0], gasKnocked[1]);
+}
+
+static bool GasRoomCheck(char* why, int whyLen) {
+    if (GRID(17, 13, 1) == CELL_WINDOW) { snprintf(why, (size_t)whyLen, "the brick house's window held"); return false; }
+    if (GasWallsStanding(8, 10, MAT_BRICK) < 30) { snprintf(why, (size_t)whyLen, "a brick wall blew out"); return false; }
+    if (GRID(30, 17, 1) == CELL_DOOR) { snprintf(why, (size_t)whyLen, "the shed's door held"); return false; }
+    if (!gasKnocked[0] || !gasKnocked[1]) { snprintf(why, (size_t)whyLen, "a mover outside a blown-out opening wasn't knocked over"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
+// firedamp: a tunnel 2 high into a hill of slate (the coal measures), its face at x 32. A pocket
+// of firedamp the last dig let out (x 20-27); lighter than air, it rises and creeps along the
+// tunnel's roof. Two miners in the tunnel, a third at the mouth. A charge against the face has a
+// 10 s fuse: when the gas reaches the sparks it lights and the flame races back along the roof
+// over the miners' heads, knocking them over; then the charge goes off (blasting slate can let
+// out more).
+// Check: the gas rose (more under the roof than on the floor before it was lit), the fuse lit it
+// before the charge went off, it burned (15+ cells), both miners in the tunnel knocked, audit clean.
+static int dampMostRoof, dampMostFloor;
+static bool dampLitByFuse;
+static int dampMover[3];
+static bool dampKnocked[3];
+
+static void SetupFiredamp(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    vapourEnabled = true;
+    dampMostRoof = dampMostFloor = 0;
+    dampLitByFuse = false;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 8; y <= 24; y++)
+            for (int x = 14; x <= 40; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_SLATE); SetWallNatural(x, y, z); }
+    for (int z = 1; z <= 2; z++)
+        for (int x = 14; x <= 32; x++) { GRID(x, 16, z) = CELL_AIR; SetWallMaterial(x, 16, z, MAT_NONE); ClearWallNatural(x, 16, z); }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    for (int x = 20; x <= 27; x++) AddVapourKind(x, 16, 1, 7, VAPOUR_FIREDAMP);   // the pocket the last dig let out
+    static const int mx[3] = { 26, 20, 12 };
+    for (int k = 0; k < 3; k++) { dampKnocked[k] = false; dampMover[k] = moverCount; SpawnMoverAt(mx[k], 16, 1); }
+    ExplosionLightFuseKind(32, 16, 1, 5.0f, 10.0f, BLAST_GUNPOWDER);   // a charge against the face, lit
+    currentViewZ = 2;
+    AddMessage("Firedamp: gas from a slate seam gathers under a tunnel's roof; a charge's fuse at the face", ORANGE);
+}
+
+static void FiredampTickStats(void) {
+    if (VapourBurnedCells() == 0) {
+        int roof = 0, floor = 0;
+        for (int x = 14; x <= 32; x++) { roof += GetFiredampLevel(x, 16, 2); floor += GetFiredampLevel(x, 16, 1); }
+        if (roof > dampMostRoof) { dampMostRoof = roof; dampMostFloor = floor; }
+    }
+    for (int k = 0; k < 3; k++) if (MoverKnocked(dampMover[k])) dampKnocked[k] = true;
+    if (VapourBurnedCells() > 0 && ExplosionCount() == 0) dampLitByFuse = true;
+}
+
+static void FiredampPrintStats(void) {
+    int left = 0;
+    for (int z = 1; z <= 4; z++) for (int x = 0; x < gridWidth; x++) left += GetFiredampLevel(x, 16, z);
+    printf("Firedamp: under the roof %d (floor %d then), burned %d, left %d, pockets from digging %d, explosions %d, knocked %d %d %d\n",
+           dampMostRoof, dampMostFloor, VapourBurnedCells(), left, VapourFiredampPockets(), ExplosionCount(),
+           dampKnocked[0], dampKnocked[1], dampKnocked[2]);
+}
+
+static bool FiredampCheck(char* why, int whyLen) {
+    if (dampMostRoof <= dampMostFloor) { snprintf(why, (size_t)whyLen, "the gas didn't rise to the roof (%d vs %d)", dampMostRoof, dampMostFloor); return false; }
+    if (VapourBurnedCells() < 15) { snprintf(why, (size_t)whyLen, "only %d cells burned", VapourBurnedCells()); return false; }
+    if (!dampLitByFuse) { snprintf(why, (size_t)whyLen, "the gas didn't catch from the fuse (only from the blast)"); return false; }
+    if (!dampKnocked[0] || !dampKnocked[1]) { snprintf(why, (size_t)whyLen, "a miner in the tunnel wasn't knocked"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4209,6 +6417,40 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"pack-hunt",  "4 hunters on 1 runner in an arena with pillars and railings: drive, cut off, flank (setting packTactics)",
+                   NULL,        SetupPackHunt, NULL, PackHuntPrintStats, PackHuntCheck, 0, 0},
+    {"personal-space", "16 on a lawn, 8 old friends and 8 strangers: how close they stand and pass (setting personalSpace)",
+                   NULL,        SetupPersonalSpace, PersonalSpaceTickStats, PersonalSpacePrintStats, NULL, 0, 0},
+    {"cover",      "Hide and seek with only low cover (railings, bushes, tables): hiders crouch behind it (setting cover)",
+                   NULL,        SetupCover,    CoverTickStats, CoverPrintStats, HideAndSeekCheck, 0, 0},
+    {"hunt-cover", "The pack hunt in an overgrown garden: the runner breaks sight and ducks behind cover, the pack searches (setting packStealth)",
+                   NULL,        SetupHuntCover, HuntCoverTickStats, HuntCoverPrintStats, PackHuntCheck, 0, 0},
+    {"play-hungry", "Tag with hunger on: players leave the game to eat, the game goes on without them (playing is a free-time state)",
+                   NULL,        SetupPlayHungry, PlayHungryTickStats, PlayHungryPrintStats, PlayHungryCheck, 0, 0},
+    {"playtime",   "Six friends on a lawn start games by themselves (tag, hide and seek, follow the leader), leave to eat, play again (setting autoGames)",
+                   NULL,        SetupPlaytime, PlaytimeTickStats, PlaytimePrintStats, PlaytimeCheck, 0, 0},
+    {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
+                   NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
+    {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",
+                   NULL,        SetupCampfire, CampfireTickStats, CampfirePrintStats, CampfireCheck, 0, 0},
+    {"mingle",     "20 guests, two circles of friends and strangers: talks form, break up, people move between groups (setting mingle)",
+                   NULL,        SetupMingle,   MingleTickStats, MinglePrintStats, NULL, 0, 0},
+    {"hide-and-seek", "A yard with walls, huts and pillars, 8 players: hiding out of sight and seeking (setting hideSmart)",
+                   NULL,        SetupHideAndSeek, HideAndSeekTickStats, HideAndSeekPrintStats, HideAndSeekCheck, 0, 0},
+    {"tag",        "Tag on a plaza with pillars, 8 players: chasing and fleeing (setting fleeSmart)",
+                   NULL,        SetupTag,      TagTickStats, TagPrintStats, TagCheck, 0, 0},
+    {"garden-party", "A lawn, a campfire, tables, a buffet, 14 guests who know each other: eating, talking, gathering round the fire",
+                   NULL,        SetupGardenParty, GardenPartyTickStats, GardenPartyPrintStats, GardenPartyCheck, 0, 0},
+    {"social-ties", "12 movers: two groups of friends, strangers, two enemy pairs: who stays near whom (socialSeek, socialAvoid)",
+                   NULL,        SetupSocialTies, SocialTiesTickStats, SocialTiesPrintStats, NULL, 0, 0},
+    {"gathering",  "A performer on a plaza, 30 movers: onlookers stand in rings round it (settings watch*)",
+                   NULL,        SetupGathering, GatheringTickStats, GatheringPrintStats, GatheringCheck, 0, 0},
+    {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",
+                   NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
+    {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
+                   NULL,        SetupHallway,  HallwayTickStats, HallwayPrintStats, NULL, 0, 0},
+    {"social",     "10 movers wandering a plaza with two wall pieces: they notice each other (setting notice)",
+                   NULL,        SetupSocial,   SocialTickStats, SocialPrintStats, SocialCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",
                    "MoodTest",  SetupMood,     NULL, NULL, NULL, 0, 0},
     {"crafting",   "Mine walls -> stonecutter -> stockpiles -> wall blueprint, 4 movers",
@@ -4265,6 +6507,30 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"powder-fire", "Gunpowder and fire: a grass fire creeps to a gunpowder and a pile of 8 (twice the bang); one more past a firebreak and a granite wall stays",
+                   NULL,        SetupPowderFire, NULL, PowderFirePrintStats, PowderFireCheck, 48, 32},
+    {"blasting",   "Blast mining: 4 walls of a granite hill marked; 3 gunpowder ready, a hearth + quern make 2 more (saltpeter from compost, ash, water; ground with charcoal); 3 miners set, light and run",
+                   NULL,        SetupBlasting, BlastingTickStats, BlastingPrintStats, BlastingCheck, 48, 32},
+    {"collapse",   "Structural support: charges take the foot out of a granite pillar with an arm, a roof slab over a mover and a wooden deck with a log on it; each creaks, falls and lands as walls",
+                   NULL,        SetupCollapse, CollapseTickStats, CollapsePrintStats, CollapseCheck, 48, 32},
+    {"flood",      "Blasting into water: a charge opens the wall between a pond in a granite hill and a dry tunnel (the pond runs out through it); one over a field pond throws the water out over the bank",
+                   NULL,        SetupFlood, FloodTickStats, FloodPrintStats, FloodCheck, 48, 32},
+    {"landslide",  "Landslides: a charge near the sheer edge of a dirt hill shakes it loose (dirt slides off and lands at its foot, by a mover); the same on a granite hill holds",
+                   NULL,        SetupLandslide, NULL, LandslidePrintStats, LandslideCheck, 48, 32},
+    {"flashfire",  "Fuel vapour: petrol fumes leak by a pit, run into it and spread over the ground; a spark at the cloud's edge at 10 s and the flame runs through the whole cloud and into the pit (a flash fire), pushing the movers in it",
+                   NULL,        SetupFlashFire, FlashFireTickStats, FlashFirePrintStats, FlashFireCheck, 48, 32},
+    {"gasroom",    "Fuel vapour in closed rooms: fumes leak inside a brick house with a window and an oak shed; lit, the pressure blows the house's window and the shed's door out with jets of flame, knocking over the movers outside (brick holds)",
+                   NULL,        SetupGasRoom, GasRoomTickStats, GasRoomPrintStats, GasRoomCheck, 48, 32},
+    {"firedamp",   "Firedamp: gas let out of a slate seam rises along a tunnel's roof; the fuse of a charge at the face lights it and the flame races back overhead, knocking the miners over",
+                   NULL,        SetupFiredamp, FiredampTickStats, FiredampPrintStats, FiredampCheck, 48, 32},
+    {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
+                   NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
+    {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",
+                   NULL,        SetupThrowing, ThrowingTickStats, ThrowingPrintStats, ThrowingCheck, 40, 32},
+    {"throwscare", "Three movers throw stones at grazers: a hit dazes, then it runs from the thrower; a near miss scares",
+                   NULL,        SetupThrowScare, ThrowScareTickStats, ThrowScarePrintStats, ThrowScareCheck, 40, 32},
+    {"throwhunt",  "Hunting deer that outrun people: a hunter with stones dazes them from a distance, one without can only chase",
+                   NULL,        SetupThrowHunt, ThrowHuntTickStats, ThrowHuntPrintStats, ThrowHuntCheck, 40, 32},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",
@@ -4287,6 +6553,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupCarsTown, NULL, CarsScenarioPrintStats, CarsTownCheck, 192, 128},
     {"cars",       "Cars experiment: a 2x2 car (whatever carWidth says) with real steering tours a town from its home lot: 4/3/2-wide streets, sharp and cut corners, a dead end",
                    NULL,        SetupCars, NULL, CarsScenarioPrintStats, CarsCheck, 64, 40},
+    {"bottlerun",  "City 1999 bottle run on orders: a person with a backpack searches three bins for cans and cashes them in at the bottle machine (E / Shift+E queued), then buys a snack with the coins; two bins are yours",
+                   NULL,        SetupBottleRun, NULL, BottleRunPrintStats, BottleRunCheck, 40, 24},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},
     {"railings",   "Every railing tile: a pen with a gate, a window frame (T-junctions, cross), a lone post, one off a wall, a zigzag; 6 wandering movers",

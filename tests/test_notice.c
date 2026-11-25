@@ -1,0 +1,1717 @@
+// test_notice.c - movers notice each other (src/entities/notice.c)
+#include "../vendor/c89spec.h"
+#include "../vendor/raylib.h"
+static bool test_verbose = false;
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+#include "../src/game_state.h"
+#include "../src/world/grid.h"
+#include "../src/entities/mover.h"
+#include "../src/entities/notice.h"
+#include "../src/entities/talk.h"
+#include "../src/entities/relations.h"
+#include "../src/entities/chase.h"
+#include "../src/entities/social.h"
+#include "../src/simulation/mood.h"
+#include "../src/entities/action_queue.h"
+#include "../src/entities/furniture.h"
+#include "../src/simulation/fire.h"
+#include "../src/entities/workshops.h"
+#include "../src/core/time.h"
+#include "../src/simulation/needs.h"
+#include "../src/simulation/balance.h"
+#include "../src/entities/jobs.h"
+#include "test_helpers.h"
+#include <string.h>
+#include <math.h>
+
+#define W 24
+#define H 12
+
+static void SetupWorld(void) {
+    InitTestGrid(W, H);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            GRID(x, y, 0) = CELL_WALL;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
+            GRID(x, y, 1) = CELL_AIR;
+            GRID(x, y, 2) = CELL_AIR;
+            SET_FLOOR(x, y, 1);
+            SET_FLOOR(x, y, 2);
+        }
+    ClearMovers();
+    InitMoverSpatialGrid(W * CELL_SIZE, H * CELL_SIZE);
+    noticeEnabled = true;
+    noticeRadius = 6.0f;
+    noticeEveryTicks = 1;
+    gameTime = 0.0;
+    personalSpace = false;   // the distances below are the plain ones; describe(personal_space) turns it on
+}
+
+static int AddMover(int cx, int cy, int cz) {
+    int idx = moverCount++;
+    Point goal = {cx, cy, cz};
+    InitMover(&movers[idx], cx * CELL_SIZE + CELL_SIZE * 0.5f, cy * CELL_SIZE + CELL_SIZE * 0.5f,
+              (float)cz, goal, 100.0f);
+    return idx;
+}
+
+static bool Notices(int i, int j) {
+    for (int k = 0; k < moverNotice[i].count; k++) if (moverNotice[i].e[k].mover == j) return true;
+    return false;
+}
+
+static void Look(void) {
+    BuildMoverSpatialGrid();
+    NoticeTick();
+}
+
+// Give mover i a one-waypoint path toward cell (gx, gy)
+static void WalkToward(int i, int gx, int gy) {
+    moverPaths[i][0] = (Point){gx, gy, (int)movers[i].z};
+    movers[i].pathLength = 1;
+    movers[i].pathIndex = 0;
+}
+
+static void Pass(int i, float hx, float hy, float* sx, float* sy, bool* any) {
+    float scale;
+    *any = NoticePassSteer(i, hx, hy, sx, sy, &scale);
+}
+
+describe(notice_basics) {
+    it("two movers in view notice each other") {
+        SetupWorld();
+        int a = AddMover(5, 5, 1), b = AddMover(8, 5, 1);
+        Look();
+        expect(Notices(a, b));
+        expect(Notices(b, a));
+        expect(NoticeTop(a) == b);
+    }
+
+    it("a wall between them hides them") {
+        SetupWorld();
+        for (int y = 0; y < H; y++) GRID(7, y, 1) = CELL_WALL;
+        int a = AddMover(5, 5, 1), b = AddMover(9, 5, 1);
+        Look();
+        expect(!Notices(a, b));
+        expect(NoticeTop(a) == -1);
+    }
+
+    it("another level is not noticed (v1)") {
+        SetupWorld();
+        int a = AddMover(5, 5, 1), b = AddMover(6, 5, 2);
+        Look();
+        expect(!Notices(a, b));
+    }
+
+    it("beyond the radius is not noticed") {
+        SetupWorld();
+        int a = AddMover(2, 5, 1), b = AddMover(12, 5, 1);
+        Look();
+        expect(!Notices(a, b));
+    }
+
+    it("keeps at most NOTICE_MAX, the closest first") {
+        SetupWorld();
+        int a = AddMover(10, 5, 1);
+        int near = AddMover(11, 5, 1);
+        for (int k = 0; k < 6; k++) AddMover(13 + (k % 3), 4 + (k / 3) * 2, 1);
+        Look();
+        expect(moverNotice[a].count == NOTICE_MAX);
+        expect(NoticeTop(a) == near);
+    }
+
+    it("attention sticks: an equal newcomer does not take the top spot") {
+        SetupWorld();
+        int a = AddMover(10, 5, 1), b = AddMover(13, 5, 1);
+        Look();
+        expect(NoticeTop(a) == b);
+        int c = AddMover(7, 5, 1);   // same distance on the other side
+        Look();
+        expect(NoticeTop(a) == b);
+        expect(Notices(a, c));
+    }
+
+    it("keeps the time it first noticed someone") {
+        SetupWorld();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        Look();
+        gameTime = 10.0;
+        Look();
+        expect(moverNotice[a].e[0].mover == b);
+        expect(moverNotice[a].e[0].since == 0.0);
+    }
+
+    it("noticing off: nobody notices") {
+        SetupWorld();
+        noticeEnabled = false;
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        (void)b;
+        Look();
+        expect(moverNotice[a].count == 0);
+        expect(NoticeTop(a) == -1);
+        noticeEnabled = true;
+    }
+
+    it("staggered: each mover looks once per noticeEveryTicks") {
+        SetupWorld();
+        noticeEveryTicks = 4;
+        for (int k = 0; k < 8; k++) AddMover(4 + k, 5, 1);
+        BuildMoverSpatialGrid();
+        NoticeTick();
+        int looked = 0;
+        for (int i = 0; i < moverCount; i++) if (moverNotice[i].count > 0) looked++;
+        expect(looked == 2);
+        for (int t = 0; t < 3; t++) NoticeTick();
+        looked = 0;
+        for (int i = 0; i < moverCount; i++) if (moverNotice[i].count > 0) looked++;
+        expect(looked == 8);
+    }
+}
+
+describe(polite_passing) {
+    it("head-on and dead ahead: both drift to their own right, opposite sides") {
+        SetupWorld();
+        politePassing = true;
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);   // 3 cells apart, inside passRadius
+        WalkToward(a, 20, 5);   // east
+        WalkToward(b, 0, 5);    // west
+        Look();
+        float ax, ay, bx, by; bool ga, gb;
+        Pass(a, 1, 0, &ax, &ay, &ga);
+        Pass(b, -1, 0, &bx, &by, &gb);
+        expect(ga && gb);
+        expect(ay > 0.0f);      // east-walker's right is south (y down)
+        expect(by < 0.0f);      // west-walker's right is north
+    }
+
+    it("already offset: each moves away from the other's side") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].y -= CELL_SIZE * 0.5f;   // b a bit north = on a's left
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 4);
+        Look();
+        float ax, ay, bx, by; bool ga, gb;
+        Pass(a, 1, 0, &ax, &ay, &ga);
+        Pass(b, -1, 0, &bx, &by, &gb);
+        expect(ga && gb);
+        expect(ay > 0.0f);      // a goes south, away from b
+        expect(by < 0.0f);      // b goes north, away from a
+    }
+
+    it("same direction, behind, standing or far to the side: no giving way") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), same = AddMover(7, 5, 1), stand = AddMover(6, 6, 1),
+            behind = AddMover(2, 5, 1), wide = AddMover(7, 8, 1);
+        WalkToward(a, 20, 5);
+        WalkToward(same, 20, 5);
+        WalkToward(behind, 0, 5);
+        WalkToward(wide, 0, 8);
+        (void)stand;
+        Look();
+        float ax, ay; bool g;
+        Pass(a, 1, 0, &ax, &ay, &g);
+        expect(!g);
+    }
+
+    it("off: nothing") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 5);
+        Look();
+        politePassing = false;
+        float ax, ay; bool g;
+        Pass(a, 1, 0, &ax, &ay, &g);
+        expect(!g);
+        politePassing = true;
+    }
+}
+
+static void TalkSetup(void) {
+    SetupWorld();
+    ClearTalks();
+    dayLength = 60.0f;
+    talkEnabled = true;
+    talkChance = 1.0f;
+    talkStartRadius = 3.0f;
+    talkMinSeconds = 5.0f;
+    talkMaxSeconds = 5.0f;
+    talkCooldown = 30.0f;
+}
+
+static void RunTalk(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        TalkTick(TICK_DT);
+        for (int i = 0; i < moverCount; i++) TalkMoverTick(i, TICK_DT);
+    }
+}
+
+static float Dist(int a, int b) {
+    float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+describe(stop_to_talk) {
+    it("two idle movers close by start talking, stop walking and take spots 1.5 cells apart") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        WalkToward(a, 20, 5);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0 && MoverTalk(a) == MoverTalk(b));
+        expect(movers[a].pathIndex < 0 && movers[a].pathLength == 0);
+        expect(TalkPartner(a) == b && TalkPartner(b) == a);
+        RunTalk(2.0f);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 2.0f);
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));   // one speaks, one listens
+    }
+
+    it("ends after its time, then a cooldown keeps them from starting again at once") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0);
+        RunTalk(5.0f);
+        expect(MoverTalk(a) < 0 && MoverTalk(b) < 0);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);
+        expect(talkStartedCount == 1);
+    }
+
+    it("a job ends it for that mover, and a talk of one ends") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0);
+        movers[b].currentJobId = 0;
+        RunTalk(0.1f);
+        expect(MoverTalk(b) < 0);
+        expect(MoverTalk(a) < 0);
+        movers[b].currentJobId = -1;
+    }
+
+    it("a third joins: the three spread out round the middle, ~1.5 cells apart") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        TalkStart(a, b);
+        int c = AddMover(6, 7, 1);
+        Look();
+        RunTalk(0.5f);
+        int t = MoverTalk(a);
+        expect(t >= 0 && MoverTalk(c) == t);
+        expect(talks[t].count == 3);
+        RunTalk(3.0f);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(fabsf(Dist(b, c) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(fabsf(Dist(a, c) - 1.5f * CELL_SIZE) < 3.0f);
+    }
+
+    it("one leaves a group of three: the other two close up to a pair") {
+        TalkSetup();
+        talkMinSeconds = talkMaxSeconds = 60.0f;   // long enough to outlast the test
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1), c = AddMover(6, 7, 1);
+        TalkStart(a, b);
+        TalkJoin(MoverTalk(a), c);
+        RunTalk(3.0f);
+        movers[c].currentJobId = 0;
+        RunTalk(3.0f);
+        expect(MoverTalk(c) < 0);
+        expect(MoverTalk(a) >= 0 && talks[MoverTalk(a)].count == 2);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 3.0f);
+        movers[c].currentJobId = -1;
+    }
+
+    it("a walker heading at a conversation steers round it; walking away or off: nothing") {
+        TalkSetup();
+        talkGiveRoom = true;
+        int a = AddMover(10, 4, 1), b = AddMover(10, 6, 1), w = AddMover(7, 5, 1);   // 3 cells off
+        TalkStart(a, b);
+        float sx, sy;
+        expect(TalkGiveRoomSteer(w, 1, 0, &sx, &sy));
+        expect(sy > 0.0f);                              // dead ahead: goes round on its right (south)
+        expect(!TalkGiveRoomSteer(w, -1, 0, &sx, &sy)); // walking away
+        expect(!TalkGiveRoomSteer(a, 0, 1, &sx, &sy));  // a member doesn't steer round its own talk
+        talkGiveRoom = false;
+        expect(!TalkGiveRoomSteer(w, 1, 0, &sx, &sy));
+        talkGiveRoom = true;
+    }
+
+    it("busy, too far or switched off: no talk") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1), far = AddMover(5, 10, 1);
+        movers[b].currentJobId = 0;
+        (void)far;
+        Look();
+        RunTalk(1.0f);
+        expect(MoverTalk(a) < 0);
+        movers[b].currentJobId = -1;
+        talkEnabled = false;
+        Look();
+        RunTalk(1.0f);
+        expect(MoverTalk(a) < 0);
+        talkEnabled = true;
+    }
+}
+
+describe(gatherings) {
+    it("an idle mover in range comes to watch: a spot on the first ring, on its own side, facing in") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchRadius = 6.0f;
+        watchMinSeconds = watchMaxSeconds = 20.0f;
+        int p = AddMover(12, 6, 1), w = AddMover(7, 6, 1);   // watcher 5 cells west
+        expect(GatheringStart(p, 100.0f) >= 0);
+        expect(MoverIsPerforming(p) && MoverIsSpeaking(p));
+        RunTalk(0.5f);
+        expect(MoverIsWatching(w) && TalkPartner(w) == p);
+        RunTalk(4.0f);
+        expect(fabsf(Dist(w, p) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(movers[w].x < movers[p].x);                    // stayed on the west side
+        float lx, ly;
+        expect(TalkLookAt(w, &lx, &ly) && fabsf(lx - movers[p].x) < 0.5f);
+    }
+
+    it("a wall between: does not come; out of range: does not come") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchRadius = 4.0f;
+        int p = AddMover(12, 6, 1), hidden = AddMover(9, 6, 1), far = AddMover(12, 1, 1);   // 3 and 5 cells
+        for (int y = 0; y < H; y++) GRID(10, y, 1) = CELL_WALL;
+        GatheringStart(p, 100.0f);
+        RunTalk(1.0f);
+        expect(!MoverIsWatching(hidden));
+        expect(!MoverIsWatching(far));
+        watchRadius = 6.0f;
+    }
+
+    it("onlookers leave after their time; the performer keeps performing") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchMinSeconds = watchMaxSeconds = 2.0f;
+        talkCooldown = 60.0f;
+        int p = AddMover(12, 6, 1), w = AddMover(9, 6, 1);
+        GatheringStart(p, 100.0f);
+        RunTalk(0.5f);
+        expect(MoverIsWatching(w));
+        RunTalk(2.5f);
+        expect(!MoverIsWatching(w));
+        expect(MoverIsPerforming(p));
+    }
+
+    it("round a place (a campfire): they gather, take turns talking, and get to know each other") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int a = AddMover(9, 6, 1), b = AddMover(15, 6, 1);
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        expect(t >= 0 && talks[t].focus == -1);
+        RunTalk(4.0f);
+        expect(MoverIsWatching(a) && MoverIsWatching(b));
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));   // one of them talks
+        expect(RelationFamiliarity(a, b) > 1.0f);
+        expect(strcmp(talks[t].what, "the fire") == 0);
+    }
+
+    it("doesn't join a gathering while someone it can't stand is there") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int a = AddMover(9, 6, 1), foe = AddMover(15, 6, 1);
+        RelationAdd(a, foe, -40.0f, 50.0f);
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        (void)t;
+        movers[a].currentJobId = 0;       // a busy for now: the foe gets there first
+        RunTalk(1.0f);
+        expect(MoverIsWatching(foe));
+        movers[a].currentJobId = -1;      // now a is free, but the foe is at the fire
+        RunTalk(2.0f);
+        expect(!MoverIsWatching(a));
+    }
+
+    it("a full first ring: the next one goes to the second ring") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchMinSeconds = watchMaxSeconds = 60.0f;
+        int p = AddMover(12, 6, 1);
+        int t = GatheringStart(p, 100.0f);
+        for (int k = 0; k < 10; k++) AddMover(10 + (k % 5), 3 + (k / 5) * 6, 1);   // all within 4 cells
+        Look();
+        RunTalk(2.0f);
+        int ring0 = 0, ring1 = 0;
+        for (int k = 0; k < talks[t].count; k++) {
+            if (talks[t].spot[k] / 64 == 0) ring0++;
+            else if (talks[t].spot[k] / 64 == 1) ring1++;
+        }
+        expect(talks[t].count == 10);
+        expect(ring0 == 9 && ring1 == 1);   // 2*pi*1.5 / 1.0 = 9 spots on the first ring
+    }
+}
+
+describe(relations) {
+    it("seeing each other makes them familiar, slowly") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(8, 5, 1);
+        expect(RelationGet(a, b) == NULL);
+        for (int t = 0; t < 60 * TICK_RATE; t++) Look();   // a minute in sight
+        float f = RelationFamiliarity(a, b);
+        expect(f > 14.0f && f < 16.0f);                    // 0.25 per second
+        expect(RelationLike(a, b) == 0.0f);
+        expect(strcmp(RelationLabel(RelationLike(a, b), f), "familiar face") == 0 ||
+               strcmp(RelationLabel(RelationLike(a, b), f), "stranger") == 0);
+    }
+
+    it("talking: familiar fast; like goes up in a good mood, down in a bad one") {
+        TalkSetup();
+        talkMinSeconds = talkMaxSeconds = 60.0f;
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[a].mood = 0.8f;
+        movers[b].mood = -0.8f;
+        TalkStart(a, b);
+        RunTalk(10.0f);
+        expect(RelationFamiliarity(a, b) > 9.0f);
+        expect(RelationLike(a, b) > 2.0f);    // happy a likes b more
+        expect(RelationLike(b, a) < -1.0f);   // grumpy b likes a less
+    }
+
+    it("never starts a talk with someone it dislikes, and won't join their talk") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationAdd(a, b, -40.0f, 50.0f);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);
+        int c = AddMover(6, 7, 1);
+        RelationSetPair(b, c, 50.0f, 50.0f);
+        TalkStart(b, c);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);             // a dislikes b: stays out of b and c's talk
+    }
+
+    it("a mover slot reused by someone new: the old feelings don't carry over") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].appearanceSeed = 111;
+        RelationSetPair(a, b, 70.0f, 80.0f);
+        expect(RelationLike(a, b) == 70.0f);
+        movers[b].appearanceSeed = 222;       // someone else in that slot now
+        expect(RelationGet(a, b) == NULL);
+        expect(moverRelations[a].count == 0);
+    }
+
+    it("a full list: the least important one makes room") {
+        TalkSetup();
+        int a = AddMover(1, 1, 1);
+        int others[MAX_RELATIONS + 1];
+        for (int k = 0; k <= MAX_RELATIONS; k++) {
+            others[k] = AddMover(2 + k % 10, 2 + k / 10, 1);
+            movers[others[k]].appearanceSeed = 1000 + k;
+        }
+        for (int k = 0; k < MAX_RELATIONS; k++) RelationAdd(a, others[k], 0.0f, 10.0f + k);
+        RelationAdd(a, others[MAX_RELATIONS], 30.0f, 5.0f);   // new, strongly liked
+        expect(moverRelations[a].count == MAX_RELATIONS);
+        expect(RelationGet(a, others[0]) == NULL);            // least familiar, no feeling: gone
+        expect(RelationLike(a, others[MAX_RELATIONS]) == 30.0f);
+    }
+
+    it("survives save and load") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        movers[a].appearanceSeed = 5; movers[b].appearanceSeed = 6;
+        RelationSetPair(a, b, 42.0f, 77.0f);
+        RelationAdd(b, a, -10.0f, 0.0f);
+        expect(SaveWorld("/tmp/test_relations_save.bin"));
+        ClearMovers();
+        expect(RelationGet(a, b) == NULL);
+        expect(LoadWorld("/tmp/test_relations_save.bin"));
+        expect(RelationLike(a, b) == 42.0f && RelationFamiliarity(a, b) == 77.0f);
+        expect(RelationLike(b, a) == 32.0f);
+    }
+}
+
+describe(friends_and_foes) {
+    it("a wanderer picks a goal next to a friend it knows (within 12 cells, even out of view)") {
+        TalkSetup();
+        socialSeek = true;
+        int a = AddMover(2, 5, 1), f = AddMover(12, 5, 1);
+        for (int y = 0; y < H; y++) if (y != 1) GRID(7, y, 1) = CELL_WALL;   // out of sight
+        RelationAdd(a, f, 60.0f, 50.0f);
+        bool got = false;
+        int gx = 0, gy = 0, gz = 0;
+        for (int t = 0; t < 50 && !got; t++) got = NoticeSocialWanderGoal(a, &gx, &gy, &gz);
+        expect(got);
+        expect(abs(gx - 12) <= 2 && abs(gy - 5) <= 2 && !(gx == 12 && gy == 5));
+        RelationAdd(a, f, -50.0f, 0.0f);   // like 10: not enough
+        got = false;
+        for (int t = 0; t < 50 && !got; t++) got = NoticeSocialWanderGoal(a, &gx, &gy, &gz);
+        expect(!got);
+    }
+
+    it("no wander goal near someone it dislikes; leaves when one comes close") {
+        TalkSetup();
+        socialAvoid = true;
+        int a = AddMover(5, 5, 1), e = AddMover(7, 5, 1);
+        RelationAdd(a, e, -40.0f, 50.0f);
+        Look();
+        expect(NoticeGoalNearDisliked(a, 9, 5, 1));    // 2 cells from them
+        expect(!NoticeGoalNearDisliked(a, 20, 5, 1));  // far enough
+        expect(NoticeDislikedClose(a));                // 2 cells: time to go
+        expect(!NoticeDislikedClose(e));               // e has nothing against a
+    }
+
+    it("steers round someone disliked ahead, standing or walking; not round a friend") {
+        TalkSetup();
+        socialAvoid = true;
+        int a = AddMover(5, 5, 1), e = AddMover(7, 5, 1), f = AddMover(5, 8, 1);
+        (void)f;
+        RelationAdd(a, e, -60.0f, 50.0f);
+        Look();
+        float sx, sy;
+        expect(NoticeAvoidSteer(a, 1, 0, &sx, &sy));   // e dead ahead, standing
+        expect(sy > 0.0f);                             // goes round on its right
+        RelationAdd(a, e, 120.0f, 0.0f);               // now a friend (like 60)
+        expect(!NoticeAvoidSteer(a, 1, 0, &sx, &sy));
+        socialAvoid = false;
+        RelationAdd(a, e, -120.0f, 0.0f);
+        expect(!NoticeAvoidSteer(a, 1, 0, &sx, &sy));
+        socialAvoid = true;
+    }
+}
+
+// Walks go outdoors: open the sky over the test world (no floor on the level above)
+static void WalkSetup(void) {
+    TalkSetup();
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+}
+
+describe(walking_together) {
+    it("a walk: the leader gets somewhere to go, the other stops its own walking") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        WalkToward(b, 20, 6);
+        expect(TalkWalkStart(a, b));
+        expect(MoverIsWalkingWith(a) && MoverIsWalkingWith(b));
+        expect(movers[a].pathLength > 0 && movers[a].pathIndex >= 0);
+        expect(movers[b].pathIndex < 0);
+        expect(TalkPartner(a) == b && TalkPartner(b) == a);
+    }
+
+    it("the other keeps a spot beside the leader; the leader slows when it falls behind") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(13, 6, 1);   // b starts 3 cells off
+        expect(TalkWalkStart(a, b));
+        expect(TalkWalkSpeedScale(a) < walkPace);             // waits for b
+        expect(TalkWalkSpeedScale(b) == 1.0f);                // (only the leader has a pace)
+        for (int t = 0; t < 3 * TICK_RATE; t++) TalkMoverTick(b, TICK_DT);   // leader stands still here
+        float dx = movers[b].x - movers[a].x, dy = movers[b].y - movers[a].y;
+        expect(fabsf(sqrtf(dx * dx + dy * dy) - 0.8f * CELL_SIZE) < 3.0f);   // at its spot
+        expect(TalkWalkSpeedScale(a) == walkPace);
+    }
+
+    it("indoors (a roof over them): no walk") {
+        TalkSetup();   // floors on the level above: a roof
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        expect(!TalkWalkStart(a, b));
+    }
+
+    it("a group of four: everyone keeps its own spot round the leader") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1), c = AddMover(9, 7, 1), d = AddMover(10, 8, 1);
+        expect(TalkWalkStart(a, b));
+        int t = MoverTalk(a);
+        expect(TalkWalkJoin(t, c) && TalkWalkJoin(t, d));
+        expect(talks[t].count == 4);
+        for (int s = 0; s < 4 * TICK_RATE; s++)
+            for (int k = 1; k < 4; k++) TalkMoverTick(talks[t].members[k], TICK_DT);
+        for (int k = 1; k < 4; k++) {
+            float sx, sy;
+            expect(TalkWalkSlot(t, k, &sx, &sy));
+            const Mover* f = &movers[talks[t].members[k]];
+            expect(sqrtf((f->x - sx) * (f->x - sx) + (f->y - sy) * (f->y - sy)) < 3.0f);
+        }
+        float s1x, s1y, s2x, s2y;
+        TalkWalkSlot(t, 1, &s1x, &s1y); TalkWalkSlot(t, 2, &s2x, &s2y);
+        expect(fabsf(s1x - s2x) + fabsf(s1y - s2y) > CELL_SIZE * 0.5f);   // different spots
+    }
+
+    it("one drops out of a group, the rest walk on") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1), c = AddMover(9, 7, 1);
+        expect(TalkWalkStart(a, b));
+        int t = MoverTalk(a);
+        expect(TalkWalkJoin(t, c));
+        movers[c].currentJobId = 0;
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(c));
+        expect(MoverIsWalkingWith(a) && MoverIsWalkingWith(b) && talks[t].count == 2);
+        movers[c].currentJobId = -1;
+    }
+
+    it("ends when they get separated or one gets a job") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        expect(TalkWalkStart(a, b));
+        movers[b].x += 6 * CELL_SIZE;                         // pulled apart
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(a) && !MoverIsWalkingWith(b));
+        int c = AddMover(10, 8, 1), d = AddMover(11, 8, 1);
+        expect(TalkWalkStart(c, d));
+        movers[d].currentJobId = 0;
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(c));
+        movers[d].currentJobId = -1;
+    }
+}
+
+static void TagSetup(void) {
+    TalkSetup();
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+    fleeSmart = true;
+    fleeRadius = 5.0f;
+}
+
+static void RunChase(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        BuildMoverSpatialGrid();
+        NoticeTick();
+        ChaseTick(TICK_DT);
+    }
+}
+
+describe(tag) {
+    it("the new it counts to three before it chases") {
+        TagSetup();
+        int it = AddMover(5, 5, 1), p = AddMover(8, 5, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        expect(ChaseIt() == it);
+        expect(ChaseMoverTick(it, TICK_DT));            // standing
+        RunChase(1.6f);
+        expect(!ChaseMoverTick(it, TICK_DT));           // off it goes
+        expect(movers[it].pathIndex >= 0);              // a path at the player
+    }
+
+    it("a player runs when it comes close: to a spot further from it, away from it") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        RunChase(0.5f);
+        expect(ChaseIsFleeing(p));
+        expect(movers[p].goal.x > 11);                  // it is to the west: runs east-ish
+        float gx = (movers[p].goal.x + 0.5f) * CELL_SIZE - movers[it].x, gy = (movers[p].goal.y + 0.5f) * CELL_SIZE - movers[it].y;
+        expect(sqrtf(gx * gx + gy * gy) > 5.0f * CELL_SIZE);
+        expect(ChaseSpeedScale(p) == fleeSpeed && ChaseSpeedScale(it) == chaseSpeed);
+    }
+
+    it("running wears a player out; worn out it is slow") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        movers[it].x = movers[p].x - 2.0f * CELL_SIZE;
+        RunChase(7.0f);                                 // (nobody moves in this test: still close)
+        expect(ChaseStamina(p) < 0.3f);
+        expect(ChaseSpeedScale(p) < 1.0f);
+    }
+
+    it("caught: the roles swap") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        RunChase(1.6f);                                 // done counting
+        movers[it].x = movers[p].x - 0.3f * CELL_SIZE;  // right on top of p
+        RunChase(0.1f);
+        expect(tagCount == 1);
+        expect(ChaseIt() == p);
+        expect(ChaseMoverTick(p, TICK_DT));             // p counts to three now
+    }
+
+    it("not playing: never chased, never runs") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true);
+        ChaseSetIt(it);
+        RunChase(2.0f);
+        expect(!ChaseIsFleeing(p));
+        expect(ChaseSpeedScale(p) == 1.0f);
+    }
+}
+
+describe(hide_and_seek) {
+    it("smart hiding: the spot is out of sight of the seeker's home") {
+        TagSetup();
+        hideSmart = true;
+        for (int y = 2; y <= 9; y++) GRID(14, y, 1) = CELL_WALL;   // a wall to hide behind
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        expect(HideSeeker() == s && HideIsCounting(s));
+        expect(movers[h].pathIndex >= 0);                        // off to its spot
+        Point g = movers[h].goal;
+        expect(!HasLineOfSight(8, 6, g.x, g.y, 1));              // out of sight of home
+    }
+
+    it("counting: the seeker stands with its eyes shut; then it searches") {
+        TagSetup();
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        expect(ChaseMoverTick(s, TICK_DT));
+        RunChase(10.5f);
+        expect(!HideIsCounting(s));
+        expect(!ChaseMoverTick(s, TICK_DT) || movers[s].pathIndex >= 0);
+    }
+
+    it("a hider in plain sight gets found and walks home") {
+        TagSetup();
+        for (int y = 0; y < H; y++) GRID(16, y, 1) = CELL_WALL;  // someone else far behind a wall
+        int s = AddMover(8, 6, 1), h = AddMover(10, 6, 1), other = AddMover(20, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true); ChaseSetPlayer(other, true);
+        HideSeekStart(s);
+        RunChase(10.5f);                                         // counted; nobody moved (no movement here)
+        expect(!HideIsFound(other));
+        expect(HideIsFound(h));                                  // h never left: right there
+        expect(hideFoundCount >= 1);
+        expect(movers[h].goal.x == 8 && movers[h].goal.y == 6); // home
+    }
+}
+
+describe(glances_and_greetings) {
+    it("two who know each other meet: both greet (friends say hi), and it warms them a little") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 60.0f, 50.0f);
+        Look();
+        float p;
+        expect(NoticeGreeting(a, &p) == GREET_HI);
+        expect(NoticeGreeting(b, &p) == GREET_HI);
+        expect(NoticeGlanceAt(a, NULL) == b);
+        expect(RelationLike(a, b) > 60.0f);
+        int c = AddMover(5, 9, 1), d = AddMover(7, 9, 1);
+        RelationSetPair(c, d, 10.0f, 30.0f);   // acquaintances: a nod
+        Look();
+        expect(NoticeGreeting(c, &p) == GREET_NOD);
+    }
+
+    it("strangers don't greet; someone disliked: it looks away") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        float p;
+        Look();
+        expect(NoticeGreeting(a, &p) == GREET_NONE);
+        int c = AddMover(5, 9, 1), e = AddMover(7, 9, 1);
+        RelationAdd(c, e, -40.0f, 50.0f);
+        Look();
+        bool away = false;
+        expect(NoticeGlanceAt(c, &away) == e && away);
+        expect(NoticeGreeting(c, &p) == GREET_AWAY);
+        (void)b;
+    }
+
+    it("no second greeting while they stay in sight of each other") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 20.0f, 50.0f);
+        Look();
+        long first = greetCount;
+        expect(first == 1);
+        movers[b].x += 20 * CELL_SIZE;          // out of notice for a moment ...
+        for (int t = 0; t < 10; t++) Look();
+        movers[b].x -= 20 * CELL_SIZE;          // ... and back within a minute
+        for (int t = 0; t < 10; t++) Look();
+        expect(greetCount == first);
+    }
+
+    it("switched off: no glances, no greetings") {
+        TalkSetup();
+        glancesEnabled = greetingsEnabled = false;
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 60.0f, 50.0f);
+        Look();
+        float p;
+        expect(NoticeGreeting(a, &p) == GREET_NONE && NoticeGlanceAt(a, NULL) < 0);
+        glancesEnabled = greetingsEnabled = true;
+    }
+}
+
+// A mover sitting on chair f, in the middle of eating (as sit-then-eat leaves it)
+static int DinerAt(int f) {
+    int i = AddMover(furniture[f].x, furniture[f].y, 1);
+    QueueReset(i);
+    QueuePush(i, ActEatHeld());
+    moverQueues[i].seat = f;
+    QueueStart(i, QUEUE_FROM_FREETIME);
+    return i;
+}
+
+describe(table_talk) {
+    it("two eating at the same table talk, look at the table and get to know each other") {
+        TalkSetup();
+        ClearFurniture();
+        int table = SpawnFurniture(10, 6, 1, FURNITURE_TABLE, MAT_OAK);
+        int c1 = SpawnFurniture(9, 6, 1, FURNITURE_CHAIR, MAT_OAK), c2 = SpawnFurniture(11, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+        int a = DinerAt(c1), b = DinerAt(c2);
+        TalkTick(TICK_DT);
+        expect(MoverDiningAt(a) == table && MoverDiningAt(b) == table);
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));
+        float lx, ly;
+        expect(TalkLookAt(a, &lx, &ly) && fabsf(lx - 10.5f * CELL_SIZE) < 0.5f);
+        for (int t = 0; t < 5 * TICK_RATE; t++) TalkTick(TICK_DT);
+        expect(RelationFamiliarity(a, b) > 1.5f);
+    }
+
+    it("alone at a table: nobody to talk to") {
+        TalkSetup();
+        ClearFurniture();
+        SpawnFurniture(10, 6, 1, FURNITURE_TABLE, MAT_OAK);
+        int c1 = SpawnFurniture(9, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+        int a = DinerAt(c1);
+        TalkTick(TICK_DT);
+        expect(!MoverIsSpeaking(a));
+    }
+}
+
+describe(spot_choice) {
+    it("a seat next to a friend scores higher, next to a stranger a little lower, next to a foe much lower") {
+        TalkSetup();
+        ClearFurniture();
+        spotByFriends = true;
+        int me = AddMover(2, 2, 1);
+        int f1 = SpawnFurniture(5, 5, 1, FURNITURE_CHAIR, MAT_OAK), n1 = SpawnFurniture(6, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        int f2 = SpawnFurniture(5, 9, 1, FURNITURE_CHAIR, MAT_OAK), n2 = SpawnFurniture(6, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        int f3 = SpawnFurniture(15, 5, 1, FURNITURE_CHAIR, MAT_OAK), n3 = SpawnFurniture(16, 5, 1, FURNITURE_CHAIR, MAT_OAK);
+        int empty = SpawnFurniture(15, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        int friendM = AddMover(20, 1, 1), stranger = AddMover(21, 1, 1), foe = AddMover(22, 1, 1);
+        RelationAdd(me, friendM, 60.0f, 80.0f);
+        RelationAdd(me, foe, -50.0f, 60.0f);
+        furniture[n1].occupant = friendM;   // reserved: on their way to it
+        furniture[n2].occupant = stranger;
+        furniture[n3].occupant = foe;
+        float pf = SeatPreference(me, f1), ps = SeatPreference(me, f2), pe = SeatPreference(me, f3), p0 = SeatPreference(me, empty);
+        expect(pf > 2.0f);
+        expect(ps < 0.0f && ps > -1.0f);
+        expect(pe < -4.0f);
+        expect(p0 == 0.0f);
+        spotByFriends = false;
+        expect(SeatPreference(me, f1) == 0.0f);
+        spotByFriends = true;
+    }
+
+    it("round the fire: a newcomer takes the spot next to its friend") {
+        TalkSetup();
+        watchChance = 1.0f;
+        int t = GatheringStartAt(12.5f * CELL_SIZE, 6.5f * CELL_SIZE, 1, 100.0f, "the fire", 60.0f, 60.0f);
+        int friendM = AddMover(12, 2, 1);          // comes from the north first
+        RunTalk(4.0f);
+        expect(MoverIsWatching(friendM));
+        int me = AddMover(6, 6, 1);                // comes from the west
+        RelationAdd(me, friendM, 70.0f, 80.0f);
+        RunTalk(4.0f);
+        expect(MoverIsWatching(me));
+        float dx = movers[me].x - movers[friendM].x, dy = movers[me].y - movers[friendM].y;
+        expect(sqrtf(dx * dx + dy * dy) < 1.6f * CELL_SIZE);   // right beside the friend, not on the west side
+        (void)t;
+    }
+}
+
+describe(mingling) {
+    it("in a talk with strangers, a friend's group nearby: moves over and joins it") {
+        TalkSetup();
+        mingleEnabled = true; mingleChance = 1.0f;
+        talkMinSeconds = talkMaxSeconds = 120.0f;
+        int a = AddMover(4, 5, 1), s1 = AddMover(6, 5, 1);      // a talks with a stranger
+        int f = AddMover(12, 5, 1), f2 = AddMover(14, 5, 1);    // its friend talks with someone else
+        RelationAdd(a, f, 60.0f, 80.0f);
+        TalkStart(a, s1);
+        TalkStart(f, f2);
+        int other = MoverTalk(f);
+        RunTalk(7.0f);                                          // a has been there 6 s+: leaves
+        expect(MoverIsMingling(a) || MoverTalk(a) == other);
+        for (int t = 0; t < 8 * TICK_RATE && MoverTalk(a) != other; t++) {   // walk over (by hand here)
+            float dx = talks[other].centerX - movers[a].x, dy = talks[other].centerY - movers[a].y;
+            float d = sqrtf(dx * dx + dy * dy);
+            if (d > 1.0f) { movers[a].x += dx / d * 2.0f; movers[a].y += dy / d * 2.0f; }
+            TalkTick(TICK_DT);
+        }
+        expect(MoverTalk(a) == other);
+        expect(talks[other].count == 3);
+        expect(mingleCount == 1);
+        mingleChance = 0.02f;
+    }
+
+    it("nothing better nearby (or off, or a foe there): stays") {
+        TalkSetup();
+        mingleChance = 1.0f;
+        talkMinSeconds = talkMaxSeconds = 120.0f;
+        int a = AddMover(4, 5, 1), b = AddMover(6, 5, 1), c = AddMover(12, 5, 1), d = AddMover(14, 5, 1);
+        RelationSetPair(a, b, 40.0f, 60.0f);
+        RelationAdd(a, c, 50.0f, 60.0f);                        // only a bit better than here: stays
+        TalkStart(a, b); TalkStart(c, d);
+        RunTalk(8.0f);
+        expect(MoverTalk(a) == MoverTalk(b) && !MoverIsMingling(a));
+        RelationAdd(a, c, 30.0f, 0.0f);                         // now much better, but a foe is there
+        RelationAdd(a, d, -40.0f, 50.0f);
+        RunTalk(4.0f);
+        expect(MoverTalk(a) == MoverTalk(b));
+        mingleEnabled = false;
+        RelationAdd(a, d, 80.0f, 0.0f);
+        RunTalk(4.0f);
+        expect(MoverTalk(a) == MoverTalk(b));
+        mingleEnabled = true; mingleChance = 0.02f;
+    }
+}
+
+static int CountWatchGatherings(void) {
+    int n = 0;
+    for (int t = 0; t < MAX_TALKS; t++) if (talks[t].active && talks[t].kind == TALK_WATCH) n++;
+    return n;
+}
+
+describe(auto_gatherings) {
+    it("a burning barrel: a gathering starts round it; the barrel gone: it ends; off: none") {
+        TalkSetup();
+        ClearFurniture();
+        autoGatherings = true;
+        int f = SpawnFurniture(10, 6, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 1);
+        expect(autoGatheringsStarted == 1);
+        furniture[f].active = false;
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);
+        autoGatherings = false;
+        furniture[f].active = true;
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);
+    }
+
+    it("a fire workshop only while it burns") {
+        TalkSetup();
+        ClearFurniture();
+        ClearWorkshops();
+        autoGatherings = true;
+        int ws = CreateWorkshop(10, 6, 1, WORKSHOP_GROUND_FIRE);
+        expect(ws >= 0);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);              // not lit
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, true);
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 1);
+        SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, false);
+        ExtinguishCell(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1);   // (no fire sim here to burn it down)
+        TalkTick(1.1f);
+        expect(CountWatchGatherings() == 0);              // gone out
+        autoGatherings = false;
+    }
+
+    it("people come to it by themselves (the barrel blocks its own cell)") {
+        TalkSetup();
+        ClearFurniture();
+        autoGatherings = true;
+        watchChance = 1.0f;
+        SpawnFurniture(10, 6, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+        int a = AddMover(6, 6, 1);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverIsWatching(a));
+        autoGatherings = false;
+    }
+}
+
+// Distance (pixels) from (x, y) to the L route: (x0,y0) east to (x1,y0), then south to (x1,y1)
+static float DistToL(float x, float y, float x0, float x1, float y0, float y1) {
+    float dA = (x < x0 ? x0 - x : (x > x1 ? x - x1 : 0.0f)) + fabsf(y - y0);   // the east leg (city-block, fine here)
+    float dB = fabsf(x - x1) + (y < y0 ? y0 - y : (y > y1 ? y - y1 : 0.0f));  // the south leg
+    return dA < dB ? dA : dB;
+}
+
+// The leader walks an L by hand (2 px a tick), the follower follows; worst distance from the L
+static float RunFollowL(bool trail) {
+    TagSetup();
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+    followTrail = trail;
+    int lead = AddMover(4, 3, 1), fol = AddMover(3, 3, 1);
+    int players[2] = { lead, fol };
+    FollowLeaderStart(players, 2);
+    float x0 = movers[lead].x, y0 = movers[lead].y, x1 = x0 + 4 * CELL_SIZE, y1 = y0 + 4 * CELL_SIZE;
+    float worst = 0.0f;
+    for (int t = 0; t < 600; t++) {
+        if (movers[lead].x < x1) movers[lead].x += 2.0f; else if (movers[lead].y < y1) movers[lead].y += 2.0f;
+        movers[lead].pathLength = 1; movers[lead].pathIndex = 0;   // (keep it "walking": no new legs)
+        moverPaths[lead][0] = (Point){(int)(x1 / CELL_SIZE), (int)(y1 / CELL_SIZE), 1};
+        ChaseTick(TICK_DT);
+        ChaseMoverTick(fol, TICK_DT);
+        if (movers[fol].x >= x0) {
+            float d = DistToL(movers[fol].x, movers[fol].y, x0, x1, y0, y1);
+            if (d > worst) worst = d;
+        }
+    }
+    followTrail = true;
+    return worst / CELL_SIZE;
+}
+
+describe(follow_the_leader) {
+    it("following the trail: the follower walks the leader's L, round the corner") {
+        expect(RunFollowL(true) < 0.2f);
+    }
+
+    it("straight at the one ahead instead: it cuts the corner") {
+        expect(RunFollowL(false) > 0.3f);
+    }
+
+    it("the leader leads, the others are in line behind it") {
+        TagSetup();
+        int a = AddMover(4, 3, 1), b = AddMover(3, 3, 1), c = AddMover(2, 3, 1);
+        int players[3] = { a, b, c };
+        FollowLeaderStart(players, 3);
+        expect(FollowLeader() == a && FollowPlace(b) == 1 && FollowPlace(c) == 2);
+        expect(HideControls(b) && ChaseIsPlaying(c));   // the game gives their goals
+        expect(ChaseSpeedScale(a) < 1.0f);              // the leader goes a bit slower
+    }
+}
+
+describe(pack_hunt) {
+    it("sight: across a railing or a window yes, through a wall no") {
+        TalkSetup();
+        GRID(8, 5, 1) = CELL_RAILING;
+        GRID(8, 7, 1) = CELL_WINDOW;
+        GRID(8, 9, 1) = CELL_WALL;
+        expect(CanSeeCell(5, 5, 11, 5, 1));
+        expect(CanSeeCell(5, 7, 11, 7, 1));
+        expect(!CanSeeCell(5, 9, 11, 9, 1));
+        expect(!HasLineOfSight(5, 5, 11, 5, 1));   // (walking straight across it: no)
+    }
+
+    it("roles: the nearest drives, one cuts off, the rest flank") {
+        TagSetup();
+        packTactics = true;
+        int h[4];
+        h[0] = AddMover(10, 4, 1); h[1] = AddMover(4, 4, 1); h[2] = AddMover(4, 8, 1); h[3] = AddMover(16, 8, 1);
+        int t = AddMover(11, 6, 1);
+        for (int k = 0; k < 4; k++) ChaseSetPlayer(h[k], true);
+        ChaseSetPlayer(t, true);
+        PackHuntStart(h, 4, t);
+        RunChase(0.2f);
+        int drivers = 0, cutters = 0, flankers = 0;
+        for (int k = 0; k < 4; k++) {
+            int r = PackRole(h[k]);
+            drivers += r == 0; cutters += r == 1; flankers += r == 2;
+        }
+        expect(drivers == 1 && cutters == 1 && flankers == 2);
+        expect(PackRole(h[0]) == 0);                       // the nearest
+        expect(ChaseSpeedScale(h[1]) == packSpeed);
+    }
+
+    it("the runner flees between two hunters: away from both, not past one") {
+        TagSetup();
+        int a = AddMover(4, 6, 1), b = AddMover(10, 2, 1), t = AddMover(8, 6, 1);
+        int hs[2] = { a, b };
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(t, true);
+        PackHuntStart(hs, 2, t);
+        Look();
+        RunChase(0.3f);
+        expect(ChaseIsFleeing(t));
+        expect(movers[t].goal.x > 8 && movers[t].goal.y > 4);   // east and south: away from a (west) and b (north)
+    }
+
+    it("caught: a new round, the runner turns up far from the pack") {
+        TagSetup();
+        int h[1] = { AddMover(8, 6, 1) };
+        int t = AddMover(8, 6, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(0.1f);
+        expect(packCatches == 1);
+        float dx = movers[t].x - movers[h[0]].x, dy = movers[t].y - movers[h[0]].y;
+        expect(sqrtf(dx * dx + dy * dy) >= 10.0f * CELL_SIZE);
+    }
+}
+
+describe(cover) {
+    it("low cover: right at the target, on the viewer's side") {
+        TagSetup();
+        GRID(10, 6, 1) = CELL_RAILING;
+        expect(IsLowCover(10, 6, 1));
+        expect(CoverBetween(5, 6, 11, 6, 1));     // behind the railing, seen from the west
+        expect(!CoverBetween(16, 6, 11, 6, 1));   // seen from the east: in the open
+        expect(!CoverBetween(5, 6, 12, 6, 1));    // a cell further: the railing isn't at it
+        expect(CoverBetween(5, 3, 11, 7, 1));     // a slanted line still comes in over it
+    }
+
+    it("a bush hides from every side; a table is cover too") {
+        TagSetup();
+        GRID(12, 6, 1) = CELL_BUSH;
+        expect(CoverBetween(5, 6, 12, 6, 1) && CoverBetween(18, 6, 12, 6, 1) && CoverBetween(12, 1, 12, 6, 1));
+        ClearFurniture();
+        SpawnFurniture(10, 3, 1, FURNITURE_TABLE, MAT_OAK);
+        expect(IsLowCover(10, 3, 1));
+        expect(CoverBetween(5, 3, 11, 3, 1));
+        SpawnFurniture(10, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        expect(!IsLowCover(10, 9, 1));            // a chair: no
+        ClearFurniture();
+    }
+
+    it("a hider crouched behind a railing isn't found; with cover off it is") {
+        for (int on = 1; on >= 0; on--) {
+            TagSetup();
+            coverEnabled = on;
+            GRID(10, 6, 1) = CELL_RAILING;
+            int s = AddMover(6, 6, 1), h = AddMover(11, 6, 1);
+            ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+            HideSeekStart(s);
+            movers[h].pathLength = 0; movers[h].pathIndex = -1;   // stays put: its spot
+            RunChase(10.5f);
+            expect(HideIsHidden(h) == (bool)on);
+            expect(MoverCrouching(h) == (bool)on);
+            expect(hideFoundCount == (on ? 0 : 1));   // (found, the only hider: a new round starts)
+        }
+        coverEnabled = true;
+    }
+
+    it("up close you look over it") {
+        TagSetup();
+        GRID(10, 6, 1) = CELL_RAILING;
+        int s = AddMover(9, 6, 1), h = AddMover(11, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        movers[h].pathLength = 0; movers[h].pathIndex = -1;
+        RunChase(10.5f);
+        expect(hideFoundCount == 1);
+    }
+}
+
+describe(personal_space) {
+    it("friends closer than someone known, strangers further, disliked furthest; off: all the same") {
+        SetupWorld();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 4, 1), f = AddMover(5, 4, 1), k = AddMover(6, 4, 1), s = AddMover(7, 4, 1), d = AddMover(8, 4, 1);
+        RelationSetPair(a, f, 50.0f, 80.0f);
+        RelationSetPair(a, k, 0.0f, 60.0f);
+        RelationSetPair(a, d, -40.0f, 60.0f);
+        float sf = PersonalSpaceScale(a, f), sk = PersonalSpaceScale(a, k), ss = PersonalSpaceScale(a, s), sd = PersonalSpaceScale(a, d);
+        expect(sf < 0.8f && sk == 1.0f && ss > 1.1f && sd > ss);
+        personalSpace = false;
+        expect(PersonalSpaceScale(a, f) == 1.0f && PersonalSpaceScale(a, d) == 1.0f);
+    }
+
+    it("a talking pair of friends stands closer than a pair of strangers") {
+        TalkSetup();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 3, 1), b = AddMover(6, 3, 1), c = AddMover(4, 8, 1), e = AddMover(6, 8, 1);
+        RelationSetPair(a, b, 50.0f, 80.0f);
+        TalkStart(a, b);
+        TalkStart(c, e);
+        const Talk* t1 = &talks[MoverTalk(a)];
+        const Talk* t2 = &talks[MoverTalk(c)];
+        float d1 = fabsf(t1->slotX[0] - t1->slotX[1]), d2 = fabsf(t2->slotX[0] - t2->slotX[1]);
+        expect(d1 < 1.2f * CELL_SIZE);          // 1.5 x 0.75
+        expect(d2 > 1.7f * CELL_SIZE);          // 1.5 x 1.25
+    }
+
+    it("passing: a stranger gets a wider berth than a friend") {
+        SetupWorld();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].y -= CELL_SIZE * 0.5f;
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 4);
+        Look();
+        float sx, strangerY, friendY; bool any;
+        Pass(a, 1, 0, &sx, &strangerY, &any);
+        expect(any);
+        RelationSetPair(a, b, 50.0f, 80.0f);
+        Pass(a, 1, 0, &sx, &friendY, &any);
+        expect(any);
+        expect(strangerY > friendY && friendY > 0.0f);
+        personalSpace = false;
+    }
+}
+
+describe(pack_stealth) {
+    it("out of sight behind a wall: the pack loses it and searches; the runner lies low in a bush") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) GRID(8, y, 1) = CELL_WALL;   // a wall between them
+        GRID(14, 6, 1) = CELL_BUSH;
+        int h[2] = { AddMover(3, 5, 1), AddMover(3, 7, 1) };
+        int t = AddMover(6, 6, 1);                       // seen here first ...
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(h[1], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 2, t);
+        RunChase(0.2f);
+        movers[t].x = 14.5f * CELL_SIZE;                 // ... then gone behind the wall, into a bush
+        RunChase(1.0f);
+        float lost = 0.0f;
+        expect(PackLost(&lost) && lost > 0.5f);
+        expect(PackRole(h[0]) == 3 && PackRole(h[1]) == 3);   // searching
+        expect(packDucks == 1);
+        expect(PackIsDucking(t) && MoverCrouching(t));
+    }
+
+    it("crouched in a bush it isn't seen from afar, but a hunter close by flushes it out") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) if (y != 6) GRID(8, y, 1) = CELL_WALL;   // a wall with a gap
+        GRID(14, 6, 1) = CELL_BUSH;
+        int h[1] = { AddMover(3, 2, 1) };
+        int t = AddMover(5, 2, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(0.2f);
+        movers[t].x = 14.5f * CELL_SIZE; movers[t].y = 6.5f * CELL_SIZE;   // into the bush behind the wall
+        RunChase(1.0f);
+        expect(PackIsDucking(t));
+        movers[h[0]].x = 9.5f * CELL_SIZE; movers[h[0]].y = 6.5f * CELL_SIZE;   // in the gap: a clear line, 5 cells
+        RunChase(1.0f);
+        expect(PackIsDucking(t));                     // in a bush: not seen from there
+        expect(PackLost(NULL));
+        movers[h[0]].x = 12.5f * CELL_SIZE;           // 2 cells off: close enough
+        RunChase(0.5f);
+        expect(!PackIsDucking(t));
+        expect(packFlushed == 1);
+    }
+
+    it("lost for 30 s: it got away, a new round; off: they always know where it is") {
+        TagSetup();
+        packStealth = true;
+        for (int y = 0; y < H; y++) GRID(8, y, 1) = CELL_WALL;
+        int h[1] = { AddMover(3, 6, 1) };
+        int t = AddMover(14, 6, 1);
+        ChaseSetPlayer(h[0], true); ChaseSetPlayer(t, true);
+        PackHuntStart(h, 1, t);
+        RunChase(31.0f);
+        expect(packEscapes >= 1);
+        packStealth = false;
+        PackHuntStart(h, 1, t);
+        RunChase(1.0f);
+        expect(!PackLost(NULL));
+        packStealth = true;
+    }
+}
+
+describe(playing_is_busy) {
+    it("joining makes it busy: FREETIME_PLAY, no jobs, no talk; a busy mover can't join") {
+        TagSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1), busy = AddMover(12, 4, 1);
+        movers[busy].freetimeState = FREETIME_SEEKING_FOOD;
+        expect(ChaseJoin(a) && ChaseJoin(b));
+        expect(!ChaseJoin(busy) && !ChaseIsPlaying(busy));
+        expect(movers[a].freetimeState == FREETIME_PLAY);
+        RebuildIdleMoverList();
+        expect(!moverIsInIdleList[a] && !moverIsInIdleList[b]);   // no jobs handed out
+        movers[busy].freetimeState = FREETIME_NONE;
+        ClearChase();
+        expect(movers[a].freetimeState == FREETIME_NONE);
+    }
+
+    it("hungry: it leaves the game (needs.c); the game carries on with the others") {
+        TagSetup();
+        hungerEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1), c = AddMover(12, 4, 1);
+        movers[a].hunger = movers[b].hunger = movers[c].hunger = 1.0f;
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(c, true);
+        ChaseSetIt(a);
+        movers[b].hunger = balance.hungerSeekThreshold - 0.05f;
+        ProcessFreetimeNeeds();
+        expect(!ChaseIsPlaying(b));
+        expect(movers[b].freetimeState != FREETIME_PLAY);   // (seeing to its hunger, or about to)
+        expect(ChaseIsPlaying(a) && ChaseIsPlaying(c) && ChaseIt() == a);
+        hungerEnabled = false;
+        ClearChase();
+    }
+
+    it("'it' drafted away: someone else is it; down to one player the game ends and it's free again") {
+        TagSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(14, 4, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(c, true);
+        ChaseSetIt(a);
+        movers[a].isDrafted = true;
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(a) && movers[a].freetimeState == FREETIME_NONE);
+        expect(ChaseIt() == b);                     // the nearest one
+        movers[a].isDrafted = false;
+        movers[c].freetimeState = FREETIME_QUEUE;   // a player command took c over
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(c) && movers[c].freetimeState == FREETIME_QUEUE);   // (left as the command set it)
+        expect(ChaseIt() < 0 && !ChaseIsPlaying(b));   // one left: game over
+        expect(movers[b].freetimeState == FREETIME_NONE);
+        movers[c].freetimeState = FREETIME_NONE;
+    }
+
+    it("the seeker or the pack's runner leaves: a new round / the hunt ends") {
+        TagSetup();
+        int s = AddMover(4, 4, 1), h1 = AddMover(10, 4, 1), h2 = AddMover(14, 8, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h1, true); ChaseSetPlayer(h2, true);
+        HideSeekStart(s);
+        ChaseLeave(s);
+        expect(HideSeeker() >= 0 && HideSeeker() != s);
+        ClearChase();
+        int hs[2] = { s, h1 };
+        PackHuntStart(hs, 2, h2);
+        ChaseLeave(h2);
+        RunChase(0.1f);
+        expect(PackTarget() < 0 && !ChaseIsPlaying(s) && !ChaseIsPlaying(h1));
+    }
+
+    it("after a load (no game): a mover left in FREETIME_PLAY is free again") {
+        TagSetup();
+        int a = AddMover(4, 4, 1);
+        movers[a].freetimeState = FREETIME_PLAY;
+        ProcessFreetimeNeeds();
+        expect(movers[a].freetimeState == FREETIME_NONE);
+    }
+}
+
+describe(joint_activities) {
+    it("two games of tag at once: each has its own it and players; one ending leaves the other") {
+        TagSetup();
+        int a = AddMover(2, 3, 1), b = AddMover(4, 3, 1), c = AddMover(19, 8, 1), d = AddMover(21, 8, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);   // the ones waiting: a game
+        ChaseSetPlayer(c, true); ChaseSetPlayer(d, true); ChaseSetIt(c);   // (a, b are in one: not taken)
+        int ga = MoverActivity(a), gc = MoverActivity(c);
+        expect(ga >= 0 && gc >= 0 && ga != gc);
+        expect(MoverActivity(b) == ga && MoverActivity(d) == gc);
+        expect(activities[ga].count == 2 && activities[gc].count == 2);
+        RunChase(8.0f);
+        for (int g = 0; g < 2; g++) {   // "it" is always one of its own game's players
+            int act = g ? gc : ga;
+            int itIn = 0;
+            for (int i = 0; i < moverCount; i++) if (ActivityHas(act, i) && ChaseSpeedScale(i) == chaseSpeed) itIn++;
+            expect(activities[act].active && itIn <= 1);
+        }
+        expect(MoverActivity(a) == ga && MoverActivity(b) == ga && MoverActivity(c) == gc && MoverActivity(d) == gc);
+        ChaseLeave(d);
+        RunChase(0.1f);
+        expect(!activities[gc].active && !ChaseIsPlaying(c) && movers[c].freetimeState == FREETIME_NONE);
+        expect(activities[ga].active && ChaseIsPlaying(a) && ChaseIsPlaying(b));
+        ClearChase();
+    }
+
+    it("waiting to play with no game started: free again next tick") {
+        TagSetup();
+        int a = AddMover(4, 4, 1);
+        expect(ChaseJoin(a) && ChaseIsPlaying(a) && MoverActivity(a) < 0);
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(a) && movers[a].freetimeState == FREETIME_NONE);
+    }
+
+    it("players taken into another game: the first one ends without them") {
+        TagSetup();
+        int a = AddMover(2, 3, 1), b = AddMover(4, 3, 1), t = AddMover(12, 6, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        int tag = MoverActivity(a);
+        int hs[2] = { a, b };
+        PackHuntStart(hs, 2, t);
+        int pack = MoverActivity(t);
+        expect(pack >= 0 && pack != tag && MoverActivity(a) == pack && MoverActivity(b) == pack);
+        expect(activities[tag].count == 0);
+        RunChase(0.1f);
+        expect(!activities[tag].active && activities[pack].active && PackTarget() == t);
+        ClearChase();
+    }
+}
+
+// Notice + games, with the clock ticking (proposals are staggered over currentTick)
+static void RunPlay(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        currentTick++;
+        BuildMoverSpatialGrid();
+        NoticeTick();
+        ChaseTick(TICK_DT);
+    }
+}
+
+static void PlaySetup(void) {
+    TagSetup();
+    autoGames = true;
+    gameChance = 1.0f;
+    gameMinSeconds = gameMaxSeconds = 30.0f;
+    gameCooldown = 60.0f;
+}
+
+describe(games_by_themselves) {
+    it("two friends idle near each other start a game by themselves; strangers don't") {
+        PlaySetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(16, 8, 1), d = AddMover(18, 8, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);   // c and d don't know each other
+        RunPlay(1.0f);
+        int g = MoverActivity(a);
+        expect(g >= 0 && MoverActivity(b) == g && activities[g].timeLeft > 0.0f);
+        int k = activities[g].kind;   // any game two can play
+        expect(k == ACT_TAG || k == ACT_HIDE_SEEK || k == ACT_FOLLOW_LEADER);
+        expect(MoverActivity(c) < 0 && MoverActivity(d) < 0);
+        expect(autoGameStarts[k] == 1);
+        ClearChase();
+    }
+
+    it("off (autoGames), or where people don't talk: no games") {
+        PlaySetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        autoGames = false;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0);
+        autoGames = true; talkEnabled = false;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0);
+        talkEnabled = true;
+        ClearChase();
+    }
+
+    it("hungry: it neither proposes nor joins") {
+        PlaySetup();
+        hungerEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        movers[a].hunger = 1.0f;
+        movers[b].hunger = balance.hungerSeekThreshold - 0.05f;
+        RunPlay(1.0f);
+        expect(MoverActivity(a) < 0 && MoverActivity(b) < 0);
+        hungerEnabled = false;
+        ClearChase();
+    }
+
+    it("a game they started ends by itself; then a cooldown before the next") {
+        PlaySetup();
+        gameMinSeconds = gameMaxSeconds = 2.0f;
+        gameCooldown = 5.0f;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        RelationSetPair(a, b, 60.0f, 60.0f);
+        RunPlay(1.0f);
+        expect(MoverActivity(a) >= 0);
+        RunPlay(2.0f);
+        expect(!ChaseIsPlaying(a) && !ChaseIsPlaying(b) && movers[a].freetimeState == FREETIME_NONE);
+        expect(autoGameEnded == 1 && ActivityCooldown(a) > 0.0f);
+        RunPlay(2.0f);
+        expect(MoverActivity(a) < 0);   // still cooling down
+        RunPlay(5.0f);
+        expect(autoGameStarts[ACT_TAG] + autoGameStarts[ACT_HIDE_SEEK] + autoGameStarts[ACT_FOLLOW_LEADER] >= 2);   // played again
+        ClearChase();
+    }
+
+    it("each game's start: the one who proposed it is it / seeks / leads; what they say they are doing") {
+        TagSetup();
+        int p[3] = { AddMover(4, 4, 1), AddMover(6, 4, 1), AddMover(8, 6, 1) };
+        char buf[80];
+        int g = ActivityStartWith(ACT_TAG, p, 2, 30.0f);
+        expect(g >= 0 && ChaseIt() == p[0]);
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "Playing tag: it") != NULL);
+        expect(ChaseDescribe(p[1], buf, sizeof(buf)) && strstr(buf, "tag") != NULL);
+        expect(!ChaseDescribe(p[2], buf, sizeof(buf)));   // not playing
+        ClearChase();
+        g = ActivityStartWith(ACT_HIDE_SEEK, p, 3, 30.0f);
+        expect(g >= 0 && HideSeeker() == p[0] && HideIsCounting(p[0]));
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "counting") != NULL);
+        expect(ChaseDescribe(p[1], buf, sizeof(buf)) && strstr(buf, "Hide and seek") != NULL);
+        ClearChase();
+        g = ActivityStartWith(ACT_HIDE_SEEK, p, 2, 30.0f);   // two can play: one seeks, one hides
+        expect(g >= 0 && activities[g].count == 2 && HideSeeker() == p[0]);
+        ClearChase();
+        g = ActivityStartWith(ACT_FOLLOW_LEADER, p, 3, 30.0f);
+        expect(g >= 0 && FollowLeader() == p[0] && FollowPlace(p[2]) == 2);
+        expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "leading") != NULL);
+        expect(ActivityStartWith(ACT_PACK_HUNT, p, 3, 30.0f) < 0);   // never proposed
+        ClearChase();
+    }
+}
+
+// Three friends: a and b play (a game they started), c is free near by
+static int JoinSetup(int kind, int* c) {
+    PlaySetup();
+    gameChance = 0.0f;       // nobody proposes
+    gameJoinChance = 1.0f;   // joins at once if it may
+    int p[2] = { AddMover(4, 4, 1), AddMover(6, 4, 1) };
+    *c = AddMover(5, 7, 1);
+    RelationSetPair(p[0], p[1], 60.0f, 60.0f);
+    RelationSetPair(p[0], *c, 60.0f, 60.0f);
+    RelationSetPair(p[1], *c, 60.0f, 60.0f);
+    return ActivityStartWith(kind, p, 2, 60.0f);
+}
+
+describe(joining_a_game) {
+    it("a free friend near by joins a game of tag; a stranger doesn't") {
+        int c;
+        int g = JoinSetup(ACT_TAG, &c);
+        int s = AddMover(5, 1, 1);   // knows nobody
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && activities[g].count == 3 && autoGameJoins == 1);
+        expect(MoverActivity(s) < 0);
+        ClearChase();
+    }
+
+    it("a game from a scenario (no end time): nobody joins it") {
+        PlaySetup();
+        gameChance = 0.0f; gameJoinChance = 1.0f;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(5, 7, 1);
+        RelationSetPair(a, c, 60.0f, 60.0f); RelationSetPair(b, c, 60.0f, 60.0f);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) < 0);
+        ClearChase();
+    }
+
+    it("hide and seek: while the seeker counts it hides too; once it seeks, it waits as found") {
+        int c;
+        int g = JoinSetup(ACT_HIDE_SEEK, &c);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && !HideIsFound(c));   // counting: off to hide
+        char buf[80];
+        expect(ChaseDescribe(c, buf, sizeof(buf)) && (strstr(buf, "hide") || strstr(buf, "hiding")));
+        ClearChase();
+        g = JoinSetup(ACT_HIDE_SEEK, &c);
+        movers[c - 1].x = 22.5f * CELL_SIZE; movers[c - 1].y = 10.5f * CELL_SIZE;   // the hider: far out of sight
+        movers[c].active = false;   // (out of the way while the seeker counts)
+        RunPlay(10.2f);   // the seeker has counted to ten (HS_COUNT_TIME) and starts looking
+        movers[c].active = true;
+        expect(HideSeeker() >= 0 && !HideIsCounting(HideSeeker()));
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && HideIsFound(c));
+        ClearChase();
+    }
+
+    it("follow the leader: it joins at the back of the line") {
+        int c;
+        int g = JoinSetup(ACT_FOLLOW_LEADER, &c);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && FollowPlace(c) == 2);
+        ClearChase();
+    }
+}
+
+// Run the social need for this many game hours (dayLength 60: 1 game hour = 2.5 s)
+static void RunSocial(float gameHours) {
+    gameDeltaTime = TICK_DT;
+    int ticks = (int)(GameHoursToGameSeconds(gameHours) / TICK_DT + 5) / 10 * 10;   // whole rounds: each mover is updated every 10th tick
+    for (int t = 0; t < ticks; t++) { currentTick++; SocialTick(); }
+}
+
+describe(social_need) {
+    it("alone and awake it goes down (a day to empty); asleep, or talk off: it stays") {
+        TalkSetup();
+        socialNeedEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(20, 8, 1);
+        expect(moverSocial[a] == 1.0f);
+        movers[b].freetimeState = FREETIME_RESTING;
+        RunSocial(6.0f);
+        expect(fabsf(moverSocial[a] - (1.0f - 6.0f / socialDrainGH)) < 0.02f);
+        expect(moverSocial[b] == 1.0f);   // asleep
+        talkEnabled = false;   // no social life in this game
+        float before = moverSocial[a];
+        RunSocial(6.0f);
+        expect(moverSocial[a] == before);
+        movers[b].freetimeState = FREETIME_NONE;
+        talkEnabled = true;   // the only one left: nobody to have company with, it stays
+        movers[b].active = false;
+        before = moverSocial[a];
+        RunSocial(6.0f);
+        expect(moverSocial[a] == before && !SocialActive());
+        movers[b].active = true;
+    }
+
+    it("in a talk it goes up: faster with a friend than a stranger, not at all with someone disliked") {
+        float got[3];
+        float likes[3] = { 50.0f, 0.0f, -60.0f };
+        for (int k = 0; k < 3; k++) {
+            TalkSetup();
+            socialNeedEnabled = true;
+            int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+            RelationSetPair(a, b, likes[k], 50.0f);
+            moverSocial[a] = moverSocial[b] = 0.2f;
+            TalkStart(a, b);
+            expect(MoverTalk(a) >= 0 && MoverTalk(b) == MoverTalk(a));
+            RunSocial(0.25f);
+            got[k] = moverSocial[a];
+        }
+        expect(fabsf(got[0] - (0.2f + 0.25f / socialGainGH)) < 0.03f);   // a friend: x1
+        expect(fabsf(got[1] - (0.2f + 0.5f * 0.25f / socialGainGH)) < 0.03f);   // a stranger: x0.5
+        expect(fabsf(got[2] - 0.2f) < 0.001f);   // disliked: no company it wants (and no drain)
+    }
+
+    it("playing a game is company too") {
+        TagSetup();
+        socialNeedEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1);
+        moverSocial[a] = 0.5f;
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        int with[4];
+        expect(SocialCompany(a, with, 4) == 1 && with[0] == b);
+        RunSocial(0.5f);
+        expect(moverSocial[a] > 0.6f);
+        ClearChase();
+    }
+
+    it("low: Lonely, very low: Very lonely; plenty of it in company: Good company") {
+        TalkSetup();
+        socialNeedEnabled = true;
+        bool savedMood = moodEnabled;
+        moodEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(12, 8, 1);
+        moverSocial[c] = 0.2f;
+        RunSocial(0.01f);   // (counts who is around)
+        moverSocial[c] = 0.2f;
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[c], MOODLET_LONELY) && !HasMoodlet(&movers[c], MOODLET_VERY_LONELY));
+        moverSocial[c] = 0.05f;
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[c], MOODLET_VERY_LONELY) && !HasMoodlet(&movers[c], MOODLET_LONELY));
+        expect(!HasMoodlet(&movers[a], MOODLET_GOOD_COMPANY));   // plenty, but alone
+        TalkStart(a, b);
+        MoodTick(TICK_DT);
+        expect(HasMoodlet(&movers[a], MOODLET_GOOD_COMPANY));
+        moodEnabled = savedMood;
+    }
+
+    it("saved and loaded (v120); a new mover in a slot starts with plenty") {
+        TalkSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1);
+        moverSocial[a] = 0.37f; moverSocial[b] = 0.81f;
+        expect(SaveWorld("/tmp/test_notice_social.bin"));
+        moverSocial[a] = moverSocial[b] = 0.0f;
+        expect(LoadWorld("/tmp/test_notice_social.bin"));
+        expect(fabsf(moverSocial[a] - 0.37f) < 0.0001f && fabsf(moverSocial[b] - 0.81f) < 0.0001f);
+        InitMover(&movers[a], 4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1.0f, (Point){4, 4, 1}, 100.0f);
+        expect(moverSocial[a] == 1.0f);
+    }
+}
+
+int main(int argc, char* argv[]) {
+    test_verbose = c89spec_parse_args(argc, argv);
+    if (!test_verbose) SetTraceLogLevel(LOG_NONE);
+    test(notice_basics);
+    test(polite_passing);
+    test(stop_to_talk);
+    test(gatherings);
+    test(relations);
+    test(friends_and_foes);
+    test(walking_together);
+    test(tag);
+    test(hide_and_seek);
+    test(glances_and_greetings);
+    test(table_talk);
+    test(spot_choice);
+    test(mingling);
+    test(auto_gatherings);
+    test(follow_the_leader);
+    test(pack_hunt);
+    test(cover);
+    test(personal_space);
+    test(pack_stealth);
+    test(playing_is_busy);
+    test(joint_activities);
+    test(social_need);
+    test(games_by_themselves);
+    test(joining_a_game);
+    return summary();
+}

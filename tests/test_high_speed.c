@@ -237,6 +237,7 @@ describe(high_speed_movement) {
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMover(m, startX, startY, 0.0f, goal, MOVER_SPEED);
+        m->needsRepath = true;   // plan the path (InitMover sets no path; idle it used to be removed at once)
         moverCount = 1;
         
         gameSpeed = 50.0f;
@@ -245,8 +246,8 @@ describe(high_speed_movement) {
         // Distance ~16 cells diagonal, at 200px/s = ~2.5 seconds
         RunGameSeconds(5.0f);
         
-        // Mover should have reached goal and deactivated
-        expect(m->active == false);
+        // Mover should have reached its goal (and stays there: endless mode off)
+        expect(m->active && m->pathIndex < 0 && (int)(m->x / CELL_SIZE) == goal.x && (int)(m->y / CELL_SIZE) == goal.y);
         expect(IsMoverPositionValid(m));
         
         endlessMoverMode = true;
@@ -476,8 +477,8 @@ describe(extreme_speed_edge_cases) {
         expect(gameTime > timeBeforeResume);
         
         // Mover should have moved (or reached goal)
-        // Either it moved further, or it deactivated (reached goal)
-        expect(m->x > posAfterMove || m->active == false);
+        // Either it moved further, or it reached its goal (path walked to the end)
+        expect(m->x > posAfterMove || m->pathIndex < 0);
         
         endlessMoverMode = true;
     }

@@ -4,14 +4,24 @@
 #include "../entities/mover.h"
 #include "../entities/items.h"
 #include "../entities/animals.h"
+#include "../entities/notice.h"
+#include "../entities/talk.h"
+#include "../entities/chase.h"
+#include "../entities/social.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/cars.h"
 #include "../entities/slots.h"
+#include "../entities/town.h"
 #include "../entities/jobs.h"
+#include "../entities/throwing.h"
 #include "../world/designations.h"
 #include "../simulation/needs.h"
 #include "../simulation/mood.h"
+#include "../simulation/explosion.h"
+#include "../simulation/vapour.h"
+#include "../world/support.h"
+#include "effects.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -21,7 +31,21 @@ void SimStep(float dt) {
 
     PROFILE_BEGIN(Items);
     ItemsTick(dt);
+    ThrowsTick(dt);
+    ExplosionsTick(dt);
+    VapourTick(dt);
+    PROFILE_BEGIN(Support);
+    SupportTick(dt);
+    PROFILE_END(Support);
+    FxTick(dt);   // visual effects age on game time (frozen while paused)
     PROFILE_END(Items);
+
+    PROFILE_BEGIN(Notice);
+    NoticeTick();
+    TalkTick(dt);
+    ChaseTick(dt);
+    SocialTick();   // company: up in talks and games, down alone (social.h)
+    PROFILE_END(Notice);
 
     PROFILE_BEGIN(Animals);
     AnimalsTick(dt);
@@ -41,6 +65,9 @@ void SimStep(float dt) {
         if (slotCarCount > 0) SlotsTick(dt);
         PROFILE_END(Cars);
     }
+    PROFILE_BEGIN(Town);
+    TownTick(dt);
+    PROFILE_END(Town);
 
     PROFILE_BEGIN(Designations);
     DesignationsTick(dt);

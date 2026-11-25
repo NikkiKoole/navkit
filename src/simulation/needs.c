@@ -10,7 +10,10 @@
 //   FREETIME_SEEKING_REST → (arrived/ground) → FREETIME_RESTING
 //   FREETIME_RESTING → (energy >= wake threshold) → FREETIME_NONE
 
+#include "../entities/chase.h"   // FREETIME_PLAY
 #include "needs.h"
+#include "../entities/money.h"
+#include "../entities/action_queue.h"
 #include "balance.h"
 #include "mood.h"
 #include "../entities/mover.h"
@@ -32,6 +35,7 @@
 #include "../simulation/plants.h"
 #include "../world/designations.h"
 #include "../core/time.h"
+#include "../entities/town.h"
 #include <math.h>
 #include <limits.h>
 
@@ -66,7 +70,8 @@ static bool NoWayThere(int moverIdx) {
     return moverRepathFails[moverIdx] >= NO_WAY_REPATHS;
 }
 
-static int FindNearestEdibleInStockpile(float x, float y, int z) {
+// moverIdx: who would eat it (food in a shop it can't pay for is skipped, money.h)
+static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
 
@@ -77,6 +82,7 @@ static int FindNearestEdibleInStockpile(float x, float y, int z) {
         if (!ItemIsEdible(items[i].type)) continue;
         if (items[i].condition == CONDITION_ROTTEN) continue;
         if (!NeedItemReachable(i)) continue;
+        if (!MoverCanAfford(moverIdx, i)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -166,13 +172,46 @@ static void StartSeekClock(Mover* m) {
 #define FORAGE_SEARCH_COST (48 * 10)   // ~48 cells of walking
 #define FORAGE_DURATION_GH 0.25f       // picking the bush
 
-static bool BushTakenByOther(int plantIdx, int moverIdx) {
+// Who forages which bush: built once per tick (ProcessFreetimeNeeds) and updated when a mover
+// picks a bush, instead of every bush check going through every mover (with ~900 hungry movers
+// that was most of the freetime cost: docs/todo/architecture/action-queue-and-need-index.md).
+// A bush someone stopped foraging this tick counts as taken until the next tick.
+static int forageClaim[MAX_PLANTS];
+static unsigned forageClaimStamp[MAX_PLANTS];
+static unsigned forageStamp;
+
+static void ClaimBush(int plantIdx, int moverIdx) {
+    if (plantIdx < 0 || plantIdx >= MAX_PLANTS) return;
+    forageClaim[plantIdx] = moverIdx;
+    forageClaimStamp[plantIdx] = forageStamp;
+}
+
+// Ripe bushes nobody forages or harvests, counted once per tick: zero = don't flood-search
+// (a search that can't find anything walks its whole budget; with hundreds of hungry movers
+// and no free bush that was the cost)
+static int freeRipeBushes;
+
+static void BuildForageClaims(void) {
+    forageStamp++;
     for (int i = 0; i < moverCount; i++) {
-        if (i == moverIdx || !movers[i].active) continue;
+        if (!movers[i].active) continue;
         int s = movers[i].freetimeState;
-        if ((s == FREETIME_SEEKING_FORAGE || s == FREETIME_FORAGING) && movers[i].needTarget == plantIdx) return true;
+        if (s == FREETIME_SEEKING_FORAGE || s == FREETIME_FORAGING) ClaimBush(movers[i].needTarget, i);
     }
-    return false;
+    freeRipeBushes = 0;
+    for (int i = 0; i < plantCount; i++) {   // plantCount: highest slot ever used + 1
+        const Plant* p = &plants[i];
+        if (!p->active || p->type != PLANT_BERRY_BUSH || p->stage != PLANT_STAGE_RIPE) continue;
+        if (forageClaimStamp[i] == forageStamp) continue;
+        const Designation* d = GetDesignation(p->x, p->y, p->z);
+        if (d && d->type == DESIGNATION_HARVEST_BERRY && d->assignedMover >= 0) continue;
+        freeRipeBushes++;
+    }
+}
+
+static bool BushTakenByOther(int plantIdx, int moverIdx) {
+    return plantIdx >= 0 && plantIdx < MAX_PLANTS && forageClaimStamp[plantIdx] == forageStamp &&
+           forageClaim[plantIdx] != moverIdx;
 }
 
 typedef struct { int moverIdx; } ForageCtx;
@@ -187,6 +226,7 @@ static bool RipeBushAt(void* user, int x, int y, int z) {
 
 // Plant index of the nearest ripe bush the mover can walk to, -1 if none
 static int FindForageBush(const Mover* m, int moverIdx) {
+    if (freeRipeBushes <= 0) return -1;   // nothing to find anywhere: skip the flood (also for sleepers)
     Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     ForageCtx ctx = {moverIdx};
     Point found = from;
@@ -198,11 +238,13 @@ static int FindForageBush(const Mover* m, int moverIdx) {
 }
 
 static bool StartForaging(Mover* m, int moverIdx) {
-    int pi = FindForageBush(m, moverIdx);
+    int pi = FindForageBush(m, moverIdx);   // -1 at once when no ripe bush is free
     if (pi < 0) return false;
     EventLog("Mover %d SEEKING_FORAGE bush=%d at (%d,%d,%d)", moverIdx, pi, plants[pi].x, plants[pi].y, plants[pi].z);
     m->freetimeState = FREETIME_SEEKING_FORAGE;
     m->needTarget = pi;
+    ClaimBush(pi, moverIdx);
+    freeRipeBushes--;
     m->goal = (Point){plants[pi].x, plants[pi].y, plants[pi].z};
     StartSeekClock(m);
     m->needsRepath = true;
@@ -213,23 +255,36 @@ static bool MoverHasTrait(const Mover* m, TraitType t);
 static bool EatFromInventory(Mover* m, int moverIdx);
 static bool StartScrounging(Mover* m, int moverIdx);
 
-static void StartFoodSearch(Mover* m, int moverIdx) {
+static void StartFoodSearchBody(Mover* m, int moverIdx);
+// Profiled (--profile: one summed section per need search)
+static void StartFoodSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(FoodSearch); StartFoodSearchBody(m, moverIdx); PROFILE_ACCUM_END(FoodSearch); }
+static void StartFoodSearchBody(Mover* m, int moverIdx) {
     // Food the mover carries (pockets, backpack, a bag, a hand) comes first
     if (EatFromInventory(m, moverIdx)) return;
     // Then stockpiles, then the ground. A scavenger has no money (for now: no coins yet), so
     // the food in stockpiles (shops, stands) is not for it.
     int itemIdx = -1;
-    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
+    PROFILE_ACCUM_BEGIN(FoodInStockpile);
+    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z);
+    PROFILE_ACCUM_END(FoodInStockpile);
     if (itemIdx < 0) {
+        PROFILE_ACCUM_BEGIN(FoodOnGround);
         itemIdx = FindNearestEdibleOnGround(m->x, m->y, (int)m->z);
+        PROFILE_ACCUM_END(FoodOnGround);
     }
 
     if (itemIdx < 0) {
         // No food lying around: pick berries from a bush; then search a trash bin (a
         // scavenger at once, anyone else only when starving). Nothing at all: cooldown
-        if (StartForaging(m, moverIdx)) return;
-        if ((MoverHasTrait(m, TRAIT_SCAVENGER) || m->hunger < balance.hungerCriticalThreshold) &&
-            StartScrounging(m, moverIdx)) return;
+        PROFILE_ACCUM_BEGIN(Forage);
+        bool foraging = StartForaging(m, moverIdx);
+        PROFILE_ACCUM_END(Forage);
+        if (foraging) return;
+        PROFILE_ACCUM_BEGIN(Scrounge);
+        bool scrounging = (MoverHasTrait(m, TRAIT_SCAVENGER) || m->hunger < balance.hungerCriticalThreshold) &&
+                          StartScrounging(m, moverIdx);
+        PROFILE_ACCUM_END(Scrounge);
+        if (scrounging) return;
         m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
         return;
     }
@@ -265,7 +320,10 @@ static bool WarmSpotTarget(void* user, int x, int y, int z) {
     return IsWarmSpot(x, y, z);
 }
 
-static void StartWarmthSearch(Mover* m, int moverIdx) {
+static void StartWarmthSearchBody(Mover* m, int moverIdx);
+// Profiled (--profile: one summed section per need search)
+static void StartWarmthSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(WarmthSearch); StartWarmthSearchBody(m, moverIdx); PROFILE_ACCUM_END(WarmthSearch); }
+static void StartWarmthSearchBody(Mover* m, int moverIdx) {
     Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     Point found = from;
     if (!IsWarmSpot(from.x, from.y, from.z) &&
@@ -397,7 +455,10 @@ static bool FindNearbyBush(int cx, int cy, int z, int* outX, int* outY) {
     return found;
 }
 
-static void StartBladderSearch(Mover* m, int moverIdx) {
+static void StartBladderSearchBody(Mover* m, int moverIdx);
+// Profiled (--profile: one summed section per need search)
+static void StartBladderSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(BladderSearch); StartBladderSearchBody(m, moverIdx); PROFILE_ACCUM_END(BladderSearch); }
+static void StartBladderSearchBody(Mover* m, int moverIdx) {
     int cx = (int)(m->x / CELL_SIZE);
     int cy = (int)(m->y / CELL_SIZE);
     int cz = (int)m->z;
@@ -434,7 +495,8 @@ static void StartBladderSearch(Mover* m, int moverIdx) {
 // Find best drinkable item (prefers tea > juice > water)
 // Searches stockpiles first, then containers, then ground
 // Returns item index or -1
-static int FindBestDrinkableItem(float x, float y, int z) {
+// moverIdx: who would drink it (a drink in a shop it can't pay for is skipped, money.h)
+static int FindBestDrinkableItem(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestScore = -1.0f;
 
@@ -448,6 +510,7 @@ static int FindBestDrinkableItem(float x, float y, int z) {
             items[i].state != ITEM_IN_CONTAINER) continue;
         if (items[i].state == ITEM_IN_CONTAINER && !IsItemAccessible(i)) continue;
         if (!NeedItemReachable(i)) continue;
+        if (!MoverCanAfford(moverIdx, i)) continue;
 
         float hydration = GetItemHydration(items[i].type);
         float dx = items[i].x - x;
@@ -512,16 +575,19 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
 
 // Is there anything to drink for this mover (a stored drink, any tap on its level, natural water)?
 static bool DrinkAvailable(const Mover* m) {
-    if (FindBestDrinkableItem(m->x, m->y, (int)m->z) >= 0) return true;
+    if (FindBestDrinkableItem((int)(m - movers), m->x, m->y, (int)m->z) >= 0) return true;
     for (int i = 0; i < MAX_FURNITURE; i++)
         if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) return true;
     int wx, wy, wz, sx, sy, sz;
     return FindNearestWaterCell(m->x, m->y, (int)m->z, &wx, &wy, &wz, &sx, &sy, &sz);
 }
 
-static void StartDrinkSearch(Mover* m, int moverIdx) {
+static void StartDrinkSearchBody(Mover* m, int moverIdx);
+// Profiled (--profile: one summed section per need search)
+static void StartDrinkSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(DrinkSearch); StartDrinkSearchBody(m, moverIdx); PROFILE_ACCUM_END(DrinkSearch); }
+static void StartDrinkSearchBody(Mover* m, int moverIdx) {
     // Try to find a drinkable item (in stockpile, container, or on ground)
-    int itemIdx = FindBestDrinkableItem(m->x, m->y, (int)m->z);
+    int itemIdx = FindBestDrinkableItem(moverIdx, m->x, m->y, (int)m->z);
 
     if (itemIdx >= 0) {
         if (!ReserveItem(itemIdx, moverIdx)) {
@@ -603,7 +669,10 @@ static void StartGroundRest(Mover* m, int moverIdx) {
     m->goal = (Point){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
 }
 
-static void StartRestSearch(Mover* m, int moverIdx) {
+static void StartRestSearchBody(Mover* m, int moverIdx);
+// Profiled (--profile: one summed section per need search)
+static void StartRestSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(RestSearch); StartRestSearchBody(m, moverIdx); PROFILE_ACCUM_END(RestSearch); }
+static void StartRestSearchBody(Mover* m, int moverIdx) {
     // Scan furniture pool for best unoccupied furniture
     // Prefer highest restRate, weight by distance
     int bestIdx = -1;
@@ -615,6 +684,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
         if (!furniture[i].active) continue;
         if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only
+        if (!TownMayUseFurniture(i, moverIdx)) continue;  // someone else's bed (town homes)
 
         const FurnitureDef* def = GetFurnitureDef(furniture[i].type);
         if (def->restRate <= 0.0f) continue;  // Not restable
@@ -667,6 +737,21 @@ static bool IsRawFood(ItemType type) {
 // Classify drink for moodlets: tea/juice = good, plain water = neutral
 static bool IsGoodDrink(ItemType type) {
     return type == ITEM_HERBAL_TEA || type == ITEM_BERRY_JUICE;
+}
+
+// A job that makes food is not interrupted by starving: picking berries, and crafting a recipe
+// whose output is food (baking, cooking). Interrupting them locked a town for good: starving
+// bakers dropped their 2-hour bake every 15 minutes (the food search found nothing, the job came
+// back, the next search took it again), so no bread was ever baked again.
+static bool JobProducesFood(const Job* job) {
+    if (job->type == JOBTYPE_HARVEST_BERRY) return true;
+    if (job->type != JOBTYPE_CRAFT || job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS) return false;
+    const Workshop* ws = &workshops[job->targetWorkshop];
+    if (!ws->active || job->targetBillIdx < 0 || job->targetBillIdx >= ws->billCount) return false;
+    int recipeCount;
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    int r = ws->bills[job->targetBillIdx].recipeIdx;
+    return r >= 0 && r < recipeCount && ItemIsEdible(recipes[r].outputType);
 }
 
 // A critical need takes the mover off its job only when it looks for help right now.
@@ -759,6 +844,21 @@ static void GetRidOfTrash(Mover* m, int moverIdx) {
     m->goal = (Point){(int)(items[bin].x / CELL_SIZE), (int)(items[bin].y / CELL_SIZE), (int)items[bin].z};
     StartSeekClock(m);
     m->needsRepath = true;
+}
+
+void MoverGetRidOfTrash(Mover* m, int moverIdx) { GetRidOfTrash(m, moverIdx); }
+bool MoverHasTrash(int moverIdx) { return HasTrashToThrow(&movers[moverIdx], moverIdx); }
+ItemType MoverTrashType(int moverIdx) {
+    return movers[moverIdx].heldTrash != ITEM_NONE ? (ItemType)movers[moverIdx].heldTrash : ITEM_LEFTOVERS;
+}
+void MoverThrowTrash(int moverIdx, int bin) { LetGoOfTrash(&movers[moverIdx], moverIdx, bin); }
+bool MoverHasCriticalNeed(int moverIdx, bool skipHunger) {
+    const Mover* m = &movers[moverIdx];
+    return (!skipHunger && hungerEnabled && m->hunger < balance.hungerCriticalThreshold) ||
+           (thirstEnabled && m->thirst < balance.thirstCriticalThreshold) ||
+           (bladderEnabled && m->bladder < balance.bladderCriticalThreshold) ||
+           (energyEnabled && m->energy < balance.energyExhaustedThreshold) ||
+           (bodyTempEnabled && m->bodyTemp < balance.severeColdThreshold);
 }
 
 // What consuming one of type left (a can, a wrapper) goes in the hand; a mover that still
@@ -903,6 +1003,58 @@ static void FinishScrounging(Mover* m, int moverIdx, int bin) {
 // there is work, it keeps working (and doesn't fetch the bag between two logs)
 #define FETCH_OWN_AFTER_IDLE_GH 0.15f
 
+// Eat one unit of item ti where it is: hunger, mood (food, table, hot meal), leftovers, trash
+void MoverEatItem(Mover* m, int moverIdx, int ti) {
+    // Consume food: restore hunger, delete item
+    float nutrition = ItemNutrition(items[ti].type);
+    float need = 1.0f - m->hunger;   // what fit: a big portion leaves the rest
+    m->hunger += nutrition;
+    if (m->hunger > 1.0f) m->hunger = 1.0f;
+    EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
+    // Mood: food quality moodlet
+    ItemType foodType = items[ti].type;
+    if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
+    else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
+    if (items[ti].condition >= CONDITION_STALE) AddMoodlet(m, MOODLET_ATE_STALE_FOOD);
+
+    // Mood: ate at table vs without table. A table counts with a chair next
+    // to it (a dining set) in the room where the mover eats. Movers eat where
+    // the food lies, so the room is the test for now; once they carry food to
+    // a seat (sit-then-eat), it can become "sat at that table".
+    {
+        int cx = (int)(m->x / CELL_SIZE);
+        int cy = (int)(m->y / CELL_SIZE);
+        int cz = (int)m->z;
+        uint16_t rid = GetRoomAt(cx, cy, cz);
+        DetectedRoom* room = GetRoom(rid);
+        if (room && room->diningSetCount > 0) {
+            AddMoodlet(m, MOODLET_ATE_AT_TABLE);
+        } else {
+            AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
+        }
+    }
+
+    // Mood: hot meal (check before consuming)
+    if (items[ti].temperature >= 40.0f) {
+        AddMoodlet(m, MOODLET_HOT_MEAL);
+    }
+
+    // Consume one from stack, or delete if last. The rest of the stack is
+    // free again: without the release every meal from a stack left it reserved
+    // and a busy colony starved next to a full stockpile.
+    if (items[ti].stackCount > 1) {
+        items[ti].stackCount--;
+        ReleaseItemReservation(ti);
+    } else {
+        DeleteItem(ti);
+    }
+
+    TakeLeftover(m, moverIdx, foodType);
+    LeaveLeftovers(m, moverIdx, foodType, need);
+    GetRidOfTrash(m, moverIdx);
+}
+
+static void ProcessFreetimeState(Mover* m, int moverIdx);
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
     if (!hungerEnabled && (m->freetimeState == FREETIME_SEEKING_FORAGE || m->freetimeState == FREETIME_FORAGING)) {
@@ -961,6 +1113,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // (0.6 ms at 1024x1024 with 100 movers).
     if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0 &&
         (currentTick + (unsigned long)moverIdx) % TICK_RATE == 0) {
+        PROFILE_ACCUM_BEGIN(StaleReservations);
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].reservedBy == moverIdx) {
                 // Its own gear stays reserved (tool, clothing, backpack, hands, a bag put down for a job)
@@ -969,13 +1122,24 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             }
         }
         m->needTarget = -1;
+        PROFILE_ACCUM_END(StaleReservations);
     }
 
     if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0) idleTime[moverIdx] += gameDeltaTime;
     else idleTime[moverIdx] = 0.0f;
 
+    // Profiled: deciding (no need active) vs carrying on with one
+    bool deciding = m->freetimeState == FREETIME_NONE;
+    if (deciding) PROFILE_ACCUM_BEGIN(FreetimeDecide); else PROFILE_ACCUM_BEGIN(FreetimeStates);
+    ProcessFreetimeState(m, moverIdx);
+    if (deciding) PROFILE_ACCUM_END(FreetimeDecide); else PROFILE_ACCUM_END(FreetimeStates);
+}
+
+static void ProcessFreetimeState(Mover* m, int moverIdx) {
     switch (m->freetimeState) {
         case FREETIME_NONE: {
+            // A queue put aside for a need: the need is handled (or can't be now): carry on
+            if (QueueReadyToResume(moverIdx)) { QueueResume(moverIdx); break; }
             // Priority: starving > dehydrating > desperate bladder > exhausted > freezing >
             //           hungry > thirsty > bladder > tired > chilly
             // Critical needs, in that order. One whose search finds nothing (no food
@@ -992,7 +1156,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (starving) {
                 // STARVING — unassign job (preserves designation progress), seek food
                 // But don't interrupt food-producing jobs (harvest berry)
-                bool jobProducesFood = m->currentJobId >= 0 && jobs[m->currentJobId].type == JOBTYPE_HARVEST_BERRY;
+                bool jobProducesFood = m->currentJobId >= 0 && JobProducesFood(&jobs[m->currentJobId]);
                 if (jobProducesFood) handled = true;
                 else handled = CriticalNeed(m, moverIdx, canSearch, StartFoodSearch);
             }
@@ -1073,13 +1237,17 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             }
 
             // Check if arrived at food
-            float dx = m->x - items[ti].x;
-            float dy = m->y - items[ti].y;
-            float distSq = dx * dx + dy * dy;
-            float pickupR = CELL_SIZE * 0.75f;
-
-            if ((int)m->z == (int)items[ti].z && distSq < pickupR * pickupR) {
-                // Arrived — start eating
+            if (MoverCanReach(m, items[ti].x, items[ti].y, (int)items[ti].z)) {
+                // Arrived: with a free hand and a free seat nearby, take it there and sit down
+                // to eat (action_queue.c, its pick-up pays at a shop); otherwise eat here, standing
+                if (QueueSitThenEat(moverIdx, ti)) break;
+                if (!MoverBuy(moverIdx, ti)) {   // a shop, and the purse is short now (money.h)
+                    ReleaseItemReservation(ti);
+                    m->freetimeState = FREETIME_NONE;
+                    m->needTarget = -1;
+                    m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
+                    break;
+                }
                 m->freetimeState = FREETIME_EATING;
                 m->needProgress = 0.0f;
                 // Clear path so mover stops
@@ -1102,6 +1270,18 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             }
             break;
         }
+
+        case FREETIME_PLAY:   // in a game (chase.c moves it): a need ends its play
+            if (!ChaseIsPlaying(moverIdx)) { m->freetimeState = FREETIME_NONE; break; }   // the game ended (or a load)
+            if (PlayWantsToStop(moverIdx)) ChaseLeave(moverIdx);
+            break;
+
+        case FREETIME_QUEUE:
+            // A critical need puts the queue aside (ProcessFreetimeNeeds weighs the needs again
+            // this tick); it resumes once the mover is free (FREETIME_NONE below)
+            if (QueueWantsInterrupt(moverIdx)) { QueueSuspend(moverIdx); break; }
+            QueueTick(moverIdx);   // action_queue.c: the current step
+            break;
 
         case FREETIME_SEEKING_FORAGE: {
             int pi = m->needTarget;
@@ -1165,53 +1345,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             m->needProgress += gameDeltaTime;
             if (m->needProgress >= GameHoursToGameSeconds(balance.eatingDurationGH)) {
-                // Consume food: restore hunger, delete item
-                float nutrition = ItemNutrition(items[ti].type);
-                float need = 1.0f - m->hunger;   // what fit: a big portion leaves the rest
-                m->hunger += nutrition;
-                if (m->hunger > 1.0f) m->hunger = 1.0f;
-                EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
-                // Mood: food quality moodlet
-                ItemType foodType = items[ti].type;
-                if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
-                else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
-                if (items[ti].condition >= CONDITION_STALE) AddMoodlet(m, MOODLET_ATE_STALE_FOOD);
-
-                // Mood: ate at table vs without table. A table counts with a chair next
-                // to it (a dining set) in the room where the mover eats. Movers eat where
-                // the food lies, so the room is the test for now; once they carry food to
-                // a seat (sit-then-eat), it can become "sat at that table".
-                {
-                    int cx = (int)(m->x / CELL_SIZE);
-                    int cy = (int)(m->y / CELL_SIZE);
-                    int cz = (int)m->z;
-                    uint16_t rid = GetRoomAt(cx, cy, cz);
-                    DetectedRoom* room = GetRoom(rid);
-                    if (room && room->diningSetCount > 0) {
-                        AddMoodlet(m, MOODLET_ATE_AT_TABLE);
-                    } else {
-                        AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
-                    }
-                }
-
-                // Mood: hot meal (check before consuming)
-                if (items[ti].temperature >= 40.0f) {
-                    AddMoodlet(m, MOODLET_HOT_MEAL);
-                }
-
-                // Consume one from stack, or delete if last. The rest of the stack is
-                // free again: without the release every meal from a stack left it reserved
-                // and a busy colony starved next to a full stockpile.
-                if (items[ti].stackCount > 1) {
-                    items[ti].stackCount--;
-                    ReleaseItemReservation(ti);
-                } else {
-                    DeleteItem(ti);
-                }
-
-                TakeLeftover(m, moverIdx, foodType);
-                LeaveLeftovers(m, moverIdx, foodType, need);
-                GetRidOfTrash(m, moverIdx);
+                MoverEatItem(m, moverIdx, ti);
             }
             break;
         }
@@ -1303,7 +1437,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             bool canLook = m->needSearchCooldown <= 0.0f;   // as at the start of this tick
             bool foodToEat = false;
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold && canLook) {
-                foodToEat = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z) >= 0 ||
+                foodToEat = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z) >= 0 ||
                             FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0 ||
                             FindForageBush(m, moverIdx) >= 0;
             }
@@ -1397,13 +1531,15 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             }
 
             // Check if arrived
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx * dx + dy * dy;
-            float pickupR = CELL_SIZE * 0.75f;
-
-            if ((int)m->z == targetZ && distSq < pickupR * pickupR) {
-                // Arrived — start drinking
+            if (MoverCanReach(m, targetX, targetY, targetZ)) {
+                // Arrived: pay at a shop (money.h), then start drinking
+                if (!MoverBuy(moverIdx, ti)) {
+                    ReleaseItemReservation(ti);
+                    m->freetimeState = FREETIME_NONE;
+                    m->needTarget = -1;
+                    m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
+                    break;
+                }
                 m->freetimeState = FREETIME_DRINKING;
                 m->needProgress = 0.0f;
                 m->pathLength = 0;
@@ -1468,9 +1604,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 GetRidOfTrash(m, moverIdx);
                 break;
             }
-            float dx = m->x - items[bin].x, dy = m->y - items[bin].y;
-            float reach = CELL_SIZE * 0.75f;
-            if ((int)m->z == (int)items[bin].z && dx * dx + dy * dy < reach * reach) {
+            if (MoverCanReach(m, items[bin].x, items[bin].y, (int)items[bin].z)) {
                 LetGoOfTrash(m, moverIdx, bin);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -1496,11 +1630,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->needTarget = -1;
                 break;
             }
-            float dx = m->x - items[it].x, dy = m->y - items[it].y;
-            float reach = CELL_SIZE * 0.75f;
-            bool sameCell = (int)(m->x / CELL_SIZE) == (int)(items[it].x / CELL_SIZE) &&
-                            (int)(m->y / CELL_SIZE) == (int)(items[it].y / CELL_SIZE);
-            if ((int)m->z == (int)items[it].z && (sameCell || dx * dx + dy * dy < reach * reach)) {
+            if (MoverCanReach(m, items[it].x, items[it].y, (int)items[it].z)) {
                 MoverForgetSetAside(moverIdx, it);   // off the list (reservation freed)...
                 if (MoverHold(moverIdx, it)) EventLog("Mover %d picked its %s up again", moverIdx, ItemName(items[it].type));
                 m->freetimeState = FREETIME_NONE;    // ...and held again, or left for anyone
@@ -1789,6 +1919,7 @@ float MoverEnergyDrainPerGH(int moverIdx) {
 }
 
 void ProcessFreetimeNeeds(void) {
+    BuildForageClaims();
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;

@@ -1,9 +1,16 @@
 #include "mover.h"
+#include "action_queue.h"
+#include "money.h"
+#include "social.h"
 #include "inventory.h"
 #include "trains.h"
 #include "elevators.h"
 #include "namegen.h"
 #include "animals.h"
+#include "notice.h"
+#include "talk.h"
+#include "relations.h"
+#include "chase.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -23,6 +30,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
+#include "../simulation/explosion.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
@@ -70,12 +78,32 @@ static Point moverYieldCell[MAX_MOVERS];   // where the current wait started
 // Waiting at a narrow passage this tick: others' avoidance ignores it, or a crowd waiting at
 // the far end walls off the very mover it waits for (no hard bodies: walk through them)
 static bool moverYielding[MAX_MOVERS];
+static int moverYieldFor[MAX_MOVERS];      // who it waits for (valid while moverYielding)
+bool yieldLetPass = true;                  // waiting at a narrow entrance: keep waiting until the one it let out has got past
+
+static bool moverWasYielding[MAX_MOVERS];  // waited at a narrow entrance last tick
+static float moverNodTimer[MAX_MOVERS];    // "after you": nod at the one it let through (sim s)
+static float moverThanksTimer[MAX_MOVERS]; // was let through: smiles back (sim s)
+#define NOD_TIME 0.6f
+float MoverYieldWaitTime(int i) { return MoverYieldingFor(i) >= 0 ? moverYieldTime[i] : 0.0f; }
+float MoverNodTime(int i) { return (i >= 0 && i < moverCount) ? moverNodTimer[i] : 0.0f; }
+float MoverThanksTime(int i) { return (i >= 0 && i < moverCount) ? moverThanksTimer[i] : 0.0f; }
+int MoverYieldingFor(int i) { return (i >= 0 && i < moverCount && moverYielding[i]) ? moverYieldFor[i] : -1; }
+
+bool MoverCanReach(const Mover* m, float x, float y, int z) {
+    if ((int)m->z != z) return false;
+    if ((int)(m->x / CELL_SIZE) == (int)(x / CELL_SIZE) && (int)(m->y / CELL_SIZE) == (int)(y / CELL_SIZE)) return true;
+    float dx = m->x - x, dy = m->y - y;
+    return dx * dx + dy * dy < MOVER_REACH * MOVER_REACH;
+}
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = true;
 bool useMoverAvoidance = true;
 bool preferDifferentZ = true;
+float moverWanderPause = 0.0f;   // seconds a wanderer stands at its goal before the next (+-50%)
+static bool moverWanderRested[MAX_MOVERS];
 int moverWanderRadius = 256;   // wandering/spawned movers: goals within this many cells (0 = anywhere)
 bool allowFallingFromAvoidance = false;
 bool useKnotFix = true;
@@ -457,10 +485,13 @@ static int UpcomingRouteCells(int i, Point* out, int maxCells) {
 
 static inline bool PointsEqual(Point a, Point b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
 
-// Does mover a have priority over mover b? Busy (job) beats idle; then lower index.
+// Does mover a have priority over mover b? Busy (job) beats idle; then the one the other likes
+// more goes first (you let a friend through, relations.c); then lower index.
 static bool MoverHasPriority(int a, int b) {
     bool aBusy = movers[a].currentJobId >= 0, bBusy = movers[b].currentJobId >= 0;
     if (aBusy != bBusy) return aBusy;
+    float bLikesA = RelationLike(b, a), aLikesB = RelationLike(a, b);
+    if (fabsf(bLikesA - aLikesB) >= 10.0f) return bLikesA > aLikesB;
     return a < b;
 }
 
@@ -491,6 +522,8 @@ static bool YieldKeyEqual(const YieldClearKey* a, const YieldClearKey* b) {
            a->wp1.x == b->wp1.x && a->wp1.y == b->wp1.y && a->wp1.z == b->wp1.z &&
            a->walkCount == b->walkCount;
 }
+
+static void CountNeighborCb(int j, float distSq, void* user) { (void)j; (void)distSq; (*(int*)user)++; }
 
 static bool MoverShouldYield(int i) {
     Mover* m = &movers[i];
@@ -551,9 +584,11 @@ static bool MoverShouldYield(int i) {
         if (myDx * oDx + myDy * oDy >= 0.0f) continue;
 
         for (int k = start; k <= end; k++)
-            if (PointsEqual(route[k], oc)) return true;               // oncoming mover inside the stretch
-        if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i))
-            return true;                                              // about to enter from the far end, has priority
+            if (PointsEqual(route[k], oc)) { moverYieldFor[i] = j; return true; }   // oncoming, inside the stretch
+        if (beyond >= 0 && PointsEqual(route[beyond], oc) && MoverHasPriority(j, i)) {
+            moverYieldFor[i] = j;                                     // about to enter from the far end, has priority
+            return true;
+        }
     }
     return false;
 }
@@ -960,6 +995,10 @@ void StringPullPath(Point* pathArr, int* pathLen) {
 }
 
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
+    ClearMoverRelations((int)(m - movers));   // a new mover in this slot knows nobody
+    QueueReset((int)(m - movers));            // ... and has nothing queued (action_queue.h)
+    moverCoins[m - movers] = 0;               // ... and an empty purse (money.h)
+    SocialResetMover((int)(m - movers));      // ... and isn't lonely (social.h)
     m->x = x;
     m->y = y;
     m->z = z;
@@ -1154,6 +1193,14 @@ float MoverRouteCellsLeft(int i) {
 }
 
 void ClearMovers(void) {
+    QueueResetAll();
+    MoneyResetAll();
+    SocialResetAll();
+    ClearNotices();
+    ClearTalks();
+    ClearRelations();
+    ClearChase();
+    ClearExplosions();   // knocked movers, fuses, flying items (indices go stale)
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -1492,8 +1539,11 @@ static void AssignNewMoverGoal(Mover* m) {
 
     // TODO: GetRandomReachableCell(cx, cy, cz) respects walls/rooms but disabled for testing
     bool hasZConnections = (ladderLinkCount > 0 || rampCount > 0);
+    int sgx, sgy, sgz;
     if (moverGoalPicker && moverGoalPicker((int)(m - movers), &newGoal)) {
         // scenario-chosen goal
+    } else if (NoticeSocialWanderGoal((int)(m - movers), &sgx, &sgy, &sgz)) {
+        newGoal = (Point){sgx, sgy, sgz};   // near someone it likes (notice.c)
     } else if (MoverWanderLocal()) {
         // big map: cross-map paths cost tens of ms each, wander nearby instead
         newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius,
@@ -1502,6 +1552,11 @@ static void AssignNewMoverGoal(Mover* m) {
         newGoal = GetRandomWalkableCellDifferentZ(cz);
     } else {
         newGoal = GetRandomWalkableCellOnZ(cz);
+    }
+    // Not near someone it dislikes (notice.c): try a couple of other random goals
+    for (int retry = 0; retry < 3 && NoticeGoalNearDisliked((int)(m - movers), newGoal.x, newGoal.y, newGoal.z); retry++) {
+        if (MoverWanderLocal()) newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius, false);
+        else newGoal = GetRandomWalkableCellOnZ(cz);
     }
     m->goal = newGoal;
 
@@ -1618,8 +1673,13 @@ void UpdateMovers(void) {
         if (!m->active) continue;
         if (ElevatorRiderTick(i, dt)) continue;   // in an elevator car: it carries the mover
         if (ElevatorQueueTick(i, dt)) continue;   // in the line at an elevator door
+        if (ExplosionMoverTick(i, dt)) continue;  // knocked back by a blast, dazed (explosion.c)
+        if (TalkMoverTick(i, dt)) continue;       // standing in a conversation (talk.c)
+        if (ChaseMoverTick(i, dt)) continue;      // tag: "it" counting to three (chase.c)
         
         // Decrement fall timer for visual feedback
+        if (moverNodTimer[i] > 0.0f) moverNodTimer[i] -= dt;
+        if (moverThanksTimer[i] > 0.0f) moverThanksTimer[i] -= dt;
         if (m->fallTimer > 0) {
             m->fallTimer -= dt;
         }
@@ -1633,17 +1693,26 @@ void UpdateMovers(void) {
             CellType currentCell = GRID(currentX, currentY, currentZ);
             bool isWorkshopBlock = CELL_FLAGS(currentX, currentY, currentZ) & CELL_FLAG_WORKSHOP_BLOCK;
             
+            bool steppedDown = false;   // onto a ramp below: done, not a wall to be pushed out of
             // If it's a non-blocking cell (like air) without workshop flag, try to fall
             if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {
                 // Check if there's a ramp below we can descend to
-                bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1);
+                // A ramp's exit is a platform only on solid ground: over thawed ice or air
+                // (its support gone) the mover falls in and wades out instead of being
+                // treated as walled in below.
+                bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1) &&
+                                  CellIsSolid(GRID(currentX, currentY, currentZ - 1));
                 bool isAboveRamp = (currentZ > 0) && CellIsDirectionalRamp(GRID(currentX, currentY, currentZ - 1));
                 
                 if (isAboveRamp) {
                     // Descend onto the ramp - NOT a fall, just z-transition
                     m->z = (float)(currentZ - 1);
                     m->needsRepath = true;
-                    // Don't continue - let them move on the ramp
+                    steppedDown = true;
+                    // Don't continue - let them move on the ramp. The wall handling below
+                    // must not run for this: it looked for a neighbour at the old level and
+                    // pushed the mover sideways, or removed it as walled in when there was
+                    // none (air over a valley; frequent at high game speed).
                 } else if (!isRampExit) {
                     // Actual fall
                     if (!TryFallToGround(m, currentX, currentY)) {
@@ -1664,8 +1733,8 @@ void UpdateMovers(void) {
             // Check if this is a ramp z-transition: mover is at the exit cell (wall at z)
             // but should transition to z+1 where it's walkable (air above solid)
             int rampX, rampY;
-            bool handledByRamp = false;
-            if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX) &&
+            bool handledByRamp = steppedDown;
+            if (!steppedDown && currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX) &&
                 FindRampPointingTo(currentX, currentY, currentZ, &rampX, &rampY)) {
                 // Found a ramp pointing to us - transition to z+1
                 m->z = (float)(currentZ + 1);
@@ -1886,12 +1955,26 @@ void UpdateMovers(void) {
                 }
             }
 
-            if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
+            if (HideControls(i)) {
+                // hide and seek (chase.c) gives this player its goals
+            } else if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
                 // Only assign random goals to idle movers without jobs or active needs
                 if (m->repathCooldown > 0) {
-                    m->repathCooldown--;
+                    if (NoticeDislikedClose(i)) {   // someone it dislikes came close: leave now (notice.c)
+                        m->repathCooldown = 0;
+                        moverWanderRested[i] = true;
+                    } else {
+                        m->repathCooldown--;
+                        continue;
+                    }
+                }
+                // Stand a while at the goal before the next one (setting wanderPause)
+                if (moverWanderPause > 0.0f && !moverWanderRested[i]) {
+                    moverWanderRested[i] = true;
+                    m->repathCooldown = (int)(moverWanderPause * TICK_RATE * GetRandomValue(50, 150) / 100.0f);
                     continue;
                 }
+                moverWanderRested[i] = false;
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
                     // No path found, wait before retrying
@@ -1903,10 +1986,9 @@ void UpdateMovers(void) {
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
                     }
                 }
-            } else if (m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
-                // Only deactivate if truly idle (no job, no active needs)
-                m->active = false;
             }
+            // Endless mode off: an idle mover stays where it is (it used to be removed here, a
+            // leftover from the pathfinding demos; a mover you give orders to vanished)
             continue;
         }
 
@@ -1955,7 +2037,7 @@ void UpdateMovers(void) {
                 float heatMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
                 terrainSpeedMult *= heatMult;
             }
-            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
+            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult * TalkWalkSpeedScale(i) * ChaseSpeedScale(i);
         }
 
         // Waypoint arrival check
@@ -2058,7 +2140,41 @@ void UpdateMovers(void) {
                 // flickers, so the timeout never fired and dozens waited at both ends.)
                 Point here = {currentX, currentY, currentZ};
                 if (moverYieldTime[i] > 0.0f && !PointsEqual(moverYieldCell[i], here)) moverYieldTime[i] = 0.0f;
-                if (moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i)) {
+                float patience = MoverPatience(m);           // Patient waits twice as long, Impatient 0.4x
+                float timeout = YIELD_TIMEOUT * patience;
+                bool wait = moverYieldTime[i] < timeout && MoverShouldYield(i);
+                // Polite: someone it let out of the passage hasn't got past it yet -> keep waiting
+                // (not the impatient: they squeeze past)
+                if (!wait && yieldLetPass && patience >= 1.0f && moverYieldTime[i] > 0.0f && moverYieldTime[i] < timeout) {
+                    int j = moverYieldFor[i];
+                    if (j >= 0 && j < moverCount && movers[j].active && (int)movers[j].z == currentZ) {
+                        float ox = movers[j].x - m->x, oy = movers[j].y - m->y;
+                        float ahead = (ox * dxf + oy * dyf) / dist;
+                        float lateral = (ox * -dyf + oy * dxf) / dist;   // already beside me: go
+                        if (ahead > -CELL_SIZE * 0.25f && ahead < CELL_SIZE * 1.5f && fabsf(lateral) < CELL_SIZE * 0.6f) {
+                            // ...unless it's a crowd: then people squeeze past rather than queue longer
+                            int crowd = 0;
+                            QueryMoverNeighbors(m->x, m->y, CELL_SIZE * 1.5f, i, CountNeighborCb, &crowd);
+                            wait = crowd < (patience > 1.0f ? 6 : 3);   // the patient wait in a crowd too
+                        }
+                    }
+                }
+                // The wait is over and the one it waited for is right here: "after you" (a nod), and
+                // they smile back
+                if (!wait && moverWasYielding[i]) {
+                    int j = moverYieldFor[i];
+                    if (j >= 0 && j < moverCount && movers[j].active) {
+                        float ox = movers[j].x - m->x, oy = movers[j].y - m->y;
+                        if (ox * ox + oy * oy < (CELL_SIZE * 2.0f) * (CELL_SIZE * 2.0f)) {
+                            moverNodTimer[i] = NOD_TIME;
+                            moverThanksTimer[j] = NOD_TIME * 1.5f;
+                            RelationAdd(i, j, 1.0f, 1.0f);   // a small kindness, both ways
+                            RelationAdd(j, i, 1.0f, 1.0f);
+                        }
+                    }
+                }
+                moverWasYielding[i] = wait;
+                if (wait) {
                     if (moverYieldTime[i] == 0.0f) moverYieldCell[i] = here;
                     moverYieldTime[i] += dt;
                     moverYielding[i] = true;
@@ -2082,6 +2198,50 @@ void UpdateMovers(void) {
             // Base velocity toward waypoint (effectiveSpeed computed above)
             float vx = lineFollow ? followVx : dxf * invDist * effectiveSpeed;
             float vy = lineFollow ? followVy : dyf * invDist * effectiveSpeed;
+
+            // Social steering, sideways drifts: passing politely (notice.c: someone noticed coming
+            // at us), giving a conversation room (talk.c: a talk's circle ahead), keeping away
+            // from someone disliked (notice.c)
+            if (!lineFollow && target.z == (int)m->z && !ChaseIsPlaying(i)) {   // (not in a game of tag)
+                float sideX = 0.0f, sideY = 0.0f, passScale = 1.0f, roomX, roomY;
+                bool steer = politePassing &&
+                             NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale);
+                if (TalkGiveRoomSteer(i, dxf * invDist, dyf * invDist, &roomX, &roomY)) {
+                    sideX += roomX;
+                    sideY += roomY;
+                    steer = true;
+                }
+                if (NoticeAvoidSteer(i, dxf * invDist, dyf * invDist, &roomX, &roomY)) {   // round someone disliked
+                    sideX += roomX;
+                    sideY += roomY;
+                    steer = true;
+                }
+                if (steer) {
+                    // Never drift toward a drop: walls are fine (wall sliding stops it there), but
+                    // moving into open air is allowed as a fall, so a drift could push it off an edge
+                    float sl = sqrtf(sideX * sideX + sideY * sideY);
+                    if (sl > 0.001f) {
+                        int px = (int)((m->x + sideX / sl * CELL_SIZE * 0.6f) / CELL_SIZE);
+                        int py = (int)((m->y + sideY / sl * CELL_SIZE * 0.6f) / CELL_SIZE);
+                        int pz = (int)m->z;
+                        if (px < 0 || py < 0 || px >= gridWidth || py >= gridHeight ||
+                            (!IsCellWalkableAt(pz, py, px) && !CellBlocksMovement(GRID(px, py, pz))))
+                            steer = false;
+                    }
+                }
+                if (steer) {
+                    float near = 1.0f;   // ease off close to the waypoint so it can still reach it
+                    if (dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
+                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);
+                        near = t * t;
+                    }
+                    vx += sideX * effectiveSpeed * passStrength * near;
+                    vy += sideY * effectiveSpeed * passStrength * near;
+                    float len = sqrtf(vx * vx + vy * vy);
+                    float want = effectiveSpeed * passScale;
+                    if (len > 0.001f) { vx *= want / len; vy *= want / len; }
+                }
+            }
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
@@ -2464,6 +2624,7 @@ void TickWithDt(float dt) {
     // Temperature simulation
     PROFILE_BEGIN(Temperature);
     FurnitureHeatTick();
+    FurnitureFuelTick();   // burning barrels burn down (movers top them up: JOBTYPE_REFUEL)
     UpdateTemperature();
     PROFILE_BEGIN(Freezing);
     UpdateWaterFreezing();

@@ -1,5 +1,7 @@
 // describe.c - Entity descriptions as toned text lines (see describe.h)
 #include "describe.h"
+#include "../entities/town.h"
+#include "../entities/action_queue.h"
 #include "../entities/containers.h"
 #include "../entities/inventory.h"
 #include "../game_state.h"
@@ -10,6 +12,10 @@
 #include "../entities/furniture.h"
 #include "../entities/namegen.h"
 #include "../entities/animals.h"
+#include "../entities/notice.h"
+#include "../entities/talk.h"
+#include "../entities/relations.h"
+#include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../simulation/trees.h"
@@ -32,6 +38,7 @@
 #include "../simulation/mood.h"
 #include "../simulation/needs.h"
 #include <math.h>
+#include "../entities/social.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -91,6 +98,10 @@ const char* BladderLabel(float bladder, DescTone* tone) {
 const char* EnergyLabel(float energy, DescTone* tone) {
     static const char* w[4] = {"Rested", "Drowsy", "Tired", "Exhausted"};
     return LevelLabel(energy, w, tone);
+}
+const char* SocialLabel(float social, DescTone* tone) {
+    static const char* w[4] = {"Content", "Wants company", "Lonely", "Very lonely"};
+    return LevelLabel(social, w, tone);
 }
 
 const char* BodyTempLabel(float bodyTemp, DescTone* tone) {
@@ -166,6 +177,21 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
         else if (m->freetimeState == FREETIME_USING_TOILET) DescAdd(d, DESC_GOOD, "  Using toilet");
         else if (m->freetimeState == FREETIME_SEEKING_BUSH) DescAdd(d, DESC_WARN, "  Seeking bush...");
         else if (m->freetimeState == FREETIME_USING_BUSH) DescAdd(d, DESC_MILD, "  Behind a bush...");
+    }
+
+    // Company (social.h): only where people have a social life
+    if (SocialActive()) {
+        int idx = (int)(m - movers), with[16];
+        const char* label = SocialLabel(moverSocial[idx], &tone);
+        DescAdd(d, tone, "Social: %.0f%% (%s)", moverSocial[idx] * 100.0f, label);
+        int n = SocialCompany(idx, with, 16);
+        if (n > 0) {
+            bool wanted = SocialCompanyScale(idx, with, n) > 0.0f;
+            char who[32];
+            if (n == 1) snprintf(who, sizeof(who), "%s", movers[with[0]].name[0] ? movers[with[0]].name : "someone");
+            else snprintf(who, sizeof(who), "%d others", n);
+            DescAdd(d, wanted ? DESC_GOOD : DESC_MUTED, "  In company (with %s)%s", who, wanted ? "" : ": not the company it wants");
+        }
     }
 
     // Trash in hand (what the last snack or drink left)
@@ -312,6 +338,54 @@ static void DescribeMoverGear(const Mover* m, const Job* job, DescLines* d) {
     }
 }
 
+// Who this mover knows: the 3 that matter most (player), all with numbers (debug)
+static void DescribeMoverRelations(int idx, DescDetail detail, DescLines* d) {
+    const MoverRelations* mr = &moverRelations[idx];
+    int order[MAX_RELATIONS], n = 0;
+    for (int k = 0; k < mr->count; k++)
+        if (RelationGet(idx, mr->r[k].other)) order[n++] = k;
+    if (n == 0) return;
+    for (int a = 1; a < n; a++)   // most important first: familiarity + strength of feeling
+        for (int b = a; b > 0; b--) {
+            const Relation* x = &mr->r[order[b]]; const Relation* y = &mr->r[order[b - 1]];
+            if (x->familiarity + fabsf(x->like) * 2.0f <= y->familiarity + fabsf(y->like) * 2.0f) break;
+            int t = order[b]; order[b] = order[b - 1]; order[b - 1] = t;
+        }
+    int show = detail == DESC_DEBUG ? n : (n < 3 ? n : 3);
+    char buf[256] = "";
+    size_t len = 0;
+    for (int s = 0; s < show && len < sizeof(buf); s++) {
+        const Relation* r = &mr->r[order[s]];
+        const char* name = movers[r->other].name[0] ? movers[r->other].name : "someone";
+        if (detail == DESC_DEBUG)
+            len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s (%+.0f, %.0f)", s ? ", " : "", name,
+                                    r->like, r->familiarity);
+        else
+            len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s (%s)", s ? ", " : "", name,
+                                    RelationLabel(r->like, r->familiarity));
+    }
+    DescAdd(d, DESC_INFO, "Knows: %s", buf);
+}
+
+// Who this mover noticed (debug): "Notices: Anna 3s, #4 0s" (docs/todo/social/noticing.md)
+static void DescribeMoverNotices(int idx, DescLines* d) {
+    if (!noticeEnabled) return;
+    const MoverNotice* n = &moverNotice[idx];
+    if (n->count == 0) { DescAdd(d, DESC_MUTED, "Notices: nobody"); return; }
+    char buf[160] = "";
+    size_t len = 0;
+    for (int k = 0; k < n->count && len < sizeof(buf); k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active) continue;
+        char who[24];
+        if (movers[j].name[0]) snprintf(who, sizeof(who), "%s", movers[j].name);
+        else snprintf(who, sizeof(who), "#%d", j);
+        len += (size_t)snprintf(buf + len, sizeof(buf) - len, "%s%s %.0fs", len ? ", " : "", who,
+                                gameTime - n->e[k].since);
+    }
+    DescAdd(d, DESC_INFO, "Notices: %s", buf);
+}
+
 static void DescribeMoverDebug(const Mover* m, const Job* job, DescLines* d) {
     DescAdd(d, m->pathLength > 0 ? DESC_NORMAL : DESC_BAD, "Path: %d/%d, Goal: (%d,%d,z%d)",
             m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);
@@ -377,12 +451,60 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
                 m->x, m->y, m->z, (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE));
     }
 
+    if (townLotHighWater > 0) {   // town: where they live
+        int home = TownHomeOf(idx);
+        if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
+        else DescAdd(out, DESC_WARN, "Homeless");
+        int job = TownJobOf(idx);
+        if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)",
+                              townLots[job].kind == LOT_MILL ? "mill" : townLots[job].kind == LOT_FARM ? "farm" : "bakery", job,
+                              TownLotOpen(job) ? "open" : "closed", townOpenHour, townCloseHour);
+        else if (home >= 0) DescAdd(out, DESC_MUTED, "No job");
+    }
     DescribeMoverNeeds(m, out);
     DescribeMoverMood(m, out);
 
     DescAdd(out, job ? DESC_GOOD : DESC_MUTED, "Job: %s (step %d)",
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
+    if (QueueBusy(idx)) {   // the action queue (action_queue.h): what it will do, in order
+        char q[200];
+        QueueDescribe(idx, q, sizeof(q));
+        DescAdd(out, DESC_INFO, "Queue: %s", q);
+    }
     DescribeMoverGear(m, job, out);
+    if (MoverCoins(idx) > 0) { char mb[24]; DescAdd(out, DESC_INFO, "Money: %s", MoneyFormat(MoverCoins(idx), mb, sizeof mb)); }
+    DescribeMoverRelations(idx, detail, out);
+    if (MoverIsMingling(idx)) DescAdd(out, DESC_INFO, "Going over to another group");
+    int partner = TalkPartner(idx);
+    if (MoverIsPerforming(idx)) {
+        DescAdd(out, DESC_INFO, "Performing for %d", talks[MoverTalk(idx)].count);
+    } else if (MoverIsWatching(idx) && partner < 0) {   // round a place
+        const char* what = talks[MoverTalk(idx)].what;
+        DescAdd(out, DESC_INFO, "Gathered round %s", what ? what : "something");
+    } else if (MoverIsWatching(idx) && partner >= 0) {
+        if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Watching %s", movers[partner].name);
+        else DescAdd(out, DESC_INFO, "Watching #%d", partner);
+    } else if (MoverIsWalkingWith(idx) && partner >= 0) {
+        DescAdd(out, DESC_INFO, "Walking with %s%s", movers[partner].name[0] ? movers[partner].name : "someone",
+                talks[MoverTalk(idx)].count > 2 ? " and others" : "");
+    } else if (partner >= 0) {
+        int t = MoverTalk(idx);
+        if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Talking with %s%s", movers[partner].name,
+                                             talks[t].count > 2 ? " and others" : "");
+        else DescAdd(out, DESC_INFO, "Talking with #%d", partner);
+        if (detail == DESC_DEBUG) DescAdd(out, DESC_MUTED, "Talk %d: %.0f s left, %s", t, talks[t].timeLeft,
+                                          MoverIsSpeaking(idx) ? "speaking" : "listening");
+    }
+    {   // its part in a game (chase.c)
+        char g[80];
+        if (ChaseDescribe(idx, g, sizeof(g))) {
+            DescAdd(out, DESC_INFO, "%s", g);
+            int a = MoverActivity(idx);
+            if (detail == DESC_DEBUG && a >= 0)
+                DescAdd(out, DESC_MUTED, "Game %d: %d players, %.0f s%s", a, activities[a].count, activities[a].age,
+                        activities[a].timeLeft > 0.0f ? TextFormat(" of %.0f", activities[a].timeLeft) : "");
+        }
+    }
 
     // Train trip: the lines still ahead (planned when it last chose, i.e. at its last stop)
     int routeLines[TRAIN_PLAN_CHANGES_MAX + 1];
@@ -396,7 +518,10 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         else DescAdd(out, DESC_INFO, "By train: %s line", route);
     }
 
-    if (detail == DESC_DEBUG) DescribeMoverDebug(m, job, out);
+    if (detail == DESC_DEBUG) {
+        DescribeMoverDebug(m, job, out);
+        DescribeMoverNotices(idx, out);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +552,8 @@ void DescribeAnimal(int idx, DescLines* out) {
         else DescAdd(out, DESC_BAD, "Prey: none");
     }
 
+    if (AnimalDazed(idx)) DescAdd(out, DESC_WARN, "Dazed (hit by a stone)");
+    else if (AnimalScared(idx)) DescAdd(out, DESC_WARN, "Scared: running");
     if (a->markedForHunt) DescAdd(out, DESC_BAD, "Marked for Hunt");
     if (a->reservedByHunter >= 0) DescAdd(out, DESC_SOFT_BAD, "Hunter: Mover #%d", a->reservedByHunter);
 }
@@ -664,6 +791,7 @@ static const struct { const char* name; const char* worker; } designationText[DE
     [DESIGNATION_EXPLORE]        = {"Explore",        "Explorer"},
     [DESIGNATION_FARM]           = {"Farm",           "Farmer"},
     [DESIGNATION_REMOVE_BELT]    = {"Remove Belt",    "Worker"},
+    [DESIGNATION_BLAST]          = {"Blast",          "Blaster"},
 };
 
 const char* DesignationDisplayName(int type) {
@@ -909,6 +1037,10 @@ void DescribeStockpile(int spIdx, DescLines* out) {
     }
 
     DescAdd(out, DESC_TITLE, "Stockpile #%d", spIdx);
+    if (stockpileForSale[spIdx]) {   // a shop (money.h)
+        char mb[24];
+        DescAdd(out, DESC_GOOD, "For sale, till: %s", MoneyFormat(stockpileTill[spIdx], mb, sizeof mb));
+    }
     DescAdd(out, DESC_NORMAL, "Priority: %d", sp->priority);
     DescAdd(out, DESC_NORMAL, "Stack size: %d", sp->maxStackSize);
     if (sp->maxContainers > 0)
@@ -918,6 +1050,108 @@ void DescribeStockpile(int spIdx, DescLines* out) {
     char meter[48];
     DescFillMeter(meter, sizeof(meter), GetStockpileFillRatio(spIdx), 10);
     DescAdd(out, DESC_NORMAL, "Fill: %s", meter);
+}
+
+// ---------------------------------------------------------------------------
+// Town lot
+// ---------------------------------------------------------------------------
+
+// One person in a lot's list: name, hunger, and for a worker whether they are at work now
+static void DescribeLotPerson(int m, int lot, bool worker, DescLines* out) {
+    DescTone tone;
+    const char* hunger = HungerLabel(movers[m].hunger, &tone);
+    const TownLot* L = &townLots[lot];
+    int mx = (int)(movers[m].x / CELL_SIZE), my = (int)(movers[m].y / CELL_SIZE);
+    bool here = (int)movers[m].z == L->z && mx >= L->x1 && mx <= L->x2 && my >= L->y1 && my <= L->y2;
+    const char* where = here ? (worker ? "at work" : "at home") : "out";
+    DescAdd(out, tone == DESC_GOOD || tone == DESC_GREAT ? DESC_NORMAL : tone, "  %s: %s, %s", MoverDisplayName(m), hunger, where);
+}
+
+void DescribeLot(int lot, DescLines* out) {
+    out->count = 0;
+    if (lot < 0 || lot >= townLotHighWater || !townLots[lot].active) return;
+    const TownLot* L = &townLots[lot];
+    DescAdd(out, DESC_TITLE, "%s #%d", TownLotKindName(L->kind), lot);
+    DescAdd(out, DESC_MUTED, "%dx%d lot", L->x2 - L->x1 + 1, L->y2 - L->y1 + 1);
+    switch (L->kind) {
+        case LOT_HOME: {
+            int people = TownResidents(lot);
+            DescAdd(out, people < L->beds ? DESC_INFO : DESC_NORMAL, "Beds: %d (%d free)", L->beds, L->beds - people);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownHomeOf(m) == lot) DescribeLotPerson(m, lot, false, out);
+            int bread = TownLotStock(lot, ITEM_BREAD);
+            DescAdd(out, bread == 0 ? DESC_WARN : DESC_NORMAL, "Pantry: %d bread", bread);
+            break;
+        }
+        case LOT_WORK:
+        case LOT_MILL: {
+            bool open = TownLotOpen(lot);
+            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            int workers = TownWorkers(lot);
+            DescAdd(out, workers < L->beds ? DESC_WARN : DESC_NORMAL, "Jobs: %d of %d filled", workers, L->beds);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownJobOf(m) == lot) DescribeLotPerson(m, lot, true, out);
+            int made = 0, units = 0;   // batches, and what they made (recipe output count)
+            for (int i = 0; i < L->wsCount; i++) {
+                const Workshop* w = &workshops[L->ws[i]];
+                if (!w->active || w->billCount == 0) continue;
+                int rc;
+                const Recipe* rs = GetRecipesForWorkshop(w->type, &rc);
+                int r = w->bills[0].recipeIdx;
+                made += w->bills[0].completedCount;
+                if (r >= 0 && r < rc) units += w->bills[0].completedCount * rs[r].outputCount;
+            }
+            if (L->kind == LOT_WORK) {
+                DescAdd(out, DESC_NORMAL, "Flour in store: %d", TownLotStock(lot, ITEM_FLOUR));
+                DescAdd(out, DESC_NORMAL, "Bread on the shelf: %d", TownLotStock(lot, ITEM_BREAD));
+                DescAdd(out, DESC_INFO, "Baked so far: %d batches (%d loaves)", made, units);
+            } else {
+                DescAdd(out, DESC_NORMAL, "Wheat in the granary: %d", TownLotStock(lot, ITEM_WHEAT));
+                DescAdd(out, DESC_INFO, "Ground so far: %d batches (%d flour)", made, units);
+            }
+            break;
+        }
+        case LOT_FARM: {
+            bool open = TownLotOpen(lot);
+            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            int hands = TownWorkers(lot);
+            DescAdd(out, hands < L->beds ? DESC_WARN : DESC_NORMAL, "Farmhands: %d of %d", hands, L->beds);
+            for (int m = 0; m < moverCount; m++)
+                if (movers[m].active && TownJobOf(m) == lot) DescribeLotPerson(m, lot, true, out);
+            TownFarmStats st = TownFarmStatsOf(lot);
+            DescAdd(out, DESC_NORMAL, "Field: %d cells", st.fields);
+            DescAdd(out, DESC_GOOD, "  growing %d, ripe %d", st.growing, st.ripe);
+            DescAdd(out, st.waiting > st.fields / 2 ? DESC_WARN : DESC_MUTED, "  waiting to be planted %d", st.waiting);
+            if (st.tilled < st.fields) DescAdd(out, DESC_MUTED, "  not tilled yet %d", st.fields - st.tilled);
+            if (st.tilled > 0) {
+                int fert = st.fertilitySum / st.tilled;
+                DescAdd(out, fert < FERTILITY_LOW ? DESC_WARN : DESC_NORMAL, "Fertility: %d/255", fert);
+            }
+            if (st.heavyWeeds > 0) DescAdd(out, DESC_WARN, "Heavy weeds: %d cells", st.heavyWeeds);
+            if (CropSeasonModifier(CROP_WHEAT, (int)GetCurrentSeason()) <= 0.0f) DescAdd(out, DESC_COLD, "Winter: nothing grows");
+            else if (!CropWorthPlantingNow(CROP_WHEAT)) DescAdd(out, DESC_INFO, "Too late to sow before winter");
+            DescAdd(out, DESC_NORMAL, "Seed: %d, barn: %d wheat", TownLotStock(lot, ITEM_WHEAT_SEEDS), TownLotStock(lot, ITEM_WHEAT));
+            DescAdd(out, DESC_INFO, "Irrigated: %s", townIrrigation ? "yes" : "no (rain only)");
+            break;
+        }
+        case LOT_GRANARY: {
+            int wheat = TownLotStock(lot, ITEM_WHEAT), flour = TownLotStock(lot, ITEM_FLOUR), room = TownLotStoreRoom(lot);
+            DescAdd(out, DESC_NORMAL, "Holds %d wheat, %d flour", wheat, flour);
+            char meter[48];
+            DescFillMeter(meter, sizeof(meter), room > 0 ? (float)(wheat + flour) / room : 0.0f, 10);
+            DescAdd(out, DESC_NORMAL, "Full: %s (%d of %d)", meter, wheat + flour, room);
+            break;
+        }
+        default: break;
+    }
+}
+
+void DescribeTownOverview(char* buf, int len) {
+    int people = 0;
+    for (int i = 0; i < moverCount; i++) people += movers[i].active;
+    snprintf(buf, len, "%d people   %d homeless   %d without a job   bread %d   flour %d   wheat %d (stores %d)   imported %d wheat, %d flour",
+             people, TownHomeless(), TownUnemployed(), TownTotalStock(ITEM_BREAD), TownTotalStock(ITEM_FLOUR),
+             TownTotalStock(ITEM_WHEAT), TownStoreCapacity(), townImported[ITEM_WHEAT], townImported[ITEM_FLOUR]);
 }
 
 // ---------------------------------------------------------------------------
@@ -972,7 +1206,10 @@ void DescribeItemLine(int idx, DescLines* out) {
         else if (item->condition == CONDITION_STALE) tone = DESC_SOFT_WARN;
     }
 
-    if (item->stackCount > 1)
+    if (ItemIsMoney(item->type)) {   // stackCount is coins (money.h)
+        char mb[24];
+        DescAdd(out, DESC_GOOD, "#%d: %s %s (%s)", idx, name, MoneyFormat(item->stackCount, mb, sizeof mb), state);
+    } else if (item->stackCount > 1)
         DescAdd(out, tone, "#%d: %s x%d (%s%s%s%s)", idx, name, item->stackCount, state, freshness, hydration, temp);
     else
         DescAdd(out, tone, "#%d: %s (%s%s%s%s)", idx, name, state, freshness, hydration, temp);
@@ -982,7 +1219,7 @@ void DescribeItemsAt(const int* itemIndices, int itemCount, int cellX, int cellY
     out->count = 0;
     if (itemCount <= 0) return;
     int totalUnits = 0;
-    for (int i = 0; i < itemCount; i++) totalUnits += items[itemIndices[i]].stackCount;
+    for (int i = 0; i < itemCount; i++) totalUnits += ItemIsMoney(items[itemIndices[i]].type) ? 1 : items[itemIndices[i]].stackCount;   // coins: stackCount is coins
     DescAdd(out, DESC_MILD, "Cell (%d,%d): %d unit%s", cellX, cellY, totalUnits, totalUnits == 1 ? "" : "s");
     // At most 16 item lines, as before
     for (int i = 0; i < itemCount && i < 16; i++) DescribeItemLine(itemIndices[i], out);

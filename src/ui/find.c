@@ -6,6 +6,7 @@
 #include "../core/selection.h"
 #include "../core/scenarios.h"
 #include "../core/games.h"
+#include "../core/global_keys.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include <stdio.h>
@@ -98,7 +99,7 @@ static void AddCommands(void) {
         const CommandDef* c = CommandAt(i);
         char path[FIND_PATH_LEN];
         snprintf(path, sizeof(path), "Commands/%s", c->group);
-        int row = FindAdd(FIND_COMMAND, i, path, c->name, c->name, NULL, c->help);
+        int row = FindAdd(FIND_COMMAND, i, path, c->name, c->name, GlobalKeyForLine(c->name), c->help);
         // Its choices are search words: "clear water" finds clear
         char words[FIND_WORDS_LEN] = "";
         int n = 0;
@@ -130,6 +131,7 @@ static const char* SelKindLabel(SelectionKind k) {
         case SEL_BLUEPRINT: return "Blueprint";
         case SEL_WORKSHOP:  return "Workshop";
         case SEL_STOCKPILE: return "Stockpile";
+        case SEL_LOT:       return "Lot";
         default:            return "Other";
     }
 }
