@@ -101,7 +101,8 @@ static int RpJunctionAt(float x, float y) {
 // Where segments p1-p2 and p3-p4 cross: s along the first, u along the second (0..1)
 static bool RpSegCross(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4, float* s, float* u) {
     float d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
-    if (fabsf(d) < 1e-6f) return false;
+    float l1 = hypotf(x2 - x1, y2 - y1), l2 = hypotf(x4 - x3, y4 - y3);
+    if (fabsf(d) <= 1e-3f * l1 * l2) return false;   // (parallel, or near enough: one road along another doesn't cross it)
     *s = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
     *u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
     return *s >= 0 && *s <= 1 && *u >= 0 && *u <= 1;
