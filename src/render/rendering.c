@@ -1784,6 +1784,13 @@ static int MoverFaceView(int i, const Mover* m) {
 static int MoverMouth(int i, const Mover* m) {
     if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
     if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
+    if (MoverNodTime(i) > 0.0f || MoverThanksTime(i) > 0.0f) return MOUTH_SMILE;   // "after you" / thanks
+    if (MoverYieldingFor(i) >= 0) {   // waiting at a doorway: how it takes it depends on its patience
+        float waited = MoverYieldWaitTime(i), patience = MoverPatience(m);
+        if (patience > 1.0f) return MOUTH_SMILE;
+        if (patience < 1.0f) return waited > 2.0f ? MOUTH_SAD : MOUTH_FLAT;
+        return waited > 3.0f ? MOUTH_FLAT : MOUTH_GRIN;
+    }
     if (m->mood > 0.4f) return MOUTH_SMILE;
     if (m->mood < -0.45f) return MOUTH_SAD;
     if (m->mood < -0.15f) return MOUTH_FLAT;
@@ -1907,6 +1914,8 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
+        float nod = MoverNodTime(i);   // "after you": dips one sprite pixel and back
+        if (moverFaces && nod > 0.0f) sy += sinf(nod / 0.6f * 3.14159265f) * moverSize / 8.0f;
         Rectangle src = SpriteGetRect(moverFaces ? SPRITE_head_back : SPRITE_head);   // silhouette for clothes
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 

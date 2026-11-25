@@ -75,6 +75,13 @@ static bool moverYielding[MAX_MOVERS];
 static int moverYieldFor[MAX_MOVERS];      // who it waits for (valid while moverYielding)
 bool yieldLetPass = true;                  // waiting at a narrow entrance: keep waiting until the one it let out has got past
 
+static bool moverWasYielding[MAX_MOVERS];  // waited at a narrow entrance last tick
+static float moverNodTimer[MAX_MOVERS];    // "after you": nod at the one it let through (sim s)
+static float moverThanksTimer[MAX_MOVERS]; // was let through: smiles back (sim s)
+#define NOD_TIME 0.6f
+float MoverYieldWaitTime(int i) { return MoverYieldingFor(i) >= 0 ? moverYieldTime[i] : 0.0f; }
+float MoverNodTime(int i) { return (i >= 0 && i < moverCount) ? moverNodTimer[i] : 0.0f; }
+float MoverThanksTime(int i) { return (i >= 0 && i < moverCount) ? moverThanksTimer[i] : 0.0f; }
 int MoverYieldingFor(int i) { return (i >= 0 && i < moverCount && moverYielding[i]) ? moverYieldFor[i] : -1; }
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
@@ -1616,6 +1623,8 @@ void UpdateMovers(void) {
         if (TalkMoverTick(i, dt)) continue;       // standing in a conversation (talk.c)
         
         // Decrement fall timer for visual feedback
+        if (moverNodTimer[i] > 0.0f) moverNodTimer[i] -= dt;
+        if (moverThanksTimer[i] > 0.0f) moverThanksTimer[i] -= dt;
         if (m->fallTimer > 0) {
             m->fallTimer -= dt;
         }
@@ -2061,9 +2070,12 @@ void UpdateMovers(void) {
                 // flickers, so the timeout never fired and dozens waited at both ends.)
                 Point here = {currentX, currentY, currentZ};
                 if (moverYieldTime[i] > 0.0f && !PointsEqual(moverYieldCell[i], here)) moverYieldTime[i] = 0.0f;
-                bool wait = moverYieldTime[i] < YIELD_TIMEOUT && MoverShouldYield(i);
+                float patience = MoverPatience(m);           // Patient waits twice as long, Impatient 0.4x
+                float timeout = YIELD_TIMEOUT * patience;
+                bool wait = moverYieldTime[i] < timeout && MoverShouldYield(i);
                 // Polite: someone it let out of the passage hasn't got past it yet -> keep waiting
-                if (!wait && yieldLetPass && moverYieldTime[i] > 0.0f && moverYieldTime[i] < YIELD_TIMEOUT) {
+                // (not the impatient: they squeeze past)
+                if (!wait && yieldLetPass && patience >= 1.0f && moverYieldTime[i] > 0.0f && moverYieldTime[i] < timeout) {
                     int j = moverYieldFor[i];
                     if (j >= 0 && j < moverCount && movers[j].active && (int)movers[j].z == currentZ) {
                         float ox = movers[j].x - m->x, oy = movers[j].y - m->y;
@@ -2073,10 +2085,23 @@ void UpdateMovers(void) {
                             // ...unless it's a crowd: then people squeeze past rather than queue longer
                             int crowd = 0;
                             QueryMoverNeighbors(m->x, m->y, CELL_SIZE * 1.5f, i, CountNeighborCb, &crowd);
-                            wait = crowd < 3;
+                            wait = crowd < (patience > 1.0f ? 6 : 3);   // the patient wait in a crowd too
                         }
                     }
                 }
+                // The wait is over and the one it waited for is right here: "after you" (a nod), and
+                // they smile back
+                if (!wait && moverWasYielding[i]) {
+                    int j = moverYieldFor[i];
+                    if (j >= 0 && j < moverCount && movers[j].active) {
+                        float ox = movers[j].x - m->x, oy = movers[j].y - m->y;
+                        if (ox * ox + oy * oy < (CELL_SIZE * 2.0f) * (CELL_SIZE * 2.0f)) {
+                            moverNodTimer[i] = NOD_TIME;
+                            moverThanksTimer[j] = NOD_TIME * 1.5f;
+                        }
+                    }
+                }
+                moverWasYielding[i] = wait;
                 if (wait) {
                     if (moverYieldTime[i] == 0.0f) moverYieldCell[i] = here;
                     moverYieldTime[i] += dt;
@@ -2104,6 +2129,19 @@ void UpdateMovers(void) {
                     sideX += roomX;
                     sideY += roomY;
                     steer = true;
+                }
+                if (steer) {
+                    // Never drift toward a drop: walls are fine (wall sliding stops it there), but
+                    // moving into open air is allowed as a fall, so a drift could push it off an edge
+                    float sl = sqrtf(sideX * sideX + sideY * sideY);
+                    if (sl > 0.001f) {
+                        int px = (int)((m->x + sideX / sl * CELL_SIZE * 0.6f) / CELL_SIZE);
+                        int py = (int)((m->y + sideY / sl * CELL_SIZE * 0.6f) / CELL_SIZE);
+                        int pz = (int)m->z;
+                        if (px < 0 || py < 0 || px >= gridWidth || py >= gridHeight ||
+                            (!IsCellWalkableAt(pz, py, px) && !CellBlocksMovement(GRID(px, py, pz))))
+                            steer = false;
+                    }
                 }
                 if (steer) {
                     float near = 1.0f;   // ease off close to the waypoint so it can still reach it

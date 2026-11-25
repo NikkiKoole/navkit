@@ -345,11 +345,13 @@ static void HallwayPrintStats(void) {
 // traffic through the door both ways. Tunnel yielding makes one wait; compare yieldLetPass
 // on/off: bumping the one it waited for in the second after the wait, and arrivals.
 static const int doorwayX = 16, doorwayY = 16;
-static long doorwayTicks, doorwayContacts, doorwayWaitTicks, doorwayPassContacts, doorwayWaits;
+static long doorwayTicks, doorwayContacts, doorwayWaitTicks, doorwayPassContacts, doorwayWaits, doorwayNods;
+static bool doorwayNodding[MAX_MOVERS];
 static int doorwayLastFor[MAX_MOVERS], doorwaySince[MAX_MOVERS];   // whom it last waited for, ticks since
 
 static void SetupDoorway(void) {
-    doorwayTicks = doorwayContacts = doorwayWaitTicks = doorwayPassContacts = doorwayWaits = 0;
+    doorwayTicks = doorwayContacts = doorwayWaitTicks = doorwayPassContacts = doorwayWaits = doorwayNods = 0;
+    memset(doorwayNodding, 0, sizeof(doorwayNodding));
     for (int i = 0; i < MAX_MOVERS; i++) { doorwayLastFor[i] = -1; doorwaySince[i] = 1 << 20; }
     for (int y = 0; y < gridHeight; y++) {
         GRID(doorwayX, y, 1) = CELL_WALL;
@@ -375,6 +377,9 @@ static void DoorwayTickStats(void) {
     for (int i = 0; i < moverCount; i++) {
         const Mover* a = &movers[i];
         if (!a->active) continue;
+        bool nodding = MoverNodTime(i) > 0.0f;
+        if (nodding && !doorwayNodding[i]) doorwayNods++;
+        doorwayNodding[i] = nodding;
         int yf = MoverYieldingFor(i);
         if (yf >= 0) {
             if (doorwaySince[i] > 0) doorwayWaits++;   // a new wait
@@ -401,6 +406,7 @@ static void DoorwayTickStats(void) {
 static void DoorwayPrintStats(void) {
     printf("Tunnel yielding: %s, let them pass: %s\n", useTunnelYielding ? "on" : "off", yieldLetPass ? "on" : "off");
     printf("Mover-ticks waiting at the door: %ld\n", doorwayWaitTicks);
+    printf("\"After you\" nods: %ld\n", doorwayNods);
     printf("Waits: %ld; bumping the one it waited for in the second after: %ld ticks\n", doorwayWaits,
            doorwayPassContacts);
     printf("Close contacts near the door (walking pairs within half a cell): %ld ticks\n", doorwayContacts);
