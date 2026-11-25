@@ -153,9 +153,13 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
 5. The first steps-run one: a meal together (`ACT_WAIT_FOR_GROUP`), replacing table talk's
    peeking.
 
-## Open questions (for the user)
+## Decisions (user, 2026-11-25)
 
-- Should a game ever pull in someone busy with a low-priority job (kids dropping their chores),
-  or only the free?
-- Can the player start one (select movers, "play tag")? Easy once it is a table row.
-- How many games at once is "lively" vs "a playground": a cap per room / per world?
+- **Only free movers start or join by themselves.** A mover on a job isn't asked; it doesn't
+  pause or abandon work to play. (Kids dropping chores: not now.)
+- **The player can start one**: select some movers, "play tag" (inspector button / verb, console).
+  That is a command like E: it drops what they were doing the way commands do today
+  (`DropCurrentBusiness` in action_queue.c: the job is cancelled and goes back to the pool,
+  carried things are put down), then they join.
+- **How many at once: no cap decided.** Walks and talks are already many; see how it looks
+  once games start by themselves, and whether the abstraction holds, before picking a level.
