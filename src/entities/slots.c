@@ -11,6 +11,19 @@
 #include <string.h>
 
 float carSlotCells = 3.0f;
+bool carSlotReal = false;
+static float SL_REAL_PULL = 2.0f, SL_REAL_ACCEL = 1.5f;   // (tuning: env SL_PULL / SL_ACCEL)
+
+typedef struct { float x, y, h, v, steer; bool on; } SlReal;
+static SlReal* slReal = NULL;
+static int slRealCap = 0;
+static float slVX0 = 0, slVY0 = 0, slVX1 = -1, slVY1 = -1;   // the view (px); empty until set
+static long slRealTicks = 0, slRealSum = 0, slRealSnaps = 0, slRealErrN = 0;
+static double slRealErrSum = 0;
+static float slRealErrMax = 0;
+static int slRealTouchMax = 0;
+
+void SlotsSetView(float x0, float y0, float x1, float y1) { slVX0 = x0; slVY0 = y0; slVX1 = x1; slVY1 = y1; }
 int SlotsVmax(void) { int v = (int)(9.0f / carSlotCells + 0.5f); return v < 1 ? 1 : v; }
 
 SlotCar* slotCars = NULL;
@@ -53,6 +66,14 @@ static unsigned int SlRand(void) { slRng = slRng * 1103515245u + 12345u; return 
 
 void SlotsClear(void) {
     slotCarCount = 0;
+    slRealTicks = slRealSum = slRealSnaps = slRealErrN = 0;
+    slRealErrSum = 0;
+    slRealErrMax = 0;
+    slRealTouchMax = 0;
+    slRealTicks = slRealSum = slRealSnaps = slRealErrN = 0;
+    slRealErrSum = 0;
+    slRealErrMax = 0;
+    slRealTouchMax = 0;
     slTotal = 0;
     slAcc = 0;
     slStep = 0;
@@ -105,6 +126,8 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare) {
         slCarCap = count;
         slotCars = realloc(slotCars, sizeof(SlotCar) * slCarCap);
     }
+    if (count > slRealCap) { slRealCap = count; slReal = realloc(slReal, sizeof(SlReal) * slRealCap); }
+    memset(slReal, 0, sizeof(SlReal) * count);
     if (count > slScratchCap) {
         slScratchCap = count;
         slStepV = realloc(slStepV, sizeof(int) * slScratchCap);
@@ -359,6 +382,86 @@ static void SlRunStep(void) {
     }
 }
 
+// Real cars in view: chase the slot pose (speed: the slot's + a pull toward it; steering:
+// pure pursuit on a point a little ahead of it), the same bicycle model as the steered cars
+static void SlRealTick(float dt) {
+    static int tuned = 0;
+    if (!tuned) { tuned = 1; if (getenv("SL_PULL")) SL_REAL_PULL = (float)atof(getenv("SL_PULL")); if (getenv("SL_ACCEL")) SL_REAL_ACCEL = (float)atof(getenv("SL_ACCEL")); }
+    if (!carSlotReal || slVX1 < slVX0) {
+        for (int i = 0; i < slotCarCount; i++) slReal[i].on = false;
+        return;
+    }
+    float CS = CELL_SIZE, m = 3 * CS;
+    float wb = carLength * CS * 0.6f, lock = carMaxSteerDeg * 0.0174533f, rate = carSteerRate * 0.0174533f * dt;
+    int n = 0;
+    for (int i = 0; i < slotCarCount; i++) {
+        SlReal* R = &slReal[i];
+        if (!SlotCarVisible(i, slVX0 - m, slVY0 - m, slVX1 + m, slVY1 + m)) { R->on = false; continue; }
+        float tx, ty, th;
+        SlotCarPose(i, &tx, &ty, &th);
+        float vT = slotCars[i].v * SL_SLOT_CELLS * CS / SL_STEP;
+        if (slotCars[i].stopSteps > 0) vT = 0;
+        if (!R->on) { R->x = tx; R->y = ty; R->h = th; R->v = vT; R->steer = 0; R->on = true; n++; continue; }
+        n++;
+        float dx = tx - R->x, dy = ty - R->y, err = sqrtf(dx * dx + dy * dy);
+        if (err > 3 * CS) {
+            static long byKind[4], told = 0;
+            const SlotCar* sc = &slotCars[i];
+            byKind[rdSegs[sc->route[sc->ri]].kind]++;
+            if (getenv("SL_SNAPS") && (told++ % 25) == 0)
+                printf("snaps so far: on lanes %ld, on junction curves %ld; this one: v %d slot %d/%d err %.1f cells, heading off %.0f deg, real speed %.1f vs slot %.1f cells/s\n",
+                       byKind[RD_LANE], byKind[RD_CONN], sc->v, sc->slot, slSegN[sc->route[sc->ri]], err / CS,
+                       CarAngleWrap(th - R->h) * 57.3f, R->v / CS, vT / CS);
+            R->x = tx; R->y = ty; R->h = th; R->v = vT; R->steer = 0; slRealSnaps++; continue;
+        }
+        slRealErrSum += err; slRealErrN++;
+        if (err > slRealErrMax) slRealErrMax = err;
+        // speed: keep up with the slot, closing the gap along our heading
+        float along = dx * cosf(R->h) + dy * sinf(R->h);
+        float vWant = vT + SL_REAL_PULL * along;
+        if (vWant < 0) vWant = 0;
+        float a = (vWant - R->v) / dt, aUp = carAccel * SL_REAL_ACCEL * CS, aDown = carBrake * 3 * CS;
+        if (a > aUp) a = aUp;
+        if (a < -aDown) a = -aDown;
+        R->v += a * dt;
+        if (R->v < 0) R->v = 0;
+        // steering: aim a little ahead of the slot pose
+        float Ld = 1.2f * CS + 0.4f * R->v;
+        float ax = tx + cosf(th) * Ld, ay = ty + sinf(th) * Ld;
+        float rx = R->x - cosf(R->h) * wb * 0.5f, ry = R->y - sinf(R->h) * wb * 0.5f;
+        float ddx = ax - rx, ddy = ay - ry, dist = sqrtf(ddx * ddx + ddy * ddy);
+        float alpha = CarAngleWrap(atan2f(ddy, ddx) - R->h);
+        float want = dist > 1 ? atanf(2 * wb * sinf(alpha) / dist) : 0;
+        if (want > lock) want = lock;
+        if (want < -lock) want = -lock;
+        float d = want - R->steer;
+        R->steer += d > rate ? rate : (d < -rate ? -rate : d);
+        CarAdvancePose(R->x, R->y, R->h, R->v * dt, R->steer, &R->x, &R->y, &R->h);
+    }
+    slRealTicks++;
+    slRealSum += n;
+    // touches between real cars (every half second; few cars in a view: all pairs)
+    if ((slRealTicks % 30) == 0) {
+        int pairs = 0;
+        for (int i = 0; i < slotCarCount; i++) {
+            if (!slReal[i].on) continue;
+            for (int j = i + 1; j < slotCarCount; j++) {
+                if (!slReal[j].on) continue;
+                float ex = slReal[i].x - slReal[j].x, ey = slReal[i].y - slReal[j].y;
+                if (ex * ex + ey * ey > 9 * CS * CS) continue;
+                if (CarBodiesOverlap(slReal[i].x, slReal[i].y, slReal[i].h, slReal[j].x, slReal[j].y, slReal[j].h, -2.0f)) pairs++;
+            }
+        }
+        if (pairs > slRealTouchMax) slRealTouchMax = pairs;
+    }
+}
+
+bool SlotCarDrawPose(int i, float* x, float* y, float* heading, float* steer) {
+    if (carSlotReal && slReal && slReal[i].on) { *x = slReal[i].x; *y = slReal[i].y; *heading = slReal[i].h; *steer = slReal[i].steer; return true; }
+    *steer = 0;
+    return SlotCarPose(i, x, y, heading);
+}
+
 // SL_JUMPS (diagnostic): every tick, every car's drawn pose; count moves bigger than twice
 // what the top speed allows in a tick (a visible jump)
 static float *jumpX = NULL, *jumpY = NULL;
@@ -373,8 +476,8 @@ static void CheckJumps(float dt) {
                               for (int i = 0; i < cap; i++) jumpX[i] = -1; }
     float limit = 2.0f * SL_VMAX * SL_SLOT_CELLS * CELL_SIZE / SL_STEP * dt + 2.0f;
     for (int i = 0; i < slotCarCount; i++) {
-        float x, y, h;
-        SlotCarPose(i, &x, &y, &h);
+        float x, y, h, st;
+        SlotCarDrawPose(i, &x, &y, &h, &st);
         if (jumpX[i] >= 0) {
             float d = sqrtf((x - jumpX[i]) * (x - jumpX[i]) + (y - jumpY[i]) * (y - jumpY[i]));
             if (d > limit) {
@@ -407,6 +510,13 @@ void SlotsTick(float dt) {
         SlRunStep();
         PROFILE_END(SlotsStep);
     }
+    if (slVX1 < slVX0 && getenv("SL_VIEW")) {   // headless: a view from the environment (cells)
+        float a, b, c2, d;
+        if (sscanf(getenv("SL_VIEW"), "%f,%f,%f,%f", &a, &b, &c2, &d) == 4) SlotsSetView(a * CELL_SIZE, b * CELL_SIZE, c2 * CELL_SIZE, d * CELL_SIZE);
+    }
+    PROFILE_BEGIN(SlotsReal);
+    SlRealTick(dt);
+    PROFILE_END(SlotsReal);
     CheckJumps(dt);
 }
 
@@ -496,6 +606,10 @@ void SlotsPrintStats(void) {
     printf("Slot traffic: %d trips, mean speed now %.1f cells/s, %d moving now, %d waiting at junctions, %d waiting for a route\n",
            trips, slotCarCount ? (double)vsum / slotCarCount * SL_SLOT_CELLS / SL_STEP : 0.0, moving, waitingJunction, needRoute);
     if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
+    if (carSlotReal)
+        printf("  real cars in view: %.1f on average; tracking error mean %.2f cells, max %.2f; %ld snaps; touches max %d pairs\n",
+               slRealTicks ? (double)slRealSum / slRealTicks : 0.0, slRealErrN ? slRealErrSum / slRealErrN / CELL_SIZE : 0.0,
+               slRealErrMax / CELL_SIZE, slRealSnaps, slRealTouchMax);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }
 

@@ -158,11 +158,12 @@ static void DrawCarSpriteAt(float x, float y, float heading, Color col) {
 static void DrawSlotCars(void) {
     float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
     float x0 = -offset.x / zoom, y0 = -offset.y / zoom, x1 = (sw - offset.x) / zoom, y1 = (sh - offset.y) / zoom;
+    SlotsSetView(x0, y0, x1, y1);   // real cars (carSlotReal) only here
     float L = carLength * CELL_SIZE, W = carWidth * CELL_SIZE, carPx = L * zoom;
     for (int i = 0; i < slotCarCount; i++) {
         if (!SlotCarVisible(i, x0, y0, x1, y1)) continue;
-        float x, y, h;
-        SlotCarPose(i, &x, &y, &h);
+        float x, y, h, st;
+        SlotCarDrawPose(i, &x, &y, &h, &st);
         Vector2 sc = CarScreen(x, y);
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
         Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];

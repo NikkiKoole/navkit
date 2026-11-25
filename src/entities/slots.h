@@ -55,4 +55,20 @@ bool SlotsCheck(char* why, int whyLen);   // invariants: one car per slot, trips
 bool SlotCarPose(int i, float* x, float* y, float* heading);
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its segment's box overlaps (px)
 
+// Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
+// (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;
+// more than 3 cells behind, it snaps. Outside the view nothing extra is computed. The view
+// comes from the drawing (SlotsSetView each frame); headless, SL_VIEW=x0,y0,x1,y1 (cells).
+extern bool carSlotReal;
+void SlotsSetView(float x0, float y0, float x1, float y1);   // px
+bool SlotCarDrawPose(int i, float* x, float* y, float* heading, float* steer);   // the real car's if it has one
+
+// Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
+// (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;
+// more than 3 cells behind, it snaps. Outside the view nothing extra is computed. The view
+// comes from the drawing (SlotsSetView each frame); headless, SL_VIEW=x0,y0,x1,y1 (cells).
+extern bool carSlotReal;
+void SlotsSetView(float x0, float y0, float x1, float y1);   // px
+bool SlotCarDrawPose(int i, float* x, float* y, float* heading, float* steer);   // the real car's if it has one
+
 #endif
