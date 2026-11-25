@@ -19,6 +19,7 @@
 #include "../simulation/farming.h"
 #include "../simulation/mood.h"
 #include "../core/sim_manager.h"
+#include "../core/effects.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/throwing.h"
@@ -1308,8 +1309,63 @@ static void DrawFire(void) {
     WorldBatchSetKind(WB_KIND_PLAIN);
 }
 
+// Smoke / steam drawn as one dithered cloud (render/effects_draw.c) when the effects setting is
+// on: one texel per visible cell, r = density on the viewed level, g = the strongest below it.
+bool DrawGasDithered(int slot, int minX, int minY, int w, int h, const unsigned char* rgba,
+                     Color dense, Color thin, Color deep);
+static bool DrawGasCloud(int slot, int (*levelAt)(int, int, int), const SparseLayer* layer,
+                         Color dense, Color thin, Color deep) {
+    if (!effectsEnabled) return false;
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    int w = maxX - minX, h = maxY - minY;
+    if (w <= 0 || h <= 0) return true;
+    static unsigned char* buf = NULL;
+    static int bufCap = 0;
+    if (w * h * 4 > bufCap) { bufCap = w * h * 4; buf = realloc(buf, (size_t)bufCap); }
+    memset(buf, 0, (size_t)(w * h * 4));
+    int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+    bool any = false;
+    for (int y = minY; y < maxY; y++)
+        for (int x = minX; x < maxX; x++) {
+            if (!SparseLayerHasBlock(layer, x, y)) continue;
+            unsigned char* px = &buf[((y - minY) * w + (x - minX)) * 4];
+            int cur = levelAt(x, y, z);
+            int deep = 0;
+            for (int zd = VisLowest(x, y, zStart, false); zd <= z - 1; zd++) {
+                int l = levelAt(x, y, zd);
+                if (l > deep) deep = l;
+            }
+            if (cur > 0) px[0] = (unsigned char)(40 + cur * 30);    // level 1 thin .. 7 thick
+            if (deep > 0) px[1] = (unsigned char)(30 + deep * 25);
+            px[3] = 255;
+            any = any || cur > 0 || deep > 0;
+        }
+    if (!any) return true;
+    return DrawGasDithered(slot, minX, minY, w, h, buf, dense, thin, deep);
+}
+
+// The dithered clouds draw with their own shader, so after the world batch has drawn the terrain
+// (main.c, right after WorldBatchEnd); DrawSmoke / DrawSteam inside the batch then draw nothing
+void DrawGasClouds(void);
+void DrawGasClouds(void) {
+    // Smoke below the viewed level: the same grey, just thinner (fewer pixels), not darkened
+    if (smokeActiveCells > 0)
+        DrawGasCloud(0, GetSmokeLevel, &smokeLayer, (Color){ 72, 70, 74, 255 }, (Color){ 104, 102, 106, 255 },
+                     (Color){ 92, 90, 96, 255 });
+    if (steamActiveCells > 0)
+        DrawGasCloud(1, GetSteamLevel, &steamLayer, (Color){ 236, 238, 242, 255 }, (Color){ 200, 205, 214, 255 },
+                     (Color){ 176, 180, 190, 255 });
+}
+
+bool GasCloudsAvailable(void);   // render/effects_draw.c
+static bool GasCloudsDrawLater(void) { return effectsEnabled && GasCloudsAvailable(); }
+
 static void DrawSmoke(void) {
     if (smokeActiveCells == 0) return;
+    if (GasCloudsDrawLater()) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -1353,6 +1409,7 @@ static void DrawSmoke(void) {
 
 static void DrawSteam(void) {
     if (steamActiveCells == 0) return;
+    if (GasCloudsDrawLater()) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 

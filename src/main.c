@@ -789,6 +789,7 @@ void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
 void DrawSteam(void);
+void DrawGasClouds(void);
 void DrawTemperature(void);
 void DrawSimSources(void);
 void DrawWaterFlow(void);
@@ -1842,6 +1843,7 @@ int main(int argc, char** argv) {
         DrawSteam();
         DrawTemperature();
         WorldBatchEnd();
+        DrawGasClouds();     // smoke + steam as dithered clouds (effects on): own shader, after the batch
         DrawSimSources();
         DrawWaterFlow();
         PROFILE_END(DrawCells);

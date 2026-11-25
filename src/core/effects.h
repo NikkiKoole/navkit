@@ -53,6 +53,10 @@ void FxTick(float dt);   // SimStep
 // Hit stop: a big blast freezes the game for a few frames (the windowed loop asks every frame:
 // true = skip this frame's ticks). Headless runs never ask, so they're unaffected.
 bool FxHitStopFrame(void);
+
+// Seconds of effect time (advances with FxTick, so it stands still while paused): drifts the
+// noise in drawn clouds (smoke and steam from their simulations too)
+float FxClock(void);
 void ClearFx(void);
 int FxCount(void);
 

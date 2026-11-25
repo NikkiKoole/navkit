@@ -471,17 +471,23 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     for (int k = 0; k < knockN; k++) KnockMover(knockIdx[k], knockPow[k], ox, oy, &res);
     free(pushIdx); free(pushPow); free(pushZ); free(listed); free(knockIdx); free(knockPow);
 
-    // 5. Fire and smoke near the charge
+    // 5. Fire near the charge, smoke over the inner half
     for (int cz = z0; cz <= z1; cz++)
         for (int cy = y0; cy <= y1; cy++)
             for (int cx = x0; cx <= x1; cx++) {
                 float v = best[BIDX(cx, cy, cz)];
-                if (v <= 0.0f || v < power - 2.5f) continue;
-                if (!HasFire(cx, cy, cz) && GetFuelAt(cx, cy, cz) > 0) {
+                if (v <= 0.0f) continue;
+                if (v >= power - 2.5f && !HasFire(cx, cy, cz) && GetFuelAt(cx, cy, cz) > 0) {
                     IgniteCell(cx, cy, cz);
                     if (HasFire(cx, cy, cz)) res.cellsIgnited++;
                 }
-                if (v >= power - 1.5f) AddSmoke(cx, cy, cz, 3);
+                // Real smoke (the smoke simulation: it rises, spreads, fills rooms, drifts off),
+                // thickest at the centre, in the open cells of the inner half of the blast
+                if (v >= power * 0.5f && !CellIsSolid(GRID(cx, cy, cz))) {
+                    int level = 2 + (int)(5.0f * v / power);
+                    if (level > SMOKE_MAX_LEVEL) level = SMOKE_MAX_LEVEL;
+                    if (GetSmokeLevel(cx, cy, cz) < level) SetSmokeLevel(cx, cy, cz, level);
+                }
             }
 
     #undef BIDX

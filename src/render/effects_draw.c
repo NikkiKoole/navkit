@@ -190,3 +190,102 @@ void DrawEffects(void) {
                          (Color){ f->r, f->g, f->b, 255 });
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Gas clouds: the smoke and steam simulations drawn the same way. The caller fills one texel per
+// visible cell (r = density on the viewed level, g = the strongest below it, 0..255); the texture
+// is sampled smoothly so neighbouring cells blend into one cloud, then dithered on the sprite
+// pixel grid with drifting noise (boils with FxClock).
+
+static const char* fxGasFS =
+    "#version 330\n"
+    "in vec2 fragTexCoord;\n"
+    "in vec4 fragColor;\n"
+    "out vec4 finalColor;\n"
+    "uniform sampler2D texture0;\n"
+    "uniform vec2 quadPix;\n"
+    "uniform vec2 quadOrigin;\n"
+    "uniform float time;\n"
+    "uniform vec3 denseCol;\n"     // thick parts on the viewed level
+    "uniform vec3 thinCol;\n"      // thin parts on the viewed level
+    "uniform vec3 deepCol;\n"      // seen below the viewed level
+    "const float bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,\n"
+    "                                  3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);\n"
+    "float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\n"
+    "float vnoise(vec2 p) {\n"
+    "    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n"
+    "    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);\n"
+    "}\n"
+    "void main() {\n"
+    "    vec2 local = floor(fragTexCoord * quadPix);\n"
+    "    vec2 world = local + quadOrigin;\n"
+    "    vec4 d = texture(texture0, (local + 0.5) / quadPix);\n"
+    "    if (d.r + d.g < 0.004) discard;\n"
+    "    float n = (vnoise(world / 4.0 + vec2(time * 1.1, -time * 1.8)) - 0.5) * 0.7\n"
+    "            + (vnoise(world / 9.0 - vec2(time * 0.4, time * 0.6)) - 0.5) * 0.5;\n"
+    "    ivec2 b = ivec2(mod(world, 4.0));\n"
+    "    float th = (bayer[b.x + b.y * 4] + 0.5) / 16.0;\n"
+    "    float cur = d.r * 1.15 + n;\n"
+    "    if (cur > th) { finalColor = vec4(cur > 0.75 ? denseCol : thinCol, 1.0); return; }\n"
+    "    if (d.g * 0.8 + n > th) { finalColor = vec4(deepCol, 1.0); return; }\n"
+    "    discard;\n"
+    "}\n";
+
+static Shader gasShader;
+static bool gasReady = false, gasFailed = false;
+static int gasLocQuadPix, gasLocQuadOrigin, gasLocTime, gasLocDense, gasLocThin, gasLocDeep;
+static Texture2D gasTex[2];
+static int gasTexW[2], gasTexH[2];
+
+static bool GasInit(void) {
+    if (gasReady) return true;
+    if (gasFailed) return false;
+    gasShader = LoadShaderFromMemory(NULL, fxGasFS);
+    if (gasShader.id == (unsigned int)rlGetShaderIdDefault()) { gasFailed = true; TraceLog(LOG_WARNING, "Effects: gas shader failed"); return false; }
+    gasLocQuadPix = GetShaderLocation(gasShader, "quadPix");
+    gasLocQuadOrigin = GetShaderLocation(gasShader, "quadOrigin");
+    gasLocTime = GetShaderLocation(gasShader, "time");
+    gasLocDense = GetShaderLocation(gasShader, "denseCol");
+    gasLocThin = GetShaderLocation(gasShader, "thinCol");
+    gasLocDeep = GetShaderLocation(gasShader, "deepCol");
+    gasReady = true;
+    return true;
+}
+
+// Can the clouds be drawn (shader built, or not tried yet)? If not, smoke and steam draw the old way
+bool GasCloudsAvailable(void) { return !gasFailed; }
+
+// rgba: w * h texels (r = viewed level, g = below), cells minX.. / minY.. ; slot 0 smoke, 1 steam.
+// Returns false if it can't draw (no shader): the caller draws the old way.
+bool DrawGasDithered(int slot, int minX, int minY, int w, int h, const unsigned char* rgba,
+                     Color dense, Color thin, Color deep) {
+    if (w <= 0 || h <= 0 || slot < 0 || slot > 1 || !GasInit()) return false;
+    if (gasTexW[slot] != w || gasTexH[slot] != h) {
+        if (gasTexW[slot] > 0) UnloadTexture(gasTex[slot]);
+        Image img = GenImageColor(w, h, BLANK);
+        gasTex[slot] = LoadTextureFromImage(img);
+        UnloadImage(img);
+        SetTextureFilter(gasTex[slot], TEXTURE_FILTER_BILINEAR);
+        SetTextureWrap(gasTex[slot], TEXTURE_WRAP_CLAMP);
+        gasTexW[slot] = w; gasTexH[slot] = h;
+    }
+    UpdateTexture(gasTex[slot], rgba);
+    float pix = FX_PIXEL * zoom, cell = CELL_SIZE * zoom;
+    float quadPix[2] = { w * 8.0f, h * 8.0f }, quadOrigin[2] = { minX * 8.0f, minY * 8.0f };
+    float t = FxClock(), dc[3], tc[3], ec[3];
+    Col3(dc, dense.r, dense.g, dense.b); Col3(tc, thin.r, thin.g, thin.b); Col3(ec, deep.r, deep.g, deep.b);
+    (void)pix;
+    BeginShaderMode(gasShader);
+    SetShaderValue(gasShader, gasLocQuadPix, quadPix, SHADER_UNIFORM_VEC2);
+    SetShaderValue(gasShader, gasLocQuadOrigin, quadOrigin, SHADER_UNIFORM_VEC2);
+    SetShaderValue(gasShader, gasLocTime, &t, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(gasShader, gasLocDense, dc, SHADER_UNIFORM_VEC3);
+    SetShaderValue(gasShader, gasLocThin, tc, SHADER_UNIFORM_VEC3);
+    SetShaderValue(gasShader, gasLocDeep, ec, SHADER_UNIFORM_VEC3);
+    DrawTexturePro(gasTex[slot], (Rectangle){ 0, 0, (float)w, (float)h },
+                   (Rectangle){ offset.x + minX * cell, offset.y + minY * cell, w * cell, h * cell },
+                   (Vector2){ 0, 0 }, 0.0f, WHITE);
+    rlDrawRenderBatchActive();
+    EndShaderMode();
+    return true;
+}

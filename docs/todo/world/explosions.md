@@ -159,6 +159,14 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
   explosions (noise clipping, rotating noise), Vlambeer's screenshake talk (hit stop), NVIDIA's
   "Bigger bang with fewer sprites" (shockwave). Not done: one shared density buffer for smoke
   (puffs merge instead of stacking), a light flash through the lighting system, a boom sound.
+- Real smoke: the blast fills the open cells of its inner half with simulated smoke (level 2-7,
+  thickest at the centre); the smoke simulation takes it up level by level (top of a 16-level map
+  in about a second), spreads it and clears it slowly (user: looking up, there was no smoke).
+- The smoke and steam simulations draw as dithered clouds too (effects on): one texel per
+  visible cell (r = the viewed level, g = the strongest below), sampled smoothly so cells blend,
+  two layers of drifting noise, Bayer dither on the sprite pixel grid; smoke below the viewed
+  level is the same grey, thinner. Drawn after the world batch (main.c `DrawGasClouds`, the
+  batch would paint over it); effects off or no shader: the old squares.
 - Chunks (1-2 sprite pixels, the broken wall's material colour) fly out in an arc with a bounce;
   dust puffs from broken walls, where a collapse lands, and trickling under a creaking piece
   (shown on the floor it falls to); sparks from a burning fuse.

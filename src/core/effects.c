@@ -15,6 +15,9 @@ static FxEmitter emitters[MAX_EMITTERS];
 static int emitterCount;
 static uint32_t fxRng = 0x9e3779b9u;
 static int hitStopFrames;
+static float fxClock;
+
+float FxClock(void) { return fxClock; }
 
 // Deterministic (headless runs and screenshots repeat)
 static float FxRand01(void) {
@@ -190,6 +193,8 @@ static void EmitterTick(FxEmitter* e, float dt) {
 
 void FxTick(float dt) {
     if (dt <= 0.0f) return;
+    fxClock += dt;
+    if (fxClock > 10000.0f) fxClock -= 10000.0f;
     for (int i = 0; i < emitterCount; ) {
         EmitterTick(&emitters[i], dt);
         emitters[i].t -= dt;
