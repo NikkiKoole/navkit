@@ -6,6 +6,7 @@
 #include "../entities/animals.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/chase.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/jobs.h"
@@ -26,6 +27,7 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Notice);
     NoticeTick();
     TalkTick(dt);
+    ChaseTick(dt);
     PROFILE_END(Notice);
 
     PROFILE_BEGIN(Animals);

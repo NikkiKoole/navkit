@@ -127,6 +127,7 @@ bool bladderEnabled = false;
 #include "../src/entities/notice.c"
 #include "../src/entities/talk.c"
 #include "../src/entities/relations.c"
+#include "../src/entities/chase.c"
 #include "../src/entities/namegen.c"
 #include "../src/entities/workshops.c"
 #include "../src/entities/furniture.c"

@@ -30,6 +30,7 @@
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
+#include "../entities/chase.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -604,6 +605,14 @@ static const Setting settings[] = {
       "An idle wanderer that noticed someone it likes (like >= 20) sometimes walks over to them instead of a random spot."),
     SET_BOOL("socialAvoid", "Avoid the disliked", "Entities/Movers/Noticing", socialAvoid,
       "Walkers steer round someone they dislike (like <= -20) and wanderers don't pick a goal near them."),
+    SET_BOOL("fleeSmart", "Flee: smart", "Entities/Movers/Noticing", fleeSmart,
+      "Fleeing (tag, later animals): run along a path to a good open spot away from the threat. Off: straight away from it."),
+    SET_FLOAT("chaseSpeed", "Chase: speed", "Entities/Movers/Noticing", chaseSpeed, 0.05f, 0.5f, 3.0f,
+      "Running pace of a chaser, x walking speed.", NULL),
+    SET_FLOAT("fleeSpeed", "Flee: speed", "Entities/Movers/Noticing", fleeSpeed, 0.05f, 0.5f, 3.0f,
+      "Running pace of someone fleeing, x walking speed.", NULL),
+    SET_FLOAT("fleeRadius", "Flee: range (cells)", "Entities/Movers/Noticing", fleeRadius, 0.5f, 1.0f, 20.0f,
+      "A chaser this close (and noticed) makes a player run.", NULL),
     SET_BOOL("politePassing", "Polite Passing", "Entities/Movers/Noticing", politePassing,
       "Someone noticed coming at you: drift aside early (away from their side, else to the right) and slow a little. Needs Noticing."),
     SET_FLOAT("passRadius", "Pass: start (cells)", "Entities/Movers/Noticing", passRadius, 0.1f, 1.0f, 8.0f,

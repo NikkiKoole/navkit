@@ -28,6 +28,7 @@
 #include "../simulation/fire.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
+#include "../entities/chase.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -642,6 +643,62 @@ static void GardenPartyPrintStats(void) {
 static bool GardenPartyCheck(char* why, int whyLen) {
     if (gpMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
     if (gpAtFireMax == 0) { snprintf(why, (size_t)whyLen, "nobody came to the fire"); return false; }
+    return true;
+}
+
+// tag: a plaza with stone pillars, 8 players: "it" chases the nearest player it notices,
+// the others run when it comes close (chase.c). Compare fleeSmart on/off: how long a chase
+// lasts, how far the runners keep from "it".
+static long tagTicks, tagFleeTicks, tagDistN;
+static double tagDistSum;
+
+static void SetupTag(void) {
+    tagTicks = tagFleeTicks = tagDistN = 0;
+    tagDistSum = 0.0;
+    for (int py = 6; py < gridHeight - 4; py += 8)    // 2x2 pillars to dodge round
+        for (int px = 6; px < gridWidth - 4; px += 8)
+            for (int dy = 0; dy < 2; dy++)
+                for (int dx = 0; dx < 2; dx++) {
+                    GRID(px + dx, py + dy, 1) = CELL_WALL;
+                    SetWallMaterial(px + dx, py + dy, 1, MAT_GRANITE);
+                }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    moverWanderPause = 1.0f;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    for (int i = 0; i < n; i++) SpawnMoverAt(3 + (i % 4) * 8, 3 + (i / 4) * 8 % 28, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    ChaseSetIt(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Tag: %d players, mover 0 is it (smart fleeing %s)", n, fleeSmart ? "on" : "off"), GREEN);
+}
+
+static void TagTickStats(void) {
+    tagTicks++;
+    int it = ChaseIt();
+    if (it < 0) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!ChaseIsPlaying(i) || i == it) continue;
+        if (ChaseIsFleeing(i)) tagFleeTicks++;
+        float dx = movers[i].x - movers[it].x, dy = movers[i].y - movers[it].y;
+        tagDistSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+        tagDistN++;
+    }
+}
+
+static void TagPrintStats(void) {
+    double minutes = tagTicks / (double)TICK_RATE / 60.0;
+    printf("Smart fleeing: %s; tags: %ld (%.1f per minute), a chase lasts %.1f s on average\n", fleeSmart ? "on" : "off",
+           tagCount, minutes > 0 ? tagCount / minutes : 0.0, tagCount ? tagChaseSecondsSum / tagCount : 0.0);
+    printf("Runners: %.0f%% of the time fleeing, %.1f cells from it on average\n",
+           tagDistN ? 100.0 * tagFleeTicks / tagDistN : 0.0, tagDistN ? tagDistSum / tagDistN : 0.0);
+}
+
+static bool TagCheck(char* why, int whyLen) {
+    if (tagCount == 0) { snprintf(why, (size_t)whyLen, "nobody got tagged"); return false; }
     return true;
 }
 
@@ -3731,6 +3788,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"tag",        "Tag on a plaza with pillars, 8 players: chasing and fleeing (setting fleeSmart)",
+                   NULL,        SetupTag,      TagTickStats, TagPrintStats, TagCheck, 0, 0},
     {"garden-party", "A lawn, a campfire, tables, a buffet, 14 guests who know each other: eating, talking, gathering round the fire",
                    NULL,        SetupGardenParty, GardenPartyTickStats, GardenPartyPrintStats, GardenPartyCheck, 0, 0},
     {"social-ties", "12 movers: two groups of friends, strangers, two enemy pairs: who stays near whom (socialSeek, socialAvoid)",

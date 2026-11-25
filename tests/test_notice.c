@@ -10,6 +10,7 @@ bool LoadWorld(const char* filename);
 #include "../src/entities/notice.h"
 #include "../src/entities/talk.h"
 #include "../src/entities/relations.h"
+#include "../src/entities/chase.h"
 #include "../src/core/time.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
@@ -625,6 +626,84 @@ describe(walking_together) {
     }
 }
 
+static void TagSetup(void) {
+    TalkSetup();
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+    fleeSmart = true;
+    fleeRadius = 5.0f;
+}
+
+static void RunChase(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        BuildMoverSpatialGrid();
+        NoticeTick();
+        ChaseTick(TICK_DT);
+    }
+}
+
+describe(tag) {
+    it("the new it counts to three before it chases") {
+        TagSetup();
+        int it = AddMover(5, 5, 1), p = AddMover(8, 5, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        expect(ChaseIt() == it);
+        expect(ChaseMoverTick(it, TICK_DT));            // standing
+        RunChase(1.6f);
+        expect(!ChaseMoverTick(it, TICK_DT));           // off it goes
+        expect(movers[it].pathIndex >= 0);              // a path at the player
+    }
+
+    it("a player runs when it comes close: to a spot further from it, away from it") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        RunChase(0.5f);
+        expect(ChaseIsFleeing(p));
+        expect(movers[p].goal.x > 11);                  // it is to the west: runs east-ish
+        float gx = (movers[p].goal.x + 0.5f) * CELL_SIZE - movers[it].x, gy = (movers[p].goal.y + 0.5f) * CELL_SIZE - movers[it].y;
+        expect(sqrtf(gx * gx + gy * gy) > 5.0f * CELL_SIZE);
+        expect(ChaseSpeedScale(p) == fleeSpeed && ChaseSpeedScale(it) == chaseSpeed);
+    }
+
+    it("running wears a player out; worn out it is slow") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        movers[it].x = movers[p].x - 2.0f * CELL_SIZE;
+        RunChase(7.0f);                                 // (nobody moves in this test: still close)
+        expect(ChaseStamina(p) < 0.3f);
+        expect(ChaseSpeedScale(p) < 1.0f);
+    }
+
+    it("caught: the roles swap") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true); ChaseSetPlayer(p, true);
+        ChaseSetIt(it);
+        RunChase(1.6f);                                 // done counting
+        movers[it].x = movers[p].x - 0.3f * CELL_SIZE;  // right on top of p
+        RunChase(0.1f);
+        expect(tagCount == 1);
+        expect(ChaseIt() == p);
+        expect(ChaseMoverTick(p, TICK_DT));             // p counts to three now
+    }
+
+    it("not playing: never chased, never runs") {
+        TagSetup();
+        int it = AddMover(8, 6, 1), p = AddMover(11, 6, 1);
+        ChaseSetPlayer(it, true);
+        ChaseSetIt(it);
+        RunChase(2.0f);
+        expect(!ChaseIsFleeing(p));
+        expect(ChaseSpeedScale(p) == 1.0f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -635,5 +714,6 @@ int main(int argc, char* argv[]) {
     test(relations);
     test(friends_and_foes);
     test(walking_together);
+    test(tag);
     return summary();
 }

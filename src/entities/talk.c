@@ -2,6 +2,7 @@
 #include "talk.h"
 #include "notice.h"
 #include "relations.h"
+#include "chase.h"
 #include "../simulation/needs.h"
 #include "../simulation/weather.h"
 #include "mover.h"
@@ -161,6 +162,7 @@ static bool CanTalk(int i) {
     if (m->isDrafted || m->transportState != TRANSPORT_NONE) return false;
     if (m->z - floorf(m->z) > 0.0001f) return false;   // on a ladder or ramp
     if (moverTalkIdx[i] || moverTalkCooldown[i] > 0.0f) return false;
+    if (ChaseIsPlaying(i)) return false;   // playing tag
     return true;
 }
 

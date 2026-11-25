@@ -9,6 +9,7 @@
 #include "../core/time.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/chase.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/item_defs.h"
@@ -1786,6 +1787,7 @@ static int MoverMouth(int i, const Mover* m) {
     if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
     if (MoverNodTime(i) > 0.0f || MoverThanksTime(i) > 0.0f) return MOUTH_SMILE;   // "after you" / thanks
     if (MoverIsWatching(i)) return MOUTH_SMILE;   // enjoying the show
+    if (ChaseIsFleeing(i)) return ChaseStamina(i) > 0.3f ? MOUTH_OPEN : MOUTH_FLAT;   // running / worn out
     if (MoverYieldingFor(i) >= 0) {   // waiting at a doorway: how it takes it depends on its patience
         float waited = MoverYieldWaitTime(i), patience = MoverPatience(m);
         if (patience > 1.0f) return MOUTH_SMILE;

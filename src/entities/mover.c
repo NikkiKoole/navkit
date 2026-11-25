@@ -7,6 +7,7 @@
 #include "notice.h"
 #include "talk.h"
 #include "relations.h"
+#include "chase.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -1162,6 +1163,7 @@ void ClearMovers(void) {
     ClearNotices();
     ClearTalks();
     ClearRelations();
+    ClearChase();
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -1635,6 +1637,7 @@ void UpdateMovers(void) {
         if (ElevatorRiderTick(i, dt)) continue;   // in an elevator car: it carries the mover
         if (ElevatorQueueTick(i, dt)) continue;   // in the line at an elevator door
         if (TalkMoverTick(i, dt)) continue;       // standing in a conversation (talk.c)
+        if (ChaseMoverTick(i, dt)) continue;      // tag: "it" counting to three (chase.c)
         
         // Decrement fall timer for visual feedback
         if (moverNodTimer[i] > 0.0f) moverNodTimer[i] -= dt;
@@ -1986,7 +1989,7 @@ void UpdateMovers(void) {
                 float heatMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
                 terrainSpeedMult *= heatMult;
             }
-            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult * TalkWalkSpeedScale(i);
+            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult * TalkWalkSpeedScale(i) * ChaseSpeedScale(i);
         }
 
         // Waypoint arrival check
@@ -2143,7 +2146,7 @@ void UpdateMovers(void) {
             // Social steering, sideways drifts: passing politely (notice.c: someone noticed coming
             // at us), giving a conversation room (talk.c: a talk's circle ahead), keeping away
             // from someone disliked (notice.c)
-            if (!lineFollow && target.z == (int)m->z) {
+            if (!lineFollow && target.z == (int)m->z && !ChaseIsPlaying(i)) {   // (not in a game of tag)
                 float sideX = 0.0f, sideY = 0.0f, passScale = 1.0f, roomX, roomY;
                 bool steer = politePassing &&
                              NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale);
