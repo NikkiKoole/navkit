@@ -75,6 +75,7 @@
 #include "entities/talk.c"
 #include "entities/relations.c"
 #include "entities/chase.c"
+#include "entities/activity.c"
 #include "entities/town.c"
 #include "entities/namegen.c"
 #include "entities/jobs.c"

@@ -1371,6 +1371,55 @@ describe(playing_is_busy) {
     }
 }
 
+describe(joint_activities) {
+    it("two games of tag at once: each has its own it and players; one ending leaves the other") {
+        TagSetup();
+        int a = AddMover(2, 3, 1), b = AddMover(4, 3, 1), c = AddMover(19, 8, 1), d = AddMover(21, 8, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);   // the ones waiting: a game
+        ChaseSetPlayer(c, true); ChaseSetPlayer(d, true); ChaseSetIt(c);   // (a, b are in one: not taken)
+        int ga = MoverActivity(a), gc = MoverActivity(c);
+        expect(ga >= 0 && gc >= 0 && ga != gc);
+        expect(MoverActivity(b) == ga && MoverActivity(d) == gc);
+        expect(activities[ga].count == 2 && activities[gc].count == 2);
+        RunChase(8.0f);
+        for (int g = 0; g < 2; g++) {   // "it" is always one of its own game's players
+            int act = g ? gc : ga;
+            int itIn = 0;
+            for (int i = 0; i < moverCount; i++) if (ActivityHas(act, i) && ChaseSpeedScale(i) == chaseSpeed) itIn++;
+            expect(activities[act].active && itIn <= 1);
+        }
+        expect(MoverActivity(a) == ga && MoverActivity(b) == ga && MoverActivity(c) == gc && MoverActivity(d) == gc);
+        ChaseLeave(d);
+        RunChase(0.1f);
+        expect(!activities[gc].active && !ChaseIsPlaying(c) && movers[c].freetimeState == FREETIME_NONE);
+        expect(activities[ga].active && ChaseIsPlaying(a) && ChaseIsPlaying(b));
+        ClearChase();
+    }
+
+    it("waiting to play with no game started: free again next tick") {
+        TagSetup();
+        int a = AddMover(4, 4, 1);
+        expect(ChaseJoin(a) && ChaseIsPlaying(a) && MoverActivity(a) < 0);
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(a) && movers[a].freetimeState == FREETIME_NONE);
+    }
+
+    it("players taken into another game: the first one ends without them") {
+        TagSetup();
+        int a = AddMover(2, 3, 1), b = AddMover(4, 3, 1), t = AddMover(12, 6, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        int tag = MoverActivity(a);
+        int hs[2] = { a, b };
+        PackHuntStart(hs, 2, t);
+        int pack = MoverActivity(t);
+        expect(pack >= 0 && pack != tag && MoverActivity(a) == pack && MoverActivity(b) == pack);
+        expect(activities[tag].count == 0);
+        RunChase(0.1f);
+        expect(!activities[tag].active && activities[pack].active && PackTarget() == t);
+        ClearChase();
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1394,5 +1443,6 @@ int main(int argc, char* argv[]) {
     test(personal_space);
     test(pack_stealth);
     test(playing_is_busy);
+    test(joint_activities);
     return summary();
 }

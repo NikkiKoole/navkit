@@ -13,6 +13,14 @@
 #define CHASE_H
 
 #include <stdbool.h>
+#include "activity.h"
+
+// The games are joint activities (activity.h): each kind is a row there, its logic is here.
+// Several games can run at once; the getters without a mover (ChaseIt, HideSeeker,
+// FollowLeader, PackTarget, PackLost) answer for the first running game of that kind.
+extern const ActivityDef tagActivityDef, hideSeekActivityDef, followLeaderActivityDef, packHuntActivityDef;
+void ChaseMoverReset(int moverIdx);   // fresh for a game (stamina, not running): activity.c on joining
+void ChaseMoverLeft(int moverIdx);    // out of its game (not running any more)
 
 extern bool fleeSmart;           // flee along paths to a good spot (false: straight away)
 extern float chaseSpeed, fleeSpeed;   // running pace, x walking speed
@@ -26,14 +34,16 @@ void ClearChase(void);
 // else takes it over (a need - hungry, thirsty, tired, bladder or anything critical, see
 // PlayWantsToStop -, a job, drafting, a player command: its state is no longer FREETIME_PLAY),
 // and the game carries on without it (a new "it", seeker or leader) or ends when too few are left.
+// ChaseJoin = waits to play (activity.h ActivityWait): a game started next takes it
+// (ChaseSetIt: tag, HideSeekStart: hide and seek); nothing started by the next tick: free again.
 bool ChaseJoin(int moverIdx);            // false if it isn't free to play
 void ChaseLeave(int moverIdx);
 void ChaseSetPlayer(int moverIdx, bool playing);   // join / leave
 bool PlayWantsToStop(int moverIdx);      // a need it should see to (needs.c ends its play)
-extern long playLeftCount;               // players who left a game
+// playLeftCount: activity.h
 bool ChaseIsPlaying(int moverIdx);
 int ChaseIt(void);                       // who is "it", -1 if no game
-void ChaseSetIt(int moverIdx);
+void ChaseSetIt(int moverIdx);            // "it" in its game of tag, or a new game with the ones waiting
 void ChaseTick(float dt);                // after NoticeTick: decide who runs where
 bool ChaseMoverTick(int moverIdx, float dt);   // movement loop: true = handled (counting to three)
 float ChaseSpeedScale(int moverIdx);     // running pace for a chasing/fleeing player (1 otherwise)

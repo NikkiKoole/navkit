@@ -1,5 +1,11 @@
-// chase.c - chasing and fleeing, and a game of tag (see chase.h)
+// chase.c - chasing and fleeing, and the group games on top (see chase.h)
+//
+// The games are joint activities (activity.c): each running game is an activity with its own
+// state (TagState, HideState, FollowState, PackState below), so several can run at once. The
+// old calls (ChaseSetPlayer, ChaseSetIt, HideSeekStart, ...) still work: "set player" waits to
+// play, and a game started next takes the ones waiting.
 #include "chase.h"
+#include "activity.h"
 #include "notice.h"
 #include "mover.h"
 #include "../world/grid.h"
@@ -18,16 +24,11 @@ float fleeRadius = 5.0f;
 long tagCount = 0;
 double tagChaseSecondsSum = 0.0;
 
-static bool playing[MAX_MOVERS];
+// Per mover (a mover is in one game at a time)
 static float wanderTimer[MAX_MOVERS];   // a calm player's pause between strolls
 static float stamina[MAX_MOVERS];   // 0..1: running drains it, resting refills it
 static bool fleeing[MAX_MOVERS];
 static float replanTimer[MAX_MOVERS];
-static int tagIt = -1;
-static int tagTarget = -1;
-static float tagTargetHeld = 0.0f;   // seconds on the current target
-static float tagFreeze = 0.0f;       // the new "it" counting to three
-static float tagChaseTime = 0.0f;    // since the last tag
 
 #define STAMINA_DRAIN    0.125f  // per second fleeing: 8 s from fresh to spent
 #define STAMINA_REST     0.1f    // per second not fleeing: 10 s to recover
@@ -47,63 +48,26 @@ static float ChaseRandRange(float lo, float hi) {
     return lo + (hi - lo) * (GetRandomValue(0, 10000) / 10000.0f);
 }
 
-static void ClearHideSeek(void);
-
-static void ClearFollow(void);
-
-static void ClearPack(void);
-
-long playLeftCount = 0;
-
 void ClearChase(void) {
-    ClearHideSeek();
-    ClearFollow();
-    ClearPack();
-    memset(playing, 0, sizeof(playing));
+    ClearActivities();   // ends every game (and sets its players free)
+    hideFoundCount = hideRounds = 0;
+    hideFoundSecondsSum = 0.0;
+    followLeaderChanges = 0;
+    packCatches = 0; packCatchSecondsSum = 0.0;
+    packEscapes = packDucks = packFlushed = 0; packDuckSecondsSum = 0.0;
     memset(fleeing, 0, sizeof(fleeing));
     memset(replanTimer, 0, sizeof(replanTimer));
     for (int i = 0; i < MAX_MOVERS; i++) stamina[i] = 1.0f;
-    tagIt = tagTarget = -1;
-    tagTargetHeld = tagFreeze = tagChaseTime = 0.0f;
     tagCount = 0;
     tagChaseSecondsSum = 0.0;
-    playLeftCount = 0;
     memset(wanderTimer, 0, sizeof(wanderTimer));
-    for (int i = 0; i < moverCount; i++)   // nobody is playing any more
-        if (movers[i].freetimeState == FREETIME_PLAY) movers[i].freetimeState = FREETIME_NONE;
 }
 
-// --- Playing is a free-time state (FREETIME_PLAY) ---
-static void GameDrop(int i);
-
-static bool PlayerFree(int i) {
-    const Mover* m = &movers[i];
-    return m->active && m->currentJobId < 0 && !m->isDrafted && !QueueSuspended(i) &&
-           (m->freetimeState == FREETIME_NONE || m->freetimeState == FREETIME_PLAY);
-}
-
-bool ChaseJoin(int i) {
-    if (i < 0 || i >= moverCount || !PlayerFree(i)) return false;
-    if (!playing[i]) { stamina[i] = 1.0f; fleeing[i] = false; wanderTimer[i] = 0.0f; }
-    playing[i] = true;
-    movers[i].freetimeState = FREETIME_PLAY;
-    return true;
-}
-
-void ChaseLeave(int i) {
-    if (i < 0 || i >= MAX_MOVERS || !playing[i]) return;
-    playing[i] = false;
-    fleeing[i] = false;
-    GameDrop(i);
-    if (i < moverCount && movers[i].freetimeState == FREETIME_PLAY) {   // (a need, job, draft or command took over: theirs now)
-        Mover* m = &movers[i];
-        m->freetimeState = FREETIME_NONE;
-        m->pathLength = 0;
-        m->pathIndex = -1;
-    }
-    playLeftCount++;
-}
-
+// --- Playing is a free-time state (FREETIME_PLAY), the membership is activity.c's ---
+void ChaseMoverReset(int i) { stamina[i] = 1.0f; fleeing[i] = false; wanderTimer[i] = 0.0f; }
+void ChaseMoverLeft(int i) { fleeing[i] = false; }
+bool ChaseJoin(int i) { return ActivityWait(i); }
+void ChaseLeave(int i) { ActivityLeave(i); }
 void ChaseSetPlayer(int i, bool on) { if (on) ChaseJoin(i); else ChaseLeave(i); }
 
 // A need that would send it off (hungry, thirsty, tired, bladder, or anything critical): it
@@ -117,24 +81,47 @@ bool PlayWantsToStop(int i) {
            MoverHasCriticalNeed(i, false);
 }
 float ChaseStamina(int i) { return (i >= 0 && i < MAX_MOVERS) ? stamina[i] : 1.0f; }
-bool ChaseIsPlaying(int i) { return i >= 0 && i < moverCount && playing[i] && movers[i].active; }
+bool ChaseIsPlaying(int i) { return MoverInActivity(i); }
 bool ChaseIsFleeing(int i) { return ChaseIsPlaying(i) && fleeing[i]; }
-int ChaseIt(void) { return (tagIt >= 0 && tagIt < moverCount && movers[tagIt].active) ? tagIt : -1; }
-void ChaseSetIt(int i) { tagIt = i; tagTarget = -1; tagFreeze = TAG_FREEZE; tagChaseTime = 0.0f; }
 
-static float FollowSpeedScale(int i);
-
-static float PackSpeedScale(int i);
+// The game a member is in (state of that kind), NULL if it isn't in one of that kind
+static void* GameOf(int a, int kind) {
+    return (a >= 0 && a < MAX_ACTIVITIES && activities[a].active && activities[a].kind == kind) ? activities[a].state : NULL;
+}
+static bool ChaseMoverOk(int i) { return i >= 0 && i < moverCount && movers[i].active; }
 
 float ChaseSpeedScale(int i) {
-    float fs = FollowSpeedScale(i);
-    if (fs > 0.0f) return fs;
-    float ps = PackSpeedScale(i);
-    if (ps > 0.0f) return ps;
     if (!ChaseIsPlaying(i)) return 1.0f;
-    if (i == tagIt) return chaseSpeed;
+    int a = MoverActivity(i);
+    if (a >= 0 && activities[a].active) {
+        const ActivityDef* d = ActivityDefOf(activities[a].kind);
+        float s = d->speedScale ? d->speedScale(a, i) : 0.0f;
+        if (s > 0.0f) return s;
+    }
     if (!fleeing[i]) return 1.0f;
     return stamina[i] > TIRED ? fleeSpeed : TIRED_SPEED;
+}
+
+void ChaseTick(float dt) { ActivityTick(dt); }
+bool ChaseMoverTick(int i, float dt) { return ActivityMoverTick(i, dt); }
+
+// Standing still this tick (counting, hidden, crouched): no path, no "stuck" clock
+static void ChaseHoldStill(int i) {
+    Mover* m = &movers[i];
+    m->pathLength = 0;
+    m->pathIndex = -1;
+    m->timeWithoutProgress = 0.0f;
+    m->lastX = m->x;
+    m->lastY = m->y;
+}
+
+// A game started with the movers waiting to play (and `with`, if it isn't waiting)
+static int StartWithWaiting(int kind, int with) {
+    int a = ActivityStart(kind);
+    if (a < 0) return -1;
+    for (int j = 0; j < moverCount; j++) if (ActivityWaiting(j)) ActivityAdd(a, j);
+    if (with >= 0) ActivityAdd(a, with);
+    return a;
 }
 
 static float Dist(int a, int b) {
@@ -265,55 +252,108 @@ static bool ThreatClose(int i, int threat) {
     return d < 2.0f * CELL_SIZE;   // too close not to notice
 }
 
-static void HideSeekTick(float dt);
+// A calm player (tag: not running, "it" with nobody in sight; the pack's runner, at ease)
+// strolls about near the others in its game, with a pause now and then
+static bool TagCalm(int a, int i);
+static bool PackCalm(int a, int i);
+static void PlayWander(int a, float dt) {
+    float cx = 0.0f, cy = 0.0f;
+    int n = 0;
+    for (int i = 0; i < moverCount; i++)
+        if (ActivityHas(a, i)) { cx += movers[i].x; cy += movers[i].y; n++; }
+    if (n == 0) return;
+    cx /= n; cy /= n;
+    bool tag = activities[a].kind == ACT_TAG;
+    for (int i = 0; i < moverCount; i++) {
+        if (!ActivityHas(a, i) || fleeing[i]) continue;
+        bool calm = tag ? TagCalm(a, i) : PackCalm(a, i);
+        if (!calm || movers[i].pathIndex >= 0) continue;
+        if ((wanderTimer[i] -= dt) > 0.0f) continue;
+        wanderTimer[i] = ChaseRandRange(0.5f, 2.0f);
+        Mover* m = &movers[i];
+        int z = (int)m->z;
+        for (int tries = 0; tries < 6; tries++) {   // somewhere 3-7 cells off, toward the others if far from them
+            float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 7.0f);
+            float tx = m->x + cosf(an) * d * CELL_SIZE, ty = m->y + sinf(an) * d * CELL_SIZE;
+            float fx = tx - cx, fy = ty - cy;
+            if (fx * fx + fy * fy > (10.0f * CELL_SIZE) * (10.0f * CELL_SIZE)) { tx = (tx + cx) * 0.5f; ty = (ty + cy) * 0.5f; }
+            if (PathTo(i, (int)(tx / CELL_SIZE), (int)(ty / CELL_SIZE), z)) break;
+        }
+    }
+}
 
-static void FollowLeaderTick(float dt);
+// ============================================================================
+// Tag
+// ============================================================================
+typedef struct {
+    int it, target;
+    float targetHeld;   // seconds on the current target
+    float freeze;       // the new "it" counting to three
+    float chaseTime;    // since the last tag
+} TagState;
 
-static void PackTick(float dt);
+static TagState* TagOf(int a) { return GameOf(a, ACT_TAG); }
+static int TagItOf(const TagState* t) { return t && ChaseMoverOk(t->it) ? t->it : -1; }
+static void TagSetIt(TagState* t, int i) { t->it = i; t->target = -1; t->freeze = TAG_FREEZE; t->chaseTime = 0.0f; }
 
-static void PlaySweep(void);
-static void PlayWander(float dt);
+int ChaseIt(void) {
+    for (int a = 0; a < MAX_ACTIVITIES; a++) {
+        int it = TagItOf(TagOf(a));
+        if (it >= 0) return it;
+    }
+    return -1;
+}
 
-void ChaseTick(float dt) {
-    PlaySweep();
-    PlayWander(dt);
-    HideSeekTick(dt);
-    FollowLeaderTick(dt);
-    PackTick(dt);
-    int it = ChaseIt();
+// "it" in i's game of tag, or a new game of tag with the ones waiting to play
+void ChaseSetIt(int i) {
+    int a = MoverActivity(i);
+    if (!TagOf(a)) a = StartWithWaiting(ACT_TAG, i);
+    TagState* t = TagOf(a);
+    if (t) TagSetIt(t, i);
+}
+
+static bool TagCalm(int a, int i) {
+    const TagState* t = TagOf(a);
+    return i != t->it || (t->target < 0 && t->freeze <= 0.0f);
+}
+
+static void TagTick(int a, float dt) {
+    TagState* t = TagOf(a);
+    int it = TagItOf(t);
     if (it < 0) return;
-    tagChaseTime += dt;
-    if (tagFreeze > 0.0f) tagFreeze -= dt;
+    PlayWander(a, dt);
+    t->chaseTime += dt;
+    if (t->freeze > 0.0f) t->freeze -= dt;
 
     // "it": pick (or keep) a target and run at it
-    if (tagFreeze <= 0.0f) {
-        tagTargetHeld += dt;
+    if (t->freeze <= 0.0f) {
+        t->targetHeld += dt;
         int best = -1;
         float bestD = 1e9f;
         const MoverNotice* n = &moverNotice[it];
         for (int k = 0; k < n->count; k++) {
             int j = n->e[k].mover;
-            if (!ChaseIsPlaying(j) || j == it || (int)movers[j].z != (int)movers[it].z) continue;
+            if (!ActivityHas(a, j) || j == it || (int)movers[j].z != (int)movers[it].z) continue;
             float d = Dist(it, j);
             if (d < bestD) { bestD = d; best = j; }
         }
-        bool keep = tagTarget >= 0 && ChaseIsPlaying(tagTarget) &&
-                    (tagTargetHeld < TARGET_STICK || best < 0 || Dist(it, tagTarget) < bestD * 1.5f);
-        if (!keep && best >= 0) { tagTarget = best; tagTargetHeld = 0.0f; }
-        if (!keep && best < 0) tagTarget = -1;   // nobody in sight: wander (the mover loop picks goals)
-        if (tagTarget >= 0) {
-            if (Dist(it, tagTarget) < CATCH_DIST * CELL_SIZE) {   // tagged!
+        bool keep = t->target >= 0 && ActivityHas(a, t->target) &&
+                    (t->targetHeld < TARGET_STICK || best < 0 || Dist(it, t->target) < bestD * 1.5f);
+        if (!keep && best >= 0) { t->target = best; t->targetHeld = 0.0f; }
+        if (!keep && best < 0) t->target = -1;   // nobody in sight: wander (PlayWander)
+        if (t->target >= 0) {
+            if (Dist(it, t->target) < CATCH_DIST * CELL_SIZE) {   // tagged!
                 tagCount++;
-                tagChaseSecondsSum += tagChaseTime;
+                tagChaseSecondsSum += t->chaseTime;
                 int old = it;
-                ChaseSetIt(tagTarget);
-                fleeing[tagIt] = false;
-                movers[tagIt].pathLength = 0;
-                movers[tagIt].pathIndex = -1;
+                TagSetIt(t, t->target);
+                fleeing[t->it] = false;
+                movers[t->it].pathLength = 0;
+                movers[t->it].pathIndex = -1;
                 replanTimer[old] = 0.0f;
-                it = tagIt;
+                it = t->it;
             } else if ((replanTimer[it] -= dt) <= 0.0f || movers[it].pathIndex < 0) {   // (path ran out: at once)
-                ChaseRun(it, tagTarget);
+                ChaseRun(it, t->target);
                 replanTimer[it] = CHASE_REPLAN;
             }
         }
@@ -321,10 +361,10 @@ void ChaseTick(float dt) {
 
     // everyone else: run if "it" is close (and get tired doing it)
     for (int i = 0; i < moverCount; i++) {
-        if (!ChaseIsPlaying(i) || i == it) continue;
+        if (!ActivityHas(a, i) || i == it) continue;
         if (fleeing[i]) { stamina[i] -= STAMINA_DRAIN * dt; if (stamina[i] < 0.0f) stamina[i] = 0.0f; }
         else { stamina[i] += STAMINA_REST * dt; if (stamina[i] > 1.0f) stamina[i] = 1.0f; }
-        bool threat = ThreatClose(i, it) && tagFreeze < TAG_FREEZE - 0.3f;   // (a moment to react)
+        bool threat = ThreatClose(i, it) && t->freeze < TAG_FREEZE - 0.3f;   // (a moment to react)
         if (!threat) { fleeing[i] = false; continue; }
         replanTimer[i] -= dt;
         bool closeIn = Dist(i, it) < FLEE_REPICK * CELL_SIZE;
@@ -338,29 +378,38 @@ void ChaseTick(float dt) {
     }
 }
 
-static bool HideMoverTick(int i);
-
-static bool FollowMoverTick(int i, float dt);
-
-bool ChaseMoverTick(int i, float dt) {
-    if (FollowMoverTick(i, dt)) return true;
-    if (HideMoverTick(i)) return true;
-    if (PackIsDucking(i)) {   // crouched behind cover: still
-        Mover* m = &movers[i];
-        m->timeWithoutProgress = 0.0f;
-        m->lastX = m->x;
-        m->lastY = m->y;
-        return true;
-    }
-    if (i != ChaseIt() || tagFreeze <= 0.0f) return false;
-    Mover* m = &movers[i];   // counting to three
-    m->pathLength = 0;
-    m->pathIndex = -1;
-    m->timeWithoutProgress = 0.0f;
-    m->lastX = m->x;
-    m->lastY = m->y;
+// The new "it" counts to three, standing still
+static bool TagMoverTick(int a, int i, float dt) {
+    (void)dt;
+    const TagState* t = TagOf(a);
+    if (i != TagItOf(t) || t->freeze <= 0.0f) return false;
+    ChaseHoldStill(i);
     return true;
 }
+
+static float TagSpeedScale(int a, int i) { return i == TagOf(a)->it ? chaseSpeed : 0.0f; }
+
+// Someone left: if it was "it", the nearest one still playing is "it" now
+static void TagMemberLeft(int a, int i) {
+    TagState* t = TagOf(a);
+    if (t->target == i) t->target = -1;
+    if (t->it != i) return;
+    int next = -1;
+    float best = 1e18f;
+    for (int j = 0; j < moverCount; j++) {
+        if (!ActivityHas(a, j)) continue;
+        float d = Dist(i, j);
+        if (d < best) { best = d; next = j; }
+    }
+    if (next >= 0) TagSetIt(t, next); else t->it = -1;
+}
+
+static bool TagTooSmall(int a) { return activities[a].count < 2 || TagItOf(TagOf(a)) < 0; }
+
+const ActivityDef tagActivityDef = {
+    "tag", "Playing tag", sizeof(TagState),
+    TagTick, TagMoverTick, TagSpeedScale, TagMemberLeft, TagTooSmall, NULL,
+};
 
 // ============================================================================
 // Hide and seek
@@ -371,12 +420,14 @@ double hideFoundSecondsSum = 0.0;
 
 enum { HS_NONE, HS_COUNT, HS_SEEK };
 enum { HIDER_GOING, HIDER_HIDDEN, HIDER_FOUND };
-static int hsPhase = HS_NONE, hsSeeker = -1, hsFirstFound = -1;
-static float hsTimer = 0.0f, hsLookTimer = 0.0f;
-static Point hsHome;
-static int hsState[MAX_MOVERS];
-static unsigned char* hsSeen = NULL;   // per cell: the seeker has looked here this round
-static int hsSeenW = 0, hsSeenH = 0;
+typedef struct {
+    int phase, seeker, firstFound;
+    float timer, lookTimer;
+    Point home;
+    unsigned char* seen;   // per cell: the seeker has looked here this round
+    int seenW, seenH;
+} HideState;
+static int hiderState[MAX_MOVERS];   // per mover (in its game)
 
 #define HS_COUNT_TIME   10.0f   // seconds the seeker counts
 #define HS_ROUND_TIME   90.0f   // seconds of seeking before the round ends anyway
@@ -385,40 +436,47 @@ static int hsSeenW = 0, hsSeenH = 0;
 #define HS_CANDIDATES   40
 #define HS_LOOK_RADIUS  6       // cells the seeker marks as looked at (in sight)
 
-static void ClearHideSeek(void) {
-    hsPhase = HS_NONE;
-    hsSeeker = hsFirstFound = -1;
-    hideFoundCount = hideRounds = 0;
-    hideFoundSecondsSum = 0.0;
-    free(hsSeen);
-    hsSeen = NULL;
-    hsSeenW = hsSeenH = 0;
-}
+static HideState* HideOf(int a) { return GameOf(a, ACT_HIDE_SEEK); }
+static HideState* HideOfMover(int i) { return HideOf(MoverActivity(i)); }
 
-int HideSeeker(void) { return hsPhase != HS_NONE && hsSeeker >= 0 && hsSeeker < moverCount ? hsSeeker : -1; }
-bool HideIsCounting(int i) { return hsPhase == HS_COUNT && i == hsSeeker; }
-bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_HIDDEN; }
+int HideSeeker(void) {
+    for (int a = 0; a < MAX_ACTIVITIES; a++) {
+        const HideState* hs = HideOf(a);
+        if (hs && hs->phase != HS_NONE && hs->seeker >= 0 && hs->seeker < moverCount) return hs->seeker;
+    }
+    return -1;
+}
+bool HideIsCounting(int i) { const HideState* hs = HideOfMover(i); return hs && hs->phase == HS_COUNT && i == hs->seeker; }
+bool HideIsHidden(int i) {
+    const HideState* hs = HideOfMover(i);
+    return hs && hs->phase != HS_NONE && ChaseIsPlaying(i) && i != hs->seeker && hiderState[i] == HIDER_HIDDEN;
+}
+bool HideIsFound(int i) {
+    const HideState* hs = HideOfMover(i);
+    return hs && hs->phase != HS_NONE && ChaseIsPlaying(i) && i != hs->seeker && hiderState[i] == HIDER_FOUND;
+}
 // Every player's goals come from its game (a calm one wanders round the others: PlayWander)
 bool HideControls(int i) { return ChaseIsPlaying(i); }
-bool PackIsDucking(int i);
 bool MoverCrouching(int i) { return HideIsHidden(i) || PackIsDucking(i); }
-bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
 
-static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
+static bool SeenCell(const HideState* hs, int x, int y) {
+    return hs->seen && x >= 0 && y >= 0 && x < hs->seenW && y < hs->seenH && hs->seen[y * hs->seenW + x];
+}
 
 // A hiding spot for i: hideSmart = out of sight from home, tucked in, away from other hiders
-static bool PickHidingSpot(int i) {
+static bool PickHidingSpot(int a, int i) {
+    const HideState* hs = HideOf(a);
     const Mover* m = &movers[i];
     int z = (int)m->z, bestX = -1, bestY = -1;
     float bestScore = -1e9f;
     for (int c = 0; c < HS_CANDIDATES; c++) {
-        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(HS_MIN, HS_MAX);
-        int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(HS_MIN, HS_MAX);
+        int cx = (int)((m->x + cosf(an) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(an) * d * CELL_SIZE) / CELL_SIZE);
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
         float score = 0.0f;
         if (hideSmart) {
-            bool seen = CanSeeCell(hsHome.x, hsHome.y, cx, cy, z);   // from home (crouched behind cover: not)
-            if (seen && coverEnabled && CoverBetween(hsHome.x, hsHome.y, cx, cy, z)) seen = false;
+            bool seen = CanSeeCell(hs->home.x, hs->home.y, cx, cy, z);   // from home (crouched behind cover: not)
+            if (seen && coverEnabled && CoverBetween(hs->home.x, hs->home.y, cx, cy, z)) seen = false;
             if (seen) score -= 20.0f;
             int walls = 0, cover = 0;   // tucked in
             for (int oy = -1; oy <= 1; oy++)
@@ -430,7 +488,7 @@ static bool PickHidingSpot(int i) {
             if (coverEnabled && GRID(cx, cy, z) == CELL_BUSH) cover += 4;   // in a bush
             score += walls * 1.5f + cover * 1.5f;
             for (int j = 0; j < moverCount; j++) {   // away from the other hiders' spots
-                if (j == i || !ChaseIsPlaying(j) || j == hsSeeker) continue;
+                if (j == i || !ActivityHas(a, j) || j == hs->seeker) continue;
                 float gx = (float)(movers[j].goal.x - cx), gy = (float)(movers[j].goal.y - cy);
                 if (gx * gx + gy * gy < 9.0f) score -= 4.0f;
             }
@@ -452,116 +510,140 @@ static bool PickHidingSpot(int i) {
     return PathTo(i, bestX, bestY, z);   // the best one (the last planned may be a worse one)
 }
 
-void HideSeekStart(int seeker) {
-    hsSeeker = seeker;
-    hsPhase = HS_COUNT;
-    hsTimer = HS_COUNT_TIME;
-    hsFirstFound = -1;
-    hsHome = (Point){(int)(movers[seeker].x / CELL_SIZE), (int)(movers[seeker].y / CELL_SIZE), (int)movers[seeker].z};
-    if (hsSeenW != gridWidth || hsSeenH != gridHeight) {
-        free(hsSeen);
-        hsSeenW = gridWidth; hsSeenH = gridHeight;
-        hsSeen = calloc((size_t)hsSeenW * hsSeenH, 1);
-    } else if (hsSeen) memset(hsSeen, 0, (size_t)hsSeenW * hsSeenH);
+// A round: the seeker counts at home, the others run off to hide
+static void HideRound(int a, int seeker) {
+    HideState* hs = HideOf(a);
+    hs->seeker = seeker;
+    hs->phase = HS_COUNT;
+    hs->timer = HS_COUNT_TIME;
+    hs->firstFound = -1;
+    hs->home = (Point){(int)(movers[seeker].x / CELL_SIZE), (int)(movers[seeker].y / CELL_SIZE), (int)movers[seeker].z};
+    if (hs->seenW != gridWidth || hs->seenH != gridHeight) {
+        free(hs->seen);
+        hs->seenW = gridWidth; hs->seenH = gridHeight;
+        hs->seen = calloc((size_t)hs->seenW * hs->seenH, 1);
+    } else if (hs->seen) memset(hs->seen, 0, (size_t)hs->seenW * hs->seenH);
     hideRounds++;
     movers[seeker].pathLength = 0;
     movers[seeker].pathIndex = -1;
     for (int i = 0; i < moverCount; i++) {
-        if (!ChaseIsPlaying(i) || i == seeker) continue;
-        hsState[i] = HIDER_GOING;
+        if (!ActivityHas(a, i) || i == seeker) continue;
+        hiderState[i] = HIDER_GOING;
         fleeing[i] = true;   // runs to its spot (fleeSpeed, ChaseSpeedScale)
-        PickHidingSpot(i);
+        PickHidingSpot(a, i);
     }
 }
 
+// A new round in the seeker's game, or a new game with the ones waiting to play
+void HideSeekStart(int seeker) {
+    int a = MoverActivity(seeker);
+    if (!HideOf(a)) a = StartWithWaiting(ACT_HIDE_SEEK, seeker);
+    if (HideOf(a)) HideRound(a, seeker);
+}
+
 // The seeker marks what it can see as looked at, then goes where it hasn't looked
-static void SeekerLook(int s) {
+static void SeekerLook(HideState* hs, int s) {
     const Mover* m = &movers[s];
     int sx = (int)(m->x / CELL_SIZE), sy = (int)(m->y / CELL_SIZE), z = (int)m->z;
     for (int dy = -HS_LOOK_RADIUS; dy <= HS_LOOK_RADIUS; dy++)
         for (int dx = -HS_LOOK_RADIUS; dx <= HS_LOOK_RADIUS; dx++) {
             int x = sx + dx, y = sy + dy;
-            if (x < 0 || y < 0 || x >= hsSeenW || y >= hsSeenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
-            if (hsSeen[y * hsSeenW + x] || !IsCellWalkableAt(z, y, x)) continue;
+            if (x < 0 || y < 0 || x >= hs->seenW || y >= hs->seenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
+            if (hs->seen[y * hs->seenW + x] || !IsCellWalkableAt(z, y, x)) continue;
             if (!CanSeeCell(sx, sy, x, y, z)) continue;
             // behind low cover from here: someone could be crouching there, it has to go and look
             if (coverEnabled && dx * dx + dy * dy > 4 && CoverBetween(sx, sy, x, y, z)) continue;
-            hsSeen[y * hsSeenW + x] = 1;
+            hs->seen[y * hs->seenW + x] = 1;
         }
 }
 
-static void SeekerGo(int s) {
+static void SeekerGo(const HideState* hs, int s) {
     const Mover* m = &movers[s];
     int z = (int)m->z, bestX = -1, bestY = -1;
     float bestScore = -1e9f;
     for (int c = 0; c < 30; c++) {   // an unlooked-at cell, not too far
-        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 12.0f);
-        int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 12.0f);
+        int cx = (int)((m->x + cosf(an) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(an) * d * CELL_SIZE) / CELL_SIZE);
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
         int unseen = 0;   // how much unlooked-at ground round it
         for (int oy = -2; oy <= 2; oy++)
             for (int ox = -2; ox <= 2; ox++)
-                if (IsCellWalkableAt(z, cy + oy, cx + ox) && !SeenCell(cx + ox, cy + oy)) unseen++;
+                if (IsCellWalkableAt(z, cy + oy, cx + ox) && !SeenCell(hs, cx + ox, cy + oy)) unseen++;
         float score = unseen - d * 0.3f + ChaseRandRange(0.0f, 1.0f);
         if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
     }
     if (bestX >= 0) PathTo(s, bestX, bestY, z);
 }
 
-static void HideSeekTick(float dt) {
-    if (hsPhase == HS_NONE || hsSeeker < 0 || !movers[hsSeeker].active) return;
-    int s = hsSeeker;
-    hsTimer -= dt;
+static void HideTick(int a, float dt) {
+    HideState* hs = HideOf(a);
+    if (hs->phase == HS_NONE || hs->seeker < 0 || !movers[hs->seeker].active) return;
+    int s = hs->seeker;
+    hs->timer -= dt;
     // hiders: arrived at the spot -> hidden; found ones go home
     for (int i = 0; i < moverCount; i++) {
-        if (!ChaseIsPlaying(i) || i == s) continue;
-        if (hsState[i] == HIDER_GOING && movers[i].pathIndex < 0) {
-            hsState[i] = HIDER_HIDDEN;
+        if (!ActivityHas(a, i) || i == s) continue;
+        if (hiderState[i] == HIDER_GOING && movers[i].pathIndex < 0) {
+            hiderState[i] = HIDER_HIDDEN;
             fleeing[i] = false;
         }
     }
-    if (hsPhase == HS_COUNT) {
-        if (hsTimer <= 0.0f) { hsPhase = HS_SEEK; hsTimer = HS_ROUND_TIME; hsLookTimer = 0.0f; }
+    if (hs->phase == HS_COUNT) {
+        if (hs->timer <= 0.0f) { hs->phase = HS_SEEK; hs->timer = HS_ROUND_TIME; hs->lookTimer = 0.0f; }
         return;
     }
     // seeking: look, spot, go on
-    if ((hsLookTimer -= dt) <= 0.0f) { SeekerLook(s); hsLookTimer = 0.5f; }
+    if ((hs->lookTimer -= dt) <= 0.0f) { SeekerLook(hs, s); hs->lookTimer = 0.5f; }
     const MoverNotice* n = &moverNotice[s];
     for (int k = 0; k < n->count; k++) {
         int j = n->e[k].mover;
-        if (!ChaseIsPlaying(j) || j == s || hsState[j] == HIDER_FOUND) continue;
-        hsState[j] = HIDER_FOUND;   // spotted!
+        if (!ActivityHas(a, j) || j == s || hiderState[j] == HIDER_FOUND) continue;
+        hiderState[j] = HIDER_FOUND;   // spotted!
         fleeing[j] = false;
         hideFoundCount++;
-        hideFoundSecondsSum += HS_ROUND_TIME - hsTimer;
-        if (hsFirstFound < 0) hsFirstFound = j;
-        PathTo(j, hsHome.x, hsHome.y, hsHome.z);   // walk home
+        hideFoundSecondsSum += HS_ROUND_TIME - hs->timer;
+        if (hs->firstFound < 0) hs->firstFound = j;
+        PathTo(j, hs->home.x, hs->home.y, hs->home.z);   // walk home
     }
-    if (movers[s].pathIndex < 0) SeekerGo(s);
+    if (movers[s].pathIndex < 0) SeekerGo(hs, s);
     bool anyLeft = false;
     for (int i = 0; i < moverCount; i++)
-        if (ChaseIsPlaying(i) && i != s && hsState[i] != HIDER_FOUND) anyLeft = true;
-    if (!anyLeft || hsTimer <= 0.0f) {   // next round: the first one found seeks
-        int next = hsFirstFound >= 0 ? hsFirstFound : s;
-        PathTo(s, hsHome.x, hsHome.y, hsHome.z);
-        HideSeekStart(next);
+        if (ActivityHas(a, i) && i != s && hiderState[i] != HIDER_FOUND) anyLeft = true;
+    if (!anyLeft || hs->timer <= 0.0f) {   // next round: the first one found seeks
+        int next = hs->firstFound >= 0 ? hs->firstFound : s;
+        PathTo(s, hs->home.x, hs->home.y, hs->home.z);
+        HideRound(a, next);
     }
 }
 
 // Standing still: the seeker counting, hiders in their spot, found ones waiting at home
-static bool HideMoverTick(int i) {
-    if (hsPhase == HS_NONE || !ChaseIsPlaying(i)) return false;
-    bool stand = (i == hsSeeker && hsPhase == HS_COUNT) || (i != hsSeeker && hsState[i] == HIDER_HIDDEN) ||
-                 (i != hsSeeker && hsState[i] == HIDER_FOUND && movers[i].pathIndex < 0);
+static bool HideMoverTick(int a, int i, float dt) {
+    (void)dt;
+    const HideState* hs = HideOf(a);
+    if (hs->phase == HS_NONE) return false;
+    bool stand = (i == hs->seeker && hs->phase == HS_COUNT) || (i != hs->seeker && hiderState[i] == HIDER_HIDDEN) ||
+                 (i != hs->seeker && hiderState[i] == HIDER_FOUND && movers[i].pathIndex < 0);
     if (!stand) return false;
-    Mover* m = &movers[i];
-    m->pathLength = 0;
-    m->pathIndex = -1;
-    m->timeWithoutProgress = 0.0f;
-    m->lastX = m->x;
-    m->lastY = m->y;
+    ChaseHoldStill(i);
     return true;
 }
+
+// The seeker left: a new round with someone else seeking
+static void HideMemberLeft(int a, int i) {
+    HideState* hs = HideOf(a);
+    if (hs->phase == HS_NONE || i != hs->seeker) return;
+    int next = -1;
+    for (int j = 0; j < moverCount && next < 0; j++) if (ActivityHas(a, j)) next = j;
+    if (next >= 0) HideRound(a, next); else hs->phase = HS_NONE;
+}
+
+static bool HideTooSmall(int a) { return activities[a].count < 2 || HideOf(a)->phase == HS_NONE; }
+static void HideEnd(int a) { HideState* hs = HideOf(a); free(hs->seen); hs->seen = NULL; }
+
+const ActivityDef hideSeekActivityDef = {
+    "hide-and-seek", "Playing hide and seek", sizeof(HideState),
+    HideTick, HideMoverTick, NULL, HideMemberLeft, HideTooSmall, HideEnd,
+};
 
 // ============================================================================
 // Follow the leader
@@ -575,108 +657,120 @@ long followLeaderChanges = 0;
 #define FL_LEAD_PACE     0.8f
 #define FL_FOLLOW_PACE   1.2f    // a follower's top speed (catching up)
 #define FL_TURN_TIME     60.0f   // seconds before the leader goes to the back
+#define FL_ROUTE         512     // the leader's route for the stats: a longer trail of the leader only
 
-static int flOrder[FOLLOW_MAX], flCount = 0;      // movers, flOrder[0] leads
-static float flTrailX[FOLLOW_MAX][FL_TRAIL], flTrailY[FOLLOW_MAX][FL_TRAIL];
-static int flTrailHead[FOLLOW_MAX], flTrailLen[FOLLOW_MAX];
-static float flTurn = 0.0f;
-// leader's route for the stats: a longer trail of the leader only
-#define FL_ROUTE 512
-static float flRouteX[FL_ROUTE], flRouteY[FL_ROUTE];
-static int flRouteHead = 0, flRouteLen = 0;
+typedef struct {
+    int order[FOLLOW_MAX], count;      // movers, order[0] leads
+    float trailX[FOLLOW_MAX][FL_TRAIL], trailY[FOLLOW_MAX][FL_TRAIL];
+    int trailHead[FOLLOW_MAX], trailLen[FOLLOW_MAX];
+    float turn;
+    float routeX[FL_ROUTE], routeY[FL_ROUTE];
+    int routeHead, routeLen;
+} FollowState;
 
-static void ClearFollow(void) { flCount = 0; flRouteLen = 0; followLeaderChanges = 0; }
+static FollowState* FollowOf(int a) { return GameOf(a, ACT_FOLLOW_LEADER); }
 
-static int FollowSlot(int i) {   // index in flOrder, -1
-    for (int k = 0; k < flCount; k++) if (flOrder[k] == i) return k;
+static int FollowSlot(const FollowState* fl, int i) {   // index in order, -1
+    if (!fl) return -1;
+    for (int k = 0; k < fl->count; k++) if (fl->order[k] == i) return k;
     return -1;
 }
-int FollowPlace(int i) { return FollowSlot(i); }
-int FollowLeader(void) { return flCount > 0 ? flOrder[0] : -1; }
+int FollowPlace(int i) { return FollowSlot(FollowOf(MoverActivity(i)), i); }
+int FollowLeader(void) {
+    for (int a = 0; a < MAX_ACTIVITIES; a++) {
+        const FollowState* fl = FollowOf(a);
+        if (fl && fl->count > 0) return fl->order[0];
+    }
+    return -1;
+}
 
-static float FollowSpeedScale(int i) {
-    int k = FollowSlot(i);
-    return k == 0 ? FL_LEAD_PACE : 0.0f;   // (followers move themselves: FollowMoverTick)
+static float FollowSpeedScale(int a, int i) {
+    return FollowSlot(FollowOf(a), i) == 0 ? FL_LEAD_PACE : 0.0f;   // (followers move themselves: FollowMoverTick)
 }
 
 // The trail of slot k: newest first, index n back
-static bool TrailPoint(int k, int n, float* x, float* y) {
-    if (n >= flTrailLen[k]) return false;
-    int idx = (flTrailHead[k] - n + FL_TRAIL) % FL_TRAIL;
-    *x = flTrailX[k][idx]; *y = flTrailY[k][idx];
+static bool TrailPoint(const FollowState* fl, int k, int n, float* x, float* y) {
+    if (n >= fl->trailLen[k]) return false;
+    int idx = (fl->trailHead[k] - n + FL_TRAIL) % FL_TRAIL;
+    *x = fl->trailX[k][idx]; *y = fl->trailY[k][idx];
     return true;
 }
 
-static void TrailRecord(int k, float x, float y) {
+static void TrailRecord(FollowState* fl, int k, float x, float y) {
     float lx, ly;
-    if (TrailPoint(k, 0, &lx, &ly) && (lx - x) * (lx - x) + (ly - y) * (ly - y) < FL_TRAIL_STEP * FL_TRAIL_STEP) return;
-    flTrailHead[k] = (flTrailHead[k] + 1) % FL_TRAIL;
-    flTrailX[k][flTrailHead[k]] = x; flTrailY[k][flTrailHead[k]] = y;
-    if (flTrailLen[k] < FL_TRAIL) flTrailLen[k]++;
+    if (TrailPoint(fl, k, 0, &lx, &ly) && (lx - x) * (lx - x) + (ly - y) * (ly - y) < FL_TRAIL_STEP * FL_TRAIL_STEP) return;
+    fl->trailHead[k] = (fl->trailHead[k] + 1) % FL_TRAIL;
+    fl->trailX[k][fl->trailHead[k]] = x; fl->trailY[k][fl->trailHead[k]] = y;
+    if (fl->trailLen[k] < FL_TRAIL) fl->trailLen[k]++;
 }
 
 void FollowLeaderStart(const int* players, int n) {
-    flCount = n > FOLLOW_MAX ? FOLLOW_MAX : n;
-    for (int k = 0; k < flCount; k++) {
-        flOrder[k] = players[k];
-        flTrailLen[k] = 0; flTrailHead[k] = 0;
-        ChaseJoin(players[k]);
-        TrailRecord(k, movers[players[k]].x, movers[players[k]].y);
+    int a = ActivityStart(ACT_FOLLOW_LEADER);
+    if (a < 0) return;
+    FollowState* fl = FollowOf(a);
+    if (n > FOLLOW_MAX) n = FOLLOW_MAX;
+    for (int k = 0; k < n; k++) {
+        if (!ActivityAdd(a, players[k])) continue;   // (not free to play)
+        int s = fl->count++;
+        fl->order[s] = players[k];
+        fl->trailLen[s] = 0; fl->trailHead[s] = 0;
+        TrailRecord(fl, s, movers[players[k]].x, movers[players[k]].y);
         movers[players[k]].pathLength = 0;
         movers[players[k]].pathIndex = -1;
     }
-    flTurn = FL_TURN_TIME;
-    flRouteLen = 0;
+    fl->turn = FL_TURN_TIME;
+    fl->routeLen = 0;
 }
 
 static void LeaderNextLeg(int leader) {
     const Mover* m = &movers[leader];
     for (int tries = 0; tries < 12; tries++) {
-        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(5.0f, 10.0f);
-        int gx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), gy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
+        float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(5.0f, 10.0f);
+        int gx = (int)((m->x + cosf(an) * d * CELL_SIZE) / CELL_SIZE), gy = (int)((m->y + sinf(an) * d * CELL_SIZE) / CELL_SIZE);
         if (PathTo(leader, gx, gy, (int)m->z)) return;
     }
 }
 
-static void FollowLeaderTick(float dt) {
-    if (flCount < 2) return;
+static void FollowTick(int a, float dt) {
+    FollowState* fl = FollowOf(a);
+    if (fl->count < 2) return;
     // trails (each slot's trail is about the mover in it) and the leader's longer route
-    for (int k = 0; k < flCount; k++) TrailRecord(k, movers[flOrder[k]].x, movers[flOrder[k]].y);
+    for (int k = 0; k < fl->count; k++) TrailRecord(fl, k, movers[fl->order[k]].x, movers[fl->order[k]].y);
     {
-        const Mover* L = &movers[flOrder[0]];
-        int last = (flRouteHead + FL_ROUTE - 1) % FL_ROUTE;
-        if (flRouteLen == 0 || (flRouteX[last] - L->x) * (flRouteX[last] - L->x) + (flRouteY[last] - L->y) * (flRouteY[last] - L->y) >= FL_TRAIL_STEP * FL_TRAIL_STEP) {
-            flRouteX[flRouteHead] = L->x; flRouteY[flRouteHead] = L->y;
-            flRouteHead = (flRouteHead + 1) % FL_ROUTE;
-            if (flRouteLen < FL_ROUTE) flRouteLen++;
+        const Mover* L = &movers[fl->order[0]];
+        int last = (fl->routeHead + FL_ROUTE - 1) % FL_ROUTE;
+        if (fl->routeLen == 0 || (fl->routeX[last] - L->x) * (fl->routeX[last] - L->x) + (fl->routeY[last] - L->y) * (fl->routeY[last] - L->y) >= FL_TRAIL_STEP * FL_TRAIL_STEP) {
+            fl->routeX[fl->routeHead] = L->x; fl->routeY[fl->routeHead] = L->y;
+            fl->routeHead = (fl->routeHead + 1) % FL_ROUTE;
+            if (fl->routeLen < FL_ROUTE) fl->routeLen++;
         }
     }
-    if (movers[flOrder[0]].pathIndex < 0) LeaderNextLeg(flOrder[0]);
-    if ((flTurn -= dt) <= 0.0f) {   // the leader goes to the back; trails move with their movers
-        int lead = flOrder[0];
+    if (movers[fl->order[0]].pathIndex < 0) LeaderNextLeg(fl->order[0]);
+    if ((fl->turn -= dt) <= 0.0f) {   // the leader goes to the back; trails move with their movers
+        int lead = fl->order[0];
         float tx[FL_TRAIL], ty[FL_TRAIL];
-        int th = flTrailHead[0], tl = flTrailLen[0];
-        memcpy(tx, flTrailX[0], sizeof(tx)); memcpy(ty, flTrailY[0], sizeof(ty));
-        for (int k = 0; k + 1 < flCount; k++) {
-            flOrder[k] = flOrder[k + 1];
-            memcpy(flTrailX[k], flTrailX[k + 1], sizeof(tx)); memcpy(flTrailY[k], flTrailY[k + 1], sizeof(ty));
-            flTrailHead[k] = flTrailHead[k + 1]; flTrailLen[k] = flTrailLen[k + 1];
+        int th = fl->trailHead[0], tl = fl->trailLen[0];
+        memcpy(tx, fl->trailX[0], sizeof(tx)); memcpy(ty, fl->trailY[0], sizeof(ty));
+        for (int k = 0; k + 1 < fl->count; k++) {
+            fl->order[k] = fl->order[k + 1];
+            memcpy(fl->trailX[k], fl->trailX[k + 1], sizeof(tx)); memcpy(fl->trailY[k], fl->trailY[k + 1], sizeof(ty));
+            fl->trailHead[k] = fl->trailHead[k + 1]; fl->trailLen[k] = fl->trailLen[k + 1];
         }
-        flOrder[flCount - 1] = lead;
-        memcpy(flTrailX[flCount - 1], tx, sizeof(tx)); memcpy(flTrailY[flCount - 1], ty, sizeof(ty));
-        flTrailHead[flCount - 1] = th; flTrailLen[flCount - 1] = tl;
+        fl->order[fl->count - 1] = lead;
+        memcpy(fl->trailX[fl->count - 1], tx, sizeof(tx)); memcpy(fl->trailY[fl->count - 1], ty, sizeof(ty));
+        fl->trailHead[fl->count - 1] = th; fl->trailLen[fl->count - 1] = tl;
         movers[lead].pathLength = 0; movers[lead].pathIndex = -1;
-        flTurn = FL_TURN_TIME;   // (the route goes on: the new leader was walking it)
+        fl->turn = FL_TURN_TIME;   // (the route goes on: the new leader was walking it)
         followLeaderChanges++;
     }
 }
 
 // Where follower slot k should head: a point about FL_GAP back along the trail of the one ahead
 // (followTrail), or straight at the one ahead
-static bool FollowTarget(int k, float* x, float* y) {
-    int ahead = flOrder[k - 1];
+static bool FollowTarget(const FollowState* fl, int k, float* x, float* y) {
+    int ahead = fl->order[k - 1];
     if (!followTrail) {
-        float dx = movers[flOrder[k]].x - movers[ahead].x, dy = movers[flOrder[k]].y - movers[ahead].y;
+        float dx = movers[fl->order[k]].x - movers[ahead].x, dy = movers[fl->order[k]].y - movers[ahead].y;
         float d = sqrtf(dx * dx + dy * dy);
         if (d < 0.5f) return false;
         *x = movers[ahead].x + dx / d * FL_GAP * CELL_SIZE;
@@ -684,10 +778,10 @@ static bool FollowTarget(int k, float* x, float* y) {
         return true;
     }
     float along = 0.0f, px, py;
-    if (!TrailPoint(k - 1, 0, &px, &py)) return false;
+    if (!TrailPoint(fl, k - 1, 0, &px, &py)) return false;
     for (int n = 1; ; n++) {   // walk back along the trail until FL_GAP cells of it
         float qx, qy;
-        if (!TrailPoint(k - 1, n, &qx, &qy)) break;
+        if (!TrailPoint(fl, k - 1, n, &qx, &qy)) break;
         along += sqrtf((qx - px) * (qx - px) + (qy - py) * (qy - py));
         px = qx; py = qy;
         if (along >= FL_GAP * CELL_SIZE) break;
@@ -697,14 +791,15 @@ static bool FollowTarget(int k, float* x, float* y) {
     return true;
 }
 
-static bool FollowMoverTick(int i, float dt) {
-    int k = FollowSlot(i);
-    if (k <= 0) return false;   // the leader walks its path; not playing: nothing here
+static bool FollowMoverTick(int a, int i, float dt) {
+    const FollowState* fl = FollowOf(a);
+    int k = FollowSlot(fl, i);
+    if (k <= 0) return false;   // the leader walks its path
     Mover* m = &movers[i];
     float tx, ty;
-    if (FollowTarget(k, &tx, &ty)) {
+    if (FollowTarget(fl, k, &tx, &ty)) {
         float dx = tx - m->x, dy = ty - m->y, d = sqrtf(dx * dx + dy * dy);
-        float ax = movers[flOrder[k - 1]].x - m->x, ay = movers[flOrder[k - 1]].y - m->y;
+        float ax = movers[fl->order[k - 1]].x - m->x, ay = movers[fl->order[k - 1]].y - m->y;
         bool tooClose = ax * ax + ay * ay < (FL_GAP * 0.8f * CELL_SIZE) * (FL_GAP * 0.8f * CELL_SIZE);
         if (d > 1.0f && !tooClose) {
             float pace = d > CELL_SIZE * 0.5f ? FL_FOLLOW_PACE : FL_LEAD_PACE;
@@ -717,25 +812,45 @@ static bool FollowMoverTick(int i, float dt) {
             else if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
         }
     }
-    m->pathLength = 0;
-    m->pathIndex = -1;
-    m->timeWithoutProgress = 0.0f;
-    m->lastX = m->x;
-    m->lastY = m->y;
+    ChaseHoldStill(i);
     return true;
 }
 
 bool FollowTrailDistance(int i, float* cells) {
-    int k = FollowSlot(i);
-    if (k <= 0 || flRouteLen < 8) return false;
+    const FollowState* fl = FollowOf(MoverActivity(i));
+    int k = FollowSlot(fl, i);
+    if (k <= 0 || fl->routeLen < 8) return false;
     float best = 1e18f;
-    for (int n = 0; n < flRouteLen; n++) {
-        float dx = flRouteX[n] - movers[i].x, dy = flRouteY[n] - movers[i].y;
+    for (int n = 0; n < fl->routeLen; n++) {
+        float dx = fl->routeX[n] - movers[i].x, dy = fl->routeY[n] - movers[i].y;
         if (dx * dx + dy * dy < best) best = dx * dx + dy * dy;
     }
     *cells = sqrtf(best) / CELL_SIZE;
     return true;
 }
+
+// Out of the line (the next one leads if it was the leader)
+static void FollowMemberLeft(int a, int i) {
+    FollowState* fl = FollowOf(a);
+    int k = FollowSlot(fl, i);
+    if (k < 0) return;
+    for (int q = k; q < fl->count - 1; q++) {
+        fl->order[q] = fl->order[q + 1];
+        memcpy(fl->trailX[q], fl->trailX[q + 1], sizeof(fl->trailX[q]));
+        memcpy(fl->trailY[q], fl->trailY[q + 1], sizeof(fl->trailY[q]));
+        fl->trailHead[q] = fl->trailHead[q + 1];
+        fl->trailLen[q] = fl->trailLen[q + 1];
+    }
+    fl->count--;
+    if (k == 0) fl->turn = FL_TURN_TIME;
+}
+
+static bool FollowTooSmall(int a) { return FollowOf(a)->count < 2; }
+
+const ActivityDef followLeaderActivityDef = {
+    "follow-the-leader", "Playing follow the leader", sizeof(FollowState),
+    FollowTick, FollowMoverTick, FollowSpeedScale, FollowMemberLeft, FollowTooSmall, NULL,
+};
 
 // ============================================================================
 // Pack hunt
@@ -764,51 +879,82 @@ bool packStealth = true;
 long packEscapes = 0, packDucks = 0, packFlushed = 0;
 double packDuckSecondsSum = 0.0;
 
-static int packHunters[PACK_MAX], packN = 0, packTarget = -1;
-static int packRole[PACK_MAX];
-static float packReplan[PACK_MAX], packTime = 0.0f, packTargetReplan = 0.0f;
-static float packLastX, packLastY, packLastHX, packLastHY, packLost = 0.0f;   // where the pack last saw it
-static bool packDucked = false;   // the runner is going to / crouching in a spot behind cover
-static float packSeenFor = 0.0f;      // seconds the pack has had it in sight without a break
+typedef struct {
+    int hunters[PACK_MAX], n, target;
+    int role[PACK_MAX];
+    float replan[PACK_MAX], time, targetReplan;
+    float lastX, lastY, lastHX, lastHY, lost;   // where the pack last saw it
+    bool ducked;          // the runner is going to / crouching in a spot behind cover
+    float seenFor;        // seconds the pack has had it in sight without a break
+    float duckTry;        // a look round for cover twice a second
+} PackState;
 
-static void ClearPack(void) {
-    packN = 0; packTarget = -1; packCatches = 0; packCatchSecondsSum = 0.0;
-    packEscapes = packDucks = packFlushed = 0; packDuckSecondsSum = 0.0; packDucked = false; packLost = 0.0f;
-}
-int PackTarget(void) { return packTarget >= 0 && packTarget < moverCount && movers[packTarget].active ? packTarget : -1; }
+static PackState* PackOf(int a) { return GameOf(a, ACT_PACK_HUNT); }
+static PackState* PackOfMover(int i) { return PackOf(MoverActivity(i)); }
+static int PkTarget(const PackState* pk) { return pk && ChaseMoverOk(pk->target) ? pk->target : -1; }
 
-static int PackSlot(int i) {
-    for (int k = 0; k < packN; k++) if (packHunters[k] == i) return k;
+int PackTarget(void) {
+    for (int a = 0; a < MAX_ACTIVITIES; a++) {
+        int t = PkTarget(PackOf(a));
+        if (t >= 0) return t;
+    }
     return -1;
 }
-int PackRole(int i) { int k = PackSlot(i); return k >= 0 && PackTarget() >= 0 ? packRole[k] : -1; }
-bool PackIsDucking(int i) { return PackTarget() >= 0 && i == packTarget && packDucked && movers[i].pathIndex < 0; }
-bool PackLost(float* seconds) { if (PackTarget() < 0 || packLost <= 0.0f) return false; if (seconds) *seconds = packLost; return true; }
 
-static float PackSpeedScale(int i) {
-    if (PackTarget() < 0) return 0.0f;
-    if (PackSlot(i) >= 0) return packSpeed;
-    if (i == packTarget) return fleeing[i] ? (stamina[i] > TIRED ? packRunnerSpeed : TIRED_SPEED) : 1.0f;
+static int PackSlot(const PackState* pk, int i) {
+    for (int k = 0; k < pk->n; k++) if (pk->hunters[k] == i) return k;
+    return -1;
+}
+int PackRole(int i) {
+    const PackState* pk = PackOfMover(i);
+    if (!pk) return -1;
+    int k = PackSlot(pk, i);
+    return k >= 0 && PkTarget(pk) >= 0 ? pk->role[k] : -1;
+}
+bool PackIsDucking(int i) {
+    const PackState* pk = PackOfMover(i);
+    return PkTarget(pk) >= 0 && i == pk->target && pk->ducked && movers[i].pathIndex < 0;
+}
+bool PackLost(float* seconds) {
+    for (int a = 0; a < MAX_ACTIVITIES; a++) {
+        const PackState* pk = PackOf(a);
+        if (PkTarget(pk) < 0) continue;
+        if (pk->lost <= 0.0f) return false;
+        if (seconds) *seconds = pk->lost;
+        return true;
+    }
+    return false;
+}
+
+static float PackSpeedScale(int a, int i) {
+    const PackState* pk = PackOf(a);
+    if (PkTarget(pk) < 0) return 0.0f;
+    if (PackSlot(pk, i) >= 0) return packSpeed;
+    if (i == pk->target) return fleeing[i] ? (stamina[i] > TIRED ? packRunnerSpeed : TIRED_SPEED) : 1.0f;
     return 0.0f;
 }
 
 void PackHuntStart(const int* hunters, int n, int target) {
-    packN = n > PACK_MAX ? PACK_MAX : n;
-    for (int k = 0; k < packN; k++) {
-        packHunters[k] = hunters[k];
-        packRole[k] = 0;
-        packReplan[k] = 0.1f * k;   // staggered
-        ChaseJoin(hunters[k]);
+    int a = ActivityStart(ACT_PACK_HUNT);
+    if (a < 0) return;
+    PackState* pk = PackOf(a);
+    pk->target = -1;
+    pk->n = n > PACK_MAX ? PACK_MAX : n;
+    for (int k = 0; k < pk->n; k++) {
+        pk->hunters[k] = hunters[k];
+        pk->role[k] = 0;
+        pk->replan[k] = 0.1f * k;   // staggered
+        ActivityAdd(a, hunters[k]);
     }
-    packTarget = target;
-    ChaseJoin(target);
+    pk->target = target;
+    ActivityAdd(a, target);
     stamina[target] = 1.0f;
     fleeing[target] = false;
-    packTime = 0.0f;
-    packDucked = false;
-    packLost = 0.0f;
-    packLastX = movers[target].x; packLastY = movers[target].y;
-    packLastHX = packLastHY = 0.0f;
+    pk->time = 0.0f;
+    pk->ducked = false;
+    pk->lost = 0.0f;
+    pk->lastX = movers[target].x; pk->lastY = movers[target].y;
+    pk->lastHX = pk->lastHY = 0.0f;
 }
 
 // A walkable cell near (x, y) (pixels), searching outwards a little; false if none
@@ -828,36 +974,35 @@ static bool NearWalkable(float x, float y, int z, int* ox, int* oy) {
 
 // Roles: the nearest drives; the one nearest to where the runner is going cuts it off; the rest
 // flank (each on its own side of the runner's escape line)
-static void PackAssignRoles(float ex, float ey, float gx, float gy) {
-    const Mover* t = &movers[packTarget];
+static void PackAssignRoles(PackState* pk, float gx, float gy) {
+    const Mover* t = &movers[pk->target];
     int driver = -1, cutter = -1;
     float best = 1e18f;
-    for (int k = 0; k < packN; k++) {
-        const Mover* h = &movers[packHunters[k]];
+    for (int k = 0; k < pk->n; k++) {
+        const Mover* h = &movers[pk->hunters[k]];
         float d = (h->x - t->x) * (h->x - t->x) + (h->y - t->y) * (h->y - t->y);
         if (d < best) { best = d; driver = k; }
     }
     best = 1e18f;
-    for (int k = 0; k < packN; k++) {
+    for (int k = 0; k < pk->n; k++) {
         if (k == driver) continue;
-        const Mover* h = &movers[packHunters[k]];
+        const Mover* h = &movers[pk->hunters[k]];
         float d = (h->x - gx) * (h->x - gx) + (h->y - gy) * (h->y - gy);
         if (d < best) { best = d; cutter = k; }
     }
-    for (int k = 0; k < packN; k++) packRole[k] = k == driver ? 0 : (k == cutter ? 1 : 2);
-    (void)ex; (void)ey;
+    for (int k = 0; k < pk->n; k++) pk->role[k] = k == driver ? 0 : (k == cutter ? 1 : 2);
 }
 
 // Caught or got away: the runner turns up again far from the pack (a new round)
-static void PackRespawn(int tgt) {
+static void PackRespawn(PackState* pk, int tgt) {
     Mover* T = &movers[tgt];
-    packTime = 0.0f;
+    pk->time = 0.0f;
     for (int tries = 0; tries < 60; tries++) {
         int x = GetRandomValue(1, gridWidth - 2), y = GetRandomValue(1, gridHeight - 2), z = (int)T->z;
         if (!IsCellWalkableAt(z, y, x)) continue;
         bool far = true;
-        for (int q = 0; q < packN; q++) {
-            float dx = (x + 0.5f) * CELL_SIZE - movers[packHunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[packHunters[q]].y;
+        for (int q = 0; q < pk->n; q++) {
+            float dx = (x + 0.5f) * CELL_SIZE - movers[pk->hunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[pk->hunters[q]].y;
             if (dx * dx + dy * dy < (PACK_RESPAWN * CELL_SIZE) * (PACK_RESPAWN * CELL_SIZE)) far = false;
         }
         if (!far) continue;
@@ -868,9 +1013,9 @@ static void PackRespawn(int tgt) {
     }
     stamina[tgt] = 1.0f;
     fleeing[tgt] = false;
-    packDucked = false;
-    packLost = 0.0f;
-    packLastX = T->x; packLastY = T->y; packLastHX = packLastHY = 0.0f;
+    pk->ducked = false;
+    pk->lost = 0.0f;
+    pk->lastX = T->x; pk->lastY = T->y; pk->lastHX = pk->lastHY = 0.0f;
 }
 
 // Can hunter h see the runner (in range, in sight, not crouched behind cover)?
@@ -879,9 +1024,9 @@ static bool HunterSees(int h, int tgt) {
 }
 
 // Would the runner, crouched at (x, y), be out of every hunter's sight?
-static bool HiddenFromPack(int x, int y, int z) {
-    for (int k = 0; k < packN; k++) {
-        const Mover* h = &movers[packHunters[k]];
+static bool HiddenFromPack(const PackState* pk, int x, int y, int z) {
+    for (int k = 0; k < pk->n; k++) {
+        const Mover* h = &movers[pk->hunters[k]];
         int hx = (int)(h->x / CELL_SIZE), hy = (int)(h->y / CELL_SIZE);
         float dx = (float)(x - hx), dy = (float)(y - hy);
         if (dx * dx + dy * dy <= (PACK_FLUSH + 1.0f) * (PACK_FLUSH + 1.0f)) return false;   // too near one
@@ -892,7 +1037,7 @@ static bool HiddenFromPack(int x, int y, int z) {
 }
 
 // Out of their sight: a spot near by, next to cover (or in a bush), hidden from all of them
-static bool RunnerDuck(int tgt) {
+static bool RunnerDuck(const PackState* pk, int tgt) {
     const Mover* T = &movers[tgt];
     int z = (int)T->z, tx = (int)(T->x / CELL_SIZE), ty = (int)(T->y / CELL_SIZE);
     int r = (int)DUCK_RANGE, bestX = -1, bestY = -1;
@@ -905,10 +1050,10 @@ static bool RunnerDuck(int tgt) {
             bool cover = GRID(x, y, z) == CELL_BUSH;
             for (int oy = -1; oy <= 1 && !cover; oy++)
                 for (int ox = -1; ox <= 1 && !cover; ox++) if ((ox || oy) && IsLowCover(x + ox, y + oy, z)) cover = true;
-            if (!cover || !HiddenFromPack(x, y, z)) continue;
+            if (!cover || !HiddenFromPack(pk, x, y, z)) continue;
             float nearest = 1e9f;   // far from the nearest hunter, not far to go
-            for (int k = 0; k < packN; k++) {
-                float hx = movers[packHunters[k]].x / CELL_SIZE - x, hy = movers[packHunters[k]].y / CELL_SIZE - y;
+            for (int k = 0; k < pk->n; k++) {
+                float hx = movers[pk->hunters[k]].x / CELL_SIZE - x, hy = movers[pk->hunters[k]].y / CELL_SIZE - y;
                 float d = sqrtf(hx * hx + hy * hy);
                 if (d < nearest) nearest = d;
             }
@@ -916,8 +1061,8 @@ static bool RunnerDuck(int tgt) {
             if (GRID(x, y, z) == CELL_BUSH) score += 3.0f;   // hidden from every side
             // they'll come to where it was last seen, then where it was heading: hidden from both,
             // and off that line
-            int lx = (int)(packLastX / CELL_SIZE), ly = (int)(packLastY / CELL_SIZE);
-            int px = (int)((packLastX + packLastHX * 3.0f * CELL_SIZE) / CELL_SIZE), py = (int)((packLastY + packLastHY * 3.0f * CELL_SIZE) / CELL_SIZE);
+            int lx = (int)(pk->lastX / CELL_SIZE), ly = (int)(pk->lastY / CELL_SIZE);
+            int px = (int)((pk->lastX + pk->lastHX * 3.0f * CELL_SIZE) / CELL_SIZE), py = (int)((pk->lastY + pk->lastHY * 3.0f * CELL_SIZE) / CELL_SIZE);
             bool fromLast = CanSeeCell(lx, ly, x, y, z) && !CoverBetween(lx, ly, x, y, z);
             bool fromHead = CanSeeCell(px, py, x, y, z) && !CoverBetween(px, py, x, y, z);
             float hd = sqrtf((float)((x - px) * (x - px) + (y - py) * (y - py)));
@@ -937,21 +1082,21 @@ static bool RunnerDuck(int tgt) {
 
 // Lost it: go to where it was heading, then search round where it was last seen, at spots
 // next to cover none of them can see now (they know the runner hides)
-static void HunterSearch(int k) {
-    int h = packHunters[k];
-    int z = (int)movers[h].z, lx = (int)(packLastX / CELL_SIZE), ly = (int)(packLastY / CELL_SIZE);
-    if (packLost < PACK_HEADED) {
+static void HunterSearch(const PackState* pk, int k) {
+    int h = pk->hunters[k];
+    int z = (int)movers[h].z, lx = (int)(pk->lastX / CELL_SIZE), ly = (int)(pk->lastY / CELL_SIZE);
+    if (pk->lost < PACK_HEADED) {
         int ox, oy;
-        float px = packLastX + packLastHX * 3.0f * CELL_SIZE, py = packLastY + packLastHY * 3.0f * CELL_SIZE;
+        float px = pk->lastX + pk->lastHX * 3.0f * CELL_SIZE, py = pk->lastY + pk->lastHY * 3.0f * CELL_SIZE;
         if (NearWalkable(px, py, z, &ox, &oy) && PathTo(h, ox, oy, z)) return;
     }
-    float radius = 2.0f + packLost * 0.4f;
+    float radius = 2.0f + pk->lost * 0.4f;
     if (radius > 9.0f) radius = 9.0f;
     int bestX = -1, bestY = -1;
     float best = -1e9f;
     for (int c = 0; c < 24; c++) {
-        float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(0.0f, radius);
-        int x = lx + (int)(cosf(a) * d), y = ly + (int)(sinf(a) * d);
+        float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(0.0f, radius);
+        int x = lx + (int)(cosf(an) * d), y = ly + (int)(sinf(an) * d);
         if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || !IsCellWalkableAt(z, y, x)) continue;
         float score = ChaseRandRange(0.0f, 1.0f);
         if (GRID(x, y, z) == CELL_BUSH) score += 3.0f;
@@ -959,16 +1104,16 @@ static void HunterSearch(int k) {
             for (int ox = -1; ox <= 1; ox++)
                 if ((ox || oy) && (IsLowCover(x + ox, y + oy, z) || !IsCellWalkableAt(z, y + oy, x + ox))) score += 1.0f;
         bool inView = false;   // a spot one of them can see right now isn't worth checking
-        for (int q = 0; q < packN && !inView; q++) {
-            const Mover* o = &movers[packHunters[q]];
+        for (int q = 0; q < pk->n && !inView; q++) {
+            const Mover* o = &movers[pk->hunters[q]];
             int ox = (int)(o->x / CELL_SIZE), oy = (int)(o->y / CELL_SIZE);
             float ddx = (float)(x - ox), ddy = (float)(y - oy);
             if (ddx * ddx + ddy * ddy < 6.0f * 6.0f && CanSeeCell(ox, oy, x, y, z) && !CoverBetween(ox, oy, x, y, z)) inView = true;
         }
         if (inView) score -= 4.0f;
-        for (int q = 0; q < packN; q++) {   // spread out: not where another one is going
+        for (int q = 0; q < pk->n; q++) {   // spread out: not where another one is going
             if (q == k) continue;
-            const Mover* o = &movers[packHunters[q]];
+            const Mover* o = &movers[pk->hunters[q]];
             float gx = (float)(o->goal.x - x), gy = (float)(o->goal.y - y);
             if (gx * gx + gy * gy < 9.0f) score -= 3.0f;
         }
@@ -978,87 +1123,94 @@ static void HunterSearch(int k) {
     if (bestX >= 0) PathTo(h, bestX, bestY, z);
 }
 
-static void PackTick(float dt) {
-    int tgt = PackTarget();
-    if (tgt < 0 || packN == 0) return;
+static bool PackCalm(int a, int i) {
+    const PackState* pk = PackOf(a);
+    return i == pk->target && !pk->ducked;
+}
+
+static void PackTick(int a, float dt) {
+    PackState* pk = PackOf(a);
+    int tgt = PkTarget(pk);
+    if (tgt < 0) return;
+    PlayWander(a, dt);
+    if (pk->n == 0) return;
     Mover* T = &movers[tgt];
-    packTime += dt;
+    pk->time += dt;
     // caught?
-    for (int k = 0; k < packN; k++) {
-        const Mover* h = &movers[packHunters[k]];
+    for (int k = 0; k < pk->n; k++) {
+        const Mover* h = &movers[pk->hunters[k]];
         if ((h->x - T->x) * (h->x - T->x) + (h->y - T->y) * (h->y - T->y) > (CATCH_DIST * CELL_SIZE) * (CATCH_DIST * CELL_SIZE)) continue;
         packCatches++;
-        packCatchSecondsSum += packTime;
-        PackRespawn(tgt);
+        packCatchSecondsSum += pk->time;
+        PackRespawn(pk, tgt);
         return;
     }
     // what the pack knows: where one of them last saw it (packStealth off: always where it is)
     bool seen = !packStealth;
-    for (int k = 0; k < packN && !seen; k++) seen = HunterSees(packHunters[k], tgt);
+    for (int k = 0; k < pk->n && !seen; k++) seen = HunterSees(pk->hunters[k], tgt);
     if (seen) {
         float hx = 0.0f, hy = 0.0f;
         Heading(tgt, &hx, &hy);
-        packLastX = T->x; packLastY = T->y; packLastHX = hx; packLastHY = hy;
-        packLost = 0.0f;
-        packSeenFor += dt;
-    } else if (packSeenFor = 0.0f, (packLost += dt) > PACK_GIVE_UP) {   // got away
+        pk->lastX = T->x; pk->lastY = T->y; pk->lastHX = hx; pk->lastHY = hy;
+        pk->lost = 0.0f;
+        pk->seenFor += dt;
+    } else if (pk->seenFor = 0.0f, (pk->lost += dt) > PACK_GIVE_UP) {   // got away
         packEscapes++;
-        PackRespawn(tgt);
+        PackRespawn(pk, tgt);
         return;
     }
     // the runner: flee from the pack when one is close (noticed, or very close), get tired;
     // out of their sight, duck behind cover and get its breath back
     bool threat = false;
-    for (int k = 0; k < packN && !threat; k++) threat = ThreatClose(tgt, packHunters[k]);
+    for (int k = 0; k < pk->n && !threat; k++) threat = ThreatClose(tgt, pk->hunters[k]);
     if (fleeing[tgt]) { stamina[tgt] -= STAMINA_DRAIN * dt; if (stamina[tgt] < 0.0f) stamina[tgt] = 0.0f; }
     else { stamina[tgt] += STAMINA_REST * dt; if (stamina[tgt] > 1.0f) stamina[tgt] = 1.0f; }
-    if (packDucked) {
+    if (pk->ducked) {
         bool near = false;
-        for (int k = 0; k < packN && !near; k++) near = Dist(packHunters[k], tgt) < PACK_FLUSH * CELL_SIZE;
-        if (packSeenFor >= GLIMPSE || near) {   // spotted (a glimpse isn't enough), or one right there: run again
-            packDucked = false;
+        for (int k = 0; k < pk->n && !near; k++) near = Dist(pk->hunters[k], tgt) < PACK_FLUSH * CELL_SIZE;
+        if (pk->seenFor >= GLIMPSE || near) {   // spotted (a glimpse isn't enough), or one right there: run again
+            pk->ducked = false;
             packFlushed++;
-            packTargetReplan = 0.0f;
+            pk->targetReplan = 0.0f;
         } else {
             fleeing[tgt] = T->pathIndex >= 0;   // running to the spot; there: still, resting
             if (T->pathIndex < 0) packDuckSecondsSum += dt;
         }
     }
-    if (!packDucked) {
-        static float duckTry = 0.0f;   // (a look round for cover twice a second)
+    if (!pk->ducked) {
         // out of their sight (they're hunting it): lie low behind cover. (Making for cover while
         // they watch doesn't work - by the time it's there they've moved round and see it, tried:
         // 0.3 s; nor only right after a chase - with four on it, it never breaks sight then.)
-        bool chance = packLost >= GLIMPSE;
-        if (packStealth && chance && (duckTry -= dt) <= 0.0f && (duckTry = 0.5f, RunnerDuck(tgt))) {
-            packDucked = true;
+        bool chance = pk->lost >= GLIMPSE;
+        if (packStealth && chance && (pk->duckTry -= dt) <= 0.0f && (pk->duckTry = 0.5f, RunnerDuck(pk, tgt))) {
+            pk->ducked = true;
             packDucks++;
         } else {
             if (threat) {
-                packTargetReplan -= dt;
-                if (!fleeing[tgt] || T->pathIndex < 0 || packTargetReplan <= 0.0f) {
-                    FleeRunFrom(tgt, packHunters, packN);
-                    packTargetReplan = CHASE_REPLAN;
+                pk->targetReplan -= dt;
+                if (!fleeing[tgt] || T->pathIndex < 0 || pk->targetReplan <= 0.0f) {
+                    FleeRunFrom(tgt, pk->hunters, pk->n);
+                    pk->targetReplan = CHASE_REPLAN;
                 }
             }
             fleeing[tgt] = threat;
         }
     }
     if (!seen) {   // the hunters: lost it, search
-        for (int k = 0; k < packN; k++) {
-            packRole[k] = 3;
-            packReplan[k] -= dt;
-            if (movers[packHunters[k]].pathIndex >= 0 && packReplan[k] > 0.0f &&
-                !(packLost <= dt * 1.5f)) continue;   // (just lost it: re-aim at once)
-            packReplan[k] = 3.0f;
-            HunterSearch(k);
+        for (int k = 0; k < pk->n; k++) {
+            pk->role[k] = 3;
+            pk->replan[k] -= dt;
+            if (movers[pk->hunters[k]].pathIndex >= 0 && pk->replan[k] > 0.0f &&
+                !(pk->lost <= dt * 1.5f)) continue;   // (just lost it: re-aim at once)
+            pk->replan[k] = 3.0f;
+            HunterSearch(pk, k);
         }
         return;
     }
     // where it's going: its goal if running, else away from the pack's middle
     float cx = 0.0f, cy = 0.0f;
-    for (int k = 0; k < packN; k++) { cx += movers[packHunters[k]].x; cy += movers[packHunters[k]].y; }
-    cx /= packN; cy /= packN;
+    for (int k = 0; k < pk->n; k++) { cx += movers[pk->hunters[k]].x; cy += movers[pk->hunters[k]].y; }
+    cx /= pk->n; cy /= pk->n;
     float gx, gy;
     if (T->pathIndex >= 0) { gx = (T->goal.x + 0.5f) * CELL_SIZE; gy = (T->goal.y + 0.5f) * CELL_SIZE; }
     else {
@@ -1069,21 +1221,21 @@ static void PackTick(float dt) {
     float ex = gx - T->x, ey = gy - T->y, el = sqrtf(ex * ex + ey * ey);
     if (el < 1.0f) { ex = T->x - cx; ey = T->y - cy; el = sqrtf(ex * ex + ey * ey); if (el < 1.0f) { ex = 1.0f; ey = 0.0f; el = 1.0f; } }
     ex /= el; ey /= el;
-    if (packTactics) PackAssignRoles(ex, ey, gx, gy);
+    if (packTactics) PackAssignRoles(pk, gx, gy);
     // the hunters
     int z = (int)T->z;
-    for (int k = 0; k < packN; k++) {
-        int h = packHunters[k];
-        packReplan[k] -= dt;
-        if (packReplan[k] > 0.0f && movers[h].pathIndex >= 0) continue;
-        packReplan[k] = CHASE_REPLAN;
+    for (int k = 0; k < pk->n; k++) {
+        int h = pk->hunters[k];
+        pk->replan[k] -= dt;
+        if (pk->replan[k] > 0.0f && movers[h].pathIndex >= 0) continue;
+        pk->replan[k] = CHASE_REPLAN;
         float dx = T->x - movers[h].x, dy = T->y - movers[h].y;
-        if (!packTactics || packRole[k] == 0 || dx * dx + dy * dy < (PACK_CLOSE * CELL_SIZE) * (PACK_CLOSE * CELL_SIZE)) {
+        if (!packTactics || pk->role[k] == 0 || dx * dx + dy * dy < (PACK_CLOSE * CELL_SIZE) * (PACK_CLOSE * CELL_SIZE)) {
             ChaseRun(h, tgt);
             continue;
         }
         float px, py;
-        if (packRole[k] == 1) { px = gx; py = gy; }   // cut it off where it's going
+        if (pk->role[k] == 1) { px = gx; py = gy; }   // cut it off where it's going
         else {   // flank: ahead and to the side it's on
             float side = (movers[h].x - T->x) * (-ey) + (movers[h].y - T->y) * ex >= 0.0f ? 1.0f : -1.0f;
             px = T->x + ex * PACK_AHEAD * CELL_SIZE - ey * side * PACK_SIDE * CELL_SIZE;
@@ -1094,103 +1246,38 @@ static void PackTick(float dt) {
     }
 }
 
-// ============================================================================
-// Players come and go (playing is FREETIME_PLAY: no jobs, no talk)
-// ============================================================================
-static bool InAGame(int i) {
-    return ChaseIt() >= 0 || hsPhase != HS_NONE || FollowSlot(i) >= 0 || PackSlot(i) >= 0 || i == PackTarget();
+// Crouched behind cover: still
+static bool PackMoverTick(int a, int i, float dt) {
+    (void)a; (void)dt;
+    if (!PackIsDucking(i)) return false;
+    Mover* m = &movers[i];
+    m->timeWithoutProgress = 0.0f;
+    m->lastX = m->x;
+    m->lastY = m->y;
+    return true;
 }
 
-static int PlayerCount(void) {
-    int n = 0;
-    for (int i = 0; i < moverCount; i++) if (ChaseIsPlaying(i)) n++;
-    return n;
-}
-
-// Someone leaves: the game carries on without it (a new "it", seeker or leader), or ends
-static void GameDrop(int i) {
-    if (tagTarget == i) tagTarget = -1;
-    if (tagIt == i) {   // the nearest one still playing is "it" now
-        int next = -1;
-        float best = 1e18f;
-        for (int j = 0; j < moverCount; j++) {
-            if (!ChaseIsPlaying(j)) continue;
-            float d = Dist(i, j);
-            if (d < best) { best = d; next = j; }
-        }
-        if (next >= 0) ChaseSetIt(next); else tagIt = -1;
-    }
-    if (hsPhase != HS_NONE && i == hsSeeker) {   // a new round with someone else seeking
-        int next = -1;
-        for (int j = 0; j < moverCount && next < 0; j++) if (ChaseIsPlaying(j)) next = j;
-        if (next >= 0) HideSeekStart(next); else hsPhase = HS_NONE;
-    }
-    int k = FollowSlot(i);
-    if (k >= 0) {   // out of the line (the next one leads if it was the leader)
-        for (int q = k; q < flCount - 1; q++) {
-            flOrder[q] = flOrder[q + 1];
-            memcpy(flTrailX[q], flTrailX[q + 1], sizeof(flTrailX[q]));
-            memcpy(flTrailY[q], flTrailY[q + 1], sizeof(flTrailY[q]));
-            flTrailHead[q] = flTrailHead[q + 1];
-            flTrailLen[q] = flTrailLen[q + 1];
-        }
-        flCount--;
-        if (k == 0) flTurn = FL_TURN_TIME;
-    }
-    int p = PackSlot(i);
+// A hunter leaves: out of the pack. The runner leaves: the hunt is over (the hunters leave)
+static void PackMemberLeft(int a, int i) {
+    PackState* pk = PackOf(a);
+    int p = PackSlot(pk, i);
     if (p >= 0) {
-        for (int q = p; q < packN - 1; q++) {
-            packHunters[q] = packHunters[q + 1];
-            packRole[q] = packRole[q + 1];
-            packReplan[q] = packReplan[q + 1];
+        for (int q = p; q < pk->n - 1; q++) {
+            pk->hunters[q] = pk->hunters[q + 1];
+            pk->role[q] = pk->role[q + 1];
+            pk->replan[q] = pk->replan[q + 1];
         }
-        packN--;
+        pk->n--;
     }
-    if (i == packTarget) { packTarget = -1; packN = 0; }   // the hunt is over (the hunters leave)
+    if (i == pk->target) { pk->target = -1; pk->n = 0; }
 }
 
-// Players whose state something else took over (a need, a job, drafting, a command: they are no
-// longer FREETIME_PLAY) leave; a game too small to go on ends and its last players leave
-static void PlaySweep(void) {
-    for (int i = 0; i < moverCount; i++) {
-        if (!playing[i]) continue;
-        const Mover* m = &movers[i];
-        if (!m->active || m->isDrafted || m->currentJobId >= 0 || m->freetimeState != FREETIME_PLAY) ChaseLeave(i);
-    }
-    int n = PlayerCount();
-    if (ChaseIt() >= 0 && n < 2) tagIt = -1;
-    if (hsPhase != HS_NONE && n < 2) hsPhase = HS_NONE;
-    if (flCount > 0 && flCount < 2) flCount = 0;
-    if (packTarget >= 0 && (packN == 0 || !ChaseIsPlaying(packTarget))) { packTarget = -1; packN = 0; }
-    for (int i = 0; i < moverCount; i++)
-        if (playing[i] && !InAGame(i)) ChaseLeave(i);
+static bool PackTooSmall(int a) {
+    const PackState* pk = PackOf(a);
+    return pk->target < 0 || pk->n == 0 || !ActivityHas(a, pk->target);
 }
 
-// A calm player (tag: not running, "it" with nobody in sight; the pack's runner, at ease)
-// strolls about near the others, with a pause now and then
-static void PlayWander(float dt) {
-    bool tag = ChaseIt() >= 0;
-    if (!tag && PackTarget() < 0) return;
-    float cx = 0.0f, cy = 0.0f;
-    int n = 0;
-    for (int i = 0; i < moverCount; i++)
-        if (ChaseIsPlaying(i)) { cx += movers[i].x; cy += movers[i].y; n++; }
-    if (n == 0) return;
-    cx /= n; cy /= n;
-    for (int i = 0; i < moverCount; i++) {
-        if (!ChaseIsPlaying(i) || fleeing[i]) continue;
-        bool calm = tag ? (i != tagIt || (tagTarget < 0 && tagFreeze <= 0.0f)) : (i == packTarget && !packDucked);
-        if (!calm || movers[i].pathIndex >= 0) continue;
-        if ((wanderTimer[i] -= dt) > 0.0f) continue;
-        wanderTimer[i] = ChaseRandRange(0.5f, 2.0f);
-        Mover* m = &movers[i];
-        int z = (int)m->z;
-        for (int tries = 0; tries < 6; tries++) {   // somewhere 3-7 cells off, toward the others if far from them
-            float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 7.0f);
-            float tx = m->x + cosf(a) * d * CELL_SIZE, ty = m->y + sinf(a) * d * CELL_SIZE;
-            float fx = tx - cx, fy = ty - cy;
-            if (fx * fx + fy * fy > (10.0f * CELL_SIZE) * (10.0f * CELL_SIZE)) { tx = (tx + cx) * 0.5f; ty = (ty + cy) * 0.5f; }
-            if (PathTo(i, (int)(tx / CELL_SIZE), (int)(ty / CELL_SIZE), z)) break;
-        }
-    }
-}
+const ActivityDef packHuntActivityDef = {
+    "pack-hunt", "Hunting as a pack", sizeof(PackState),
+    PackTick, PackMoverTick, PackSpeedScale, PackMemberLeft, PackTooSmall, NULL,
+};

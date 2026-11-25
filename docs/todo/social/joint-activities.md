@@ -1,6 +1,6 @@
 # Joint activities: a few movers doing something together
 
-Status: **spec** (2026-11-25, not started; check with the user before code)
+Status: **partial** (2026-11-25): step 1 done (the games are activities, `src/entities/activity.c`); next: step 2
 
 Several movers doing one thing together, each with a part, sometimes in a set order: a chat, a
 gathering round the fire, a walk together, tag, hide and seek, follow the leader, the pack hunt;
@@ -143,6 +143,17 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
    `PlaySweep` into the shared ones. Check: the game scenarios (`tag`, `hideseek`,
    `follow-leader`, `pack-hunt`, `hunt-cover`, `cover`, `play-hungry`) give the same numbers,
    `test_notice` passes. The chase / flee building blocks stay in chase.c (animals later).
+   **Done 2026-11-25.** `activity.c/.h`: a pool of 64 activities (kind, member count, age, the
+   kind's own state), which one each mover is in, `ActivityAdd` / `ActivityLeave`, one sweep,
+   one tick, one movement hook; `ActivityDef` rows of hooks (tick, moverTick, speedScale,
+   memberLeft, tooSmall, end). The four games' globals became `TagState`, `HideState`,
+   `FollowState`, `PackState` in chase.c: **several games can run at once**. The old calls stay:
+   `ChaseJoin` waits to play, `ChaseSetIt` / `HideSeekStart` start a game with the ones waiting.
+   All seven game scenarios give identical output (same seed, every line but timings);
+   `test_notice` 264 unchanged + 13 new (two games of tag at once, waiting, moving players into
+   another game). Not yet: talk.c's own "free?" test (`CanTalk` names `ChaseIsPlaying`) moves to
+   one shared test in step 4; members are counted, not listed (iterate movers by index: keeps
+   the random order and the numbers).
 2. Starting games: tag and hide and seek proposed by idle friends (option 1 above), in the
    dollhouse and survival (game rule, like `talkEnabled`). Describe lines for every role.
    Check: a scenario where friends start games by themselves; how often, how long, nobody
