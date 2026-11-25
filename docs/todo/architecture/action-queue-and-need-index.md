@@ -138,7 +138,11 @@ measurement that needs it.
    puts a running queue aside (`QueueSuspend`), freetime handles the need as usual, then the
    queue carries on at the step it was on (`QueueResume`); setting `queueYieldsToNeeds` (the
    start of the autonomy dial; per game later). Not yet: the player removing / reordering
-   queued steps; a resumed meal walks back to its seat.
+   queued steps.
+   **City 1999 steps (2026-11-25):** `ACT_SEARCH_BIN` (rummage 0.2 game hours, then stow the
+   empty cans until nothing more fits: pockets, backpack, a held bag, a hand) and `ACT_STOW`
+   (from the hand into the bag). E on a bin = walk there + search it; E on a loose item = walk,
+   pick up, put away. A meal resumed after an interrupt walks back to its seat first.
 4. **Advertisements + autonomy per game**: objects say which need they serve; the dial per game.
 5. Later: coarse fast-forward for movers out of view.
 

@@ -26,6 +26,10 @@ typedef enum {            // append only: saves store the number
     ACT_PUT_TRASH_IN,     // the wrapper / can / leftovers in hand into the target container (a bin);
                           // not within reach: dropped where it stands
     ACT_DROP_TRASH,       // the wrapper / can / leftovers in hand onto the ground here
+    ACT_SEARCH_BIN,       // rummage in the target bin a while, then stow what's worth taking
+                          // (empty cans: the deposit, City 1999) until nothing more fits
+    ACT_STOW,             // the target item (or what this queue picked up) into pockets / backpack /
+                          // a held bag (MoverStow); stays in the hand when nothing has room
     ACT_TYPE_COUNT
 } ActionType;
 
@@ -115,6 +119,13 @@ static inline MoverAction ActPutTrashIn(int container) {
 static inline MoverAction ActDropTrash(void) {
     return (MoverAction){ .type = ACT_DROP_TRASH, .target = -1 };
 }
+static inline MoverAction ActSearchBin(int bin) {
+    return (MoverAction){ .type = ACT_SEARCH_BIN, .targetKind = ATGT_ITEM, .target = bin };
+}
+static inline MoverAction ActStowHeld(void) {
+    return (MoverAction){ .type = ACT_STOW, .target = -1, .optional = 1 };
+}
+#define SEARCH_BIN_GH 0.2f   // rummaging in a bin (game hours), as scrounging
 static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
 }

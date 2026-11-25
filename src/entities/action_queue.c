@@ -1,5 +1,6 @@
 // action_queue.c - a mover's queue of small steps (see action_queue.h)
 #include "action_queue.h"
+#include "talk.h"
 #include "items.h"
 #include "item_defs.h"
 #include "inventory.h"
@@ -14,6 +15,7 @@
 #include "../world/cell_defs.h"
 #include "jobs.h"
 #include "namegen.h"
+#include "containers.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -255,6 +257,58 @@ static StepResult QStepDropTrash(int moverIdx, MoverAction* a) {
     return STEP_DONE;
 }
 
+// What a search takes from a bin: empty cans (worth a deposit, City 1999). Food in bins is
+// scrounging (needs.c), for the hungry.
+static bool WorthCollecting(int it) { return items[it].type == ITEM_EMPTY_CAN; }
+
+static StepResult QStepSearchBin(int moverIdx, MoverAction* a) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    Mover* m = &movers[moverIdx];
+    int bin = a->target;
+    if (!QItemValid(bin) || !QItemWithinReach(m, bin)) return STEP_FAILED;
+    if (!a->started) {
+        if (items[bin].reservedBy != -1 && items[bin].reservedBy != moverIdx) {   // someone rummages there
+            if (q->source == QUEUE_FROM_PLAYER) AddMessage(TextFormat("%s: someone is searching that bin", MoverDisplayName(moverIdx)), GRAY);
+            return STEP_FAILED;
+        }
+        a->started = 1;
+        if (items[bin].reservedBy == -1) ReserveItem(bin, moverIdx);
+        QStopWalking(m);
+    }
+    m->timeWithoutProgress = 0.0f;
+    a->progress += gameDeltaTime;
+    if (a->progress < GameHoursToGameSeconds(SEARCH_BIN_GH)) return STEP_RUNNING;
+    // Take what's worth it until nothing more fits
+    int want[64], n = 0;
+    for (int c = FirstInContainer(bin); c >= 0 && n < 64; c = NextInContainer(c))
+        if (items[c].active && items[c].reservedBy == -1 && WorthCollecting(c)) want[n++] = c;
+    int took = 0;
+    for (int i = 0; i < n; i++) {
+        if (MoverStow(moverIdx, want[i]) == INV_NONE) break;
+        took++;
+    }
+    if (items[bin].reservedBy == moverIdx) ReleaseItemReservation(bin);
+    EventLog("Mover %d searched bin %d: took %d of %d cans", moverIdx, bin, took, n);
+    if (q->source == QUEUE_FROM_PLAYER) {
+        const char* who = MoverDisplayName(moverIdx);
+        if (took > 0) AddMessage(TextFormat("%s found %d can%s%s", who, took, took == 1 ? "" : "s", took < n ? " (no room for more)" : ""), SKYBLUE);
+        else AddMessage(TextFormat(n > 0 ? "%s: no room to take anything" : "%s: nothing worth taking in that bin", who), GRAY);
+    }
+    return STEP_DONE;
+}
+
+static StepResult QStepStow(int moverIdx, MoverAction* a) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    int it = a->target >= 0 ? a->target : q->heldItem;
+    if (!QItemValid(it) || !ItemInMoverHands(moverIdx, it)) return STEP_DONE;
+    // MoverStow leaves a held item where it is: out of the hand first, back in if nothing has room
+    QLetGoOfHeld(moverIdx, it);
+    InvPlace where = MoverStow(moverIdx, it);
+    if (where == INV_NONE) { MoverHold(moverIdx, it); where = INV_HAND; }
+    if (where != INV_HAND && q->heldItem == it) q->heldItem = -1;
+    return STEP_DONE;
+}
+
 static StepResult QStepWait(int moverIdx, MoverAction* a) {
     movers[moverIdx].timeWithoutProgress = 0.0f;
     a->progress += gameDeltaTime;
@@ -334,6 +388,13 @@ void QueueResume(int moverIdx) {
     if (!q->suspended) return;
     q->suspended = 0;
     if (q->current < q->count) q->steps[q->current].started = 0;
+    // A meal put aside (toilet, ...): back to the seat first, then eat / linger on
+    if (q->seat >= 0 && q->current < q->count && QFurnitureValid(q->seat) &&
+        (q->steps[q->current].type == ACT_EAT || q->steps[q->current].type == ACT_LINGER) &&
+        !QAtCell(&movers[moverIdx], furniture[q->seat].x, furniture[q->seat].y, furniture[q->seat].z)) {
+        MoverAction back[2] = { ActWalkToFurniture(q->seat, true), ActSit(q->seat, true) };
+        QueueInsert(moverIdx, q->current, back, 2);
+    }
     movers[moverIdx].freetimeState = FREETIME_QUEUE;
     movers[moverIdx].needTarget = -1;
     EventLog("Mover %d queue resumed at step %d", moverIdx, q->current);
@@ -361,6 +422,8 @@ void QueueTick(int moverIdx) {
             case ACT_LINGER:  r = QStepLinger(moverIdx, a); break;
             case ACT_PUT_TRASH_IN: r = QStepPutTrashIn(moverIdx, a); break;
             case ACT_DROP_TRASH:   r = QStepDropTrash(moverIdx, a); break;
+            case ACT_SEARCH_BIN:   r = QStepSearchBin(moverIdx, a); break;
+            case ACT_STOW:         r = QStepStow(moverIdx, a); break;
             default: break;
         }
         if (r == STEP_RUNNING) return;
@@ -390,6 +453,8 @@ const char* QueueStepName(int moverIdx) {
         case ACT_LINGER:  return "Lingering at the table";
         case ACT_PUT_TRASH_IN: return TextFormat("Throwing trash in the %s", what);
         case ACT_DROP_TRASH:   return "Dropping trash";
+        case ACT_SEARCH_BIN:   return "Searching the bin";
+        case ACT_STOW:         return "Putting it away";
         default:          return NULL;
     }
 }
@@ -411,6 +476,8 @@ static const char* StepLabel(const MoverAction* a) {
         case ACT_LINGER:  return "Linger";
         case ACT_PUT_TRASH_IN: return "Throw away";
         case ACT_DROP_TRASH:   return "Drop trash";
+        case ACT_SEARCH_BIN:   return "Search bin";
+        case ACT_STOW:         return "Put away";
         default:          return "?";
     }
 }
@@ -464,19 +531,28 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
     bool adding = append && QueueBusy(moverIdx) && q->source == QUEUE_FROM_PLAYER;
     const char* who = MoverDisplayName(moverIdx);
 
-    // What is there
+    // What is there: a bin to search, an item, a seat, ground
+    int bin = -1;
+    for (int i = 0; i < itemHighWaterMark && bin < 0; i++)
+        if (items[i].active && items[i].type == ITEM_TRASH_BIN && items[i].state == ITEM_ON_GROUND &&
+            (int)(items[i].x / CELL_SIZE) == x && (int)(items[i].y / CELL_SIZE) == y && (int)items[i].z == z) bin = i;
     int item = ItemForCommand(moverIdx, x, y, z);
     int f = GetFurnitureAt(x, y, z);
     bool seat = f >= 0 && (GetFurnitureDef(furniture[f].type)->capabilities & CAP_SEATING) &&
                 (FurnitureHasRoom(f) || q->seat == f);
     bool ground = IsCellWalkableAt(z, y, x);
-    if (item < 0 && !seat && !ground) return false;
+    if (bin < 0 && item < 0 && !seat && !ground) return false;
     if (seat && adding && q->seat >= 0 && q->seat != f) { snprintf(said, (size_t)saidLen, "%s: one seat per queue", who); return false; }
 
     MoverAction steps[4];
     int n = 0;
     const char* doing;
-    if (item >= 0 && ItemIsEdible(items[item].type)) {
+    if (bin >= 0) {
+        steps[n++] = ActWalkToItem(bin, false);
+        steps[n++] = ActSearchBin(bin);
+        doing = "search the bin";
+        item = -1;   // nothing to reserve: the search takes what it finds
+    } else if (item >= 0 && ItemIsEdible(items[item].type)) {
         steps[n++] = ActWalkToItem(item, false);
         steps[n++] = ActPickUp(item, false);
         steps[n++] = ActEatHeld();
@@ -484,6 +560,7 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
     } else if (item >= 0) {
         steps[n++] = ActWalkToItem(item, false);
         steps[n++] = ActPickUp(item, false);
+        steps[n++] = ActStowHeld();   // into the bag if there's room, else it stays in the hand
         doing = TextFormat("pick up %s", ItemName(items[item].type));
     } else if (seat) {
         steps[n++] = ActWalkToFurniture(f, false);
@@ -516,7 +593,7 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
 // The nearest free seat (chair, sofa, desk: CAP_SEATING) on the mover's level, -1 = none
 static int QFindSeatNear(const Mover* m) {
     int best = -1;
-    float bestD = (float)(SIT_TO_EAT_RADIUS * SIT_TO_EAT_RADIUS) + 0.5f;
+    float bestScore = 1e9f;   // distance less how nice the neighbours are (talk.c SeatPreference)
     int mx = QMoverCellX(m), my = QMoverCellY(m), mz = (int)m->z;
     for (int f = 0; f < MAX_FURNITURE; f++) {
         if (!furniture[f].active || furniture[f].z != mz) continue;
@@ -524,7 +601,9 @@ static int QFindSeatNear(const Mover* m) {
         if (!FurnitureHasRoom(f)) continue;
         float dx = (float)(furniture[f].x - mx), dy = (float)(furniture[f].y - my);
         float d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; best = f; }
+        if (d > (float)(SIT_TO_EAT_RADIUS * SIT_TO_EAT_RADIUS) + 0.5f) continue;
+        float score = sqrtf(d) - SeatPreference((int)(m - movers), f);
+        if (score < bestScore) { bestScore = score; best = f; }
     }
     return best;
 }

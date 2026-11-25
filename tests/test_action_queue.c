@@ -382,6 +382,103 @@ describe(follow_ups_and_interrupts) {
     }
 }
 
+static int SpawnAt(int x, int y, ItemType t) {
+    return SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, t);
+}
+static int CountIn(int container, ItemType t) {
+    int n = 0;
+    for (int c = FirstInContainer(container); c >= 0; c = NextInContainer(c)) if (items[c].type == t) n += items[c].stackCount;
+    return n;
+}
+static int CansOnMover(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_EMPTY_CAN && ItemIsInMoverInventory(0, i)) n += items[i].stackCount;
+    return n;
+}
+
+describe(bottle_run) {
+    it("E on a bin: walks there, searches, the cans go in the backpack") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        int pack = SpawnAt(1, 2, ITEM_BACKPACK);
+        expect(MoverWear(0, pack));
+        int bin = SpawnAt(8, 3, ITEM_TRASH_BIN);
+        for (int k = 0; k < 3; k++) PutItemInContainer(SpawnAt(8, 3, ITEM_EMPTY_CAN), bin);
+        PutItemInContainer(SpawnAt(8, 3, ITEM_WRAPPER), bin);   // not worth taking
+        char said[128];
+        expect(QueueCommandAt(0, 8, 3, 0, false, said, sizeof(said)));
+        expect(strstr(said, "search the bin") != NULL);
+        expect(RunQueue(20000));
+        expect(CountIn(pack, ITEM_EMPTY_CAN) == 3);
+        expect(CountIn(bin, ITEM_EMPTY_CAN) == 0 && CountIn(bin, ITEM_WRAPPER) == 1);
+        expect(items[bin].reservedBy == -1);
+        expect(movers[0].hands[0] == -1 && movers[0].hands[1] == -1);
+    }
+    it("no bag: the cans go in a hand (stacked), none get lost") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        int bin = SpawnAt(8, 3, ITEM_TRASH_BIN);
+        for (int k = 0; k < 4; k++) PutItemInContainer(SpawnAt(8, 3, ITEM_EMPTY_CAN), bin);
+        char said[128];
+        expect(QueueCommandAt(0, 8, 3, 0, false, said, sizeof(said)));
+        expect(RunQueue(20000));
+        expect(CansOnMover() >= 2 && CansOnMover() + CountIn(bin, ITEM_EMPTY_CAN) == 4);
+        expect(movers[0].hands[0] >= 0);
+    }
+    it("two bins in a row (Shift): both searched") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        expect(MoverWear(0, SpawnAt(1, 2, ITEM_BACKPACK)));
+        int binA = SpawnAt(6, 1, ITEM_TRASH_BIN), binB = SpawnAt(13, 3, ITEM_TRASH_BIN);
+        PutItemInContainer(SpawnAt(6, 1, ITEM_EMPTY_CAN), binA);
+        PutItemInContainer(SpawnAt(13, 3, ITEM_EMPTY_CAN), binB);
+        PutItemInContainer(SpawnAt(13, 3, ITEM_EMPTY_CAN), binB);
+        char said[128];
+        expect(QueueCommandAt(0, 6, 1, 0, false, said, sizeof(said)));
+        expect(QueueCommandAt(0, 13, 3, 0, true, said, sizeof(said)));
+        expect(RunQueue(40000));
+        expect(CansOnMover() == 3);
+    }
+    it("E on a can on the ground: picked up and put in the backpack") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        int pack = SpawnAt(1, 2, ITEM_BACKPACK);
+        expect(MoverWear(0, pack));
+        int can = SpawnAt(10, 1, ITEM_EMPTY_CAN);
+        char said[128];
+        expect(QueueCommandAt(0, 10, 1, 0, false, said, sizeof(said)));
+        expect(RunQueue(20000));
+        expect(CountIn(pack, ITEM_EMPTY_CAN) == 1);
+        expect(movers[0].hands[0] == -1 && movers[0].hands[1] == -1);
+    }
+}
+
+describe(resume_back_to_seat) {
+    it("a meal put aside for the toilet: back to the chair, the meal finished there") {
+        Setup(openFloor);
+        bladderEnabled = true;
+        int chair = SpawnFurniture(9, 2, 0, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(14, 4, 0, FURNITURE_TOILET, MAT_OAK);
+        bool suspended = false, usedToilet = false, ate = false;
+        int ateX = -1, ateY = -1;
+        float before = movers[0].hunger;
+        for (int t = 0; t < 60000 && !ate; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            const MoverQueue* q = &moverQueues[0];
+            bool eating = QueueBusy(0) && q->steps[q->current].type == ACT_EAT && q->steps[q->current].progress > 0.1f;
+            if (eating && !suspended && movers[0].bladder > 0.5f) movers[0].bladder = 0.01f;   // mid-meal
+            if (QueueSuspended(0)) suspended = true;
+            if (movers[0].freetimeState == FREETIME_USING_TOILET) usedToilet = true;
+            if (movers[0].hunger > before + 0.05f) { ate = true; ateX = CellX(); ateY = CellY(); }
+            before = movers[0].hunger;
+        }
+        expect(suspended && usedToilet && ate);
+        expect(ateX == furniture[chair].x && ateY == furniture[chair].y);
+        bladderEnabled = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -390,5 +487,7 @@ int main(int argc, char* argv[]) {
     test(player_commands);
     test(linger);
     test(follow_ups_and_interrupts);
+    test(bottle_run);
+    test(resume_back_to_seat);
     return summary();
 }
