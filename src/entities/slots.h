@@ -36,6 +36,7 @@ typedef struct {
     int lcStep;              // the step it changed lanes in (drawing: a sideways drift), -1 none
     int lcFromSeg, lcFromSlot;   // ... from this lane and slot
     int lcCool;              // steps before it may change lanes again
+    int mergeWait;           // steps waiting to get into the lane a turn needs
     bool cab;                // a yellow cab: stands a few steps at each fare
     int stopSteps;           // cab: steps left at a fare
     int trips;

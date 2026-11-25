@@ -3557,6 +3557,7 @@ static void SetupCarsCity(void) {
 
     cityRng = (unsigned int)carCitySeed;
     rdSetback = carCitySetback;
+    rdLaneRules = carCityLaneRules && carCitySlots;   // (steered cars: not yet - they deadlock with them)
     if (carCityLayout == 1) BuildManhattan();
     else {
         // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)

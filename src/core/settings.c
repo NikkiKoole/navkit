@@ -715,6 +715,8 @@ static const Setting settings[] = {
       "Slot traffic: on two-lane roads cars overtake slow or standing cars (cabs at a fare) and keep right, moving diagonally into the lane beside."),
     SET_BOOL("carSlotReal", "Slot Traffic: Real Cars in View", "Experiments/Cars", carSlotReal,
       "Slot traffic: cars in the camera view also get a physical car (real steering, smooth speed) chasing their slot's position; elsewhere only slots."),
+    SET_BOOL("carCityLaneRules", "City Lane Rules (slot traffic)", "Experiments/Cars", carCityLaneRules,
+      "Slot traffic: right turns only from the right-hand lane, left turns only from the left lane, cars get into lane in time (like Trafficity). Steered cars keep the old rules for now (with these they deadlock - work to do). Restart the scenario to apply."),
     SET_BOOL("carFollow", "Camera Follows Car", "Experiments/Cars", carFollow,
       "The camera follows car 0 (GUI). Turn off to pan freely."),
     SET_BOOL("carDebug", "Debug Draw", "Experiments/Cars", carDebug,

@@ -86,6 +86,7 @@ typedef struct {
     int ghostLane;         // changing lanes: the lane we're leaving, still partly in it (-1: none)
     float lcCool;          // seconds before we may change lanes again
     float rerouteCool;     // seconds before we try another way round a full exit again
+    float mergeWait;       // seconds waiting at a lane's end to get into the lane a turn needs
     int overtakes, keepRights;   // lane changes: out to overtake, back to the right-hand lane
     int why;               // TrafficWhy: why we brake (debug)
 
@@ -126,6 +127,7 @@ extern float carCityBends;     // cars-city: share of roads with a bend
 extern float carCitySetback;   // cars-city: lanes stop this far from a junction's centre
 extern int carCityLayout;      // cars-city: 0 grid, 1 Manhattan (one-way avenues and streets, Broadway)
 extern float carCityCabs;      // cars-city: share of yellow cabs
+extern bool carCityLaneRules;  // cars-city slot traffic: turn only from the right lane, get into it in time
 extern bool carCityGreenWave;  // cars-city: lights timed for a green wave along the avenues
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)

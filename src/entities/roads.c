@@ -9,6 +9,7 @@
 #include <string.h>
 
 float rdSetback = 7.0f;
+bool rdLaneRules = true;
 RdNode rdNodes[RD_MAX_NODES];
 RdEdge rdEdges[RD_MAX_EDGES];
 RdSeg rdSegs[RD_MAX_SEGS];
@@ -34,6 +35,7 @@ static int rdLanes[RD_MAX_SEGS], rdLaneCount = 0;
 
 #define RD_STEP 8.0f            // px between points
 #define RD_MAX_TURN 2.1f        // radians (~120 degrees): sharpest turn through a junction
+#define RD_LANE_CHANGE_COST 4.0f  // cells a lane change adds to a route
 #define RD_MAX_TURN_SHARP 2.6f  // (~150) allowed where nothing else leads in / out of a lane
 #define RD_CONFLICT 2.6f        // cells: connectors closer than this conflict
 #define RD_ROUTE_TMP 4096
@@ -84,6 +86,7 @@ static int SegFromTmp(int n, RdSegKind kind) {
     memset(sg, 0, sizeof(*sg));
     sg->kind = kind;
     sg->bay = -1;
+    sg->parallel = -1;   // (0 would be lane 0: curves into lane 0 looked like lane changes)
     float total = 0;
     for (int i = 0; i + 1 < n; i++) total += sqrtf((tmpX[i + 1] - tmpX[i]) * (tmpX[i + 1] - tmpX[i]) + (tmpY[i + 1] - tmpY[i]) * (tmpY[i + 1] - tmpY[i]));
     EnsurePts((int)(total / RD_STEP) + 4);
@@ -285,10 +288,21 @@ static void BuildBay(int lane, float s0) {
     rdBayCount++;
 }
 
+// Which way the move from the end of lane `in` to the start of lane `out` turns: -1 left,
+// 0 straight on, 1 right (right-hand traffic; y is down, so a right turn is clockwise)
+static int TurnOf(int in, int out) {
+    float h0 = SegHeading(in, rdSegs[in].n - 1), h1 = SegHeading(out, 0);
+    float d = AngleDiff(h1 - h0);
+    return d > 0.5f ? 1 : (d < -0.5f ? -1 : 0);
+}
+
 static bool ConnectorsConflict(int s1, int s2) {
     const RdSeg* a = &rdSegs[s1];
     const RdSeg* b = &rdSegs[s2];
     if (a->from == b->from) return false;   // one lane: cars follow each other
+    // from two lanes side by side, unless both go straight on: a turning car's rear corner sweeps
+    // toward the lane beside (cars start side by side at the stop line, ~1 cell apart)
+    if (rdLaneRules && rdSegs[a->from].parallel == b->from && (TurnOf(a->from, a->to) != 0 || TurnOf(b->from, b->to) != 0)) return true;
     if (a->to == b->to) return true;        // merging into one lane
     float lim = RD_CONFLICT * CELL_SIZE;
     for (int i = 0; i < a->n; i++)
@@ -418,25 +432,44 @@ static void BuildAll(float latAccel) {
                 }
         }
     }
-    // Connectors: each lane ending at a node to the lane with the same index (or the
-    // road's only lane) leaving it on every other road; a one-lane road's lane also to an
-    // avenue's overtaking lane (else, where an avenue starts, nothing leads into that lane
-    // and every lane only reachable through it is cut off - found on big maps)
+    // Connectors, by lane (like Trafficity's lane connections): from a road with two lanes
+    // this way, right turns only from the right-hand lane, left turns only from the left
+    // lane, straight on from both (each into its own lane). From a one-lane road: a right turn
+    // into the right-hand lane, a left turn into the left lane of a two-lane road, straight on
+    // into both (so every lane has a way in). Cars get into lane in time (routes may change
+    // lanes: RoadRoute).
     for (int ni = 0; ni < rdNodeCount; ni++) {
         RdNode* nd = &rdNodes[ni];
         for (int i = 0; i < nd->nEdge; i++) {
             const RdEdge* ei = &rdEdges[nd->edge[i]];
             int d = ei->a == ni ? 1 : 0;                               // the direction arriving here
             int ins[2] = {ei->lane[d], ei->lane2[d]};
+            bool twoIn = ins[0] >= 0 && ins[1] >= 0;
             for (int k = 0; k < 2; k++) {
                 if (ins[k] < 0) continue;
                 for (int j = 0; j < nd->nEdge; j++) {
                     if (j == i) continue;
                     const RdEdge* ej = &rdEdges[nd->edge[j]];
                     int od = ej->a == ni ? 0 : 1;                      // the direction leaving here
-                    int out = (k == 1 && ej->lane2[od] >= 0) ? ej->lane2[od] : ej->lane[od];
-                    if (out >= 0) BuildConnector(ni, ins[k], out, RD_MAX_TURN);
-                    if (k == 0 && ins[1] < 0 && ej->lane2[od] >= 0) BuildConnector(ni, ins[0], ej->lane2[od], RD_MAX_TURN);
+                    int o0 = ej->lane[od], o1 = ej->lane2[od];
+                    if (o0 < 0) continue;
+                    if (!rdLaneRules) {   // the old rule: to the lane with the same index (or the only one)
+                        int out = (k == 1 && o1 >= 0) ? o1 : o0;
+                        BuildConnector(ni, ins[k], out, RD_MAX_TURN);
+                        if (k == 0 && ins[1] < 0 && o1 >= 0) BuildConnector(ni, ins[0], o1, RD_MAX_TURN);
+                        continue;
+                    }
+                    int turn = TurnOf(ins[k], o0);                     // -1 left, 0 straight, 1 right
+                    if (twoIn) {
+                        if ((turn > 0 && k == 1) || (turn < 0 && k == 0)) continue;
+                        int out = turn > 0 ? o0 : (turn < 0 ? (o1 >= 0 ? o1 : o0) : (k == 1 && o1 >= 0 ? o1 : o0));
+                        BuildConnector(ni, ins[k], out, RD_MAX_TURN);
+                    } else if (turn > 0) BuildConnector(ni, ins[k], o0, RD_MAX_TURN);
+                    else if (turn < 0) BuildConnector(ni, ins[k], o1 >= 0 ? o1 : o0, RD_MAX_TURN);
+                    else {
+                        BuildConnector(ni, ins[k], o0, RD_MAX_TURN);
+                        if (o1 >= 0) BuildConnector(ni, ins[k], o1, RD_MAX_TURN);
+                    }
                 }
             }
         }
@@ -559,6 +592,11 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
         float d = rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
         if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
     }
+    if (rdLaneRules && f->parallel >= 0) {   // changing to the lane beside us (prevConn -2: a lane change, no curve)
+        int l = f->parallel;
+        float d = RD_LANE_CHANGE_COST * CELL_SIZE + rdSegExtra[l];
+        if (d < dist[l]) { dist[l] = d; prevLane[l] = fromLane; prevConn[l] = -2; RdHeapPush(d + RD_GUESS(l), l); }
+    }
     for (;;) {
         if (rdHeapN == 0) return 0;
         RdHeapItem it = RdHeapPop();
@@ -572,6 +610,11 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
             float d = dist[best] + rdSegs[c].len + rdSegs[l].len + rdSegExtra[l];
             if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = c; RdHeapPush(d + RD_GUESS(l), l); }
         }
+        if (rdLaneRules && b->parallel >= 0) {
+            int l = b->parallel;
+            float d = dist[best] + RD_LANE_CHANGE_COST * CELL_SIZE + rdSegExtra[l];
+            if (!done[l] && d < dist[l]) { dist[l] = d; prevLane[l] = best; prevConn[l] = -2; RdHeapPush(d + RD_GUESS(l), l); }
+        }
     }
 #undef RD_GUESS
     // Walk back: toLane, conn, lane, ..., fromLane (stop when we reach fromLane the first time
@@ -581,8 +624,8 @@ int RoadRoute(int fromLane, int toLane, RdSegId* out, int max) {
     rev[n++] = (RdSegId)l;
     for (;;) {
         int c = prevConn[l], p = prevLane[l];
-        if (c < 0 || n + 2 >= RD_ROUTE_TMP) return 0;
-        rev[n++] = (RdSegId)c;
+        if (c == -1 || p < 0 || n + 2 >= RD_ROUTE_TMP) return 0;
+        if (c >= 0) rev[n++] = (RdSegId)c;   // (-2: a lane change, lane to lane)
         rev[n++] = (RdSegId)p;
         if (p == fromLane) break;
         l = p;

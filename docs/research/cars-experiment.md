@@ -471,6 +471,32 @@ Results (250 cars, 3-cell slots, 5 minutes): grid 26 overtakes / 93 keep-rights,
 over 4 seeds (-3%: cars behind brake), Manhattan 366 -> 395. 16000 cars: 0.2 ms/tick, worst tick
 18 ms. Keeping right "as soon as it had as much room" made cars swap lanes all the time.
 
+## Lane rules: turn from the right lane, get into it in time (2026-11-25)
+
+From the user's look at Trafficity ("cars do their best to get in lane in time to make a
+turning", lane connections). `carCityLaneRules` (on), **slot traffic only for now**:
+- Lane connections: from a road with two lanes this way, right turns only from the right-hand
+  lane, left turns only from the left lane, straight on from both; from a one-lane road a right
+  turn into the right-hand lane and a left turn into the left lane of a two-lane road. Curves
+  from two lanes side by side conflict unless both go straight (a turning car's rear sweeps
+  toward the lane beside).
+- Routes may change lanes: a lane followed by its parallel lane (cost 4 cells). The lane's end
+  (or where the route leaves the lane beside, e.g. a bay entrance: the deadline) is a stop line
+  until the car has merged; it merges as soon as there is a gap; no gap for 8 s / 8 steps, or
+  past the deadline: it goes another way (a bay on that lane: given up, a new trip).
+- A voluntary change (overtake, keep right) is called off if the route from the new lane would
+  need the old one straight back.
+
+Slot traffic, 4 seeds x 2 layouts, 250 cars, 10 minutes: 0 jumps, checks pass, longest
+standstill 94-160 s, 330-830 merges per run (~13% give up), trips grid ~670, Manhattan ~820.
+
+**Steered cars keep the old rules**: with the lane rules the 10-minute sweep had standstills of
+300-540 s in about half the runs and touches in 9 of 20. Found and fixed on the way (both sims):
+curves' `parallel` was 0, not -1 (curves into lane 0 looked like lane changes); a merge done
+past its deadline put a car "into" a bay curve while it stood in the lane. Still open for the
+steered sim: merges at a stop line beside a queue, cars holding a junction while queued behind
+a merging car - work to do.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

@@ -29,6 +29,7 @@
 #define RD_LANE_OFF 1.5f     // cells: lane centre from the road's centre line
 #define RD_SETBACK rdSetback  // cells: lanes stop this far from a junction's centre (room for the turns)
 extern float rdSetback;       // (default 7; the scenario sets it from carCitySetback)
+extern bool rdLaneRules;      // lane connections (turns only from their lane) + routes that change lanes
 
 typedef enum { RD_LANE, RD_CONN, RD_BAYIN, RD_BAYOUT } RdSegKind;
 typedef unsigned short RdSegId;   // a segment in a route (RD_MAX_SEGS must fit)
@@ -108,7 +109,9 @@ void RoadsCarve(int z);                   // open the roads (and junctions) in t
 // Point, heading and curvature (1/px) at arc length s on a segment (clamped)
 void RoadPointAt(int seg, float s, float* x, float* y, float* h);
 // Shortest route (by length) from the end of lane `fromLane` to lane `toLane`:
-// writes [fromLane, conn, lane, conn, ..., toLane]; returns the length or 0 if none.
+// writes [fromLane, conn, lane, conn, ..., toLane]; returns the length or 0 if none. Two lanes
+// in a row (a lane and its parallel) mean a lane change: the car gets into that lane before
+// the end of the first one (lane connections allow some turns only from one lane).
 int RoadRoute(int fromLane, int toLane, RdSegId* out, int max);
 int RoadLaneCount(void);
 int RoadLaneAt(int i);                    // i-th lane segment (0 .. RoadLaneCount-1)

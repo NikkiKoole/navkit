@@ -26,6 +26,7 @@ float trafficJunctionWaitMax = 0;
 float trafficPullOutWaitMax = 0;
 int trafficLightCount = 0;
 int trafficLightEntries = 0, trafficRedRuns = 0;
+static long trMerges = 0, trMergeGiveUps = 0;
 
 // Traffic lights: per junction an offset into the cycle; per arriving lane its group
 // (which pair of opposite approaches it belongs to)
@@ -47,6 +48,7 @@ static signed char tlGroup[RD_MAX_SEGS];   // lane arriving at a lit junction: 0
 #define TR_GIVE_WAY_S 3.0f     // s: give way to a car with right of way this close (in time)
 #define TR_GIVE_WAY_CELLS 3.0f // cells: ... or this close
 #define TR_PULL_OUT_ROOM 1.5f      // cells (+ 0.5 s at our speed) to the car ahead before changing lanes
+#define TR_MERGE_GIVE_UP 8.0f      // s at a lane's end without a gap to merge: another way
 #define TR_LANE_CHANGE_CELLS 6.0f   // cells of road a lane change takes
 #define TR_LET_IN 3.0f         // s: a car waiting this long to pull out gets let in
 #define TR_PULL_BEHIND 8.0f    // cells: the lane must be clear this far behind a bay's exit (+ 2 s at the car's speed)
@@ -107,6 +109,7 @@ void TrafficReset(void) {
     memset(tlOn, 0, sizeof(tlOn));
     trafficLightCount = 0;
     trafficLightEntries = trafficRedRuns = 0;
+    trMerges = trMergeGiveUps = 0;
 }
 
 static float TrRandF(void);
@@ -549,7 +552,11 @@ static void ServeJunctions(float dt) {
 static void RouteAheadH(const Car* c, float ahead, float* x, float* y, float* h) {
     int k = c->routeIdx;
     float s = c->s + ahead;
-    while (k < c->routeLen - 1 && s > StepEnd(c, k)) { s = s - StepEnd(c, k) + StepStart(c, k + 1); k++; }
+    while (k < c->routeLen - 1 && s > StepEnd(c, k)) {
+        if (rdSegs[c->route[k]].parallel == c->route[k + 1]) { s = StepEnd(c, k); break; }   // a lane change to come: not onward
+        s = s - StepEnd(c, k) + StepStart(c, k + 1);
+        k++;
+    }
     while (k > 0 && s < StepStart(c, k)) { s = s - StepStart(c, k) + StepEnd(c, k - 1); k--; }
     RoadPointAt(c->route[k], s, x, y, h);
 }
@@ -637,6 +644,63 @@ static bool LaneClearAt(int i, int P, float s) {
     return true;
 }
 
+// Where the route leaves the lane at step k (a lane we'd merge into): its end, or a bay's
+// entrance on it - a merge must be done before that
+static float MergeDeadline(const Car* c, int k) { return StepEnd(c, k); }
+
+// The route changes lanes next (to be in the right lane for a turn): merge as soon as the lane
+// beside us has a gap; true while such a change is pending. The route carries on from there.
+static bool MergeIfPlanned(int i) {
+    Car* c = &cars[i];
+    int cur = c->route[c->routeIdx];
+    const RdSeg* S = &rdSegs[cur];
+    if (S->kind != RD_LANE || c->routeIdx + 1 >= c->routeLen || S->parallel != c->route[c->routeIdx + 1]) return false;
+    if (c->latOff != 0 || c->holdNode >= 0 || c->s < 1.0f * CELL_SIZE) return true;   // (still holding the last junction: wait)
+    int P = S->parallel;
+    float sP = ProjectOnWide(P, c->s, c->x, c->y);
+    // past the deadline (where the route leaves lane P - its end, a bay's entrance): too late
+    bool late = sP > MergeDeadline(c, c->routeIdx + 1) - carLength * CELL_SIZE * 0.5f;
+    if (late || !LaneClearAt(i, P, sP)) {
+        // no gap for a while (a steady stream beside us), or too late: go another way from here
+        if (c->speed < 0.1f * CELL_SIZE) c->mergeWait += 1.0f / 60.0f;
+        if (late || c->mergeWait > TR_MERGE_GIVE_UP) {
+            c->mergeWait = 0;
+            int destLane = c->bay >= 0 ? rdBays[c->bay].lane : c->route[c->routeLen - 1];
+            float saved = rdSegExtra[P];
+            rdSegExtra[P] += 1e7f;
+            RdSegId r[CAR_MAX_ROUTE];
+            int n = TrRoute(1, cur, destLane, r, CAR_MAX_ROUTE - 1);
+            rdSegExtra[P] = saved;
+            if (n >= 2 && r[1] != P) {
+                if (c->bay >= 0) r[n++] = (RdSegId)rdBays[c->bay].in;
+                memcpy(c->route, r, sizeof(RdSegId) * n);
+                c->routeLen = n;
+                c->routeIdx = 0;
+                trMergeGiveUps++;
+                return false;
+            }
+            // no other way (our bay is on that lane): give the bay up, a new trip from here
+            if (c->bay >= 0 && bayCar[c->bay] == i) bayCar[c->bay] = -1;
+            c->bay = -1;
+            c->route[0] = (RdSegId)cur; c->routeLen = 1; c->routeIdx = 0;
+            NewTrip(i);
+            trMergeGiveUps++;
+            return false;
+        }
+        return true;
+    }
+    c->mergeWait = 0;
+    float px, py, ph;
+    RoadPointAt(P, sP, &px, &py, &ph);
+    c->latOff = (c->x - px) * -sinf(ph) + (c->y - py) * cosf(ph);
+    c->ghostLane = cur;
+    c->routeIdx++;
+    c->s = sP;
+    c->lcCool = 2.0f;
+    trMerges++;
+    return true;
+}
+
 // Overtake a slow car on a two-lane road, or move back to the right-hand lane once it's
 // clear. Not near the lane's end, not on the road we park on, not once we've asked
 // or hold the next junction.
@@ -672,6 +736,7 @@ static void MaybeChangeLane(int i, int lead, float gap, float vWant) {
     RdSegId r[CAR_MAX_ROUTE];
     int n = TrRoute(2, P, destLane, r, CAR_MAX_ROUTE - 1);
     if (n <= 0) return;
+    if (n >= 2 && r[1] == cur) { c->lcCool = 2.0f; return; }   // the route would need our lane straight back (for its turn): stay
     if (c->bay >= 0) r[n++] = (RdSegId)rdBays[c->bay].in;
     float px, py, ph;
     RoadPointAt(P, sP, &px, &py, &ph);
@@ -879,6 +944,14 @@ static void DriveCar(int i, float dt) {
             }
         }
         if (found) break;
+        // a lane change still to come: its deadline (where the route leaves the lane beside - its
+        // end, or a bay's entrance) is a stop line until we've merged
+        if (rdSegs[sg].kind == RD_LANE && k + 1 < c->routeLen && rdSegs[sg].parallel == c->route[k + 1]) {
+            float line = fminf(en, MergeDeadline(c, k + 1));
+            float d = acc + (line - st) - L * 0.5f - TR_STOP_BACK * CS;
+            if (d < gap) { gap = d; vLead = 0; why = WHY_JUNCTION; }
+            break;
+        }
         acc += en - st;
     }
     // The trip's end: don't overshoot it (a new trip starts there)
@@ -889,7 +962,8 @@ static void DriveCar(int i, float dt) {
     if (i == traceCar && ((int)(trTime * 60) % 30) == 0)
         printf("t %.1f car %d seg %d (%s) s %.1f/%.1f v %.2f gap %.1f why %d vAllow %.1f hold %d req %d routeIdx %d/%d\n", trTime, i, c->route[c->routeIdx], rdSegs[c->route[c->routeIdx]].kind == RD_CONN ? "conn" : "lane", c->s / CS, rdSegs[c->route[c->routeIdx]].len / CS, v / CS, gap / CS, why, vAllow / CS, c->holdNode, c->requested, c->routeIdx, c->routeLen);
 
-    if (c->lcCool > 0) c->lcCool -= dt;
+    if (MergeIfPlanned(i)) {}   // a lane change the route needs (to turn from the right lane)
+    else if (c->lcCool > 0) c->lcCool -= dt;
     else MaybeChangeLane(i, lead, gap, fmaxf(vAllow, 0.5f * CS));
 
     // IDM
@@ -1196,7 +1270,7 @@ void TrafficPrintStats(void) {
            n, trips, drive > 0 ? trips / (drive / 60.0f) * 1.0f : 0, speedSum / n / CELL_SIZE, moving);
     int rer = 0, ot = 0, kr = 0;
     for (int i = 0; i < carCount; i++) { rer += cars[i].reroutes; ot += cars[i].overtakes; kr += cars[i].keepRights; }
-    printf("  lane changes: %d out to overtake, %d back to the right-hand lane\n", ot, kr);
+    printf("  lane changes: %d out to overtake, %d back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", ot, kr, trMerges, trMergeGiveUps);
     printf("  junctions: %d cars hold a connector, %d waiting for one; longest wait for a grant %.1f s; %d re-routes round full exits\n",
            held, asked, trafficJunctionWaitMax, rer);
     int parked = 0;
