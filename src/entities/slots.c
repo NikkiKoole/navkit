@@ -1215,6 +1215,32 @@ static void CheckJumps(float dt) {
         bool inView = slVX1 < slVX0 || (x >= slVX0 && x <= slVX1 && y >= slVY0 && y <= slVY1);   // (with a view: only jumps you could see)
         if (jumpX[i] >= 0 && inView) {
             float d = sqrtf((x - jumpX[i]) * (x - jumpX[i]) + (y - jumpY[i]) * (y - jumpY[i]));
+            static int strict = -1;
+            if (strict < 0) strict = getenv("SL_JUMPV") != NULL;
+            if (getenv("SL_FLICK")) {   // (diagnostic) drawn / hidden at viewZ 2 as cars_draw.c decides: flips
+                static signed char* vis = NULL; static int vcap = 0; static long flips = 0;
+                if (slotCarCount > vcap) { vis = realloc(vis, (size_t)slotCarCount); for (int k = vcap; k < slotCarCount; k++) vis[k] = -1; vcap = slotCarCount; }
+                float z = SlotCarZ(i), below = 2.0f - z;
+                int lvl = (int)floorf(z + 0.5f), vz = 2, lo = (int)floorf(z + 0.02f);
+                bool open = true;   // (rendering.c's IsCellVisibleFromAbove(x, y, lo + 1, vz + 1))
+                for (int zc = lo + 1; zc < vz + 1 && open; zc++) { int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE); if (CellIsSolid(GRID(cx, cy, zc)) || HAS_FLOOR(cx, cy, zc)) open = false; }
+                bool ramp = fabsf(z - roundf(z)) > 0.02f;
+                signed char now = lvl > vz ? 0 : (below > 0.02f && !(ramp && below < 1.0f) && !open) ? 0 : 1;
+                if (vis[i] >= 0 && vis[i] != now && ++flips < 30) printf("flick: car %d %s at (%.1f,%.1f) z %.2f\n", i, now ? "shown" : "hidden", x / CELL_SIZE, y / CELL_SIZE, SlotCarZ(i));
+                vis[i] = now;
+            }
+            if (strict) {   // (stricter: against the car's own speed, with where it is)
+                const SlotCar* c = &slotCars[i];
+                int v = c->v > c->vBefore ? c->v : c->vBefore;
+                float lim = 1.5f * (v + 1) * SL_SLOT_CELLS * CELL_SIZE / SL_STEP * dt + 1.0f;
+                static int told2 = 0;
+                if (d > lim && told2++ < 25) {
+                    int seg = c->route[c->ri];
+                    printf("jumpv: car %d moved %.1f px (limit %.1f, v %d/%d) at (%.1f,%.1f) seg %d kind %d node %d%s slot %d/%d prev ri %d slot %d, z %.2f\n", i, d, lim, c->v, c->vBefore,
+                           x / CELL_SIZE, y / CELL_SIZE, seg, rdSegs[seg].kind, rdSegs[seg].node, rdNodes[rdSegs[seg].node].noLeft ? " (interchange)" : "",
+                           c->slot, slSegN[seg], c->prevRi, c->prevSlot, SlotCarZ(i));
+                }
+            }
             if (d > limit) {
                 jumpCount++;
                 if (d > jumpWorst) jumpWorst = d;

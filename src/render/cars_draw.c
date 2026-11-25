@@ -181,12 +181,18 @@ static void DrawSlotCars(void) {
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
         Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
         // by level, like the movers: above the view hidden; below it darker, hidden under a deck or ground
-        int lvl = (int)floorf(SlotCarZ(i) + 0.5f);
+        float z = SlotCarZ(i);
+        int lvl = (int)floorf(z + 0.5f);
         if (lvl > currentViewZ) continue;
-        if (lvl < currentViewZ) {
-            // (cars are drawn after the world: a deck at the viewed level itself covers them too)
-            if (!IsCellVisibleFromAbove((int)(x / CELL_SIZE), (int)(y / CELL_SIZE), lvl + 1, currentViewZ + 1)) continue;
-            float k = powf(0.6f, (float)(currentViewZ - lvl));
+        float below = (float)currentViewZ - z;   // levels under the view
+        if (below > 0.02f) {
+            // (cars are drawn after the world: a deck at the viewed level itself covers them too).
+            // Partway up a ramp toward the view: always drawn - the deck cells round its higher part
+            // hid it in patches (cars blinked out and back on the slip roads: looked like jumps)
+            bool ramp = fabsf(z - roundf(z)) > 0.02f;
+            if (!(ramp && below < 1.0f) &&
+                !IsCellVisibleFromAbove((int)(x / CELL_SIZE), (int)(y / CELL_SIZE), (int)floorf(z + 0.02f) + 1, currentViewZ + 1)) continue;
+            float k = powf(0.6f, below);   // (darker the lower, smoothly along a ramp)
             col = (Color){(unsigned char)(col.r * k), (unsigned char)(col.g * k), (unsigned char)(col.b * k), col.a};
         }
         bool driven = SlotCarDriven(i);   // a mover is driving it: its head on the seat
