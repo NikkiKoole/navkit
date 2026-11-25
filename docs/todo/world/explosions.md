@@ -198,16 +198,26 @@ Brainstorm with the user; these three were picked to go first, in this order.
   `test_explosion` (`explosion_water`).
 - Not done: steam from a blast in water, a wave or ripple.
 
-### Slice 7: landslides (loose soil slides)
+### Built: slice 7, landslides (2026-11-25)
 
-- Loose material (sand, gravel, dirt: decide per material) with a drop beside it slides down a
-  level when it's disturbed: a blast nearby, mining next to it, a collapse landing, rain.
-- Only disturbed cells are looked at (like structural support's changed-cell list), so fresh
-  worlds never slide by themselves at generation. Rock never slides.
-- A slid cell lands as the same wall material one level down (like a collapse), pushing and
-  dazing whoever is there; it can disturb the cells beside it, so one slide can start a few
-  more but dies down.
-- Effects: dust where it slides and where it lands.
+In `src/world/support.c` (bottom, "Landslides"; ticks from `SupportTick`), setting `landslides`
+(on, World/Explosions).
+
+- Loose ground: natural dirt, sand, gravel, peat, mud (not clay, not rock, nothing built). It
+  slides when its top is open and a side has a drop of 2+ levels (open, no floor): it goes over
+  the deepest side and down to what stops it, landing as the same natural wall (bare: grass
+  churned off). Whoever it lands on is pushed aside and dazed (like a collapse); whoever stood
+  on it is knocked down with it; items on it drop.
+- Only shaken cells are looked at, 0.15-0.75 s after the shake: a blast shakes every cell within
+  power + 1 of it, a collapse landing the cells around it, a slide the cells around where it
+  left and landed, each by a coin toss (so a slide sets off a few more and dies down instead of
+  unzipping a cliff). Digging by hand and standing slopes in fresh worlds never slide.
+- Dust where it leaves and lands, a small screen shake.
+- Scenario `landslide` (in scenarios-check): a charge on a 4-high dirt hill 2 cells from its sheer
+  edge: 11 cells slide off and land at the foot, the mover there is pushed aside; the same on
+  granite holds. Tests in `test_support` (`landslides`).
+- Not done: rain or water setting slides off (soaked soil), a slope angle per material (sand
+  slides at one level, dirt at two), slides into water.
 
 ### Slice 8: craters and rubble
 

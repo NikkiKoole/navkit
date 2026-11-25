@@ -5110,6 +5110,62 @@ static bool FloodCheck(char* why, int whyLen) {
     return true;
 }
 
+// landslide: a flat-topped dirt hill (4 levels) with a sheer west face and a sand bank by it;
+// a charge on top near the edge (2 s) shakes the face loose: dirt slides off the edge, lands at
+// the foot and sets off a bit more. A mover stands at the foot (pushed aside when dirt lands on
+// him), one on top. The granite hill further on has the same face and never slides.
+// Check: some dirt slid (not the whole face), nobody inside a wall, granite face whole, audit clean.
+static int SlideWallsAt(int x0, int x1, int y0, int y1, int z0, int z1, MaterialType m) {
+    int n = 0;
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+                if (GRID(x, y, z) == CELL_WALL && GetWallMaterial(x, y, z) == m) n++;
+    return n;
+}
+
+static void SetupLandslide(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    landslidesEnabled = true;
+    supportEnabled = true;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 4; y <= 27; y++) {
+            for (int x = 16; x <= 28; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_DIRT); SetWallNatural(x, y, z); }
+            for (int x = 36; x <= 44; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z); }
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    SpawnMoverAt(15, 16, 1);   // at the foot of the face
+    SpawnMoverAt(22, 20, 5);   // on top
+    ExplosionLightFuse(18, 16, 5, 4.0f, 2.0f);   // on top, 2 cells from the edge
+    ExplosionLightFuse(38, 16, 5, 4.0f, 2.5f);   // the same on the granite hill
+    currentViewZ = 2;
+    AddMessage("Landslide: a charge on a dirt hill near its edge (2 s), the same on a granite hill (2.5 s)", ORANGE);
+}
+
+static void LandslidePrintStats(void) {
+    printf("Landslide: explosions %d, slides %d (pending %d), dirt beyond the face %d, granite beyond its face %d\n",
+           ExplosionCount(), LandslideCount(), LandslidePendingCount(),
+           SlideWallsAt(0, 15, 0, gridHeight - 1, 1, 4, MAT_DIRT), SlideWallsAt(30, 35, 0, gridHeight - 1, 1, 4, MAT_GRANITE));
+}
+
+static bool LandslideCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions", ExplosionCount()); return false; }
+    if (SlideWallsAt(0, 15, 0, gridHeight - 1, 1, 4, MAT_DIRT) < 3) { snprintf(why, (size_t)whyLen, "hardly any dirt slid off the face"); return false; }
+    if (LandslideCount() > 150) { snprintf(why, (size_t)whyLen, "%d slides: the whole face came down", LandslideCount()); return false; }
+    if (SlideWallsAt(30, 35, 0, gridHeight - 1, 1, 4, MAT_GRANITE) > 0) { snprintf(why, (size_t)whyLen, "granite slid"); return false; }
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        int mx = (int)(movers[i].x / CELL_SIZE), my = (int)(movers[i].y / CELL_SIZE), mz = (int)movers[i].z;
+        if (CellIsSolid(GRID(mx, my, mz))) { snprintf(why, (size_t)whyLen, "mover %d is inside a wall", i); return false; }
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -5219,6 +5275,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupCollapse, CollapseTickStats, CollapsePrintStats, CollapseCheck, 48, 32},
     {"flood",      "Blasting into water: a charge opens the wall between a pond in a granite hill and a dry tunnel (the pond runs out through it); one over a field pond throws the water out over the bank",
                    NULL,        SetupFlood, FloodTickStats, FloodPrintStats, FloodCheck, 48, 32},
+    {"landslide",  "Landslides: a charge near the sheer edge of a dirt hill shakes it loose (dirt slides off and lands at its foot, by a mover); the same on a granite hill holds",
+                   NULL,        SetupLandslide, NULL, LandslidePrintStats, LandslideCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",

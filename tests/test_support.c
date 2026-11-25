@@ -158,10 +158,93 @@ describe(support_collapse) {
     }
 }
 
+// A 3-high natural block (x 10..13, y 10..13, z 1..3) of material m with a sheer drop all round
+static void Block(MaterialType m) {
+    for (int z = 1; z <= 3; z++)
+        for (int y = 10; y <= 13; y++)
+            for (int x = 10; x <= 13; x++) { Wall(x, y, z, m); SetWallNatural(x, y, z); }
+}
+
+static int WallsOutside(int z0, int z1) {
+    int n = 0;
+    for (int z = z0; z <= z1; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                if ((x < 10 || x > 13 || y < 10 || y > 13) && GRID(x, y, z) == CELL_WALL) n++;
+    return n;
+}
+
+describe(landslides) {
+    it("slides a shaken dirt edge off and lands it at the foot") {
+        FlatWorld();
+        landslidesEnabled = true;
+        Block(MAT_DIRT);
+        LandslideDisturb(10, 11, 3);
+        expect(LandslidePendingCount() == 1);
+        Run(1.5f);
+        expect(GRID(10, 11, 3) == CELL_AIR);
+        expect(GRID(9, 11, 1) == CELL_WALL && GetWallMaterial(9, 11, 1) == MAT_DIRT);
+        expect(LandslideCount() >= 1);
+    }
+
+    it("leaves what nobody shook, rock, built walls and covered soil alone") {
+        FlatWorld();
+        landslidesEnabled = true;
+        Block(MAT_DIRT);
+        Run(2.0f);
+        expect(WallsOutside(1, 3) == 0);
+        LandslideDisturb(10, 11, 2);   // dirt on top of it: held
+        LandslideDisturb(11, 11, 3);   // no drop beside it
+        expect(LandslidePendingCount() == 0);
+        FlatWorld();
+        Block(MAT_GRANITE);
+        LandslideDisturbAround(10, 11, 3, 2);
+        expect(LandslidePendingCount() == 0);
+        FlatWorld();
+        Block(MAT_DIRT);
+        for (int z = 1; z <= 3; z++) for (int y = 10; y <= 13; y++) for (int x = 10; x <= 13; x++) ClearWallNatural(x, y, z);
+        LandslideDisturbAround(10, 11, 3, 2);
+        expect(LandslidePendingCount() == 0);
+    }
+
+    it("isn't set off by digging by hand") {
+        FlatWorld();
+        landslidesEnabled = true;
+        Block(MAT_DIRT);
+        CompleteMineDesignation(10, 11, 1);
+        Run(2.0f);
+        expect(LandslideCount() == 0);
+    }
+
+    it("is set off by a blast on top, and the slide dies down") {
+        FlatWorld();
+        landslidesEnabled = true;
+        for (int z = 1; z <= 3; z++)
+            for (int y = 2; y <= 21; y++)
+                for (int x = 10; x <= 16; x++) { Wall(x, y, z, MAT_SAND); SetWallNatural(x, y, z); }
+        Explode(12, 11, 4, 3.0f);
+        Run(6.0f);
+        expect(LandslideCount() > 0);
+        expect(LandslideCount() < 60);
+        expect(LandslidePendingCount() == 0);
+    }
+
+    it("does nothing when switched off") {
+        FlatWorld();
+        landslidesEnabled = false;
+        Block(MAT_DIRT);
+        LandslideDisturbAround(10, 11, 3, 2);
+        Run(2.0f);
+        expect(LandslideCount() == 0);
+        landslidesEnabled = true;
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(support_grounded);
     test(support_collapse);
+    test(landslides);
     return summary();
 }

@@ -153,7 +153,11 @@ static void RebuildPendingSet(void) {
         for (int i = 0; i < pending[p].n; i++) SetAdd(&pendingSet, pending[p].cells[i]);
 }
 
+static int slideCount, landslidesTotal;
+
 void ClearSupport(void) {
+    slideCount = 0;
+    landslidesTotal = 0;
     for (int p = 0; p < pendingCount; p++) free(pending[p].cells);
     pendingCount = 0;
     queueCount = 0;
@@ -404,6 +408,11 @@ static void Fall(int* cells, int n, bool quiet) {
         if (z + 1 < gridDepth) DropItemsInCell(x, y, z + 1);
         DropItemsInCell(x, y, z);
     }
+    for (int i = 0; i < landedN && !quiet; i++) {   // the thud shakes loose ground around it
+        int x, y, z;
+        Unkey(landed[i], &x, &y, &z);
+        LandslideDisturbAround(x, y, z, 1);
+    }
     for (int i = 0; i < landedN && !quiet; i += 2) {   // dust where it landed (looks only)
         int x, y, z;
         Unkey(landed[i], &x, &y, &z);
@@ -480,7 +489,10 @@ static void Resolve(int pi) {
     free(cells);
 }
 
+static void LandslideTick(float dt);
+
 void SupportTick(float dt) {
+    LandslideTick(dt);
     if (!supportEnabled) { queueCount = 0; return; }
     for (int p = 0; p < pendingCount; ) {
         pending[p].t -= dt;
@@ -530,4 +542,145 @@ int SupportSettleWorld(void) {
     free(list);
     queueCount = 0;   // what the settling noted is done
     return n;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Landslides: loose ground (natural soil: dirt, sand, gravel, peat, mud; not clay or rock) with
+// its top open and a drop of two levels or more beside it slides down that side when something
+// shakes it (a blast, a collapse landing, a slide landing next to it). Only shaken cells are
+// looked at, so standing slopes in a fresh world never move by themselves, and digging by hand
+// doesn't set them off.
+
+bool landslidesEnabled = true;   // setting landslides
+
+#define MAX_SLIDES 4096
+typedef struct { int x, y, z; float t; } Slide;
+static Slide slides[MAX_SLIDES];
+
+int LandslideCount(void) { return landslidesTotal; }
+int LandslidePendingCount(void) { return slideCount; }
+
+static bool IsLoose(int x, int y, int z) {
+    if (GRID(x, y, z) != CELL_WALL || !IsWallNatural(x, y, z)) return false;
+    MaterialType m = GetWallMaterial(x, y, z);
+    return m == MAT_DIRT || m == MAT_SAND || m == MAT_GRAVEL || m == MAT_PEAT || m == MAT_MUD;
+}
+
+// The side it would slide to (the deepest drop; -1: none)
+static int SlideDir(int x, int y, int z) {
+    static const int d4[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+    if (z < 1 || !SupInBounds(x, y, z) || !IsLoose(x, y, z)) return -1;
+    if (z + 1 < gridDepth && CellIsSolid(GRID(x, y, z + 1))) return -1;   // something on top holds it
+    int best = -1, bestDrop = 1;
+    int start = (int)(((unsigned)(x * 73856093u ^ y * 19349663u ^ z * 83492791u)) % 4u);
+    for (int j = 0; j < 4; j++) {
+        int k = (start + j) % 4;
+        int nx = x + d4[k][0], ny = y + d4[k][1];
+        if (!SupInBounds(nx, ny, z)) continue;
+        if (GRID(nx, ny, z) != CELL_AIR || HAS_FLOOR(nx, ny, z)) continue;
+        int drop = 0;
+        for (int lz = z - 1; lz >= 0 && GRID(nx, ny, lz) == CELL_AIR; lz--) {
+            drop++;
+            if (HAS_FLOOR(nx, ny, lz)) break;
+        }
+        if (drop > bestDrop) { bestDrop = drop; best = k; }
+    }
+    return best;
+}
+
+void LandslideDisturb(int x, int y, int z) {
+    if (!landslidesEnabled || slideCount >= MAX_SLIDES || SlideDir(x, y, z) < 0) return;
+    for (int i = 0; i < slideCount; i++)
+        if (slides[i].x == x && slides[i].y == y && slides[i].z == z) return;
+    unsigned h = (unsigned)(x * 2654435761u) ^ (unsigned)(y * 40503u) ^ (unsigned)(z * 9973u) ^ (unsigned)landslidesTotal;
+    h ^= h >> 13;
+    slides[slideCount++] = (Slide){ x, y, z, 0.15f + (float)(h % 1000u) / 1000.0f * 0.6f };
+}
+
+void LandslideDisturbAround(int x, int y, int z, int r) {
+    if (!landslidesEnabled) return;
+    for (int dz = -r; dz <= r; dz++)
+        for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++) LandslideDisturb(x + dx, y + dy, z + dz);
+}
+
+static void DoSlide(int x, int y, int z, int k) {
+    static const int d4[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+    int nx = x + d4[k][0], ny = y + d4[k][1];
+    MaterialType mat = GetWallMaterial(x, y, z);
+    ItemType source = GetWallSourceItem(x, y, z);
+    // Out of its place
+    GRID(x, y, z) = CELL_AIR;
+    SetWallMaterial(x, y, z, MAT_NONE);
+    ClearWallNatural(x, y, z);
+    SetWallFinish(x, y, z, FINISH_ROUGH);
+    SetWallSourceItem(x, y, z, ITEM_NONE);
+    SetVegetation(x, y, z, VEG_NONE);
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+        DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+        DESIGNATION_MUT(x, y, z).assignedMover = -1;
+        DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    }
+    MarkChunkDirty(x, y, z);
+    DestabilizeWater(x, y, z);
+    // Over the edge and down to what stops it
+    int lz = z;
+    while (lz > 0 && GRID(nx, ny, lz - 1) == CELL_AIR && !HAS_FLOOR(nx, ny, lz)) lz--;
+    GRID(nx, ny, lz) = CELL_WALL;
+    SetWallMaterial(nx, ny, lz, mat);
+    SetWallNatural(nx, ny, lz);
+    SetWallFinish(nx, ny, lz, FINISH_ROUGH);
+    SetWallSourceItem(nx, ny, lz, source);
+    SetVegetation(nx, ny, lz, VEG_NONE);   // churned up: bare
+    CLEAR_FLOOR(nx, ny, lz);
+    SetWaterLevel(nx, ny, lz, 0);
+    MarkChunkDirty(nx, ny, lz);
+    DestabilizeWater(nx, ny, lz);
+    PushItemsOutOfCell(nx, ny, lz);
+    // Who was on it or under it
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE), mz = (int)m->z;
+        if (mx == nx && my == ny && mz == lz) Unbury(i);
+        else if (mx == x && my == y && mz == z + 1)
+            ExplosionKnockMover(i, x + 0.5f - d4[k][0], y + 0.5f - d4[k][1], 2.0f);   // rides it down
+    }
+    if (z + 1 < gridDepth) DropItemsInCell(x, y, z + 1);
+    DropItemsInCell(x, y, z);
+    ValidateAndCleanupRamps(x - 1, y - 1, lz - 1, nx + 1, ny + 1, z + 1);
+    FxDust((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, mat, 2, CELL_SIZE * 0.4f);
+    if (lz + 1 < gridDepth) FxDust((nx + 0.5f) * CELL_SIZE, (ny + 0.5f) * CELL_SIZE, lz + 1, mat, 2, CELL_SIZE * 0.4f);
+    landslidesTotal++;
+    // What it left and where it landed may slide on: each cell around by a coin toss, so a
+    // slide sets off a few more and dies down instead of unzipping a whole cliff
+    for (int dz = -1; dz <= 1; dz++)
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+                unsigned h = (unsigned)((x + dx) * 73856093u) ^ (unsigned)((y + dy) * 19349663u) ^ (unsigned)((z + dz) * 83492791u) ^ (unsigned)(landslidesTotal * 2654435761u);
+                h ^= h >> 15;
+                if (h & 1u) LandslideDisturb(x + dx, y + dy, z + dz);
+                if (h & 2u) LandslideDisturb(nx + dx, ny + dy, lz + dz);
+            }
+}
+
+static void LandslideTick(float dt) {
+    if (slideCount == 0) return;
+    if (!landslidesEnabled) { slideCount = 0; return; }
+    bool any = false;
+    for (int i = 0; i < slideCount; ) {
+        slides[i].t -= dt;
+        if (slides[i].t > 0.0f) { i++; continue; }
+        Slide s = slides[i];
+        slides[i] = slides[--slideCount];
+        int k = SlideDir(s.x, s.y, s.z);
+        if (k >= 0) { DoSlide(s.x, s.y, s.z, k); any = true; }
+    }
+    if (any) {
+        InvalidateRooms();
+        RebuildStockpileFreeSlotCounts();
+        InvalidateDesignationCache(DESIGNATION_MINE);
+        TriggerScreenShake(1.5f, 0.25f);
+    }
 }

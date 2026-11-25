@@ -32,4 +32,14 @@ int SupportCountUnsupported(void);             // whole-world scan (tests, scena
 // generators leave the odd floating lump). Returns the cells that were hanging.
 int SupportSettleWorld(void);
 
+// Landslides: loose natural soil (dirt, sand, gravel, peat, mud) with its top open and a drop of
+// two levels or more beside it slides down that side a moment after something shakes it (a
+// blast, a collapse or another slide landing near it). It lands as the same wall one level or
+// more down; whoever is there is pushed aside and dazed. Only shaken cells are looked at.
+extern bool landslidesEnabled;                  // setting landslides
+void LandslideDisturb(int x, int y, int z);     // shaken: slides in a moment if it can
+void LandslideDisturbAround(int x, int y, int z, int r);   // every cell within r (a cube)
+int LandslideCount(void);                       // cells slid since the last ClearSupport
+int LandslidePendingCount(void);
+
 #endif

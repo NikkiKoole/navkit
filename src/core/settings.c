@@ -268,6 +268,8 @@ static const Setting settings[] = {
       "Walls, rock and floors that lose their connection to the ground fall after a warning: each wall drops straight down and lands as a wall, floors break into rubble, whoever is under is pushed aside and dazed."),
     SET_FLOAT("collapseWarning", "Collapse warning (s)", "World/Explosions", collapseWarning, 0.1f, 0.0f, 30.0f,
       "Game seconds between an unsupported piece creaking (dust trickles from its underside) and its fall. Propped up in time it holds.", NULL),
+    SET_BOOL("landslides", "Landslides", "World/Explosions", landslidesEnabled,
+      "Loose soil (dirt, sand, gravel, peat, mud) with a drop of two levels or more beside it slides down when a blast or a collapse shakes it, and can set off more."),
     SET_FLOAT("blastPower", "Blast charge power", "World/Explosions", blastPower, 0.1f, 1.0f, 12.0f,
       "Power of one gunpowder charge set by blast mining (cells of reach in open air). A wall soaks its strength: granite 4, soil 2. At 5 a charge in granite takes out its cell and the 6 around it.", NULL),
     SET_FLOAT("blastFuse", "Blast fuse (s)", "World/Explosions", blastFuse, 0.1f, 1.0f, 30.0f,

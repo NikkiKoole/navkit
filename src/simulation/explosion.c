@@ -528,6 +528,15 @@ ExplosionResult Explode(int x, int y, int z, float power) {
                 }
             }
 
+    // 7. The shake: loose ground within reach (and a cell further) slides where it has a drop
+    if (landslidesEnabled)
+        for (int cz = z0; cz <= z1; cz++)
+            for (int cy = y0; cy <= y1; cy++)
+                for (int cx = x0; cx <= x1; cx++) {
+                    float ddx = (float)(cx - x), ddy = (float)(cy - y), ddz = (float)(cz - z);
+                    if (ddx * ddx + ddy * ddy + ddz * ddz <= (power + 1.0f) * (power + 1.0f)) LandslideDisturb(cx, cy, cz);
+                }
+
     #undef BIDX
     free(best);
     free(breakCell);
