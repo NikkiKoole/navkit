@@ -64,6 +64,7 @@ typedef enum {
     ACTION_DRAW_TRACK,      // Place/remove train tracks
     ACTION_DRAW_TRAIN,      // Place/remove trains on tracks
     ACTION_DRAW_PLATFORM,   // Place/remove platforms next to tracks
+    ACTION_DRAW_ROAD,       // cars experiment: draw / remove roads of the road plan (curves, junctions where they meet)
     // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,
@@ -158,6 +159,11 @@ extern bool brushStrokeActive;     // True during continuous drag
 
 // Drag state
 extern bool isDragging;
+// Road tool (ACTION_DRAW_ROAD, cars experiment): 0 nothing yet, 1 start placed, 2 end pressed
+// (dragging bends the road); the start / end (cells), the road class it draws (RdClass)
+extern int roadToolStage;
+extern float roadToolX1, roadToolY1, roadToolX2, roadToolY2;
+extern int roadToolClass;
 extern int dragStartX;
 extern int dragStartY;
 extern int dragStartZ;

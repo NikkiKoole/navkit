@@ -3,6 +3,8 @@
 #include "../entities/roads.h"
 #include "../entities/traffic.h"
 #include "../entities/slots.h"
+#include "../entities/road_plan.h"
+#include "../core/input_mode.h"
 #include "../entities/mover.h"
 #include "../game_state.h"
 #include "../../assets/atlas.h"
@@ -315,4 +317,47 @@ void CarsFollowCamera(float frameTime) {
     offset.x += (targetX - offset.x) * t;
     offset.y += (targetY - offset.y) * t;
     if (carCount >= 1 && slotCarCount == 0) currentViewZ = cars[0].z;
+}
+
+// ---------------------------------------------------------------------------
+// The road tool's preview (ACTION_DRAW_ROAD, input.c HandleRoadTool): the plan's junctions, the
+// snap point under the mouse, the road being drawn (green: fine; orange: it breaks a rule - the
+// first problem written by the mouse)
+// ---------------------------------------------------------------------------
+void DrawRoadToolPreview(void) {
+    if (inputAction != ACTION_DRAW_ROAD || frontViewMode) return;
+    float CS = CELL_SIZE;
+    for (int n = 0; n < rpNodeCount; n++) {
+        if (!rpNodes[n].alive) continue;
+        Vector2 p = CarScreen(rpNodes[n].x * CS, rpNodes[n].y * CS);
+        DrawCircleV(p, fmaxf(2.0f, 1.2f * CS * zoom), rpNodes[n].roundabout ? (Color){255, 200, 60, 160} : (Color){255, 255, 255, 110});
+    }
+    Vector2 ms = GetMousePosition(), m = ScreenToGrid(ms);
+    float sx = m.x, sy = m.y;
+    RoadPlanSnap(&sx, &sy, IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT));
+    DrawCircleV(CarScreen(sx * CS, sy * CS), fmaxf(3.0f, 1.6f * CS * zoom), (Color){120, 220, 255, 200});
+    if (roadToolStage == 0) return;
+    // the road: start to the snap point, or (end pressed) to the end, bent through the mouse
+    float x1 = roadToolX1, y1 = roadToolY1, x2 = sx, y2 = sy, cx, cy;
+    bool curved = false;
+    if (roadToolStage == 2) {
+        x2 = roadToolX2; y2 = roadToolY2;
+        curved = hypotf(m.x - x2, m.y - y2) > 2.0f;
+    }
+    cx = curved ? 2.0f * m.x - 0.5f * (x1 + x2) : (x1 + x2) * 0.5f;
+    cy = curved ? 2.0f * m.y - 0.5f * (y1 + y2) : (y1 + y2) * 0.5f;
+    if (hypotf(x2 - x1, y2 - y1) < 2.0f) return;
+    char why[128];
+    int problems = RoadPlanTry(x1, y1, x2, y2, curved, cx, cy, roadToolClass, why, sizeof(why));
+    Color col = problems ? (Color){255, 150, 40, 170} : (Color){90, 230, 120, 170};
+    float w = (roadToolClass == RD_CLS_HIGHWAY ? 2.0f : 1.0f) * RD_ROAD_WIDTH * CS * zoom;
+    Vector2 prev = CarScreen(x1 * CS, y1 * CS);
+    for (int i = 1; i <= 40; i++) {
+        float t = i / 40.0f, u = 1 - t;
+        float px = u * u * x1 + 2 * u * t * cx + t * t * x2, py = u * u * y1 + 2 * u * t * cy + t * t * y2;
+        Vector2 p = CarScreen(px * CS, py * CS);
+        DrawLineEx(prev, p, fmaxf(2.0f, w), col);
+        prev = p;
+    }
+    if (problems) DrawText(why, (int)ms.x + 16, (int)ms.y + 12, 16, (Color){255, 170, 60, 255});
 }

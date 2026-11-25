@@ -53,6 +53,12 @@ void RoadPlanPoint(int e, float t, float* x, float* y);   // a point on road e, 
 float RoadPlanMinRadius(int cls);                          // cells: the tightest curve a class takes
 // Problems, one line each into buf (max lines); returns how many
 int RoadPlanCheck(char lines[][128], int max);
+// A point being drawn snapped: to a junction near it, onto a road near it, else (unless free)
+// to the centre of its 8-cell tile
+void RoadPlanSnap(float* x, float* y, bool free);
+// What adding this road would break (the check's problems it adds; the first into why); the
+// plan stays as it was. For a tool's preview
+int RoadPlanTry(float x1, float y1, float x2, float y2, bool curved, float cx, float cy, int cls, char* why, int whyLen);
 // The road network from the plan (RoadsClear first, roundabouts made); returns the roads made
 int RoadPlanToNetwork(void);
 // The plan from the network roads.c holds now (before roundabouts are made: they're a flag here)

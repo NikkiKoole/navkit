@@ -1862,6 +1862,7 @@ int main(int argc, char** argv) {
         DrawLightSources();
         DrawTrackLines();
         DrawCarsGround();
+        DrawRoadToolPreview();
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();

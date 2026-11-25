@@ -535,6 +535,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
+        .action = ACTION_DRAW_ROAD,   // (cars experiment: the cars-city road plan; input.c HandleRoadTool)
+        .name = "ROAD",
+        .barDisplayText = "Road",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TRANSPORT,
+        .canDrag = false,
+        .canErase = true,
+        .hints = { "L-click start, L-click end", "drag 2nd click: bend", "R-click: remove / cancel", "Shift: no snapping" },
+    },
+    {
         .action = ACTION_WORK_HARVEST_BERRY,
         .name = "HARVEST BERRY",
         .barDisplayText = "harvest Berry",

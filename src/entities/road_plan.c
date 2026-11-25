@@ -290,6 +290,46 @@ int RoadPlanCheck(char lines[][128], int max) {
     return k;
 }
 
+// Snap a point being drawn: to a junction near it, else onto a road near it, else (unless free)
+// to the 8-cell grid's tile centres (where the tile town's roads run)
+void RoadPlanSnap(float* x, float* y, bool free) {
+    int n = RoadPlanNearestNode(*x, *y, 4.0f);
+    if (n >= 0) { *x = rpNodes[n].x; *y = rpNodes[n].y; return; }
+    float t;
+    int e = RoadPlanNearestEdge(*x, *y, 3.0f, &t);
+    if (e >= 0) { RoadPlanPoint(e, t, x, y); return; }
+    if (free) return;
+    *x = floorf(*x / 8.0f) * 8.0f + 4.0f;
+    *y = floorf(*y / 8.0f) * 8.0f + 4.0f;
+}
+
+// What adding this road would break: the check's new problems (after minus before), the first
+// one into why; the plan is left as it was
+int RoadPlanTry(float x1, float y1, float x2, float y2, bool curved, float cx, float cy, int cls, char* why, int whyLen) {
+    static RpNode saveN[RP_MAX_NODES];
+    static RpEdge saveE[RP_MAX_EDGES];
+    static char before[32][128], after[32][128];
+    int nn = rpNodeCount, ne = rpEdgeCount;
+    memcpy(saveN, rpNodes, sizeof(RpNode) * (size_t)nn);
+    memcpy(saveE, rpEdges, sizeof(RpEdge) * (size_t)ne);
+    int b = RoadPlanCheck(before, 32);
+    RoadPlanAdd(x1, y1, x2, y2, curved, cx, cy, cls);
+    int a = RoadPlanCheck(after, 32);
+    int fresh = 0;
+    if (why && whyLen > 0) why[0] = 0;
+    for (int i = 0; i < a; i++) {   // (problems not there before)
+        bool old = false;
+        for (int j = 0; j < b && !old; j++) if (strcmp(after[i], before[j]) == 0) old = true;
+        if (old) continue;
+        if (fresh == 0 && why) snprintf(why, (size_t)whyLen, "%s", after[i]);
+        fresh++;
+    }
+    memcpy(rpNodes, saveN, sizeof(RpNode) * (size_t)nn);
+    memcpy(rpEdges, saveE, sizeof(RpEdge) * (size_t)ne);
+    rpNodeCount = nn; rpEdgeCount = ne;
+    return fresh;
+}
+
 int RoadPlanToNetwork(void) {
     RoadsClear();
     static int map[RP_MAX_NODES];

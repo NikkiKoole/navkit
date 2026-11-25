@@ -13,6 +13,9 @@
 #include "../simulation/plants.h"
 #include "../simulation/farming.h"
 #include "input_mode.h"
+#include "../entities/road_plan.h"
+#include "../entities/roads.h"
+#include "scenarios.h"
 #include "action_registry.h"
 #include "pie_menu.h"
 #include "selection.h"
@@ -2401,7 +2404,17 @@ static void OptTreeSet(int ctx, int i) {
 static const ActionOption optTree = { .label = "Tree", .style = OPT_CYCLE,
     .count = OptTreeCount, .nameAt = OptTreeName, .get = OptTreeGet, .set = OptTreeSet, .cycleKey = KEY_T };
 
+// Road tool class, keys 1-4 (RdClass order)
+static const char* const roadToolClassNames[] = { "Lane", "Street", "Arterial", "Highway" };
+static int OptRoadCount(int ctx) { (void)ctx; return 4; }
+static const char* OptRoadName(int ctx, int i) { (void)ctx; return roadToolClassNames[i]; }
+static int OptRoadGet(int ctx) { (void)ctx; return roadToolClass; }
+static void OptRoadSet(int ctx, int i) { (void)ctx; roadToolClass = i; AddMessage(TextFormat("Road: %s", roadToolClassNames[i]), GREEN); }
+static const ActionOption optRoad = { .label = "Class", .style = OPT_NUMBERED,
+    .count = OptRoadCount, .nameAt = OptRoadName, .get = OptRoadGet, .set = OptRoadSet };
+
 static const ActionOption* const actionOptions[] = {
+    [ACTION_DRAW_ROAD]       = &optRoad,
     [ACTION_DRAW_WALL]       = &optMaterial,
     [ACTION_DRAW_FLOOR]      = &optMaterial,
     [ACTION_DRAW_RAMP]       = &optRamp,
@@ -2462,6 +2475,54 @@ static bool CheckKey(int key) {
         return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Road tool (cars experiment): draw roads of the cars-city road plan (road_plan.h) - click a
+// start, click an end (press and drag the end to bend the road: the curve's middle follows the
+// mouse), the next road starts where this one ended; right-click: cancel, or remove the road
+// under the mouse. Points snap to junctions, roads, else the 8-cell grid (Shift: no grid).
+// Each edit rebuilds the city from the plan (CityRebuildFromPlan: cars placed again).
+// ---------------------------------------------------------------------------
+int roadToolStage = 0;
+float roadToolX1, roadToolY1, roadToolX2, roadToolY2;
+int roadToolClass = 1;   // (RD_CLS_STREET)
+
+static void RoadToolApply(const char* what) {
+    char lines[8][128];
+    int n = RoadPlanCheck(lines, 8);
+    CityRebuildFromPlan();
+    if (n == 0) AddMessage(TextFormat("%s (%d roads)", what, RoadPlanRoads()), GREEN);
+    else AddMessage(TextFormat("%s - %d problem%s: %s", what, n, n == 1 ? "" : "s", lines[0]), ORANGE);
+}
+
+static void HandleRoadTool(void) {
+    if (rdNodeCount == 0 && RoadPlanRoads() == 0) {   // (not in the cars city: nothing to edit)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) AddMessage("Road tool: start the cars-city scenario first", ORANGE);
+        return;
+    }
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    Vector2 m = ScreenToGrid(GetMousePosition());
+    float sx = m.x, sy = m.y;
+    RoadPlanSnap(&sx, &sy, shift);
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        if (roadToolStage > 0) { roadToolStage = 0; return; }
+        if (RoadPlanRemoveAt(m.x, m.y, 4.0f)) RoadToolApply("Road removed");
+        return;
+    }
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (roadToolStage == 0) { roadToolX1 = sx; roadToolY1 = sy; roadToolStage = 1; }
+        else if (roadToolStage == 1 && hypotf(sx - roadToolX1, sy - roadToolY1) >= 2.0f) { roadToolX2 = sx; roadToolY2 = sy; roadToolStage = 2; }
+        return;
+    }
+    if (roadToolStage == 2 && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        // dragged away from the end: a curve whose middle is at the mouse (B(0.5) = P0/4 + C/2 + P1/4)
+        bool curved = hypotf(m.x - roadToolX2, m.y - roadToolY2) > 2.0f;
+        float cx = 2.0f * m.x - 0.5f * (roadToolX1 + roadToolX2), cy = 2.0f * m.y - 0.5f * (roadToolY1 + roadToolY2);
+        int pieces = RoadPlanAdd(roadToolX1, roadToolY1, roadToolX2, roadToolY2, curved, cx, cy, roadToolClass);
+        roadToolX1 = roadToolX2; roadToolY1 = roadToolY2; roadToolStage = 1;   // (the next road from here)
+        if (pieces > 0) RoadToolApply("Road placed");
+    }
 }
 
 void HandleInput(void) {
@@ -2899,6 +2960,7 @@ void HandleInput(void) {
     // Handle before ui_wants_mouse check since bar buttons trigger pending keys
     // ========================================================================
     
+    if (inputAction == ACTION_DRAW_ROAD && roadToolStage > 0 && CheckKey(KEY_ESCAPE)) { roadToolStage = 0; return; }
     if (CheckKey(KEY_ESCAPE)) {
         if (showQuitConfirm) {
             // Second ESC while quit confirm shown = quit
@@ -3143,7 +3205,8 @@ void HandleInput(void) {
     
     // Skip grid interactions if UI wants mouse
     if (ui_wants_mouse()) return;
-    
+    if (inputAction == ACTION_DRAW_ROAD && !frontViewMode) { HandleRoadTool(); return; }   // (its own clicks: no drag rectangle)
+
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     
     // Start drag

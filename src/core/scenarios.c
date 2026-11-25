@@ -3555,8 +3555,11 @@ static void BuildPlanTown(void) {
 // Rebuild the city from the road plan (after an edit): the scenario again on layout 4 - the
 // ground, pavements, crossings, slots; every car placed again, the pedestrians too
 void CityRebuildFromPlan(void) {
+    Vector2 keepOffset = offset;
+    float keepZoom = zoom;
     carCityLayout = 4;
     RunScenario("cars-city");
+    offset = keepOffset; zoom = keepZoom;   // (the scenario centres the camera: stay where we were)
 }
 
 static void BuildDutch(void) {

@@ -168,5 +168,6 @@ const char* DriveStateName(int state);
 void CarsPrintStats(void);
 void DrawCars(void);   // render/cars_draw.c
 void DrawCarsGround(void);   // render/cars_draw.c: road markings (crossings), before the movers
+void DrawRoadToolPreview(void);   // render/cars_draw.c: the road tool (ACTION_DRAW_ROAD): the road being drawn, snap point, junctions
 
 #endif
