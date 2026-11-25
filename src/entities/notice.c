@@ -334,8 +334,10 @@ bool NoticePassSteer(int i, float hx, float hy, float* sideX, float* sideY, floa
         float ahead = dx * hx + dy * hy;
         if (ahead <= 0.0f || ahead > radius) continue;
         float lateral = dx * rx + dy * ry;                       // > 0: on my right
-        if (fabsf(lateral) > PASS_LANE_HALF * CELL_SIZE) continue;
-        float w = 1.0f - ahead / radius;
+        float space = PersonalSpaceScale(i, j);                  // friends pass close
+        if (space > 1.0f) space = 1.0f;   // (not wider for strangers: a stronger drift pushes through one-way doors)
+        if (fabsf(lateral) > PASS_LANE_HALF * space * CELL_SIZE) continue;
+        float w = (1.0f - ahead / radius) * space;
         float side = lateral > PASS_CENTRED * CELL_SIZE ? -1.0f : 1.0f;   // away from them, else right
         sx += side * rx * w;
         sy += side * ry * w;

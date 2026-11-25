@@ -71,6 +71,17 @@ float RelationFamiliarity(int a, int b) {
 
 static float Clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+bool personalSpace = true;
+
+float PersonalSpaceScale(int a, int b) {
+    if (!personalSpace || a < 0 || b < 0) return 1.0f;
+    float like = 0.5f * (RelationLike(a, b) + RelationLike(b, a));
+    float fam = 0.5f * (RelationFamiliarity(a, b) + RelationFamiliarity(b, a));
+    float s = 1.0f - like * 0.012f;                       // like +25: 0.7, -25: 1.3
+    if (fam < 20.0f) s += 0.25f * (1.0f - fam / 20.0f);   // strangers keep a little more
+    return Clampf(s, 0.6f, 1.5f);
+}
+
 void RelationAdd(int a, int b, float like, float familiarity) {
     Relation* r = FindOrAdd(a, b);
     if (!r) return;

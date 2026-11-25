@@ -42,6 +42,7 @@ Entities/Movers/Walls for doorways).
 | Pack hunt | 4 hunters on 1 runner: the nearest drives, one cuts it off where it's going, two flank; the runner flees from all of them (not past one), tires | `packTactics`, `packSpeed` | `pack-hunt` | catch in 9.3 s vs 15.4 s all-straight (38.5 s at equal speed) |
 | Sight | `CanSeeCell`: walls block, railings (half height) and windows don't; noticing, gatherings, hide and seek use it (walking straight stays `HasLineOfSight`) | | `pack-hunt` (railings) | |
 | Cover | a crouching mover (a hider in its spot) behind low cover is out of sight from the far side: railings, bushes (from every side), tables, desks, sofas, tills, baths, fridges; within 2 cells you look over it. Hiders pick spots behind cover, the seeker goes to look behind it; drawn smaller and darker | `cover` | `cover` | found after 8.8 s vs 6.6 s (12 players: 11.8 vs 5.5) |
+| Personal space | how close two stand and pass by how they feel (`PersonalSpaceScale`, relations.c): friends 0.6-0.7x, known 1x, strangers 1.25x, disliked up to 1.5x; talk circles, walking side by side, polite passing (friends pass closer; never a wider berth than normal: that pushed walkers through one-way doors) | `personalSpace` | `personal-space` | talking pair: friends 0.94 cells apart, strangers 1.82 (off: 1.5 both) |
 
 Game rules: `talkEnabled` on in the dollhouse only (talks cut walking throughput in the
 pathfinding scenarios); `autoGatherings` on in survival, island and dollhouse. Walks only
@@ -55,7 +56,7 @@ outdoors (`IsExposedToSky`).
   (dollhouse): hides, comes to the kitchen, follows its favourite, a gathering source, petting
   as an interaction.
 - **Showing what a talk is about**: topic icons from real state, a heart or cloud at the end.
-- Smaller: personal space by relation, decay of unused relations, friendship pace (a talk at
+- Smaller: decay of unused relations, friendship pace (a talk at
   neutral mood is +1 like), noticing across levels (v2), cooking gatherings seen in a running game.
 - Known, not ours: on the island a mover sometimes clips a cliff-edge air cell when a
   string-pulled path cuts a corner (path smoothing).

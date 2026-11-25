@@ -41,6 +41,7 @@ static void SetupWorld(void) {
     noticeRadius = 6.0f;
     noticeEveryTicks = 1;
     gameTime = 0.0;
+    personalSpace = false;   // the distances below are the plain ones; describe(personal_space) turns it on
 }
 
 static int AddMover(int cx, int cy, int cz) {
@@ -1184,6 +1185,56 @@ describe(cover) {
     }
 }
 
+describe(personal_space) {
+    it("friends closer than someone known, strangers further, disliked furthest; off: all the same") {
+        SetupWorld();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 4, 1), f = AddMover(5, 4, 1), k = AddMover(6, 4, 1), s = AddMover(7, 4, 1), d = AddMover(8, 4, 1);
+        RelationSetPair(a, f, 50.0f, 80.0f);
+        RelationSetPair(a, k, 0.0f, 60.0f);
+        RelationSetPair(a, d, -40.0f, 60.0f);
+        float sf = PersonalSpaceScale(a, f), sk = PersonalSpaceScale(a, k), ss = PersonalSpaceScale(a, s), sd = PersonalSpaceScale(a, d);
+        expect(sf < 0.8f && sk == 1.0f && ss > 1.1f && sd > ss);
+        personalSpace = false;
+        expect(PersonalSpaceScale(a, f) == 1.0f && PersonalSpaceScale(a, d) == 1.0f);
+    }
+
+    it("a talking pair of friends stands closer than a pair of strangers") {
+        TalkSetup();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 3, 1), b = AddMover(6, 3, 1), c = AddMover(4, 8, 1), e = AddMover(6, 8, 1);
+        RelationSetPair(a, b, 50.0f, 80.0f);
+        TalkStart(a, b);
+        TalkStart(c, e);
+        const Talk* t1 = &talks[MoverTalk(a)];
+        const Talk* t2 = &talks[MoverTalk(c)];
+        float d1 = fabsf(t1->slotX[0] - t1->slotX[1]), d2 = fabsf(t2->slotX[0] - t2->slotX[1]);
+        expect(d1 < 1.2f * CELL_SIZE);          // 1.5 x 0.7
+        expect(d2 > 1.7f * CELL_SIZE);          // 1.5 x 1.25
+    }
+
+    it("passing: a stranger gets a wider berth than a friend") {
+        SetupWorld();
+        ClearRelations();
+        personalSpace = true;
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].y -= CELL_SIZE * 0.5f;
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 4);
+        Look();
+        float sx, strangerY, friendY; bool any;
+        Pass(a, 1, 0, &sx, &strangerY, &any);
+        expect(any);
+        RelationSetPair(a, b, 50.0f, 80.0f);
+        Pass(a, 1, 0, &sx, &friendY, &any);
+        expect(any);
+        expect(strangerY > friendY && friendY > 0.0f);
+        personalSpace = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1204,5 +1255,6 @@ int main(int argc, char* argv[]) {
     test(follow_the_leader);
     test(pack_hunt);
     test(cover);
+    test(personal_space);
     return summary();
 }

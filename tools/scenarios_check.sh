@@ -53,6 +53,7 @@ done <<'EOF'
 27  | 0 | --scenario follow-leader
 127 | 0 | --scenario pack-hunt
 33  | 0 | --scenario cover
+103 | 0 | --scenario personal-space
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
 0   | 0 | --scenario collapse

@@ -867,6 +867,63 @@ static void MinglePrintStats(void) {
            n ? partners / (double)n : 0.0, mgTicks && n ? 100.0 * mgInGroup / ((double)mgTicks * n) : 0.0);
 }
 
+// personal-space: 16 on a lawn, 0-7 old friends, 8-15 strangers to everyone. They wander,
+// talk and pass each other. Compare setting personalSpace on/off: how far apart talkers stand,
+// and how often two walkers come within a cell when they pass, friends vs strangers.
+enum { PS_FRIENDS, PS_KNOWN, PS_STRANGERS, PS_CLASSES };
+static double psTalkDist[PS_CLASSES];
+static long psTalkN[PS_CLASSES], psNear[PS_CLASSES], psClose[PS_CLASSES];
+
+static int PsClass(int a, int b) {
+    float like = RelationLike(a, b), fam = RelationFamiliarity(a, b);
+    if (like >= 20.0f) return PS_FRIENDS;
+    return fam < 20.0f ? PS_STRANGERS : PS_KNOWN;
+}
+
+static void SetupPersonalSpace(void) {
+    memset(psTalkDist, 0, sizeof(psTalkDist));
+    memset(psTalkN, 0, sizeof(psTalkN)); memset(psNear, 0, sizeof(psNear)); memset(psClose, 0, sizeof(psClose));
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = true;
+    walkChance = 0.0f;
+    moverWanderPause = 2.0f;
+    talkChance = 0.1f;
+    for (int i = 0; i < 16; i++) SpawnMoverAt(4 + (i % 4) * 7, 4 + (i / 4) * 7, 1);
+    for (int a = 0; a < 8; a++)
+        for (int b = a + 1; b < 8; b++) RelationSetPair(a, b, 50.0f, 80.0f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Personal space %s: friends 0-7, strangers 8-15", personalSpace ? "on" : "off"), GREEN);
+}
+
+static void PersonalSpaceTickStats(void) {
+    for (int a = 0; a < moverCount; a++) {
+        if (!movers[a].active) continue;
+        int ta = MoverTalk(a);
+        for (int b = a + 1; b < moverCount; b++) {
+            if (!movers[b].active || (int)movers[b].z != (int)movers[a].z) continue;
+            float dx = (movers[b].x - movers[a].x) / CELL_SIZE, dy = (movers[b].y - movers[a].y) / CELL_SIZE;
+            float d = sqrtf(dx * dx + dy * dy);
+            int c = PsClass(a, b);
+            if (ta >= 0 && MoverTalk(b) == ta && talks[ta].kind == TALK_CHAT && talks[ta].count == 2 &&
+                movers[a].pathIndex < 0 && movers[b].pathIndex < 0) {   // a pair, both in their spot
+                psTalkDist[c] += d; psTalkN[c]++;
+            } else if (ta < 0 && MoverTalk(b) < 0 && movers[a].pathIndex >= 0 && movers[b].pathIndex >= 0 && d < 2.5f) {
+                psNear[c]++;                   // two walkers within 2.5 cells ...
+                if (d < 1.0f) psClose[c]++;    // ... and within one
+            }
+        }
+    }
+}
+
+static void PersonalSpacePrintStats(void) {
+    static const char* names[PS_CLASSES] = {"friends", "known", "strangers"};
+    printf("Personal space: %s\n", personalSpace ? "on" : "off");
+    for (int c = 0; c < PS_CLASSES; c++)
+        printf("  %-9s talking pair %.2f cells apart (%ld ticks); passing: within 1 cell %.0f%% of the time within 2.5 (%ld ticks)\n",
+               names[c], psTalkN[c] ? psTalkDist[c] / psTalkN[c] : 0.0, psTalkN[c],
+               psNear[c] ? 100.0 * psClose[c] / psNear[c] : 0.0, psNear[c]);
+}
+
 // campfire: a ground fire burning for good and a burning barrel on a lawn, 12 wanderers: the
 // world starts gatherings round them by itself (game rule autoGatherings, talk.c).
 static long cfTicks, cfAtFire, cfAtBarrel;
@@ -4529,6 +4586,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
     {"pack-hunt",  "4 hunters on 1 runner in an arena with pillars and railings: drive, cut off, flank (setting packTactics)",
                    NULL,        SetupPackHunt, NULL, PackHuntPrintStats, PackHuntCheck, 0, 0},
+    {"personal-space", "16 on a lawn, 8 old friends and 8 strangers: how close they stand and pass (setting personalSpace)",
+                   NULL,        SetupPersonalSpace, PersonalSpaceTickStats, PersonalSpacePrintStats, NULL, 0, 0},
     {"cover",      "Hide and seek with only low cover (railings, bushes, tables): hiders crouch behind it (setting cover)",
                    NULL,        SetupCover,    CoverTickStats, CoverPrintStats, HideAndSeekCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",

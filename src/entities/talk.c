@@ -279,7 +279,12 @@ static void ArrangeSlots(int t) {
     Talk* tk = &talks[t];
     int n = tk->count;
     if (n <= 0) return;
-    float r = (n <= 2 ? TALK_SLOT_HALF : TALK_SLOT_HALF / sinf(3.14159265f / (float)n)) * CELL_SIZE;
+    float space = 0.0f;   // personal space: the members' pairs, averaged
+    int pairs = 0;
+    for (int a = 0; a < n; a++)
+        for (int b = a + 1; b < n; b++) { space += PersonalSpaceScale(tk->members[a], tk->members[b]); pairs++; }
+    space = pairs ? space / pairs : 1.0f;
+    float r = (n <= 2 ? TALK_SLOT_HALF : TALK_SLOT_HALF / sinf(3.14159265f / (float)n)) * space * CELL_SIZE;
     tk->radius = r;
     float ang[TALK_MAX_MEMBERS];
     int order[TALK_MAX_MEMBERS];
@@ -909,8 +914,10 @@ static bool WalkSlot(const Talk* tk, int k, float* tx, float* ty) {
     if (!WalkHeading(tk->members[0], &hx, &hy)) return false;
     const Mover* L = &movers[tk->members[0]];
     float rx = -hy, ry = hx;
-    float x = L->x + (hx * slotFwd[k] + rx * slotRight[k]) * CELL_SIZE;
-    float y = L->y + (hy * slotFwd[k] + ry * slotRight[k]) * CELL_SIZE;
+    float right = slotRight[k];   // beside the one on its left: as close as they're friends
+    if (right > 0.0f) right *= PersonalSpaceScale(tk->members[k], tk->members[k - 1]);
+    float x = L->x + (hx * slotFwd[k] + rx * right) * CELL_SIZE;
+    float y = L->y + (hy * slotFwd[k] + ry * right) * CELL_SIZE;
     int z = (int)L->z;
     if (!IsCellWalkableAt(z, (int)(y / CELL_SIZE), (int)(x / CELL_SIZE))) {   // single file
         const Mover* ahead = &movers[tk->members[k - 1]];
