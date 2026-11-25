@@ -8,6 +8,7 @@
 #include "../../assets/atlas.h"
 #include <math.h>
 
+#define CAB_YELLOW ((Color){250, 200, 20, 255})
 static const Color carColors[] = {
     {200, 60, 50, 255}, {60, 110, 200, 255}, {230, 190, 60, 255}, {70, 160, 90, 255},
     {180, 90, 180, 255}, {230, 130, 50, 255},
@@ -164,7 +165,7 @@ static void DrawSlotCars(void) {
         SlotCarPose(i, &x, &y, &h);
         Vector2 sc = CarScreen(x, y);
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
-        Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
         if (carPx < 3) { DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col); continue; }
         if (carPx < 8) {
             Rectangle r = {sc.x, sc.y, (L - 2) * zoom, (W - 4) * zoom};
@@ -198,7 +199,7 @@ void DrawCars(void) {
         if (!c->active || c->z != currentViewZ) continue;
         Vector2 sc = CarScreen(c->x, c->y);
         if (sc.x < -margin || sc.y < -margin || sc.x > sw + margin || sc.y > sh + margin) continue;   // off screen
-        Color col = carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
+        Color col = c->cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
         // Far out: one square / one rectangle per car (wheels and glass don't show anyway)
         if (carPx < 3) {
             DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col);

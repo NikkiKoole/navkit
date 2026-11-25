@@ -3627,6 +3627,7 @@ static void SetupCarsCity(void) {
     }
     RoadsBuild(carLatAccel);
     TrafficSetupLights(carCityLights);
+    if (carCityLights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
     RoadsCarve(1);
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
@@ -3634,17 +3635,30 @@ static void SetupCarsCity(void) {
     int placed = 0;
     if (carCitySlots) {   // the abstract slot traffic instead (slots.h)
         SlotsBuild();
-        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed);
+        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs);
         currentViewZ = 1;
         AddMessage(TextFormat("Cars city, slot traffic: %d cars on %d roads", placed, rdEdgeCount), GREEN);
         return;
     }
-    // Cars parked in random bays, leaving over the first 30 s; any left over on lanes
-    for (int tries = 0; carCityParking && tries < carCityCount * 4 && placed < carCityCount && placed < rdBayCount * 3 / 4; tries++)
-        if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
-    // (each lane fills from its start, 4-7 cells apart: no comparing every pair of cars)
+    // Cabs first, on the roads (they don't park); then cars parked in random bays, leaving
+    // over the first 30 s; any left over on lanes
+    int cabs = (int)(carCityCount * carCityCabs);
     static float laneNext[RD_MAX_SEGS];
     for (int i = 0; i < RoadLaneCount(); i++) laneNext[RoadLaneAt(i)] = 2;
+    for (int tries = 0; tries < cabs * 20 && placed < cabs; tries++) {
+        int lane = RoadLaneAt(CityRand(RoadLaneCount()));
+        float s = laneNext[lane] + CityRand(4);
+        if (s > rdSegs[lane].len / CELL_SIZE - 2) continue;
+        int c = TrafficSpawn(lane, s * CELL_SIZE, 1);
+        if (c < 0) break;
+        cars[c].cab = true;
+        NewTripForCab(c);
+        laneNext[lane] = s + 4;
+        placed++;
+    }
+    for (int tries = 0; carCityParking && tries < carCityCount * 4 && placed < carCityCount && placed - cabs < rdBayCount * 3 / 4; tries++)
+        if (TrafficSpawnParked(CityRand(rdBayCount), 0.5f + 30.0f * (CityRand(1000) / 1000.0f), 1) >= 0) placed++;
+    // (each lane fills from its start, 4-7 cells apart: no comparing every pair of cars)
     for (int tries = 0; tries < carCityCount * 20 && placed < carCityCount; tries++) {
         int lane = RoadLaneAt(CityRand(RoadLaneCount()));
         float len = rdSegs[lane].len / CELL_SIZE;

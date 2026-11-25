@@ -33,6 +33,8 @@ typedef struct {
     bool needRoute;          // waits at its lane's end for a route search
     int waitSteps;           // steps standing still (junction priority, stats)
     int noRoomSteps;         // steps refused a curve for want of room past the junction
+    bool cab;                // a yellow cab: stands a few steps at each fare
+    int stopSteps;           // cab: steps left at a fare
     int trips;
     int routeLen;
     unsigned short route[SL_MAX_ROUTE];   // RdSegId
@@ -45,7 +47,7 @@ extern float carSlotCells;               // cells per slot (setting): smaller = 
 int SlotsVmax(void);
 void SlotsClear(void);
 void SlotsBuild(void);                    // cut the network into slots (after RoadsBuild)
-int SlotsSpawn(int count, unsigned int seed);   // cars on random free lane slots; returns how many
+int SlotsSpawn(int count, unsigned int seed, float cabShare);   // cars on random free lane slots (a share of them cabs); returns how many
 void SlotsTick(float dt);
 void SlotsPrintStats(void);
 bool SlotsCheck(char* why, int whyLen);   // invariants: one car per slot, trips happen

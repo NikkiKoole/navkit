@@ -20,12 +20,16 @@ typedef enum { WHY_FREE, WHY_FOLLOW, WHY_JUNCTION, WHY_BEND } TrafficWhy;
 void TrafficReset(void);                          // junction state + stats (ClearCars calls it)
 int TrafficSpawn(int lane, float s, int z);       // a car on lane at s px; -1 if full
 int TrafficSpawnParked(int bay, float parkFor, int z);   // a car parked in a free bay; -1 if taken/full
+void NewTripForCab(int car);              // after marking a spawned car a cab: a fare instead of a bay
 void TrafficTick(float dt);                       // all road cars (CarsTick calls it)
 void TrafficClockTick(float dt);                  // only the traffic lights' clock (the slot traffic)
 // Traffic lights on every 4-way junction (opposite approaches green together; others
 // stay first come, first served). Call after RoadsBuild.
 void TrafficSetupLights(bool on);
 int TrafficLightAt(int node, int lane);   // for the lane arriving at node: -1 no light, 0 red, 1 amber, 2 green
+// Time the lights for a green wave along the most north-south road through each lit
+// junction, for cars at vCells cells/s (after TrafficSetupLights)
+void TrafficGreenWave(float vCells);
 void TrafficPrintStats(void);
 
 // Stats ("not silly" measures)

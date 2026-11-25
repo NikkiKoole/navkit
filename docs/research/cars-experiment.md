@@ -416,6 +416,19 @@ width per road, 40 curves per junction.
 Results: fully connected at 330 ... 2048 (2406 junctions); steered, 5 x 100/128 cars: 0 touches,
 0 wall contacts, 0 red runs, junction waits <= 54 s; slot traffic 250 cars: 492 trips (grid: 398).
 
+## Green waves and yellow cabs (2026-11-25)
+
+- **Green wave** (`carCityGreenWave`, on): each lit junction's offset is set so a car at 80% of
+  the limit, driving along the junction's most north-south road (south from the top, north
+  from the bottom), arrives as its light turns green. Manhattan, 128 cars, 3 seeds: 605-609
+  trips with it, 587-603 without (~+1.5%): trips are short with many turns, so the wave helps
+  little in numbers; it's for the platoons you see rolling down an avenue.
+- **Yellow cabs** (`carCityCabs`, 0.3): yellow, never park; at each fare they brake and stand in
+  the lane 3-8 s; cars behind wait (one-lane streets) or overtake (a standing cab counts as a slow
+  car). Slot mode: cabs stand 3-8 steps at each fare. 20 runs (Manhattan + grid): 0 touches,
+  0 wall contacts; in the grid city, cabs in its single lanes lengthen queues (pull-out waits up
+  to ~100 s).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

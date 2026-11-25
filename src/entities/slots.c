@@ -99,7 +99,7 @@ void SlotsBuild(void) {
     }
 }
 
-int SlotsSpawn(int count, unsigned int seed) {
+int SlotsSpawn(int count, unsigned int seed, float cabShare) {
     slRng = seed ? seed : 1;
     if (count > slCarCap) {
         slCarCap = count;
@@ -129,6 +129,7 @@ int SlotsSpawn(int count, unsigned int seed) {
         c->slot = c->prevSlot = k;
         c->destSlot = slSegN[lane] - 1;
         c->needRoute = true;   // plans when it gets to the lane's end (searches spread over steps)
+        c->cab = SlRand() < (unsigned)(cabShare * 32768);
         slSlotCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
         SlQueueRoute(slotCarCount);
@@ -308,6 +309,7 @@ static void SlRunStep(void) {
     // speeds (all from the same occupancy), then moves
     for (int i = 0; i < slotCarCount; i++) {
         SlotCar* c = &slotCars[i];
+        if (c->stopSteps > 0) { c->stopSteps--; slStepV[i] = 0; if (c->stopSteps == 0) SlQueueRoute(i); continue; }   // a cab at a fare
         int v = c->v + 1 > SL_VMAX ? SL_VMAX : c->v + 1;
         int f = SlFreeAhead(i, v);
         if (v > f) v = f;
@@ -320,7 +322,7 @@ static void SlRunStep(void) {
         c->prevSlot = c->slot;
         int v = slStepV[i];
         c->v = v;
-        if (v == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
+        if (v == 0 && c->stopSteps == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
         else c->waitSteps = 0;
         if (v > 0) {
             slSlotCar[SlIdx(c->route[c->ri], c->slot)] = -1;
@@ -335,7 +337,8 @@ static void SlRunStep(void) {
             c->trips++;
             c->needRoute = true;
             c->destSlot = slSegN[c->route[c->ri]] - 1;
-            SlQueueRoute(i);
+            if (c->cab) c->stopSteps = 3 + (int)(SlRand() % 6);   // a fare: stand a few steps, then a new trip
+            else SlQueueRoute(i);
         }
     }
 }

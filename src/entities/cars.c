@@ -41,6 +41,8 @@ float carCitySpacingX = 72.0f, carCitySpacingY = 40.0f;   // long blocks east-we
 int carCityJitter = 2;
 float carCityBends = 0.1f;
 int carCityLayout = 0;   // 0 grid, 1 Manhattan
+float carCityCabs = 0.3f;
+bool carCityGreenWave = true;
 float carCitySetback = 4.0f;   // compact junctions (with near-square angles even steered 2x2 cars fit; 7 for jittery cities)
 
 int carPlanCount = 0, carPlanExpansionsMax = 0;

@@ -152,6 +152,31 @@ static int LightState(int nd, int group, float* left) {
     return 0;
 }
 
+void TrafficGreenWave(float vCells) {
+    float v = vCells * CELL_SIZE, H = gridHeight * CELL_SIZE;
+    for (int nd = 0; nd < rdNodeCount; nd++) {
+        if (!tlOn[nd]) continue;
+        const RdNode* N = &rdNodes[nd];
+        int best = -1;
+        float bestNS = -1, south = 0;
+        for (int k = 0; k < N->nEdge; k++) {           // the arriving lane closest to north-south
+            const RdEdge* e = &rdEdges[N->edge[k]];
+            int lane = e->b == nd ? e->lane[0] : e->lane[1];
+            if (lane < 0) continue;
+            const RdSeg* L = &rdSegs[lane];
+            float dx = rdX[L->p0 + L->n - 1] - rdX[L->p0], dy = rdY[L->p0 + L->n - 1] - rdY[L->p0];
+            float ns = fabsf(dy) / (sqrtf(dx * dx + dy * dy) + 1e-3f);
+            if (ns > bestNS) { bestNS = ns; best = lane; south = dy; }
+        }
+        if (best < 0) continue;
+        float tArrive = (south > 0 ? N->y : H - N->y) / v;   // driving south: from the top
+        float greenStart = tlGroup[best] == 0 ? 0 : TL_HALF;
+        float off = fmodf(greenStart - tArrive, 2 * TL_HALF);
+        if (off < 0) off += 2 * TL_HALF;
+        tlOffset[nd] = off;
+    }
+}
+
 int TrafficLightAt(int node, int lane) {
     if (node < 0 || node >= rdNodeCount || !tlOn[node]) return -1;
     return LightState(node, tlGroup[lane], NULL);
@@ -210,7 +235,7 @@ static bool TripToBay(int i) {
 }
 
 static bool NewTrip(int i) {
-    if (TripToBay(i)) return true;
+    if (!cars[i].cab && TripToBay(i)) return true;
     Car* c = &cars[i];
     int cur = c->route[c->routeIdx];
     if (rdSegs[cur].kind != RD_LANE) return false;   // parked, every bay taken: stay a while longer
@@ -249,6 +274,15 @@ int TrafficSpawn(int lane, float s, int z) {
     c->ghostLane = -1;
     NewTrip(i);
     return i;
+}
+
+void NewTripForCab(int i) {
+    Car* c = &cars[i];
+    if (c->bay >= 0) { /* (TrafficSpawn may have reserved a bay) */ }
+    for (int b = 0; b < rdBayCount; b++) if (bayCar[b] == i) bayCar[b] = -1;
+    c->bay = -1;
+    c->route[0] = c->route[c->routeIdx]; c->routeLen = 1; c->routeIdx = 0;
+    NewTrip(i);
 }
 
 int TrafficSpawnParked(int bay, float parkFor, int z) {
@@ -622,7 +656,7 @@ static void MaybeChangeLane(int i, int lead, float gap, float vWant) {
         // a slow car ahead (not just queuing: it has road in front of it, or it's pulling in)
         if (lead < 0 || cars[lead].route[cars[lead].routeIdx] != cur) return;
         const Car* l = &cars[lead];
-        bool parking = l->routeIdx + 1 < l->routeLen && rdSegs[l->route[l->routeIdx + 1]].kind == RD_BAYIN;
+        bool parking = (l->routeIdx + 1 < l->routeLen && rdSegs[l->route[l->routeIdx + 1]].kind == RD_BAYIN) || l->stopTime > 0;
         if (gap > 6 * CS + c->speed * 2.0f) return;
         if (!parking && (l->speed > vWant - 1.5f * CS || l->gap < 8 * CS)) return;
         out = true;
@@ -655,6 +689,15 @@ static void MaybeChangeLane(int i, int lead, float gap, float vWant) {
 static void DriveCar(int i, float dt) {
     Car* c = &cars[i];
     float CS = CELL_SIZE, L = carLength * CS;
+    // A cab at a fare: stand in the lane, then the next fare
+    if (c->stopTime > 0) {
+        c->speed = 0;
+        c->why = WHY_BEND;
+        c->gap = 1e9f;   // (cars behind see a stopped car with road ahead: they overtake)
+        c->stopTime -= dt;
+        if (c->stopTime <= 0) { c->stopTime = 0; NewTrip(i); }
+        return;
+    }
     // Parked: wait, then plan the next trip
     if (c->parkTime > 0) {
         c->speed = 0;
@@ -805,6 +848,11 @@ static void DriveCar(int i, float dt) {
                     if (d < gap) { gap = d < 0 ? 0 : d; vLead = cars[o].speed > 0 ? cars[o].speed : 0; why = WHY_FOLLOW; found = true; }
                 }
         }
+        // A cab's fare: stop at the trip's end, in the lane
+        if (c->cab && k == c->routeLen - 1 && rdSegs[sg].kind == RD_LANE) {
+            float d = acc + (c->destS - st) + TR_MIN_GAP * CS - 0.15f * CS;
+            if (d < gap) { gap = d; vLead = 0; if (!found) why = WHY_BEND; }
+        }
         // The end of the route is a parking spot: stop there (car centre on its end)
         if (k == c->routeLen - 1 && rdSegs[sg].kind == RD_BAYIN) {
             float d = acc + (rdSegs[sg].len - st) + TR_MIN_GAP * CS - 0.15f * CS;
@@ -912,7 +960,7 @@ static void DriveCar(int i, float dt) {
     // Stats
     c->legTime += dt;
     c->driveTime += dt;
-    if (v < 0.1f * CS && c->parkTime <= 0) { c->stillTime += dt; if (c->stillTime > trafficWaitMax) trafficWaitMax = c->stillTime; }
+    if (v < 0.1f * CS && c->parkTime <= 0 && c->stopTime <= 0) { c->stillTime += dt; if (c->stillTime > trafficWaitMax) trafficWaitMax = c->stillTime; }
     else c->stillTime = 0;
 
     // Trip done: parked in the bay (10-40 s), or (no bay) the next trip starts from here
@@ -923,9 +971,10 @@ static void DriveCar(int i, float dt) {
             c->parkTime = 10 + 30 * (TrRand() / 32767.0f);
             c->route[0] = (RdSegId)seg; c->routeLen = 1; c->routeIdx = 0;
         }
-    } else if (c->routeIdx == c->routeLen - 1 && c->s >= c->destS) {
+    } else if (c->routeIdx == c->routeLen - 1 && (c->s >= c->destS || (c->cab && v < 0.05f * CS && c->s >= c->destS - 1.0f * CS))) {
         c->legsDone++;
-        NewTrip(i);
+        if (c->cab) { c->speed = 0; c->stopTime = 3 + 5 * (TrRand() / 32767.0f); }   // a fare: stand here a moment
+        else NewTrip(i);
     }
 }
 

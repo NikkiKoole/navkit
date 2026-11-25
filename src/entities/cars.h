@@ -78,6 +78,8 @@ typedef struct {
     int bayFrom;           // the bay we're pulling out of (freed once we're on the lane)
     float parkTime;        // seconds left parked (> 0: parked)
     float pullWait;        // seconds waiting for a gap to pull out
+    bool cab;              // a yellow cab: no parking, stops in the lane at each fare
+    float stopTime;        // cab: seconds left standing at a fare
     float noRoom;          // seconds our junction request waits for room past the junction
     int reroutes;          // times we planned round a full exit
     float latOff;          // px: changing lanes, our old lane's offset from the new one (shrinks to 0)
@@ -123,6 +125,8 @@ extern int carCityJitter;      // cars-city: junctions moved up to this many cel
 extern float carCityBends;     // cars-city: share of roads with a bend
 extern float carCitySetback;   // cars-city: lanes stop this far from a junction's centre
 extern int carCityLayout;      // cars-city: 0 grid, 1 Manhattan (one-way avenues and streets, Broadway)
+extern float carCityCabs;      // cars-city: share of yellow cabs
+extern bool carCityGreenWave;  // cars-city: lights timed for a green wave along the avenues
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock
 void CarsFollowCamera(float frameTime);   // GUI camera follows car 0 (carFollow)
 extern bool carDebug;          // draw route, lookahead, clearance
