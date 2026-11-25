@@ -128,6 +128,7 @@ extern float carCitySetback;   // cars-city: lanes stop this far from a junction
 extern int carCityLayout;      // cars-city: 0 grid, 1 Manhattan (one-way avenues and streets, Broadway)
 extern float carCityCabs;      // cars-city: share of yellow cabs
 extern bool carCityClasses;     // cars-city slot traffic: road classes (speed limits, priority to the bigger road, lights only where an avenue is)
+extern bool carCityMidCrossings; // cars-city slot traffic: zebra crossings along long roads too (every ~45 cells)
 extern bool carCityHighway;     // cars-city slot traffic, grid: an elevated highway across the city with a diamond interchange at the middle avenue
 extern bool carCityFlyover;     // cars-city slot traffic, grid: an elevated road corner to corner over everything between
 extern bool carCityHill;        // cars-city slot traffic, grid: a hill the roads tunnel through

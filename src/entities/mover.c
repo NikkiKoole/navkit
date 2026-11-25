@@ -891,8 +891,16 @@ static int LineCost(int x0, int y0, int x1, int y1, int z) {
         cost += PathCellCost(x, y, z);
         if (x == x1 && y == y1) break;
         int e2 = 2 * err;
-        if (e2 > -dy) { err -= dy; x += sx; }
-        if (e2 < dx) { err += dx; y += sy; }
+        bool stepX = e2 > -dy, stepY = e2 < dx;
+        // a diagonal step: the straight walk clips a corner of one of the two cells beside it -
+        // with a route-only extra (city pavements: the road costs more) count the dearer one, or
+        // a shortcut round a bend cut across the road's edge
+        if (navPathExtra && stepX && stepY) {
+            int a = PathCellCost(x + sx, y, z), b = PathCellCost(x, y + sy, z);
+            cost += (a > b ? a : b) - GetCellMoveCost(x, y, z);
+        }
+        if (stepX) { err -= dy; x += sx; }
+        if (stepY) { err += dx; y += sy; }
     }
     return cost;
 }

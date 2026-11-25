@@ -48,6 +48,7 @@ int carCityDrivers = 20;
 float carCityWalkSpeed = 1.2f;
 bool carCityFlyover = false;
 bool carCityHighway = true;
+bool carCityMidCrossings = false;
 bool carCityClasses = true;
 bool carCityHill = true;
 bool carCityGreenWave = true;

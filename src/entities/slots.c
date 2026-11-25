@@ -155,6 +155,23 @@ void SlotsMarkCrossing(int x, int y, int orient) {
 int SlotsCrossingAt(int x, int y) { return x < 0 || y < 0 || x >= slCrossW || y >= slCrossH ? 0 : slCross[y * slCrossW + x]; }
 int SlotsCrossingCount(void) { return slCrossN; }
 int SlotsCrossingCell(int i, int* x, int* y) { int c = slCrossList[i]; *x = c % slCrossW; *y = c / slCrossW; return slCross[c]; }
+static float SlSlotDist2(int idx, float x, float y);
+// No kerb spots (parking, a cab's fare) beside the slots within r cells of (x, y) px: a crossing
+// goes there (no parking by a zebra); returns how many went
+int SlotsKerbClear(float x, float y, float r) {
+    if (!slBHead || !slKerbOk) return 0;
+    int n = 0;
+    float CS = CELL_SIZE, B = SL_BUCKET * CS, R = r * CS;
+    int bx0 = (int)((x - R - 3.0f * CS) / B), bx1 = (int)((x + R + 3.0f * CS) / B);
+    int by0 = (int)((y - R - 3.0f * CS) / B), by1 = (int)((y + R + 3.0f * CS) / B);
+    for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
+        for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
+            for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                int idx = slBList[e];
+                if (slKerbOk[idx] == 1 && SlSlotDist2(idx, x, y) < R * R) { slKerbOk[idx] = 2; n++; }
+            }
+    return n;
+}
 static bool SlCrossingPx(float x, float y) {   // on or right by a crossing (stepping on from its corner)
     int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE);
     for (int dy = -1; dy <= 1; dy++)
@@ -1814,6 +1831,12 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     // a straight walk along it clips the road's corners, and the road "goes on ahead" - those
     // walkers waited at the kerb for gaps and blocked lanes, half the "jaywalkers"): the nearest
     // lane's heading against ours
+    // and only when the route goes into the road: the waypoint walked to is in it (a straightened
+    // path from pavement to pavement round a bend clips the road's edge - 9 in 10 of the rest)
+    if (deep && !onRoad && carSlotAlongKerb && m->pathIndex >= 0 && m->pathIndex < m->pathLength) {
+        Point w = moverPaths[mi][m->pathIndex];
+        if (!SlRoadAt((w.x + 0.5f) * CS, (w.y + 0.5f) * CS, (int)m->z)) deep = false;
+    }
     if (deep && !onRoad && carSlotAlongKerb) {
         float bestD = 4.0f * 4.0f * CS * CS, h = 0; bool found = false;
         for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
@@ -1938,8 +1961,13 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
                 for (int r = 0; r <= 40 && near < 0; r++)
                     for (int dy = -r; dy <= r && near < 0; dy++)
                         for (int dx = -r; dx <= r; dx++) if ((abs(dx) == r || abs(dy) == r) && SlotsCrossingAt(mx + dx, my + dy)) { near = r; break; }
-                printf("jay: mover %d steps off at (%.1f,%.1f) dir (%.2f,%.2f), goal (%d,%d), nearest crossing %d cells, path left %d\n", mi, m->x / CS, m->y / CS, dirX, dirY,
-                       m->goal.x, m->goal.y, near, m->pathLength);
+                int wx = -1, wy = -1, wRoad = -1;   // the waypoint it walks to: in the road (a route across) or not (drifting in)
+                if (m->pathIndex >= 0 && m->pathIndex < m->pathLength) {
+                    Point w = moverPaths[mi][m->pathIndex];
+                    wx = w.x; wy = w.y; wRoad = SlRoadAt((w.x + 0.5f) * CS, (w.y + 0.5f) * CS, (int)m->z);
+                }
+                printf("jay: mover %d steps off at (%.1f,%.1f) dir (%.2f,%.2f), goal (%d,%d), nearest crossing %d cells, path left %d, waypoint (%d,%d) road %d\n", mi, m->x / CS, m->y / CS, dirX, dirY,
+                       m->goal.x, m->goal.y, near, m->pathLength, wx, wy, wRoad);
             }
         }
     }

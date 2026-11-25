@@ -894,6 +894,38 @@ mostly 1 slot/step, and the 20% dawdle took a car at 1 to 0 on one curve step in
   Manhattan), refused curves (crossing curve in use, no room past the junction: 15-25%),
   pedestrians 4-10%.
 
+### Pedestrians: taking turns at zebras, and who really jaywalks (2026-11-25)
+
+User: with more pedestrians, people always walking on a zebra keep the cars stuck.
+- **Taking turns** (`carSlotZebraTurns`): a car that has stood 3 steps for walkers at a zebra
+  has the crossing for 5 steps: anyone at that crossing's kerb (within 7 cells, the far side
+  too) lets it go, patience paused. Three holes found on the way: walkers only checked the lane
+  in front of them (people from the far kerb walked into the near lane's waiting car); a car
+  creeping over at 1 slot/step "can stop", so the next walker stepped out again; walkers whose
+  6 s patience had run out (waiting for moving cars) went anyway. Dutch town, 75 cars, 300
+  walkers: 254 -> 321 / 307 trips (seeds 7 / 1-2).
+- User: how do we make movers take the zebra? Routes already did (road cells 26x on routes,
+  zebras free); half the crossings were off the zebras anyway (630 of 1510). `SL_JAYLOG` (now
+  with the nearest crossing and the waypoint walked to) showed what they were:
+  - walking *along* a diagonal or curved road: its pavement is a staircase of cells, and the
+    straightened path (string pulling) from pavement to pavement clipped the road's corners -
+    the road "goes on ahead", so they waited at the kerb for gaps and blocked lanes. Fixes:
+    heading along the road (within ~37 degrees of the nearest lane) or walking to a waypoint
+    that isn't in the road is not stepping off (`carSlotAlongKerb`); and string pulling with a
+    route-only extra (`navPathExtra`, only cars-city sets it) counts the dearer cell beside each
+    diagonal step, so shortcuts don't cut across the road's edge;
+  - pavement on roundabout islands (walk spots there, reached across the ring): none now;
+  - no zebra at all on the access road under the overpass (the highway above counted as
+    traffic in the way): roads on another level don't keep a crossing off (`SL_XLOG` lists road
+    ends without one).
+  Off the zebras now: Dutch 0-48 of ~700 (was 630), grid 3, Manhattan 0. Trips, 5 seeds: 485
+  (478 before; walking-to-a-road-waypoint alone without the path fix: 442 - the corner cutters
+  then walked into the road's edge unannounced).
+- Mid-block zebras on long roads (`carCityMidCrossings`, every ~45 cells, no parking beside
+  them): built, off by default - nobody was really crossing mid-block, and cars stopped at them
+  on the ring road (568 -> 441 trips). Dutch roads are short anyway (27-42 cells between the
+  ring's junctions).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

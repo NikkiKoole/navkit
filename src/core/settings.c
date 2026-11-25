@@ -735,6 +735,8 @@ static const Setting settings[] = {
       "cars-city slot traffic: how fast the pedestrians walk, cells/s (a real person ~0.6, colony movers ~5 - next to cars that average ~2-3 across town nobody would drive). Restart the scenario to apply.", NULL),
     SET_BOOL("carCityClasses", "City Road Classes (slot traffic)", "Experiments/Cars", carCityClasses,
       "cars-city slot traffic: road classes - highway (the flyover, 15 cells/s), arterial (the avenues, 12), street (9), lane (6). Routes go by time, the bigger road goes first at a junction without lights, and lights only where an arterial or bigger meets. Restart the scenario to apply."),
+    SET_BOOL("carCityMidCrossings", "City Mid-block Crossings (slot traffic)", "Experiments/Cars", carCityMidCrossings,
+      "cars-city slot traffic: zebra crossings along long roads too, one every ~45 cells (not on the highway, ramps or roundabout rings; not near a junction; no parking beside them). Off (default): only at the junctions - measured in the Dutch town, they caught no jaywalkers (people crossing mid-block were nearly all straightened paths clipping the road) and cars stopped at them: 568 -> 441 trips. Restart the scenario to apply."),
     SET_BOOL("carCityHighway", "City Highway (slot traffic)", "Experiments/Cars", carCityHighway,
       "cars-city slot traffic, grid layout: a highway a level up across the city (two lanes each way) in a wider corridor between two rows of blocks, down to the edge streets at both ends, with a diamond interchange where it crosses the middle avenue: four one-way slip roads to two junctions with lights on the avenue. Restart the scenario to apply."),
     SET_BOOL("carCityFlyover", "City Flyover (slot traffic)", "Experiments/Cars", carCityFlyover,

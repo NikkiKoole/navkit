@@ -3743,6 +3743,66 @@ static void CityPavements(void) {
         if (getenv("SL_XLOG") && marked == 0)
             printf("no crossing: lane %d (class %d) ending at (%.0f,%.0f) node %d, %d road cells tried\n", sgi, RoadSegClass(sgi), ex / CELL_SIZE, ey / CELL_SIZE, rdSegs[sgi].to, tried);
     }
+    // Mid-block crossings on long roads, one every ~CITY_MIDX_GAP cells (crossings only at the
+    // junctions left ~100 cells between them on the ring road: people crossed anywhere). Not on
+    // the highway, ramps (one-way between levels), rings; not near a junction or a kerb spot
+#define CITY_MIDX_GAP 45.0f   // cells between mid-block crossings (about)
+#define CITY_MIDX_END 15.0f   // ... and from either end of the road
+    if (carCityMidCrossings) {
+        unsigned char* done = calloc((size_t)rdEdgeCount, 1);
+        int added = 0;
+        for (int sgi = 0; sgi < rdSegCount; sgi++) {
+            const RdSeg* S = &rdSegs[sgi];
+            if (S->kind != RD_LANE || S->priority || done[S->edge]) continue;
+            const RdEdge* E = &rdEdges[S->edge];
+            if (getenv("SL_XLOG")) printf("  edge %d: lane %.0f cells, class %d, arc %d, one-way %d, z %.1f-%.1f\n", S->edge, S->len / CELL_SIZE, E->cls, E->arc, E->oneWay, rdNodes[E->a].z, rdNodes[E->b].z);
+            if (E->cls == RD_CLS_HIGHWAY || (E->oneWay && rdNodes[E->a].z != rdNodes[E->b].z)) continue;
+            done[S->edge] = 1;
+            float len = S->len / CELL_SIZE, CS = CELL_SIZE;
+            int n = (int)((len - 2 * CITY_MIDX_END) / CITY_MIDX_GAP) + 1;   // crossings that fit, spread evenly
+            if (len < 2 * CITY_MIDX_END + 10 || n < 1) continue;
+            for (int c = 0; c < n; c++) {
+                float s0 = len * (c + 1) / (n + 1), sBest = -1;
+                for (float t = 0; t <= 8 && sBest < 0; t += 1)   // (on the ground: shifted a few cells either way off a rise)
+                    for (int sg = -1; sg <= 1 && sBest < 0; sg += 2) {
+                        float s = s0 + sg * t, px, py, ph;
+                        if (s < CITY_MIDX_END || s > len - CITY_MIDX_END) continue;
+                        RoadPointAt(sgi, s * CS, &px, &py, &ph);
+                        if (fabsf(RoadZAt(sgi, s * CS) - rdBaseZ) > 0.3f) continue;   // (on the ground only)
+                        sBest = s;
+                    }
+                if (getenv("SL_XLOG")) printf("  road %d (%.0f cells, class %d): crossing %d of %d at %.0f\n", S->edge, len, E->cls, c + 1, n, sBest);
+                if (sBest < 0) continue;
+                float px, py, ph;
+                RoadPointAt(sgi, sBest * CS, &px, &py, &ph);
+                float ch = cosf(ph), sh = sinf(ph);
+                SlotsKerbClear(px, py, 5.0f);   // no parking by the zebra
+                for (float a = -0.8f; a <= 0.8f; a += 0.4f)
+                    for (float l = -7.0f; l <= 7.0f; l += 0.4f) {
+                        int cx = (int)((px + (ch * a - sh * l) * CS) / CS), cy = (int)((py + (sh * a + ch * l) * CS) / CS);
+                        if (cx < 0 || cy < 0 || cx >= W || cy >= H || !road[cy * W + cx]) continue;
+                        float qx = (cx + 0.5f) * CS, qy = (cy + 0.5f) * CS;
+                        bool clear = true;   // (only this road: not spilling onto another one nearby)
+                        for (int o = 0; o < rdSegCount && clear; o++) {
+                            const RdSeg* O = &rdSegs[o];
+                            if (O->kind != RD_LANE || O->edge == S->edge) continue;
+                            if (qx < O->bx0 - 3 * CS || qx > O->bx1 + 3 * CS || qy < O->by0 - 3 * CS || qy > O->by1 + 3 * CS) continue;
+                            for (int q = 0; q < O->n; q++) {
+                                if (fabsf(rdZ[O->p0 + q] - rdBaseZ) > 0.5f) continue;
+                                float dx = rdX[O->p0 + q] - qx, dy = rdY[O->p0 + q] - qy;
+                                if (dx * dx + dy * dy < 2.5f * 2.5f * CS * CS) { clear = false; break; }
+                            }
+                        }
+                        if (!clear) continue;
+                        extra[cy * W + cx] = 0;
+                        SlotsMarkCrossing(cx, cy, fabsf(ch) > fabsf(sh) ? 1 : 2);
+                    }
+                added++;
+            }
+        }
+        if (getenv("SL_XLOG")) printf("mid-block crossings: %d\n", added);
+        free(done);
+    }
     navPathExtra = extra;
     navPathExtraZ = 1;
     free(road);

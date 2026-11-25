@@ -103,6 +103,7 @@ void SlotsCrossingsBegin(int w, int h);
 void SlotsMarkCrossing(int x, int y, int orient);
 int SlotsCrossingAt(int x, int y);   // 0: none
 int SlotsCrossingCount(void);
+int SlotsKerbClear(float x, float y, float rCells);   // no kerb spots (parking) beside the slots that near (px): a crossing goes there
 int SlotsCrossingCell(int i, int* x, int* y);   // returns orient
 
 // Movers driving (cars-city): a mover owns a car parked at the kerb. SlotsMoverBoard: the owner
