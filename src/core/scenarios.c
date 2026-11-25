@@ -3481,6 +3481,71 @@ static bool CityConnected(const unsigned char* gone, int nodes) {
     return count == nodes;
 }
 
+// A Dutch town (carCityLayout 2): no grid, no lights - a ring road (rondweg) round the town with
+// roundabouts where roads meet it, four roads in to a roundabout in the centre and an inner loop
+// of streets between them; north of town a highway (two lanes each way) that rises onto an
+// overpass over the access road, with a diamond whose slip roads end at two roundabouts (the
+// usual Dutch interchange), and comes back down at both ends to join the ring road on the west
+// and east. Scaled to the map (330x260 by default).
+static void BuildDutch(void) {
+    float W = (float)gridWidth, H = (float)gridHeight, sx = W / 330.0f, sy = H / 260.0f;
+    RoadsClear();
+    float cx = 165 * sx, cy = 170 * sy, rx = 85 * sx, ry = 62 * sy;
+    // the ring road: eight junctions on an ellipse (N, NE, E, SE, S, SW, W, NW)
+    int ring[8];
+    for (int k = 0; k < 8; k++) {
+        float a = -1.5707963f + k * 0.7853982f;   // from north, clockwise on screen (y down)
+        ring[k] = RoadAddNode(cx + rx * cosf(a), cy + ry * sinf(a));
+    }
+    for (int k = 0; k < 8; k++) { int e = RoadAddEdge(ring[k], ring[(k + 1) % 8], 0); RoadSetClass(e, RD_CLS_ARTERIAL); }
+    // the centre, four roads in (from the ring's N, E, S, W; they have right of way), each crossed
+    // half-way at right angles by an inner loop of streets (a rectangle; its corners are bends -
+    // a loop through the four junctions directly met the roads in at ~36 degrees: lanes overlapped)
+    int c = RoadAddNode(cx, cy), mid[4];
+    for (int k = 0; k < 4; k++) {
+        const RdNode* R = &rdNodes[ring[2 * k]];
+        mid[k] = RoadAddNode(0.5f * (R->x / CELL_SIZE + cx), 0.5f * (R->y / CELL_SIZE + cy));
+        RoadSetClass(RoadAddEdge(ring[2 * k], mid[k], 0), RD_CLS_ARTERIAL);
+        RoadSetClass(RoadAddEdge(mid[k], c, 0), RD_CLS_ARTERIAL);
+    }
+    {
+        float hx = rdNodes[mid[1]].x / CELL_SIZE - cx, hy = cy - rdNodes[mid[0]].y / CELL_SIZE;   // (the loop's half sizes)
+        int corner[4];   // NE, SE, SW, NW
+        float dxs[4] = {1, 1, -1, -1}, dys[4] = {-1, 1, 1, -1};
+        for (int k = 0; k < 4; k++) corner[k] = RoadAddNode(cx + dxs[k] * hx, cy + dys[k] * hy);
+        for (int k = 0; k < 4; k++) {   // mid N - NE - mid E - SE - mid S - SW - mid W - NW - mid N
+            RoadAddEdge(mid[k], corner[k], 0);
+            RoadAddEdge(corner[k], mid[(k + 1) % 4], 0);
+        }
+    }
+    // the highway, north of town, and its interchange on the access road from the ring's north
+    float yh = 40 * sy, xa = rdNodes[ring[0]].x / CELL_SIZE;
+    int tn = RoadAddNode(xa, yh - 24 * sy), ts = RoadAddNode(xa, yh + 24 * sy);
+    int acc[2] = {RoadAddEdge(tn, ts, 0), RoadAddEdge(ts, ring[0], 0)};   // (under the highway; down to the ring)
+    for (int k = 0; k < 2; k++) RoadSetClass(acc[k], RD_CLS_ARTERIAL);
+    int hw = RoadAddNode(xa - 40 * sx, yh), he = RoadAddNode(xa + 40 * sx, yh);
+    for (int k = 0; k < 2; k++) {
+        RdNode* N = &rdNodes[k ? he : hw];
+        N->z = rdBaseZ + 1;   // (the overpass)
+        N->noLeft = true;
+        N->setback = 13.0f;
+    }
+    int we = RoadAddNode(20 * sx, yh), ee = RoadAddNode(W - 20 * sx, yh);   // where it bends down to the ring
+    int seg[3] = {RoadAddEdge(we, hw, 0), RoadAddEdge(hw, he, 0), RoadAddEdge(he, ee, 0)};
+    for (int k = 0; k < 3; k++) { RoadSetAvenue(seg[k]); RoadSetClass(seg[k], RD_CLS_HIGHWAY); RoadSetLifted(seg[k]); }
+    int down[2] = {RoadAddEdge(we, ring[6], 0), RoadAddEdge(ee, ring[2], 0)};   // (on to the ring's W and E)
+    for (int k = 0; k < 2; k++) { RoadSetAvenue(down[k]); RoadSetClass(down[k], RD_CLS_ARTERIAL); }
+    int ramps[4] = {RoadAddEdge(hw, ts, 0), RoadAddEdge(ts, he, 0), RoadAddEdge(he, tn, 0), RoadAddEdge(tn, hw, 0)};
+    for (int k = 0; k < 4; k++) { RoadSetOneWay(ramps[k]); RoadSetClass(ramps[k], RD_CLS_STREET); }
+    // roundabouts: the slip roads' ends, where roads meet the ring, the centre
+    int rb[7] = {tn, ts, ring[0], ring[2], ring[4], ring[6], c};
+    for (int k = 0; k < 7; k++) {   // (as small as the roads' angles allow: every ring stretch long enough)
+        bool made = false;
+        for (float r = 9; r <= 16 && !made; r += 1) made = RoadMakeRoundabout(rb[k], r * sx);
+        if (!made) printf("cars-city (Dutch): no roundabout at node %d (%.0f,%.0f): roads too close in angle\n", rb[k], rdNodes[rb[k]].x / CELL_SIZE, rdNodes[rb[k]].y / CELL_SIZE);
+    }
+}
+
 // Manhattan (carCityLayout 1): avenues north-south every carCitySpacingX cells, one-way with
 // two lanes, alternating south / north (like 5th Avenue and Madison); cross streets east-west
 // every 24 cells (3:1 blocks), one-way with one lane, alternating east / west, every fifth one
@@ -3627,11 +3692,15 @@ static void CityPavements(void) {
     // Crossings: across each road's mouth, just past every lane's end (where cars wait at the
     // stop line, nobody stands): no extra cost there, so pedestrians cross at the junctions
     for (int sgi = 0; sgi < rdSegCount; sgi++) {
-        if (rdSegs[sgi].kind != RD_LANE) continue;
+        if (rdSegs[sgi].kind != RD_LANE || rdSegs[sgi].priority) continue;   // (no crossing on a roundabout's ring)
         float ex, ey, eh;
         RoadPointAt(sgi, rdSegs[sgi].len, &ex, &ey, &eh);
         float CS = CELL_SIZE, ch = cosf(eh), sh = sinf(eh);
-        for (float a = 1.0f; a <= 2.6f; a += 0.4f)
+        // into a roundabout: a few cells back on the arm (past the lane's end it was inside the
+        // roundabout: people stood on the curves and cars waited for them for minutes)
+        bool toRing = rdNodes[rdSegs[sgi].to].ring;
+        float a0 = toRing ? -4.0f : 1.0f, a1 = toRing ? -2.4f : 2.6f;
+        for (float a = a0; a <= a1; a += 0.4f)
             for (float l = -6.0f; l <= 6.0f; l += 0.4f) {
                 int cx = (int)((ex + (ch * a - sh * l) * CS) / CS), cy = (int)((ey + (sh * a + ch * l) * CS) / CS);
                 if (cx < 0 || cy < 0 || cx >= W || cy >= H || !road[cy * W + cx]) continue;
@@ -3723,6 +3792,7 @@ static void SetupCarsCity(void) {
     if (carCitySlots && carCityPeds > 0 && rdSetback < 6) rdSetback = 6;   // room for a crossing in front of each junction
     rdLaneRules = carCityLaneRules && carCitySlots;   // (steered cars: not yet - they deadlock with them)
     if (carCityLayout == 1) BuildManhattan();
+    else if (carCityLayout == 2) BuildDutch();
     else {
         // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
         const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
@@ -3818,8 +3888,9 @@ static void SetupCarsCity(void) {
                     if (d < (z == 2 ? 26.0f : 15.0f)) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); }
             }
     }
-    TrafficSetupLights(carCityLights);
-    if (carCityLights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
+    bool lights = carCityLights && carCityLayout != 2;   // (the Dutch town: roundabouts and right of way, no lights)
+    TrafficSetupLights(lights);
+    if (lights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
     RoadsCarve(1);
     if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); CityPavements(); RoadsDecks(); }   // (slot traffic: kerb strips for parking, pavements; decks over the new pavements)
     BuildEntrances(); BuildGraph();

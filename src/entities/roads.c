@@ -498,7 +498,10 @@ bool RoadMakeRoundabout(int node, float rCells) {
         rdNodes[rn].edge[rdNodes[rn].nEdge++] = N->edge[k];
         ringNode[k] = rn;
     }
-    // ring: each ring junction to the next one with a smaller angle (anticlockwise on screen)
+    // ring: each ring junction to the next one with a smaller angle (anticlockwise on screen);
+    // of the biggest class among the roads that meet there
+    int cls = RD_CLS_LANE;
+    for (int k = 0; k < n; k++) if (rdEdges[rdNodes[ringNode[k]].edge[0]].cls > cls) cls = rdEdges[rdNodes[ringNode[k]].edge[0]].cls;
     for (int k = 0; k < n; k++) {
         int next = -1;
         float best = -1e9f;
@@ -512,6 +515,7 @@ bool RoadMakeRoundabout(int node, float rCells) {
         if (e < 0) continue;
         rdEdges[e].oneWay = true;
         rdEdges[e].arc = true;
+        rdEdges[e].cls = cls > RD_CLS_ARTERIAL ? RD_CLS_ARTERIAL : cls;   // (not a highway's speed round a ring)
         rdEdges[e].arcX = N->x; rdEdges[e].arcY = N->y; rdEdges[e].arcR = r;
     }
     N->nEdge = 0;

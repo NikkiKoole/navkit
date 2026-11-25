@@ -40,7 +40,7 @@ float carGapCells = 1.0f;
 float carCitySpacingX = 72.0f, carCitySpacingY = 40.0f;   // long blocks east-west: long straights
 int carCityJitter = 2;
 float carCityBends = 0.1f;
-int carCityLayout = 0;   // 0 grid, 1 Manhattan
+int carCityLayout = 0;   // 0 grid, 1 Manhattan, 2 Dutch town
 float carCityCabs = 0.3f;
 bool carCityLaneRules = true;
 int carCityPeds = 80;

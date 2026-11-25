@@ -745,6 +745,34 @@ ramps 14 cells a level.)
 - Diagnostic `SL_HOT`: the junctions with the most cars standing before them. The hottest is the
   two avenues' crossing just north of the diamond (everyone heading for the avenue column).
 
+## A Dutch town (carCityLayout 2, 2026-11-25)
+
+User: something more Dutch - a highway overpass, and a few roundabouts instead of a grid of
+junctions. `BuildDutch`: a ring road (rondweg, arterial) of eight junctions on an ellipse; four
+roads in (arterials) to a roundabout in the centre, crossed half-way at right angles by an inner
+loop of streets (a rectangle; a loop straight through the four junctions met the roads in at ~36
+degrees and their lanes overlapped); north of town a highway (two lanes each way) rising onto an
+overpass over the access road, a diamond whose slip roads end at two roundabouts, the highway's
+ends coming down to the ring's W and E. Roundabouts where the access road and the highway's ends
+meet the ring, at the ring's S and in the centre. No lights anywhere.
+- Roundabouts: as small as the roads' angles allow (9 to 16 cells: every ring stretch at least
+  `RD_RING_MIN_LANE` after the setbacks; at 10 cells most were refused).
+- Ring lanes take the biggest class of the roads meeting there (they were streets: ring traffic
+  gave way to the arterial entering it - "bigger road first" - and the ring locked); that rule
+  is off at roundabouts anyway (`SlYieldToBigger`: the ring's own rule).
+- **Enter a roundabout only with room at your exit** (counting the cars on the ring that leave
+  there too, `slExitNeed`): the access road's two roundabouts, a short road apart, locked up
+  (each ring full of cars waiting to leave into the road full of cars waiting to enter the
+  other) - with 60 cars, a 543 s standstill. Grid too: 574 trips (560).
+- Crossings into a roundabout a few cells back on the arm, none on the ring (past the lane's end
+  they were inside the roundabout: people on the curves, cars waiting minutes).
+- 10 min, slot mode: 120 cars 351 trips, 150 cars 348, 250 cars ~216 (too many for ~1540 slots:
+  the grid has ~2370); 0 touches, 0 jumps. Pedestrians inside a car rise with the queues (87 at
+  120, 148 at 150): queues stand across the crossings and people in the road walk past standing
+  cars (the old deadlock rule) - a "keep the crossing clear" rule for cars would fix it.
+- Bottlenecks: the inner junctions on the north-south road into the centre, the highway's
+  westbound exit (a queue onto the slip road), the access road's roundabouts.
+
 ## Slot traffic: smoother lane changes, anticipation (2026-11-25)
 
 User: a car that just turned into a road sometimes changes lanes right away (awkward; it should
