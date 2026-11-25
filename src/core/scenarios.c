@@ -3746,7 +3746,10 @@ static void SetupCarsCity(void) {
 
     int placed = 0;
     if (carCitySlots) {   // the abstract slot traffic instead (slots.h)
-        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs, carCityParking ? 0.3f : 0.0f);
+        // parked: 30% of the private cars (City Parking), and at least one per driver (their own)
+        float privateCars = carCityCount * (1.0f - carCityCabs), park = carCityParking ? 0.3f : 0.0f;
+        if (privateCars > 0 && carCityDrivers * 1.1f / privateCars > park) park = fminf(1.0f, carCityDrivers * 1.1f / privateCars);
+        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs, park);
         // pedestrians: wander between pavement spots (endless mode), held at the kerb by the traffic
         endlessMoverMode = true;
         moodEnabled = false;
