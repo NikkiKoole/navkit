@@ -995,6 +995,22 @@ through a control point (`RdEdge.hasCtrl`/`ctrlX/Y`, `RoadSetControl`; straight 
 - Next: the mouse tool (click-click to draw, drag to bend, snapping to the 8-cell grid and to
   angles, preview with the check's warnings, right-click to remove).
 
+### The road tool (2026-11-26)
+
+Draw > Transport > Road (dev UI: D N R; `/` palette "Road"), `input.c` HandleRoadTool, preview
+`cars_draw.c` DrawRoadToolPreview. Click a start, click an end: a straight road (the next one
+starts where it ended); Ctrl + the end click, dragged: bent now. Every road has a handle at its
+middle: drag to bend (dropped within ~12 px of the straight line: straight); press a junction
+and drag to move it (straight roads stay straight, curved ones keep their bend); a junction
+pressed without dragging starts a road there. Right-click: cancel / put a drag back / remove the
+road under the mouse. Keys 1-4: lane / street / arterial / highway. Points snap to junctions,
+roads, else tile centres (Shift: no grid). The preview is green, or orange with the rules check's
+new problem by the mouse (`RoadPlanTry`). Each edit rebuilds the city from the plan, camera kept.
+- User: "it was kinda easy to get a weird bend while wanting a straight thing" - the end click
+  bent the road whenever the mouse moved while clicking; now straight unless Ctrl.
+- Not yet: merging junctions dropped on each other, moving a junction across a road making a
+  junction there, roundabouts by mouse, keeping cars through an edit (it re-places them all).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
