@@ -719,6 +719,8 @@ static const Setting settings[] = {
       "Slot traffic test: dawdling (a slot slower now and then) may also stop a moving car, as before. Off: it never stops one (curves are mostly 1 slot per step: a car alone stood on one curve step in five); a standing car may still be slow to start."),
     SET_BOOL("carSlotZebraTurns", "Slot Traffic: Zebra Turns", "Experiments/Cars", carSlotZebraTurns,
       "Slot traffic: at a zebra crossing, walkers still at the kerb let a car that has stood a few seconds for them go first (those on the crossing walk on). Off: they only wait for a car that can't stop - a steady stream of walkers held cars for minutes."),
+    SET_BOOL("carSlotAlongKerb", "Slot Traffic: Walking Along the Kerb", "Experiments/Cars", carSlotAlongKerb,
+      "Slot traffic: someone heading along the road (within ~37 degrees of it) isn't stepping off the kerb, even where a diagonal road's staircase pavement makes their straight walk clip the road's corners. Off: they waited for gaps there as if crossing."),
     SET_BOOL("carSlotLaneCurves", "Slot Traffic: Curved Lanes Slower", "Experiments/Cars", carSlotLaneCurves,
       "Slot traffic: a curved lane (a roundabout's ring, a bent road) is driven no faster than its curve allows. Off: at its road class's limit (rings were driven at 12 cells/s on curves good for ~7)."),
     SET_BOOL("carSlotKerbs", "Slot Traffic: Kerb Spots", "Experiments/Cars", carSlotKerbs,

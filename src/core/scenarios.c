@@ -3670,9 +3670,25 @@ static void CityPavements(void) {
         for (int x = 0; x < W; x++) road[y * W + x] = GRID(x, y, 1) == CELL_AIR;
     cityWalk = realloc(cityWalk, sizeof(int) * (size_t)(W * H));
     cityWalkN = 0;
+    // no pavement on a roundabout's island (walk spots there: the only way on was across the
+    // ring, which has no crossings): per roundabout its centre and ring radius (cells)
+    float isl[64][3]; int nIsl = 0;
+    for (int n = 0; n < rdNodeCount && nIsl < 64; n++) {
+        int r = rdNodes[n].ringOf;
+        if (r < 0 || !rdNodes[n].ring) continue;
+        float R = hypotf(rdNodes[n].x - rdNodes[r].x, rdNodes[n].y - rdNodes[r].y) / CELL_SIZE;
+        int k = 0;
+        while (k < nIsl && (isl[k][0] != rdNodes[r].x || isl[k][1] != rdNodes[r].y)) k++;
+        if (k == nIsl) { isl[k][0] = rdNodes[r].x; isl[k][1] = rdNodes[r].y; isl[k][2] = 0; nIsl++; }
+        if (R > isl[k][2]) isl[k][2] = R;
+    }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
             if (road[y * W + x]) continue;
+            bool island = false;
+            for (int k = 0; k < nIsl && !island; k++)
+                island = hypotf((x + 0.5f) - isl[k][0] / CELL_SIZE, (y + 0.5f) - isl[k][1] / CELL_SIZE) < isl[k][2];
+            if (island) continue;
             bool near = false;
             for (int dy = -2; dy <= 2 && !near; dy++)
                 for (int dx = -2; dx <= 2 && !near; dx++) {
@@ -3702,6 +3718,8 @@ static void CityPavements(void) {
         // roundabout: people stood on the curves and cars waited for them for minutes)
         bool toRing = rdNodes[rdSegs[sgi].to].ring;
         float a0 = toRing ? -4.0f : 1.0f, a1 = toRing ? -2.4f : 2.6f;
+        int marked = 0, tried = 0;   // (diagnostic SL_XLOG: road ends that got no crossing)
+        float zHere = RoadZAt(sgi, rdSegs[sgi].len);
         for (float a = a0; a <= a1; a += 0.4f)
             for (float l = -6.0f; l <= 6.0f; l += 0.4f) {
                 int cx = (int)((ex + (ch * a - sh * l) * CS) / CS), cy = (int)((ey + (sh * a + ch * l) * CS) / CS);
@@ -3714,12 +3732,16 @@ static void CityPavements(void) {
                     if (O->kind != RD_LANE || O->edge == rdSegs[sgi].edge) continue;
                     if (px < O->bx0 - 3 * CS || px > O->bx1 + 3 * CS || py < O->by0 - 3 * CS || py > O->by1 + 3 * CS) continue;
                     for (int q = 0; q < O->n; q++) {
+                        if (fabsf(rdZ[O->p0 + q] - zHere) > 0.5f) continue;   // (a road above or below: the highway over the access road)
                         float dx = rdX[O->p0 + q] - px, dy = rdY[O->p0 + q] - py;
                         if (dx * dx + dy * dy < 2.5f * 2.5f * CS * CS) { clear = false; break; }
                     }
                 }
-                if (clear) { extra[cy * W + cx] = 0; SlotsMarkCrossing(cx, cy, fabsf(ch) > fabsf(sh) ? 1 : 2); }
+                tried++;
+                if (clear) { extra[cy * W + cx] = 0; SlotsMarkCrossing(cx, cy, fabsf(ch) > fabsf(sh) ? 1 : 2); marked++; }
             }
+        if (getenv("SL_XLOG") && marked == 0)
+            printf("no crossing: lane %d (class %d) ending at (%.0f,%.0f) node %d, %d road cells tried\n", sgi, RoadSegClass(sgi), ex / CELL_SIZE, ey / CELL_SIZE, rdSegs[sgi].to, tried);
     }
     navPathExtra = extra;
     navPathExtraZ = 1;

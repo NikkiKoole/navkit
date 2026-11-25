@@ -126,6 +126,7 @@ void SlotsNoteChoice(bool drove, float tWalk, float tDrive);
 extern bool carSlotReal;
 extern bool carSlotPhysical;   // braking over several steps, curve speeds (needed for carSlotReal)
 extern bool carSlotLaneChange; // overtaking / keeping right on two-lane roads
+extern bool carSlotAlongKerb;  // walking along the road (into a diagonal kerb's corners) isn't stepping off
 extern bool carSlotZebraTurns; // at a zebra, walkers at the kerb let a car that has waited go first
 extern bool carSlotDawdleStop; // (test) dawdling may stop a moving car
 extern bool carSlotLaneCurves; // a curved lane (a ring) no faster than its curve allows

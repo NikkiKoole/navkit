@@ -78,6 +78,7 @@ static unsigned char* slWhy = NULL;       // car: why it stands this step
 // Taking turns at a zebra: a car that has stood a few steps for the people crossing gets to go -
 // those still at the kerb let it pass (a steady stream of walkers held cars for minutes; the
 // ones already on the crossing walk on)
+bool carSlotAlongKerb = true;   // (TEST: off = walking along a diagonal road's kerb into its corners counts as stepping off)
 bool carSlotZebraTurns = true;   // (TEST: off = walkers at the kerb only wait for a car that can't stop)
 #define SL_ZEBRA_TURN 3          // steps a car stands for walkers before they let it go
 #define SL_ZEBRA_REACH 7.0f      // ... any such car this near (cells) where we step off: a crossing's width
@@ -1809,6 +1810,22 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     bool turn = false;   // holding back for a car that has waited its turn at the zebra
     int bx0 = (int)((m->x - 3 * CS - SL_SPAN_REACH) / B), bx1 = (int)((m->x + 3 * CS + SL_SPAN_REACH) / B);
     int by0 = (int)((m->y - 3 * CS - SL_SPAN_REACH) / B), by1 = (int)((m->y + 3 * CS + SL_SPAN_REACH) / B);
+    // walking along the road, not across it (a diagonal road's pavement is a staircase of cells:
+    // a straight walk along it clips the road's corners, and the road "goes on ahead" - those
+    // walkers waited at the kerb for gaps and blocked lanes, half the "jaywalkers"): the nearest
+    // lane's heading against ours
+    if (deep && !onRoad && carSlotAlongKerb) {
+        float bestD = 4.0f * 4.0f * CS * CS, h = 0; bool found = false;
+        for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
+            for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
+                for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                    int idx = slBList[e];
+                    if (rdSegs[slSlotSeg[idx]].kind != RD_LANE || fabsf(slCZ[idx] - m->z) > 0.6f) continue;
+                    float d2 = SlSlotDist2(idx, qx, qy);
+                    if (d2 < bestD) { bestD = d2; h = slCH[idx]; found = true; }
+                }
+        if (found && fabsf(dirX * cosf(h) + dirY * sinf(h)) > 0.8f) deep = false;
+    }
     for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH && !inWay; by++)
         for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW && !inWay; bx++)
             for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1] && !inWay; e++) {
@@ -1916,8 +1933,14 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
         if (zebra) slPedZebra++;
         else {
             slPedJay++;
-            if (getenv("SL_JAYLOG") && slPedJay < 40)   // (diagnostic: where people cross off the crossings)
-                printf("jay: mover %d steps off at (%.1f,%.1f) dir (%.2f,%.2f), goal (%d,%d)\n", mi, m->x / CS, m->y / CS, dirX, dirY, m->goal.x, m->goal.y);
+            if (getenv("SL_JAYLOG") && slPedJay < (atoi(getenv("SL_JAYLOG")) > 1 ? atoi(getenv("SL_JAYLOG")) : 40)) {   // (diagnostic: where people cross off the crossings)
+                int mx = (int)(m->x / CS), my = (int)(m->y / CS), near = -1;   // the nearest crossing cell, cells
+                for (int r = 0; r <= 40 && near < 0; r++)
+                    for (int dy = -r; dy <= r && near < 0; dy++)
+                        for (int dx = -r; dx <= r; dx++) if ((abs(dx) == r || abs(dy) == r) && SlotsCrossingAt(mx + dx, my + dy)) { near = r; break; }
+                printf("jay: mover %d steps off at (%.1f,%.1f) dir (%.2f,%.2f), goal (%d,%d), nearest crossing %d cells, path left %d\n", mi, m->x / CS, m->y / CS, dirX, dirY,
+                       m->goal.x, m->goal.y, near, m->pathLength);
+            }
         }
     }
     if (slStep < slPedGoStep[mi]) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }   // until the next step starts
