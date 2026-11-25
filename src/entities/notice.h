@@ -33,4 +33,17 @@ void ClearNotices(void);
 void NoticeMover(int moverIdx);     // one mover looks around now (NoticeTick staggers these)
 int NoticeTop(int moverIdx);        // most salient noticed mover, -1 if none
 
+// --- Passing politely (first social steering response) ---
+// A walking mover that noticed someone coming at it (oncoming, ahead, near its line) drifts
+// sideways early and slows a little: away from the side the other is on, to its right when
+// dead ahead. Both do it, so they split to opposite sides instead of bumping.
+extern bool politePassing;
+extern float passRadius;            // cells ahead where it starts to give way
+extern float passStrength;          // sideways speed at full weight, as a fraction of walking speed
+extern float passSlow;              // speed lost at full weight (0..1)
+
+// (hx, hy): unit direction the mover is walking. Out: sideways direction * weight (0..1, length
+// up to ~1) and a speed scale. Returns false when there is nobody to give way to.
+bool NoticePassSteer(int moverIdx, float hx, float hy, float* sideX, float* sideY, float* speedScale);
+
 #endif

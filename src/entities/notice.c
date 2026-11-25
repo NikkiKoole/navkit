@@ -9,6 +9,10 @@ MoverNotice moverNotice[MAX_MOVERS];
 bool noticeEnabled = true;
 float noticeRadius = 6.0f;
 int noticeEveryTicks = 15;
+bool politePassing = true;
+float passRadius = 4.0f;
+float passStrength = 1.0f;
+float passSlow = 0.0f;
 
 static unsigned int noticeTickCounter = 0;
 
@@ -31,17 +35,28 @@ int NoticeTop(int moverIdx) {
     return -1;
 }
 
-// Is mover j walking toward point (x, y)? Its heading is the direction to its next waypoint.
-static bool HeadingToward(int j, float x, float y) {
+// Unit direction mover j walks in (toward its next waypoint); false when it isn't walking.
+static bool MoverHeading(int j, float* hx, float* hy) {
     const Mover* o = &movers[j];
     if (o->pathLength <= 0 || o->pathIndex < 0) return false;
     Point wp = moverPaths[j][o->pathIndex];
-    float hx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - o->x;
-    float hy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - o->y;
-    float tx = x - o->x, ty = y - o->y;
-    float hl = sqrtf(hx * hx + hy * hy), tl = sqrtf(tx * tx + ty * ty);
-    if (hl < 0.5f || tl < 0.5f) return false;
-    return (hx * tx + hy * ty) / (hl * tl) > 0.7f;
+    if (wp.z != (int)o->z) return false;   // climbing: not walking on the level
+    float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - o->x;
+    float dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - o->y;
+    float l = sqrtf(dx * dx + dy * dy);
+    if (l < 0.5f) return false;
+    *hx = dx / l; *hy = dy / l;
+    return true;
+}
+
+// Is mover j walking toward point (x, y)?
+static bool HeadingToward(int j, float x, float y) {
+    float hx, hy;
+    if (!MoverHeading(j, &hx, &hy)) return false;
+    float tx = x - movers[j].x, ty = y - movers[j].y;
+    float tl = sqrtf(tx * tx + ty * ty);
+    if (tl < 0.5f) return false;
+    return (hx * tx + hy * ty) / tl > 0.7f;
 }
 
 static const NoticeEntry* FindEntry(const MoverNotice* n, int j) {
@@ -103,4 +118,42 @@ void NoticeTick(void) {
     int every = noticeEveryTicks < 1 ? 1 : noticeEveryTicks;
     unsigned int phase = noticeTickCounter++ % (unsigned int)every;
     for (int i = (int)phase; i < moverCount; i += every) NoticeMover(i);
+}
+
+// --- Passing politely ---
+#define PASS_LANE_HALF   1.2f    // cells: the other counts as "in my way" within this of my line
+#define PASS_CENTRED     0.15f   // cells: closer to my line than this = dead ahead: keep right
+#define PASS_ONCOMING   -0.5f    // heading dot product below this = coming at me
+
+bool NoticePassSteer(int i, float hx, float hy, float* sideX, float* sideY, float* speedScale) {
+    *sideX = *sideY = 0.0f;
+    *speedScale = 1.0f;
+    if (!politePassing || !noticeEnabled) return false;
+    const Mover* m = &movers[i];
+    const MoverNotice* n = &moverNotice[i];
+    float radius = passRadius * CELL_SIZE;
+    float rx = -hy, ry = hx;   // my right (screen y points down)
+    float sx = 0.0f, sy = 0.0f, maxW = 0.0f;
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !movers[j].active || (int)movers[j].z != (int)m->z) continue;
+        float jhx, jhy;
+        if (!MoverHeading(j, &jhx, &jhy)) continue;              // standing still: separation handles it
+        if (hx * jhx + hy * jhy > PASS_ONCOMING) continue;       // not coming at me
+        float dx = movers[j].x - m->x, dy = movers[j].y - m->y;
+        float ahead = dx * hx + dy * hy;
+        if (ahead <= 0.0f || ahead > radius) continue;
+        float lateral = dx * rx + dy * ry;                       // > 0: on my right
+        if (fabsf(lateral) > PASS_LANE_HALF * CELL_SIZE) continue;
+        float w = 1.0f - ahead / radius;
+        float side = lateral > PASS_CENTRED * CELL_SIZE ? -1.0f : 1.0f;   // away from them, else right
+        sx += side * rx * w;
+        sy += side * ry * w;
+        if (w > maxW) maxW = w;
+    }
+    if (maxW <= 0.0f) return false;
+    *sideX = sx;
+    *sideY = sy;
+    *speedScale = 1.0f - passSlow * maxW;
+    return true;
 }

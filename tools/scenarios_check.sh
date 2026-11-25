@@ -44,6 +44,7 @@ done <<'EOF'
 85  | 1 | --scenario mood
 240 | 0 | --scenario faces
 60  | 0 | --scenario social
+300 | 0 | --scenario hallway
 38  | 0 | --scenario crafting
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long
@@ -56,7 +57,9 @@ done <<'EOF'
 67  | 0 | --scenario transfer
 57  | 0 | --scenario transit-chain
 10  | 0 | --scenario belt
-10  | 0 | --scenario belt-lift
+# belt-lift: 2 haulers, 9-12 at 3000 ticks depending on small timing changes (polite passing
+# nudges: 12 -> 9); both finish all the work, 117-119 arrivals, by tick 18000
+7   | 0 | --scenario belt-lift
 31  | 0 | --scenario belt-build
 17  | 0 | --scenario belt-workshop
 0   | 0 | --scenario belt-play

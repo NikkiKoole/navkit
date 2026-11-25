@@ -50,6 +50,18 @@ static void Look(void) {
     NoticeTick();
 }
 
+// Give mover i a one-waypoint path toward cell (gx, gy)
+static void WalkToward(int i, int gx, int gy) {
+    moverPaths[i][0] = (Point){gx, gy, (int)movers[i].z};
+    movers[i].pathLength = 1;
+    movers[i].pathIndex = 0;
+}
+
+static void Pass(int i, float hx, float hy, float* sx, float* sy, bool* any) {
+    float scale;
+    *any = NoticePassSteer(i, hx, hy, sx, sy, &scale);
+}
+
 describe(notice_basics) {
     it("two movers in view notice each other") {
         SetupWorld();
@@ -141,9 +153,70 @@ describe(notice_basics) {
     }
 }
 
+describe(polite_passing) {
+    it("head-on and dead ahead: both drift to their own right, opposite sides") {
+        SetupWorld();
+        politePassing = true;
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);   // 3 cells apart, inside passRadius
+        WalkToward(a, 20, 5);   // east
+        WalkToward(b, 0, 5);    // west
+        Look();
+        float ax, ay, bx, by; bool ga, gb;
+        Pass(a, 1, 0, &ax, &ay, &ga);
+        Pass(b, -1, 0, &bx, &by, &gb);
+        expect(ga && gb);
+        expect(ay > 0.0f);      // east-walker's right is south (y down)
+        expect(by < 0.0f);      // west-walker's right is north
+    }
+
+    it("already offset: each moves away from the other's side") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        movers[b].y -= CELL_SIZE * 0.5f;   // b a bit north = on a's left
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 4);
+        Look();
+        float ax, ay, bx, by; bool ga, gb;
+        Pass(a, 1, 0, &ax, &ay, &ga);
+        Pass(b, -1, 0, &bx, &by, &gb);
+        expect(ga && gb);
+        expect(ay > 0.0f);      // a goes south, away from b
+        expect(by < 0.0f);      // b goes north, away from a
+    }
+
+    it("same direction, behind, standing or far to the side: no giving way") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), same = AddMover(7, 5, 1), stand = AddMover(6, 6, 1),
+            behind = AddMover(2, 5, 1), wide = AddMover(7, 8, 1);
+        WalkToward(a, 20, 5);
+        WalkToward(same, 20, 5);
+        WalkToward(behind, 0, 5);
+        WalkToward(wide, 0, 8);
+        (void)stand;
+        Look();
+        float ax, ay; bool g;
+        Pass(a, 1, 0, &ax, &ay, &g);
+        expect(!g);
+    }
+
+    it("off: nothing") {
+        SetupWorld();
+        int a = AddMover(4, 5, 1), b = AddMover(7, 5, 1);
+        WalkToward(a, 20, 5);
+        WalkToward(b, 0, 5);
+        Look();
+        politePassing = false;
+        float ax, ay; bool g;
+        Pass(a, 1, 0, &ax, &ay, &g);
+        expect(!g);
+        politePassing = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(notice_basics);
+    test(polite_passing);
     return summary();
 }

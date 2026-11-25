@@ -266,6 +266,55 @@ static bool SocialCheck(char* why, int whyLen) {
     return true;
 }
 
+// hallway: a 3-wide corridor 30 long, 12 movers wandering it: two-way traffic all the time.
+// Compare politePassing on/off: close contacts (two walking movers within half a cell) and
+// arrivals (throughput).
+static long hallTicks, hallContacts;
+
+static void SetupHallway(void) {
+    hallTicks = hallContacts = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            if (x >= 1 && x <= 30 && y >= 14 && y <= 16) continue;
+            GRID(x, y, 1) = CELL_WALL;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 12;
+    for (int i = 0; i < n; i++) SpawnMoverAt(1 + (i * 29) / (n > 1 ? n - 1 : 1), 14 + i % 3, 1);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Hallway: %d movers in a 3-wide corridor (polite passing %s)", n,
+                          politePassing ? "on" : "off"), GREEN);
+}
+
+static void HallwayTickStats(void) {
+    hallTicks++;
+    float r = CELL_SIZE * 0.5f;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* a = &movers[i];
+        if (!a->active || a->pathIndex < 0) continue;
+        for (int j = i + 1; j < moverCount; j++) {
+            const Mover* b = &movers[j];
+            if (!b->active || b->pathIndex < 0 || (int)b->z != (int)a->z) continue;
+            float dx = a->x - b->x, dy = a->y - b->y;
+            if (dx * dx + dy * dy < r * r) hallContacts++;
+        }
+    }
+}
+
+static void HallwayPrintStats(void) {
+    int active = CountActiveMovers();
+    double minutes = hallTicks / (double)TICK_RATE / 60.0;
+    printf("Polite passing: %s (radius %.1f, sideways %.2f, slow %.2f)\n", politePassing ? "on" : "off",
+           passRadius, passStrength, passSlow);
+    printf("Close contacts (walking pairs within half a cell): %ld ticks, %.1f per mover per minute\n",
+           hallContacts, minutes > 0 && active ? hallContacts / (minutes * active) : 0.0);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3352,6 +3401,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
+                   NULL,        SetupHallway,  HallwayTickStats, HallwayPrintStats, NULL, 0, 0},
     {"social",     "10 movers wandering a plaza with two wall pieces: they notice each other (setting notice)",
                    NULL,        SetupSocial,   SocialTickStats, SocialPrintStats, SocialCheck, 0, 0},
     {"mood",       "Comfort camp vs rough camp, 10 movers, needs on, slow days",

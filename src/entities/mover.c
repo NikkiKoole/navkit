@@ -2066,6 +2066,23 @@ void UpdateMovers(void) {
             // Base velocity toward waypoint (effectiveSpeed computed above)
             float vx = lineFollow ? followVx : dxf * invDist * effectiveSpeed;
             float vy = lineFollow ? followVy : dyf * invDist * effectiveSpeed;
+
+            // Passing politely (notice.c): someone noticed coming at us -> drift aside early, slow a bit
+            if (politePassing && !lineFollow && target.z == (int)m->z) {
+                float sideX, sideY, passScale;
+                if (NoticePassSteer(i, dxf * invDist, dyf * invDist, &sideX, &sideY, &passScale)) {
+                    float near = 1.0f;   // ease off close to the waypoint so it can still reach it
+                    if (dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
+                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);
+                        near = t * t;
+                    }
+                    vx += sideX * effectiveSpeed * passStrength * near;
+                    vy += sideY * effectiveSpeed * passStrength * near;
+                    float len = sqrtf(vx * vx + vy * vy);
+                    float want = effectiveSpeed * passScale;
+                    if (len > 0.001f) { vx *= want / len; vy *= want / len; }
+                }
+            }
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
