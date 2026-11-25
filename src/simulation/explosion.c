@@ -451,6 +451,31 @@ ExplosionResult Explode(int x, int y, int z, float power) {
                 if (!HAS_FLOOR(cx, cy, cz)) DropItemsInCell(cx, cy, cz);
             }
 
+    // A crater, not a pit: where the blast left a step of one level up to standing ground, the
+    // floor of the hole slopes up to it (a ramp), so you can walk in and out. Scorched in the middle
+    for (int cz = z0; cz <= z1 && cz + 1 < gridDepth; cz++)
+        for (int cy = y0; cy <= y1; cy++)
+            for (int cx = x0; cx <= x1; cx++) {
+                if (!breakCell[BIDX(cx, cy, cz)] || GRID(cx, cy, cz) != CELL_AIR) continue;
+                if (cz > 0 && !CellIsSolid(GRID(cx, cy, cz - 1))) continue;   // not standing ground
+                float sx = (float)(cx - x), sy = (float)(cy - y), sz = (float)(cz - z);
+                if (cz > 0 && sx * sx + sy * sy + sz * sz <= power * power * 0.36f) SET_CELL_FLAG(cx, cy, cz - 1, CELL_FLAG_BURNED);
+                static const int d4[4][2] = { {0,-1}, {1,0}, {0,1}, {-1,0} };
+                static const CellType ramps[4] = { CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W };
+                for (int k = 0; k < 4; k++) {
+                    int nx = cx + d4[k][0], ny = cy + d4[k][1];
+                    if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
+                    if (!CellIsSolid(GRID(nx, ny, cz)) || !IsCellWalkableAt(cz + 1, ny, nx)) continue;
+                    if (CellIsSolid(GRID(cx, cy, cz + 1))) break;   // a roof over it: no way up
+                    GRID(cx, cy, cz) = ramps[k];
+                    SET_FLOOR(cx, cy, cz);
+                    rampCount++;
+                    MarkChunkDirty(cx, cy, cz);
+                    res.rampsMade++;
+                    break;
+                }
+            }
+
     // Stockpile cells whose ground went are no longer free slots
     if (res.cellsBroken > 0 || res.floorsBroken > 0) RebuildStockpileFreeSlotCounts();
 
@@ -528,7 +553,7 @@ ExplosionResult Explode(int x, int y, int z, float power) {
                 }
             }
 
-    // 7. The shake: loose ground within reach (and a cell further) slides where it has a drop
+    // 7. The shake: loose ground within reach slides where it has a drop
     if (landslidesEnabled)
         for (int cz = z0; cz <= z1; cz++)
             for (int cy = y0; cy <= y1; cy++)
@@ -545,8 +570,8 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     FxBlast((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, power);
     float shake = power * 0.8f;
     TriggerScreenShake(shake > 8.0f ? 8.0f : shake, 0.3f + power * 0.03f);
-    TraceLog(LOG_INFO, "Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires",
-             x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited);
+    TraceLog(LOG_INFO, "Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires, %d ramps, %d water",
+             x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited, res.rampsMade, res.waterThrown);
     EventLog("Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires",
              x, y, z, power, res.cellsBroken, res.floorsBroken, res.itemsPushed, res.moversKnocked, res.cellsIgnited);
     return res;

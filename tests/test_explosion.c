@@ -2,6 +2,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/items.h"
@@ -366,6 +367,36 @@ describe(explosion_water) {
     }
 }
 
+describe(explosion_crater) {
+    it("leaves a crater with ramps up its sides and a scorched floor") {
+        FlatWorld();
+        for (int z = 1; z <= 2; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) { Wall(x, y, z, MAT_DIRT); SetWallNatural(x, y, z); }
+        ExplosionResult r = Explode(12, 12, 3, 5.0f);
+        expect(r.cellsBroken > 0);
+        expect(r.rampsMade > 0);
+        int ramps = 0, scorched = 0;
+        for (int z = 0; z <= 2; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    if (CellIsDirectionalRamp(GRID(x, y, z))) { ramps++; expect(CanWalkUpRampAt(x, y, z)); }
+                    if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) scorched++;
+                }
+        expect(ramps == r.rampsMade);
+        expect(scorched > 0);
+    }
+
+    it("makes no ramp under a roof (in a pocket in rock only the steps inside it)") {
+        FlatWorld();
+        for (int z = 1; z <= 6; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) { Wall(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z); }
+        ExplosionResult r = Explode(12, 12, 3, 5.0f);
+        expect(r.cellsBroken > 0);
+        for (int z = 0; z <= 6; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    if (CellIsDirectionalRamp(GRID(x, y, z))) { expect(!CellIsSolid(GRID(x, y, z + 1))); expect(CanWalkUpRampAt(x, y, z)); }
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -378,5 +409,6 @@ int main(int argc, char** argv) {
     test(gunpowder_fire);
     test(blast_effects);
     test(explosion_water);
+    test(explosion_crater);
     return summary();
 }

@@ -4,7 +4,8 @@ Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural 
 mining), throw loose items by weight, knock movers back (slice 1); structural support: what
 loses its connection to the ground creaks and falls, landing as walls (slice 2); gunpowder and
 blast mining as a job (slice 3); gunpowder goes off in fire and chains (slice 4); dithered
-blast / dust / chunk / spark effects (slice 5). Not yet: animals, overhang limits.
+blast / dust / chunk / spark effects (slice 5); blasts throw water and breach ponds (6),
+landslides (7), craters with ramps (8). Not yet: animals, overhang limits.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -219,12 +220,16 @@ In `src/world/support.c` (bottom, "Landslides"; ticks from `SupportTick`), setti
 - Not done: rain or water setting slides off (soaked soil), a slope angle per material (sand
   slides at one level, dirt at two), slides into water.
 
-### Slice 8: craters and rubble
+### Built: slice 8, craters (2026-11-25)
 
-- A blast on open ground today digs a shallow bowl and drops ~35 dirt items. Make it read as a
-  crater: the rim cells become ramps where they can (walk down into it), and part of the
-  broken soil stays as loose fill on the floor instead of items.
-- Darkened (scorched) floor in the middle that fades with time.
+- Where the blast left a step of one level from the floor of the hole up to standing ground (and
+  no roof over it), that floor cell becomes a ramp up to it: you walk in and out of a crater, and
+  a pocket blasted in rock gets steps inside it. `ExplosionResult.rampsMade`. Field charge in
+  `explosions` (power 6): 15 ramps round the rim; the drilled granite charge: 16.
+- Scorched: the ground under the hole within 0.6 x power of the charge gets the burned mark (the
+  dark tint a grass fire leaves; it doesn't burn again). Doesn't fade yet.
+- Not done: keeping part of the broken soil as loose fill instead of ~35 dirt items, the
+  scorch fading.
 
 ### Other ideas from the brainstorm (not planned yet)
 
