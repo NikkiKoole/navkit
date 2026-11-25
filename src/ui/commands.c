@@ -482,20 +482,30 @@ static void RunCopyMap(const CmdValue* v) {
 
 // ---- entities: animals, agents, scattered items, stockpiles ----
 static const char* const animalChoices[] = { "grazer", "steering", "predator" };
-static void RunAnimal(const CmdValue* v) {
-    int n = v[1].given ? v[1].i : 1;
-    int before = CountActiveAnimals();
-    for (int i = 0; i < n; i++) {
-        switch (v[0].choice) {
-            case 0: SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER); break;
-            case 1: SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER); break;
-            case 2: SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR); break;
+// SpawnAnimal picks a random dry walkable cell on one level and gives up quietly when that
+// level has none (air, ladders, water): try the viewed level first, then the nearest others
+static bool SpawnAnimalNear(int kind, int z0) {
+    for (int d = 0; d < gridDepth; d++) {
+        for (int sgn = 0; sgn < (d ? 2 : 1); sgn++) {
+            int z = sgn ? z0 - d : z0 + d;
+            if (z < 0 || z >= gridDepth) continue;
+            int before = CountActiveAnimals();
+            switch (kind) {
+                case 0: SpawnAnimal(ANIMAL_GRAZER, z, BEHAVIOR_SIMPLE_GRAZER); break;
+                case 1: SpawnAnimal(ANIMAL_GRAZER, z, BEHAVIOR_STEERING_GRAZER); break;
+                case 2: SpawnAnimal(ANIMAL_PREDATOR, z, BEHAVIOR_PREDATOR); break;
+            }
+            if (CountActiveAnimals() > before) return true;
         }
     }
-    // SpawnAnimal picks a random dry walkable cell on the viewed level and gives up quietly
-    int placed = CountActiveAnimals() - before;
-    if (placed > 0) Say(GREEN, "Spawned %d %s on level %d", placed, animalChoices[v[0].choice], currentViewZ);
-    else Say(YELLOW, "No animal placed: no dry walkable cell found on level %d (try another level)", currentViewZ);
+    return false;
+}
+static void RunAnimal(const CmdValue* v) {
+    int n = v[1].given ? v[1].i : 1;
+    int placed = 0;
+    for (int i = 0; i < n; i++) if (SpawnAnimalNear(v[0].choice, currentViewZ)) placed++;
+    if (placed > 0) Say(GREEN, "Spawned %d %s (the viewed level, else the nearest with dry ground)", placed, animalChoices[v[0].choice]);
+    else Say(YELLOW, "No animal placed: no dry walkable cell on any level (or the animal limit is reached)");
 }
 static const char* const agentChoices[] = { "spawn", "repath" };
 static void RunAgents(const CmdValue* v) {
