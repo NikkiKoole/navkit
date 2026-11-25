@@ -572,6 +572,59 @@ describe(friends_and_foes) {
     }
 }
 
+// Walks go outdoors: open the sky over the test world (no floor on the level above)
+static void WalkSetup(void) {
+    TalkSetup();
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) CLEAR_FLOOR(x, y, 2);
+}
+
+describe(walking_together) {
+    it("a walk: the leader gets somewhere to go, the other stops its own walking") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        WalkToward(b, 20, 6);
+        expect(TalkWalkStart(a, b));
+        expect(MoverIsWalkingWith(a) && MoverIsWalkingWith(b));
+        expect(movers[a].pathLength > 0 && movers[a].pathIndex >= 0);
+        expect(movers[b].pathIndex < 0);
+        expect(TalkPartner(a) == b && TalkPartner(b) == a);
+    }
+
+    it("the other keeps a spot beside the leader; the leader slows when it falls behind") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(13, 6, 1);   // b starts 3 cells off
+        expect(TalkWalkStart(a, b));
+        expect(TalkWalkSpeedScale(a) < walkPace);             // waits for b
+        expect(TalkWalkSpeedScale(b) == 1.0f);                // (only the leader has a pace)
+        for (int t = 0; t < 3 * TICK_RATE; t++) TalkMoverTick(b, TICK_DT);   // leader stands still here
+        float dx = movers[b].x - movers[a].x, dy = movers[b].y - movers[a].y;
+        expect(fabsf(sqrtf(dx * dx + dy * dy) - 0.8f * CELL_SIZE) < 3.0f);   // at its spot
+        expect(TalkWalkSpeedScale(a) == walkPace);
+    }
+
+    it("indoors (a roof over them): no walk") {
+        TalkSetup();   // floors on the level above: a roof
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        expect(!TalkWalkStart(a, b));
+    }
+
+    it("ends when they get separated or one gets a job") {
+        WalkSetup();
+        int a = AddMover(10, 6, 1), b = AddMover(11, 6, 1);
+        expect(TalkWalkStart(a, b));
+        movers[b].x += 6 * CELL_SIZE;                         // pulled apart
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(a) && !MoverIsWalkingWith(b));
+        int c = AddMover(10, 8, 1), d = AddMover(11, 8, 1);
+        expect(TalkWalkStart(c, d));
+        movers[d].currentJobId = 0;
+        TalkTick(TICK_DT);
+        expect(!MoverIsWalkingWith(c));
+        movers[d].currentJobId = -1;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -581,5 +634,6 @@ int main(int argc, char* argv[]) {
     test(gatherings);
     test(relations);
     test(friends_and_foes);
+    test(walking_together);
     return summary();
 }

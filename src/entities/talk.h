@@ -14,7 +14,7 @@
 #define TALK_SLOTS 32           // array size: a gathering of onlookers can be bigger
 #define MAX_TALKS 512
 
-typedef enum { TALK_CHAT, TALK_WATCH } TalkKind;
+typedef enum { TALK_CHAT, TALK_WATCH, TALK_WALK } TalkKind;
 
 typedef struct {
     bool active;
@@ -69,6 +69,17 @@ int GatheringStart(int focusMover, float seconds);   // -1 if none free
 int GatheringStartAt(float x, float y, int z, float seconds, const char* what, float stayMin, float stayMax);
 bool MoverIsWatching(int moverIdx);                  // an onlooker (not the performer)
 bool MoverIsPerforming(int moverIdx);
+
+// --- Walking together (TALK_WALK): an idle mover outdoors that noticed an idle one it likes
+// (like >= walkMinLike) within 4 cells may suggest a walk: it leads (members[0]) along its own path to a
+// spot 6-14 cells away at a stroll (walkPace), slowing when the other falls behind; the other
+// (members[1]) keeps a spot at the leader's right, or behind it where there's no room. They
+// chat on the way. Ends on arrival, after walkMaxSeconds, a job/need, or if they get separated.
+extern float walkChance, walkMinLike, walkMaxSeconds, walkPace;
+extern long walkStartedCount;
+bool TalkWalkStart(int leader, int follower);   // false if the leader found nowhere to go
+float TalkWalkSpeedScale(int moverIdx);         // the leader's pace (1 if not leading a walk)
+bool MoverIsWalkingWith(int moverIdx);
 
 // Passers-by give a conversation room: a walker with a talk's middle ahead, near its line,
 // drifts sideways around the circle (like polite passing). Out: sideways direction * weight.

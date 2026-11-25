@@ -1986,7 +1986,7 @@ void UpdateMovers(void) {
                 float heatMult = balance.heatSpeedPenaltyMin + t * (1.0f - balance.heatSpeedPenaltyMin);
                 terrainSpeedMult *= heatMult;
             }
-            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
+            effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult * TalkWalkSpeedScale(i);
         }
 
         // Waypoint arrival check

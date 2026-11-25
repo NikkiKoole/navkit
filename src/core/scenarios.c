@@ -527,7 +527,7 @@ static void SocialTiesPrintStats(void) {
            tiesFriendN ? tiesFriendSum / tiesFriendN : 0.0, tiesStrangerN ? tiesStrangerSum / tiesStrangerN : 0.0,
            tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
     printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
-    printf("Talks started: %ld\n", talkStartedCount);
+    printf("Talks started: %ld, walks: %ld\n", talkStartedCount, walkStartedCount);
 }
 
 // garden-party: a lawn with a stone patio, a campfire in the middle, two tables with chairs and a
@@ -537,10 +537,12 @@ static void SocialTiesPrintStats(void) {
 #define GP_FIRE_X 16
 #define GP_FIRE_Y 16
 static long gpTicks, gpAtFireSum, gpAtFireMax, gpTalkSum, gpMeals, gpDarkTicks, gpDarkFireSum;
+static long gpWalkTicks, gpWalkDistN; static double gpWalkDistSum; static long gpWalkSide, gpWalkBehind;
 static float gpPrevHunger[MAX_MOVERS];
 
 static void SetupGardenParty(void) {
     gpTicks = gpAtFireSum = gpAtFireMax = gpTalkSum = gpMeals = gpDarkTicks = gpDarkFireSum = 0;
+    gpWalkTicks = gpWalkDistN = gpWalkSide = gpWalkBehind = 0; gpWalkDistSum = 0.0;
     hungerEnabled = true;
     thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
     dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
@@ -594,9 +596,24 @@ static void GardenPartyTickStats(void) {
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
         if (MoverIsWatching(i)) atFire++;
-        if (MoverTalk(i) >= 0 && !MoverIsWatching(i)) gpTalkSum++;
+        if (MoverTalk(i) >= 0 && !MoverIsWatching(i) && !MoverIsWalkingWith(i)) gpTalkSum++;
+        if (MoverIsWalkingWith(i)) gpWalkTicks++;
         if (movers[i].hunger > gpPrevHunger[i] + 0.05f) gpMeals++;
         gpPrevHunger[i] = movers[i].hunger;
+    }
+    for (int t = 0; t < MAX_TALKS; t++) {   // walking pairs: how far apart, side by side or one behind
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->kind != TALK_WALK || tk->count < 2) continue;
+        const Mover* L = &movers[tk->members[0]]; const Mover* F = &movers[tk->members[1]];
+        float dx = F->x - L->x, dy = F->y - L->y;
+        gpWalkDistSum += sqrtf(dx * dx + dy * dy) / CELL_SIZE; gpWalkDistN++;
+        int li = tk->members[0];
+        if (L->pathIndex >= 0) {
+            Point wp = moverPaths[li][L->pathIndex];
+            float hx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - L->x, hy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - L->y;
+            float hl = sqrtf(hx * hx + hy * hy);
+            if (hl > 0.5f) { if (fabsf((dx * hx + dy * hy) / hl) < CELL_SIZE * 0.4f) gpWalkSide++; else gpWalkBehind++; }
+        }
     }
     gpAtFireSum += atFire;
     if (IsSkyDark()) { gpDarkTicks++; gpDarkFireSum += atFire; }
@@ -612,6 +629,10 @@ static void GardenPartyPrintStats(void) {
            gpTicks > gpDarkTicks ? (gpAtFireSum - gpDarkFireSum) / (double)(gpTicks - gpDarkTicks) : 0.0,
            gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
     printf("Talks started: %ld, joined: %ld\n", talkStartedCount, talkJoinedCount);
+    printf("Walks: %ld started, %.0f%% of the time walking with someone; pair %.2f cells apart, side by side %.0f%%\n",
+           walkStartedCount, gpTicks && active ? 100.0 * gpWalkTicks / ((double)gpTicks * active) : 0.0,
+           gpWalkDistN ? gpWalkDistSum / gpWalkDistN : 0.0,
+           gpWalkSide + gpWalkBehind ? 100.0 * gpWalkSide / (gpWalkSide + gpWalkBehind) : 0.0);
     int fuel = 0;
     for (int dy = -1; dy <= 1; dy++)
         for (int dx = -1; dx <= 1; dx++) fuel += GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 0) + GetFuelAt(GP_FIRE_X + dx, GP_FIRE_Y + dy, 1);

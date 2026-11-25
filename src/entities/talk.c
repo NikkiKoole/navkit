@@ -3,6 +3,7 @@
 #include "notice.h"
 #include "relations.h"
 #include "../simulation/needs.h"
+#include "../simulation/weather.h"
 #include "mover.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -24,6 +25,11 @@ float watchChance = 0.1f;
 float watchMinSeconds = 10.0f;
 float watchMaxSeconds = 30.0f;
 long watchJoinedCount = 0;
+float walkChance = 0.05f;
+float walkMinLike = 30.0f;
+float walkMaxSeconds = 60.0f;
+float walkPace = 0.7f;
+long walkStartedCount = 0;
 static int talkHigh = 0;   // talks[] entries at or above this are all free
 
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
@@ -40,6 +46,13 @@ static unsigned int talkTickCounter = 0;
 #define WATCH_RING_STEP    1.0f     // cells between rings
 #define WATCH_SPACING      1.0f     // cells between neighbours on a ring
 #define WATCH_RINGS        3
+#define WALK_ASK_RANGE     4.0f     // cells: how close a friend must be to suggest a walk
+#define WALK_SIDE          0.8f     // cells: the follower's spot beside the leader
+#define WALK_BEHIND        0.9f     // cells: ... or behind it where there's no room beside
+#define WALK_APART         4.0f     // cells: further apart than this: the walk is off
+#define WALK_CATCH_UP      1.15f    // the follower's speed (x the leader's) when behind its spot
+#define WALK_AFTER_TALK    0.5f     // a talk between two who like each other ends: chance they walk on together
+#define WALK_NEXT_LEG      8.0f     // seconds left on arrival: the leader picks the next spot
 
 static float RandRange(float lo, float hi) {
     return lo + (hi - lo) * (GetRandomValue(0, 10000) / 10000.0f);
@@ -52,6 +65,7 @@ void ClearTalks(void) {
     talkStartedCount = 0;
     talkJoinedCount = 0;
     watchJoinedCount = 0;
+    walkStartedCount = 0;
     talkHigh = 0;
     talkTickCounter = 0;
 }
@@ -60,6 +74,22 @@ int MoverTalk(int i) {
     if (i < 0 || i >= moverCount) return -1;
     int t = moverTalkIdx[i] - 1;
     return (t >= 0 && talks[t].active) ? t : -1;
+}
+
+bool MoverIsWalkingWith(int i) {
+    int t = MoverTalk(i);
+    return t >= 0 && talks[t].kind == TALK_WALK;
+}
+
+float TalkWalkSpeedScale(int i) {
+    int t = MoverTalk(i);
+    if (t < 0 || talks[t].kind != TALK_WALK || talks[t].members[0] != i || talks[t].count < 2) return 1.0f;
+    const Mover* f = &movers[talks[t].members[1]];
+    float dx = f->x - movers[i].x, dy = f->y - movers[i].y;
+    float d = sqrtf(dx * dx + dy * dy) / CELL_SIZE;
+    if (d > 3.0f) return 0.2f;                 // all but wait for them (creep: standing still reads as stuck)
+    if (d > 1.5f) return walkPace * 0.6f;      // slow down
+    return walkPace;
 }
 
 bool MoverIsPerforming(int i) {
@@ -80,9 +110,36 @@ bool MoverIsSpeaking(int i) {
     return talks[t].members[talks[t].speaker] == i;
 }
 
+// Unit direction mover j walks in (to its next waypoint); false when not walking
+// (skips waypoints it is already standing on: a fresh path starts with its own cell)
+static bool WalkHeading(int j, float* hx, float* hy) {
+    const Mover* o = &movers[j];
+    if (o->pathLength <= 0 || o->pathIndex < 0) return false;
+    for (int k = o->pathIndex; k >= 0; k--) {
+        Point wp = moverPaths[j][k];
+        float dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - o->x, dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - o->y;
+        float l = sqrtf(dx * dx + dy * dy);
+        if (l < CELL_SIZE * 0.5f) continue;
+        *hx = dx / l; *hy = dy / l;
+        return true;
+    }
+    return false;
+}
+
 bool TalkLookAt(int i, float* x, float* y) {
     int t = MoverTalk(i);
     if (t < 0 || talks[t].focus == i) return false;   // the performer faces its audience (front)
+    if (talks[t].kind == TALK_WALK) {   // walking: the speaker looks at the other, else ahead
+        const Talk* tk = &talks[t];
+        if (tk->count < 2) return false;
+        int other = tk->members[0] == i ? tk->members[1] : tk->members[0];
+        if (MoverIsSpeaking(i)) { *x = movers[other].x; *y = movers[other].y; return true; }
+        if (tk->members[0] == i) return false;   // the leader: its own path
+        float hx, hy;
+        if (!WalkHeading(tk->members[0], &hx, &hy)) return false;
+        *x = movers[i].x + hx * CELL_SIZE; *y = movers[i].y + hy * CELL_SIZE;
+        return true;
+    }
     *x = talks[t].centerX;
     *y = talks[t].centerY;
     return true;
@@ -176,6 +233,8 @@ static void ArrangeSlots(int t) {
         tk->slotY[k] = y;
     }
 }
+
+static bool Roll(float chance);
 
 // --- Gatherings (TALK_WATCH) ---
 static int WatchRingCap(int ring) {
@@ -288,6 +347,66 @@ static bool TryWatch(int i) {
         if (foe) continue;
         if (GetRandomValue(0, 9999) < (int)(chance * 10000.0f)) WatchJoin(t, i);
         return true;   // one roll per check
+    }
+    return false;
+}
+
+// The leader's next spot, 6-14 cells away, with a path to it; false if none found
+static bool WalkPickLeg(int leader) {
+    Mover* m = &movers[leader];
+    int cx = (int)(m->x / CELL_SIZE), cy = (int)(m->y / CELL_SIZE), z = (int)m->z;
+    for (int tries = 0; tries < 12; tries++) {
+        float a = RandRange(0.0f, 6.2831853f), d = RandRange(6.0f, 14.0f);
+        int gx = cx + (int)(cosf(a) * d), gy = cy + (int)(sinf(a) * d);
+        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt(z, gy, gx)) continue;
+        if (!IsExposedToSky(gx, gy, z)) continue;   // a walk goes outdoors
+        Point goal = {gx, gy, z};
+        m->goal = goal;
+        if (MoverPlanPath(leader, (Point){cx, cy, z}, goal) > 0) { m->needsRepath = false; return true; }
+    }
+    return false;
+}
+
+bool TalkWalkStart(int leader, int follower) {
+    if (moverTalkIdx[leader] || moverTalkIdx[follower]) return false;
+    if (!WalkPickLeg(leader)) return false;
+    int z = (int)movers[leader].z;
+    int t = -1;
+    for (int k = 0; k < MAX_TALKS; k++) if (!talks[k].active) { t = k; break; }
+    if (t < 0) return false;
+    Talk* tk = &talks[t];
+    memset(tk, 0, sizeof(*tk));
+    tk->active = true;
+    tk->kind = TALK_WALK;
+    tk->focus = -1;
+    tk->z = z;
+    tk->members[0] = leader;
+    tk->members[1] = follower;
+    tk->count = 2;
+    tk->timeLeft = walkMaxSeconds;
+    tk->speaker = GetRandomValue(0, 1);
+    tk->speakTimer = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
+    moverTalkIdx[leader] = moverTalkIdx[follower] = t + 1;
+    StopWalking(follower);
+    if (t + 1 > talkHigh) talkHigh = t + 1;
+    walkStartedCount++;
+    return true;
+}
+
+// An idle mover that noticed an idle one it likes close by may suggest a walk
+static bool TryWalk(int i) {
+    if (!IsExposedToSky((int)(movers[i].x / CELL_SIZE), (int)(movers[i].y / CELL_SIZE), (int)movers[i].z))
+        return false;   // you go for a walk outdoors
+    const MoverNotice* n = &moverNotice[i];
+    float r = WALK_ASK_RANGE * CELL_SIZE;
+    for (int k = 0; k < n->count; k++) {
+        int j = n->e[k].mover;
+        if (j < 0 || j >= moverCount || !CanTalk(j) || (int)movers[j].z != (int)movers[i].z) continue;
+        if (RelationLike(i, j) < walkMinLike || RelationLike(j, i) <= -20.0f) continue;
+        float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
+        if (dx * dx + dy * dy > r * r) continue;
+        if (!Roll(walkChance)) return false;   // one roll per check
+        return TalkWalkStart(i, j);
     }
     return false;
 }
@@ -420,13 +539,48 @@ void TalkTick(float dt) {
             }
             continue;
         }
+        if (tk->kind == TALK_WALK) {
+            int lead = tk->members[0], fol = tk->count > 1 ? tk->members[1] : -1;
+            bool over = fol < 0 || !CanStayInTalk(lead) || !CanStayInTalk(fol) || (tk->timeLeft -= dt) <= 0.0f ||
+                        !talkEnabled || (int)movers[lead].z != (int)movers[fol].z;
+            if (!over && movers[lead].pathIndex < 0)   // arrived: on to the next spot, or home
+                over = tk->timeLeft < WALK_NEXT_LEG || !WalkPickLeg(lead);
+            if (!over) {
+                float dx = movers[fol].x - movers[lead].x, dy = movers[fol].y - movers[lead].y;
+                over = dx * dx + dy * dy > (WALK_APART * CELL_SIZE) * (WALK_APART * CELL_SIZE);
+            }
+            if (over) { EndTalk(t); continue; }
+            tk->age += dt;
+            tk->centerX = (movers[lead].x + movers[fol].x) * 0.5f;
+            tk->centerY = (movers[lead].y + movers[fol].y) * 0.5f;
+            tk->radius = 0.0f;   // passers-by don't steer round a walking pair (polite passing does)
+            tk->speakTimer -= dt;
+            if (tk->speakTimer <= 0.0f) {
+                tk->speaker = 1 - tk->speaker;
+                tk->speakTimer = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
+            }
+            for (int a = 0; a < 2; a++) {
+                int ma = tk->members[a], mb = tk->members[1 - a];
+                float like = relTalkLikePerSec * (movers[ma].mood + 0.3f) * dt;
+                RelationAdd(ma, mb, like, relTalkFamiliarityPerSec * dt);
+            }
+            continue;
+        }
         int before = tk->count;
         for (int k = tk->count - 1; k >= 0; k--)
             if (!CanStayInTalk(tk->members[k])) LeaveTalk(t, k);
         if (tk->count >= 2 && tk->count < before) ArrangeSlots(t);   // close the circle
         tk->age += dt;
         tk->timeLeft -= dt;
-        if (tk->count < 2 || tk->timeLeft <= 0.0f || !talkEnabled) { EndTalk(t); continue; }
+        if (tk->count < 2 || tk->timeLeft <= 0.0f || !talkEnabled) {
+            int a = tk->members[0], b = tk->count > 1 ? tk->members[1] : -1;
+            bool walkOn = tk->count == 2 && tk->timeLeft <= 0.0f && talkEnabled &&
+                          IsExposedToSky((int)(movers[a].x / CELL_SIZE), (int)(movers[a].y / CELL_SIZE), (int)movers[a].z) &&
+                          RelationLike(a, b) >= walkMinLike && RelationLike(b, a) >= walkMinLike && Roll(WALK_AFTER_TALK);
+            EndTalk(t);
+            if (walkOn) TalkWalkStart(a, b);   // "shall we walk?"
+            continue;
+        }
         // Talking: they get to know each other; like follows the mood (happy: up, grumpy: down)
         for (int a = 0; a < tk->count; a++)
             for (int b = 0; b < tk->count; b++) {
@@ -449,6 +603,7 @@ void TalkTick(float dt) {
     for (int i = (int)phase; i < moverCount; i += TALK_CHECK_EVERY) {
         if (!CanTalk(i)) continue;
         if (talkHigh > 0 && TryWatch(i)) continue;   // something worth watching in range comes first
+        if (talkEnabled && TryWalk(i)) continue;    // a walk with a friend
         if (talkEnabled) TryStartTalk(i);
     }
 }
@@ -459,6 +614,38 @@ bool TalkMoverTick(int i, float dt) {
     Talk* tk = &talks[t];
     Mover* m = &movers[i];
     if (tk->focus == i) {   // the performer stands where it is
+        m->timeWithoutProgress = 0.0f;
+        m->lastX = m->x;
+        m->lastY = m->y;
+        return true;
+    }
+    if (tk->kind == TALK_WALK) {
+        if (tk->members[0] == i) return false;   // the leader walks its own path (at TalkWalkSpeedScale)
+        int lead = tk->members[0];
+        float hx, hy;
+        const Mover* L = &movers[lead];
+        if (!WalkHeading(lead, &hx, &hy)) {   // no direction yet: stay put rather than walk into it
+            m->timeWithoutProgress = 0.0f;
+            m->lastX = m->x;
+            m->lastY = m->y;
+            return true;
+        }
+        // its spot: at the leader's right, else behind it (a door, a narrow hall)
+        float tx = L->x - hy * WALK_SIDE * CELL_SIZE, ty = L->y + hx * WALK_SIDE * CELL_SIZE;
+        int z = (int)m->z;
+        if (!IsCellWalkableAt(z, (int)(ty / CELL_SIZE), (int)(tx / CELL_SIZE))) {
+            tx = L->x - hx * WALK_BEHIND * CELL_SIZE;
+            ty = L->y - hy * WALK_BEHIND * CELL_SIZE;
+        }
+        float dx = tx - m->x, dy = ty - m->y, d = sqrtf(dx * dx + dy * dy);
+        if (d > 1.0f) {
+            float step = m->speed * (60.0f / dayLength) * walkPace * WALK_CATCH_UP * dt;
+            if (step > d) step = d;
+            float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
+            if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+            else if (IsCellWalkableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;   // slide
+            else if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
+        }
         m->timeWithoutProgress = 0.0f;
         m->lastX = m->x;
         m->lastY = m->y;
@@ -495,7 +682,7 @@ bool TalkGiveRoomSteer(int i, float hx, float hy, float* sideX, float* sideY) {
     bool any = false;
     for (int t = 0; t < talkHigh; t++) {
         const Talk* tk = &talks[t];
-        if (!tk->active || tk->z != (int)m->z) continue;
+        if (!tk->active || tk->z != (int)m->z || tk->kind == TALK_WALK) continue;   // a walking pair: passing handles it
         float dx = tk->centerX - m->x, dy = tk->centerY - m->y;
         float berth = tk->radius + ROOM_MARGIN * CELL_SIZE;
         float look = berth + ROOM_LOOK * CELL_SIZE;

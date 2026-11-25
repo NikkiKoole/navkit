@@ -445,6 +445,8 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     } else if (MoverIsWatching(idx) && partner >= 0) {
         if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Watching %s", movers[partner].name);
         else DescAdd(out, DESC_INFO, "Watching #%d", partner);
+    } else if (MoverIsWalkingWith(idx) && partner >= 0) {
+        DescAdd(out, DESC_INFO, "Walking with %s", movers[partner].name[0] ? movers[partner].name : "someone");
     } else if (partner >= 0) {
         int t = MoverTalk(idx);
         if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Talking with %s%s", movers[partner].name,
