@@ -484,6 +484,7 @@ static void RunCopyMap(const CmdValue* v) {
 static const char* const animalChoices[] = { "grazer", "steering", "predator" };
 static void RunAnimal(const CmdValue* v) {
     int n = v[1].given ? v[1].i : 1;
+    int before = CountActiveAnimals();
     for (int i = 0; i < n; i++) {
         switch (v[0].choice) {
             case 0: SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER); break;
@@ -491,6 +492,10 @@ static void RunAnimal(const CmdValue* v) {
             case 2: SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR); break;
         }
     }
+    // SpawnAnimal picks a random dry walkable cell on the viewed level and gives up quietly
+    int placed = CountActiveAnimals() - before;
+    if (placed > 0) Say(GREEN, "Spawned %d %s on level %d", placed, animalChoices[v[0].choice], currentViewZ);
+    else Say(YELLOW, "No animal placed: no dry walkable cell found on level %d (try another level)", currentViewZ);
 }
 static const char* const agentChoices[] = { "spawn", "repath" };
 static void RunAgents(const CmdValue* v) {
