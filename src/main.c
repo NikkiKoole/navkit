@@ -972,6 +972,12 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--profile") == 0) doProfile = true;
     bool doDayBudget = false;   // --day-budget: where the movers' days go (src/core/day_budget.c)
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--day-budget") == 0) doDayBudget = true;
+    // --validate N: check the sim activity counters against the grids every N ticks (the
+    // windowed game does it every 60 s; drift = a system's count of active cells is wrong).
+    // --check always validates once at the end and fails on drift.
+    int validateEvery = 0, counterDrifts = 0;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--validate") == 0) validateEvery = (i + 1 < argc && argv[i + 1][0] != '-') ? atoi(argv[++i]) : 600;
     double setupMs = 0;
     if (scenarioName) {
         double setupStart = WallMs();
@@ -1013,6 +1019,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int t = 0; t < ticks; t++) {
         double tickStart = GetTime();
         SimStep(TICK_DT);   // the same tick the windowed game runs (src/core/sim_step.c)
+        if (validateEvery > 0 && (t + 1) % validateEvery == 0 && !ValidateSimActivityCounts()) {
+            printf("  (counter drift after tick %d)\n", t + 1);
+            counterDrifts++;
+        }
         if (doProfile) HeadlessProfileAccumulate();
         PROFILE_FRAME_END();  // Store profiler data for this tick
         for (int i = 0; i < moverCount; i++) {
@@ -1189,6 +1199,8 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             checkFailures++;
         }
         if (arrivals < minArrivals) { printf("FAIL: %d arrivals, expected at least %d\n", arrivals, minArrivals); checkFailures++; }
+        if (!ValidateSimActivityCounts()) counterDrifts++;   // prints which counter drifted
+        if (counterDrifts > 0) { printf("FAIL: sim activity counters drifted (%d check%s)\n", counterDrifts, counterDrifts > 1 ? "s" : ""); checkFailures++; }
         char why[256] = {0};
         if (scenario && scenario->check && !scenario->check(why, (int)sizeof(why))) {
             printf("FAIL: %s\n", why);

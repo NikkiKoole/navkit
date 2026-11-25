@@ -38,6 +38,10 @@ only the window does: a play-HUD or dev-sidebar button that resets the world wit
 through these commands, or a GUI-only path (new-game screen, F6 load, the screenshot/view
 code). Next time it shows: note the buttons used, F5 right after (the save + log).
 
+Since 2026-11-25 headless runs can check for it: `--validate [N]` every N ticks, and `--check`
+(so every `make scenarios-check` run) validates once at the end and fails on drift. All 70
+scenario/game runs are clean.
+
 ## Notes
 
 - Places that reset the world: `StartGame` (src/core/games.c), `ScenarioResetWorld`,

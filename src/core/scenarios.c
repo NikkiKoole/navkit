@@ -1002,6 +1002,10 @@ static void SetupCampfire(void) {
     if (ws >= 0 && workshops[ws].fuelTileX >= 0)
         SetFireSource(workshops[ws].fuelTileX, workshops[ws].fuelTileY, 1, true);
     SpawnFurniture(24, 14, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    for (int k = 0; k < 2; k++) {   // sticks by the barrel: it burns fuel (2 h a bundle), the wanderers top it up
+        int sticks = SpawnItem(26.5f * CELL_SIZE, (14.5f + k) * CELL_SIZE, 1.0f, ITEM_STICKS);
+        if (sticks >= 0) items[sticks].stackCount = 20;
+    }
     BuildEntrances();
     BuildGraph();
     InvalidateLighting();
@@ -4003,6 +4007,10 @@ static void SetupHeat(void) {
     heatBarrel = (Point){33, 12, 1};
     SpawnFurniture(heatGrate.x, heatGrate.y, 1, FURNITURE_HEAT_GRATE, MAT_IRON);
     SpawnFurniture(heatBarrel.x, heatBarrel.y, 1, FURNITURE_FIRE_BARREL, MAT_IRON);
+    for (int k = 0; k < 2; k++) {   // sticks by the barrel: it burns fuel (2 h a bundle), the movers top it up
+        int sticks = SpawnItem((heatBarrel.x + 2.5f) * CELL_SIZE, (heatBarrel.y + 0.5f + k) * CELL_SIZE, 1.0f, ITEM_STICKS);
+        if (sticks >= 0) items[sticks].stackCount = 20;
+    }
     BuildEntrances(); BuildGraph();
     for (int i = 0; i < 8; i++) {
         SpawnMoverAt(4 + i * 4, 4 + (i % 2) * 14, 1);

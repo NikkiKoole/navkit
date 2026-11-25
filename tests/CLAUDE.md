@@ -13,7 +13,8 @@ make bench_astar_heap  # RunAStar vs reference heap A* (cost + timing regression
 make test_nav_fuzz     # randomized nav library checks vs ground truth (60 worlds, in `make test`)
 ./build/bin/test_nav_fuzz 2000 1000   # deep sweep (~2.5 min); rerun a failing seed: test_nav_fuzz 1 <seed> -v
 make bench_nav_terrains   # every nav algorithm on every terrain generator vs A*
-make scenarios-check      # scenarios headless: stuck movers, movers in walls, arrivals vs baseline
+make scenarios-check      # scenarios headless: stuck movers, movers in walls, arrivals vs baseline,
+                          # sim activity counter drift (--check validates; --validate N during the run)
                           # (tools/scenarios_check.sh holds the runs and minimums)
 ```
 

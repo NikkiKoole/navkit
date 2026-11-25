@@ -272,6 +272,10 @@ hooks for headless runs (ladders uses them for queue length).
 
 `--events FILE` (any headless run) writes the event log to FILE after the run (what F8 does in game).
 
+`--validate [N]` (any headless run) checks the sim activity counters against the grids every N
+ticks (default 600; the windowed game does it every 60 s) and prints any drift. `--check` always
+validates once at the end and fails on drift, so `make scenarios-check` covers it.
+
 `--day-budget` (any headless run) prints where the movers' days go: game hours per mover per
 day sleeping, working, walking to work, walking to needs (split by food/drink/toilet/bed),
 eating, drinking, toilet, idle, plus meals/drinks/jobs per day (`src/core/day_budget.c`).
