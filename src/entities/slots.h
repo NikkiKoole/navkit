@@ -42,6 +42,7 @@ typedef struct {
     int noRoomSteps;         // steps refused a curve for want of room past the junction
     int lcStep;              // the step it changed lanes in (drawing: a sideways drift), -1 none
     int lcFromSeg, lcFromSlot;   // ... from this lane and slot
+    int lcSpan;              // ... over this many slots forward (its speed: 1-3)
     int lcCool;              // steps before it may change lanes again
     int mergeWait;           // steps waiting to get into the lane a turn needs
     bool cab;                // a yellow cab: stands a few steps at each fare
@@ -122,6 +123,7 @@ void SlotsNoteChoice(bool drove, float tWalk, float tDrive);
 extern bool carSlotReal;
 extern bool carSlotPhysical;   // braking over several steps, curve speeds (needed for carSlotReal)
 extern bool carSlotLaneChange; // overtaking / keeping right on two-lane roads
+extern bool carSlotAnticipate; // a car held back by the car ahead also counts the room that car makes this step
 // Kerb spots (setting carSlotKerbs): every second slot along the right-hand lane (not near
 // junctions or other roads) has a spot beside it at the kerb, RD_BAY_OFF cells to the right.
 // Cabs stop there for their fares and cars park there, out of the lane: pulling in and out

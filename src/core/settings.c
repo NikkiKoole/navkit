@@ -713,6 +713,8 @@ static const Setting settings[] = {
       "Slot traffic: cars brake over several steps (look ahead, Gipps) and slow for junction curves. Off: the plain cellular model (stop dead, full speed through curves)."),
     SET_BOOL("carSlotLaneChange", "Slot Traffic: Lane Changes", "Experiments/Cars", carSlotLaneChange,
       "Slot traffic: on two-lane roads cars overtake slow or standing cars (cabs at a fare) and keep right, moving diagonally into the lane beside."),
+    SET_BOOL("carSlotAnticipate", "Slot Traffic: Anticipation", "Experiments/Cars", carSlotAnticipate,
+      "Slot traffic: a car held back by the car ahead also counts the room that car makes this step (less a slot), braking against its new speed: platoons move together instead of closing up and stopping every step. A standing queue still starts a car per step."),
     SET_BOOL("carSlotKerbs", "Slot Traffic: Kerb Spots", "Experiments/Cars", carSlotKerbs,
       "Slot traffic: spots at the kerb beside every second slot of the right-hand lane (not near junctions). Cabs stop there for fares and cars park there (City Parking), out of the lane. Off: cabs stop in the lane, nobody parks. Restart the scenario to apply."),
     SET_BOOL("carSlotTempers", "Slot Traffic: Drivers' Characters", "Experiments/Cars", carSlotTempers,

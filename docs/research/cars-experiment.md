@@ -745,6 +745,37 @@ ramps 14 cells a level.)
 - Diagnostic `SL_HOT`: the junctions with the most cars standing before them. The hottest is the
   two avenues' crossing just north of the diamond (everyone heading for the avenue column).
 
+## Slot traffic: smoother lane changes, anticipation (2026-11-25)
+
+User: a car that just turned into a road sometimes changes lanes right away (awkward; it should
+take more room and could be done at speed); and cars feel like a chain - no anticipation.
+- **Lane changes**: over as many slots forward as the car's speed (1-3: it keeps its speed; it
+  used to move 1 slot in the change step whatever its speed, a sharp 45-degree hop), drawn as an S
+  over that span; the slots it passes through (B up to the target, A for the first half) are held
+  for the step (`SlGhostChange`; ghosts 64 -> 1024, a change waits if they run out). No change in
+  the first slots after a turn while moving (3, or a third of a short lane); standing in a queue it
+  may (the zipper: straight sideways). Discretionary changes (overtake / keep right) not in the
+  first 3 slots either.
+- Tried and dropped: **wide turns** (a turn into a short road's far lane, so the route needs no
+  change after it): -10% trips (552 -> 497 over 4 seeds) - the extra curves cross other turns, and
+  junctions grant fewer curves at once.
+- **Anticipation** (`carSlotAnticipate`): the chain came from each car judging the car ahead by
+  its speed now (parallel update: it can't see that car's move this step). A second pass: a car
+  braking for a car ahead (`SlSafeSpeed` reports which) recomputes with that car's new speed
+  (its move this step from the first pass - only ever raised, so a safe bound), at most to a slot
+  behind where that car gets, and the free run with that car's slot counted free (curves not
+  granted, lane-change points, trip ends still stop it - without that a car ran off its lane's
+  end onto the parallel lane's start: a 2800 px jump). Moves now first clear every mover's old
+  slot (a car may move into the slot the car ahead leaves). A standing queue still starts a car a
+  step (~1 s each, about real).
+- Measured (grid, 250 cars, 10 min, carCitySeed 1-4): 560 trips (549 without anticipation, 552 the
+  previous commit); stands from moving 16.5 a trip (17.2). Manhattan 586 (unchanged). 0 touches,
+  0 jumps. Modest: most stop-and-go is junctions, lights and dawdling, and the 1 s step itself -
+  next would be planning the arrival at junctions (grant a curve for when the car gets there), or
+  shorter steps.
+- `SL_FLICK` / `SL_JUMPV` diagnostics (drawn/hidden flips at viewZ 2; moves against the car's own
+  speed); `SL_HOT` (junctions with the most cars standing before them).
+
 ## Slot traffic: crossings and the rules for pedestrians (2026-11-25)
 
 User: cars stopped for every pedestrian; with zebra crossings the pedestrian should have right of
