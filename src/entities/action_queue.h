@@ -30,6 +30,8 @@ typedef enum {            // append only: saves store the number
                           // (empty cans: the deposit, City 1999) until nothing more fits
     ACT_STOW,             // the target item (or what this queue picked up) into pockets / backpack /
                           // a held bag (MoverStow); stays in the hand when nothing has room
+    ACT_CASH_IN,          // at the target bottle machine: hand in the empty cans carried, one at a
+                          // time, for their deposit (money.h); ends when none are left or the till is short
     ACT_TYPE_COUNT
 } ActionType;
 
@@ -125,6 +127,10 @@ static inline MoverAction ActSearchBin(int bin) {
 static inline MoverAction ActStowHeld(void) {
     return (MoverAction){ .type = ACT_STOW, .target = -1, .optional = 1 };
 }
+static inline MoverAction ActCashIn(int machine) {
+    return (MoverAction){ .type = ACT_CASH_IN, .targetKind = ATGT_FURNITURE, .target = machine };
+}
+#define CASH_IN_PER_UNIT_GH 0.01f   // feeding one can into the machine (game hours)
 #define SEARCH_BIN_GH 0.2f   // rummaging in a bin (game hours), as scrounging
 static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
@@ -132,7 +138,8 @@ static inline MoverAction ActWait(float gameSeconds) {
 
 // Player commands (step 3): the selected mover does what fits the cell the player points at:
 // food -> walk there, pick it up, eat; another item -> walk there, pick it up; a seat (chair,
-// sofa, desk) -> walk there, sit a while; walkable ground -> walk there. append (Shift) adds it
+// sofa, desk) -> walk there, sit a while; a bottle machine -> walk there, cash in the cans;
+// walkable ground -> walk there. append (Shift) adds it
 // to a running player queue instead of replacing it. A job or a need it was busy with is
 // dropped. Fills *said with what it will do ("Kira: eat Berries"). False: nothing to do there.
 bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, int saidLen);

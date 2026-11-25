@@ -304,6 +304,38 @@ static StepResult QStepSearchBin(int moverIdx, MoverAction* a) {
     return STEP_DONE;
 }
 
+static StepResult QStepCashIn(int moverIdx, MoverAction* a) {
+    MoverQueue* q = &moverQueues[moverIdx];
+    Mover* m = &movers[moverIdx];
+    int f = a->target;
+    if (!QFurnitureValid(f) || !QAtCell(m, furniture[f].x, furniture[f].y, furniture[f].z)) return STEP_FAILED;
+    if (!a->started) {
+        a->started = 1;
+        a->duration = 0.0f;   // coins earned so far (for the message)
+        QStopWalking(m);
+        if (BottleMachineShop(f) < 0) {
+            if (q->source == QUEUE_FROM_PLAYER) AddMessage(TextFormat("%s: the machine is out of order (no shop nearby to pay)", MoverDisplayName(moverIdx)), GRAY);
+            return STEP_FAILED;
+        }
+    }
+    m->timeWithoutProgress = 0.0f;
+    a->progress += gameDeltaTime;
+    if (a->progress < GameHoursToGameSeconds(CASH_IN_PER_UNIT_GH)) return STEP_RUNNING;
+    a->progress = 0.0f;
+    int before = MoverCoins(moverIdx);
+    if (MoverCashInOne(moverIdx, f)) { a->duration += (float)(MoverCoins(moverIdx) - before); return STEP_RUNNING; }
+    // Nothing more to hand in, or the till is short
+    int got = (int)a->duration, left = MoverDepositUnits(moverIdx);
+    EventLog("Mover %d cashed in at machine %d: %d coins, %d cans left", moverIdx, f, got, left);
+    if (q->source == QUEUE_FROM_PLAYER) {
+        char mb[24];
+        if (got > 0) AddMessage(TextFormat("%s got %s for the cans%s", MoverDisplayName(moverIdx), MoneyFormat(got, mb, sizeof mb),
+                                           left > 0 ? " (the till ran out)" : ""), SKYBLUE);
+        else AddMessage(TextFormat(left > 0 ? "%s: the till is empty" : "%s: no cans to hand in", MoverDisplayName(moverIdx)), GRAY);
+    }
+    return STEP_DONE;
+}
+
 static StepResult QStepStow(int moverIdx, MoverAction* a) {
     MoverQueue* q = &moverQueues[moverIdx];
     int it = a->target >= 0 ? a->target : q->heldItem;
@@ -431,6 +463,7 @@ void QueueTick(int moverIdx) {
             case ACT_DROP_TRASH:   r = QStepDropTrash(moverIdx, a); break;
             case ACT_SEARCH_BIN:   r = QStepSearchBin(moverIdx, a); break;
             case ACT_STOW:         r = QStepStow(moverIdx, a); break;
+            case ACT_CASH_IN:      r = QStepCashIn(moverIdx, a); break;
             default: break;
         }
         if (r == STEP_RUNNING) return;
@@ -462,6 +495,7 @@ const char* QueueStepName(int moverIdx) {
         case ACT_DROP_TRASH:   return "Dropping trash";
         case ACT_SEARCH_BIN:   return "Searching the bin";
         case ACT_STOW:         return "Putting it away";
+        case ACT_CASH_IN:      return "Cashing in cans";
         default:          return NULL;
     }
 }
@@ -485,6 +519,7 @@ static const char* StepLabel(const MoverAction* a) {
         case ACT_DROP_TRASH:   return "Drop trash";
         case ACT_SEARCH_BIN:   return "Search bin";
         case ACT_STOW:         return "Put away";
+        case ACT_CASH_IN:      return "Cash in";
         default:          return "?";
     }
 }
@@ -545,10 +580,11 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
             (int)(items[i].x / CELL_SIZE) == x && (int)(items[i].y / CELL_SIZE) == y && (int)items[i].z == z) bin = i;
     int item = ItemForCommand(moverIdx, x, y, z);
     int f = GetFurnitureAt(x, y, z);
+    bool machine = f >= 0 && furniture[f].type == FURNITURE_BOTTLE_MACHINE;
     bool seat = f >= 0 && (GetFurnitureDef(furniture[f].type)->capabilities & CAP_SEATING) &&
                 (FurnitureHasRoom(f) || q->seat == f);
     bool ground = IsCellWalkableAt(z, y, x);
-    if (bin < 0 && item < 0 && !seat && !ground) return false;
+    if (bin < 0 && item < 0 && !seat && !machine && !ground) return false;
     if (seat && adding && q->seat >= 0 && q->seat != f) { snprintf(said, (size_t)saidLen, "%s: one seat per queue", who); return false; }
 
     MoverAction steps[4];
@@ -564,6 +600,13 @@ bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, 
         steps[n++] = ActPickUp(item, false);
         steps[n++] = ActEatHeld();
         doing = TextFormat("eat %s", ItemName(items[item].type));
+    } else if (machine) {
+        int cans = MoverDepositUnits(moverIdx);
+        if (cans == 0 && !adding) { snprintf(said, (size_t)saidLen, "%s: no cans to hand in", who); return false; }
+        steps[n++] = ActWalkToFurniture(f, false);
+        steps[n++] = ActCashIn(f);
+        doing = cans > 0 ? TextFormat("cash in %d can%s", cans, cans == 1 ? "" : "s") : "cash in the cans";
+        item = -1;
     } else if (item >= 0 && ItemIsMoney(items[item].type)) {
         char mb[24];
         steps[n++] = ActWalkToItem(item, false);

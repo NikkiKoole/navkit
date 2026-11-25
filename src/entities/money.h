@@ -47,4 +47,17 @@ bool MoverCanAfford(int moverIdx, int item);     // free, or the purse holds the
 // (nothing paid) when the purse is short
 bool MoverBuy(int moverIdx, int item);
 
+// ---------------------------------------------------------------------------
+// Bottle machine (step 3, FURNITURE_BOTTLE_MACHINE): hand in empty cans for their deposit
+// (ItemDeposit), paid from the till of the nearest shop on its level within
+// BOTTLE_MACHINE_SHOP_RANGE cells (a shop that sells nothing can't pay deposits). The cans
+// go into the machine and are gone (later: it fills up and a truck empties it).
+#define BOTTLE_MACHINE_SHOP_RANGE 12
+int ItemDeposit(int type);                       // coins a machine pays for one unit (0 = takes none)
+int BottleMachineShop(int furnitureIdx);         // the stockpile whose till pays, -1 = none
+int MoverDepositUnits(int moverIdx);             // cans it carries (hands, pockets, bags)
+// Hand in one unit: true = paid (the unit is gone, the coins in the purse); false: nothing to
+// hand in or the till is short
+bool MoverCashInOne(int moverIdx, int furnitureIdx);
+
 #endif

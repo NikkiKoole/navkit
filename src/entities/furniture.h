@@ -49,6 +49,7 @@ typedef enum {
     FURNITURE_BATH,        // washing; a bath or shower makes a bathroom (a toilet alone: a WC)
     FURNITURE_SHOWER,      // washing
     FURNITURE_PIT_LATRINE, // survival: a seat over a dug pit (toilet comfort 1; dirties the floor around)
+    FURNITURE_BOTTLE_MACHINE, // City 1999: hand in empty cans for their deposit, paid from the nearest shop's till (money.h)
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 

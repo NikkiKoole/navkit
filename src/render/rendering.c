@@ -146,6 +146,7 @@ static int FurnitureSprite(FurnitureType type) {
         case FURNITURE_SHELF:       return SPRITE_upper_half;   // placeholder, tinted brown
         case FURNITURE_SOFA:        return SPRITE_chair;        // placeholder, tinted red
         case FURNITURE_TILL:        return SPRITE_counter;      // placeholder, tinted yellow
+        case FURNITURE_BOTTLE_MACHINE: return SPRITE_counter;   // placeholder, tinted green
         case FURNITURE_BATH:        return SPRITE_lower_half;   // placeholder, tinted white-blue
         case FURNITURE_SHOWER:      return SPRITE_tile_border;  // placeholder, tinted light blue
         case FURNITURE_PIT_LATRINE: return SPRITE_toilet;       // placeholder, tinted earth brown
@@ -165,6 +166,7 @@ static Color FurnitureTint(FurnitureType type) {
         case FURNITURE_SHELF:       return (Color){170, 120, 70, 255};
         case FURNITURE_SOFA:        return (Color){200, 70, 70, 255};
         case FURNITURE_TILL:        return (Color){240, 210, 90, 255};
+        case FURNITURE_BOTTLE_MACHINE: return (Color){110, 200, 120, 255};
         case FURNITURE_BATH:        return (Color){230, 240, 255, 255};
         case FURNITURE_SHOWER:      return (Color){150, 210, 240, 255};
         case FURNITURE_PIT_LATRINE: return (Color){140, 100, 60, 255};

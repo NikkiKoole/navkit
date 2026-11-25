@@ -12,6 +12,8 @@
 #include "../src/entities/furniture.h"
 #include "../src/entities/action_queue.h"
 #include "../src/entities/money.h"
+#include "../src/entities/inventory.h"
+#include "../src/entities/containers.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
 #include "../src/simulation/balance.h"
@@ -291,6 +293,73 @@ describe(shops) {
     }
 }
 
+// The bottle machine at (6,2) next to the shop at (10,2); mover 0 carries `cans` in a backpack
+static int machine;
+static void SetupMachine(int cans, int till) {
+    Setup();
+    shop = CreateStockpile(10, 2, 0, 2, 1);
+    ShopSetForSale(shop, true);
+    stockpileTill[shop] = till;
+    machine = SpawnFurniture(6, 2, 0, FURNITURE_BOTTLE_MACHINE, MAT_NONE);
+    MoverWear(0, SpawnItem(movers[0].x, movers[0].y, 0.0f, ITEM_BACKPACK));
+    for (int i = 0; i < cans; i++) MoverStow(0, SpawnItem(movers[0].x, movers[0].y, 0.0f, ITEM_EMPTY_CAN));
+}
+
+static void RunQueueOut(int maxTicks) {
+    for (int t = 0; t < maxTicks && QueueBusy(0); t++) { Tick(); ProcessFreetimeNeeds(); }
+}
+
+describe(bottle_machine) {
+    it("pays the deposit for every can from the nearest shop's till; the cans are gone") {
+        SetupMachine(4, 20);
+        expect(BottleMachineShop(machine) == shop);
+        expect(MoverDepositUnits(0) == 4);
+        char said[128];
+        expect(QueueCommandAt(0, 6, 2, 0, false, said, sizeof(said)));
+        expect(strstr(said, "cash in 4 cans") != NULL);
+        RunQueueOut(6000);
+        expect(!QueueBusy(0));
+        expect(MoverDepositUnits(0) == 0);
+        expect(MoverCoins(0) == 4 && stockpileTill[shop] == 16);
+        int cansLeft = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_EMPTY_CAN) cansLeft++;
+        expect(cansLeft == 0);
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
+    it("a short till pays what it has; the rest of the cans stay in the bag") {
+        SetupMachine(4, 2);
+        char said[128];
+        expect(QueueCommandAt(0, 6, 2, 0, false, said, sizeof(said)));
+        RunQueueOut(6000);
+        expect(MoverCoins(0) == 2 && stockpileTill[shop] == 0);
+        expect(MoverDepositUnits(0) == 2);
+    }
+
+    it("no shop in range: out of order, nothing paid") {
+        SetupMachine(3, 20);
+        ShopSetForSale(shop, false);
+        expect(BottleMachineShop(machine) == -1);
+        char said[128];
+        expect(QueueCommandAt(0, 6, 2, 0, false, said, sizeof(said)));
+        RunQueueOut(6000);
+        expect(MoverCoins(0) == 0 && MoverDepositUnits(0) == 3);
+    }
+
+    it("E on the machine with no cans says so; Shift+E after a bin search is allowed") {
+        SetupMachine(0, 20);
+        char said[128];
+        expect(!QueueCommandAt(0, 6, 2, 0, false, said, sizeof(said)));
+        expect(strstr(said, "no cans") != NULL);
+        int bin = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_TRASH_BIN);
+        for (int i = 0; i < 2; i++) PutItemInContainer(SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_EMPTY_CAN), bin);
+        expect(QueueCommandAt(0, 3, 3, 0, false, said, sizeof(said)));
+        expect(QueueCommandAt(0, 6, 2, 0, true, said, sizeof(said)));
+        RunQueueOut(20000);
+        expect(MoverCoins(0) == 2 && stockpileTill[shop] == 18 && MoverDepositUnits(0) == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -299,5 +368,6 @@ int main(int argc, char* argv[]) {
     test(pick_up_order);
     test(money_save);
     test(shops);
+    test(bottle_machine);
     return summary();
 }

@@ -4285,10 +4285,15 @@ static void ScroungePrintStats(void) {
 
 // ---- bottlerun: City 1999's bottle run on orders (the action queue, player commands) ----
 // A street with five bins holding empty cans (and a wrapper each, not worth taking); one person
-// with a backpack. The setup queues a run past the first four bins as the player would with
-// E / Shift+E (src/entities/action_queue.c); the fifth bin is left for you.
+// with a backpack and an empty purse, a bit hungry. At the west end a snack stand (for sale,
+// 20 coins in its till) and a bottle machine next to it (money.h). The setup queues a run past
+// the first three bins and then the machine, as the player would with E / Shift+E
+// (src/entities/action_queue.c): 5 cans become 5 coins, and once the queue is done hunger
+// takes him to the stand, where a snack costs 3. The last two bins are left for you.
 #define BOTTLE_BINS 5
 static int bottleBins[BOTTLE_BINS];
+static int bottleStand = -1, bottleMachine = -1;
+#define BOTTLE_STAND_TILL 20
 static const int bottleBinX[BOTTLE_BINS] = { 7, 13, 20, 27, 35 };
 static const int bottleBinCans[BOTTLE_BINS] = { 2, 0, 3, 1, 2 };
 
@@ -4300,11 +4305,21 @@ static int BottleCansCarried(void) {
 }
 
 static void SetupBottleRun(void) {
-    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    hungerEnabled = true; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
     bodyTempEnabled = false;
     dayLength = 360.0f;
     balance.baseMoverSpeed = 600.0f;
-    endlessMoverMode = true;   // off, a mover with nothing left to do at its goal is removed (pathing demos)
+    endlessMoverMode = true;   // wander when there's nothing to do
+    // The stand (snacks, for sale) and the bottle machine, paid from the stand's till
+    bottleStand = CreateStockpile(1, 15, 1, 2, 1);
+    ShopSetForSale(bottleStand, true);
+    stockpileTill[bottleStand] = BOTTLE_STAND_TILL;
+    for (int x = 1; x <= 2; x++) {
+        int it = SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 15 * CELL_SIZE + CELL_SIZE * 0.5f, 1, ITEM_SNACK);
+        items[it].stackCount = ItemMaxStack(ITEM_SNACK);
+        PlaceItemInStockpile(bottleStand, x, 15, it);
+    }
+    bottleMachine = SpawnFurniture(4, 15, 1, FURNITURE_BOTTLE_MACHINE, MAT_NONE);
     for (int b = 0; b < BOTTLE_BINS; b++) {
         float bx = bottleBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, by = 13 * CELL_SIZE + CELL_SIZE * 0.5f;
         bottleBins[b] = SpawnItem(bx, by, 1, ITEM_TRASH_BIN);
@@ -4315,13 +4330,24 @@ static void SetupBottleRun(void) {
     SpawnMoverAt(3, 11, 1);
     int mi = moverCount - 1;
     MoverWear(mi, SpawnItem(movers[mi].x, movers[mi].y, 1, ITEM_BACKPACK));
+    movers[mi].hunger = 0.25f;   // peckish (seeks food) but not starving: the queue comes first
     char said[128];
-    for (int b = 0; b < 4; b++)   // as E on the first bin, then Shift+E on the next three
+    for (int b = 0; b < 3; b++)   // as E on the first bin, then Shift+E on the next two ...
         QueueCommandAt(mi, bottleBinX[b], 13, 1, b > 0, said, sizeof(said));
+    QueueCommandAt(mi, 4, 15, 1, true, said, sizeof(said));   // ... and Shift+E on the machine
     currentViewZ = 1;
 }
 
+static int BottleSnacksLeft(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && items[i].type == ITEM_SNACK && items[i].state == ITEM_IN_STOCKPILE) n += items[i].stackCount;
+    return n;
+}
+
 static void BottleRunPrintStats(void) {
+    printf("Bottle run: purse %d coins, stand till %d, snacks sold %d, hunger %.0f%%\n", MoverCoins(0),
+           bottleStand >= 0 ? stockpileTill[bottleStand] : 0, 2 * ItemMaxStack(ITEM_SNACK) - BottleSnacksLeft(), movers[0].hunger * 100.0f);
     printf("Bottle run: %d cans carried, queue %s; cans left per bin:", BottleCansCarried(), QueueBusy(0) ? "still running" : "done");
     for (int b = 0; b < BOTTLE_BINS; b++) {
         int n = 0;
@@ -4332,10 +4358,17 @@ static void BottleRunPrintStats(void) {
 }
 
 static bool BottleRunCheck(char* why, int whyLen) {
-    int want = bottleBinCans[0] + bottleBinCans[1] + bottleBinCans[2] + bottleBinCans[3];
+    int cans = bottleBinCans[0] + bottleBinCans[1] + bottleBinCans[2];   // the three bins searched
+    int sold = 2 * ItemMaxStack(ITEM_SNACK) - BottleSnacksLeft();
+    int price = ItemPrice(ITEM_SNACK);
     if (!movers[0].active) { snprintf(why, (size_t)whyLen, "the collector is gone"); return false; }
     if (QueueBusy(0)) { snprintf(why, (size_t)whyLen, "the bottle run didn't finish"); return false; }
-    if (BottleCansCarried() != want) { snprintf(why, (size_t)whyLen, "%d cans carried, expected %d", BottleCansCarried(), want); return false; }
+    if (BottleCansCarried() != 0) { snprintf(why, (size_t)whyLen, "%d cans still carried (not cashed in)", BottleCansCarried()); return false; }
+    if (sold < 1) { snprintf(why, (size_t)whyLen, "no snack bought (purse %d coins)", MoverCoins(0)); return false; }
+    if (MoverCoins(0) != cans - sold * price || stockpileTill[bottleStand] != BOTTLE_STAND_TILL - cans + sold * price) {
+        snprintf(why, (size_t)whyLen, "money doesn't add up: purse %d, till %d (%d cans, %d snacks)", MoverCoins(0), stockpileTill[bottleStand], cans, sold);
+        return false;
+    }
     return true;
 }
 
@@ -5446,7 +5479,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupInventory, NULL, InventoryPrintStats, InventoryCheck, 40, 24},
     {"scrounge",   "The trash street selling burgers: diners leave leftovers in the bins, two Scavengers (no money) live off them",
                    NULL,        SetupScrounge, ScroungeTickStats, ScroungePrintStats, ScroungeCheck, 40, 24},
-    {"bottlerun",  "City 1999 bottle run on orders: five bins with empty cans, a person with a backpack searches four of them (E / Shift+E queued), the fifth is yours",
+    {"bottlerun",  "City 1999 bottle run on orders: a person with a backpack searches three bins for cans and cashes them in at the bottle machine (E / Shift+E queued), then buys a snack with the coins; two bins are yours",
                    NULL,        SetupBottleRun, NULL, BottleRunPrintStats, BottleRunCheck, 40, 24},
     {"hands-jobs", "Two haulers holding a plastic bag: a log takes both hands (the bag goes down, fetched after), berries fit beside it",
                    NULL,        SetupHandsJobs, HandsJobsTick, HandsJobsPrintStats, HandsJobsCheck, 40, 24},

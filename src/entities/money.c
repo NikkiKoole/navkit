@@ -3,6 +3,8 @@
 #include "items.h"
 #include "item_defs.h"
 #include "stockpiles.h"
+#include "furniture.h"
+#include "inventory.h"
 #include "../core/event_log.h"
 #include <stdio.h>
 #include <string.h>
@@ -122,5 +124,61 @@ bool MoverBuy(int moverIdx, int item) {
     if (!MoverPay(moverIdx, price)) return false;
     stockpileTill[sp] += price;
     EventLog("Mover %d bought %s for %d coins at stockpile %d (till %d)", moverIdx, ItemName(items[item].type), price, sp, stockpileTill[sp]);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Bottle machine
+// ---------------------------------------------------------------------------
+
+int ItemDeposit(int type) {
+    return type == ITEM_EMPTY_CAN ? ItemPrice(type) : 0;
+}
+
+int BottleMachineShop(int f) {
+    if (f < 0 || f >= MAX_FURNITURE || !furniture[f].active || furniture[f].type != FURNITURE_BOTTLE_MACHINE) return -1;
+    int best = -1, bestD = BOTTLE_MACHINE_SHOP_RANGE + 1;
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        if (!stockpiles[i].active || !stockpileForSale[i] || stockpiles[i].z != furniture[f].z) continue;
+        const Stockpile* sp = &stockpiles[i];
+        int dx = furniture[f].x < sp->x ? sp->x - furniture[f].x : (furniture[f].x >= sp->x + sp->width ? furniture[f].x - (sp->x + sp->width - 1) : 0);
+        int dy = furniture[f].y < sp->y ? sp->y - furniture[f].y : (furniture[f].y >= sp->y + sp->height ? furniture[f].y - (sp->y + sp->height - 1) : 0);
+        int d = dx > dy ? dx : dy;
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+
+// A deposit unit the mover carries, -1 = none
+static int MoneyCarriedDepositItem(int moverIdx) {
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && ItemDeposit(items[i].type) > 0 && ItemIsInMoverInventory(moverIdx, i)) return i;
+    return -1;
+}
+
+int MoverDepositUnits(int moverIdx) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++)
+        if (items[i].active && ItemDeposit(items[i].type) > 0 && ItemIsInMoverInventory(moverIdx, i)) n += items[i].stackCount;
+    return n;
+}
+
+bool MoverCashInOne(int moverIdx, int f) {
+    int sp = BottleMachineShop(f);
+    if (sp < 0) return false;
+    int it = MoneyCarriedDepositItem(moverIdx);
+    if (it < 0) return false;
+    int pay = ItemDeposit(items[it].type);
+    if (stockpileTill[sp] < pay) return false;
+    stockpileTill[sp] -= pay;
+    MoverAddCoins(moverIdx, pay);
+    Mover* m = &movers[moverIdx];
+    if (items[it].stackCount > 1) items[it].stackCount--;
+    else {
+        if (m->hands[0] == it) m->hands[0] = -1;   // a can held in the hand
+        if (m->hands[1] == it) m->hands[1] = -1;
+        DeleteItem(it);
+    }
+    MoverRecalcCarried(moverIdx);
     return true;
 }

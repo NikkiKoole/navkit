@@ -102,7 +102,9 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   search, `MoverBuy` where the unit is taken (need arrival, the queue's pick-up). A new way for
   a mover to take something out of a stockpile for itself must call `MoverBuy` too. Haulers and
   crafters don't pay (yet).
-  Plan (bottle machine next): `docs/vision/city-1999.md` "Money and exchange".
+- Bottle machine (`FURNITURE_BOTTLE_MACHINE`, queue step `ACT_CASH_IN`): pays `ItemDeposit`
+  per can from the nearest shop's till (`BottleMachineShop`, same level, 12 cells).
+  Plan: `docs/vision/city-1999.md` "Money and exchange".
 
 ## Social behaviour (`notice.c`, `talk.c`, `relations.c`, `chase.c`)
 
