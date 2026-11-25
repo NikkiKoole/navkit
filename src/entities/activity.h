@@ -38,6 +38,7 @@ typedef struct {
     // proposed) and how to set it up with them (players[0] proposed it)
     int minPlayers, maxPlayers;
     void  (*begin)(int a, const int* players, int n);
+    bool  (*join)(int a, int i);   // i joins it while it runs (NULL: nobody joins); false: not now
 } ActivityDef;
 
 typedef struct {
@@ -73,13 +74,17 @@ bool ActivityWaiting(int i);
 // idle mover with no game cooldown and no pressing need sometimes proposes a game to free movers
 // near by that it likes: the chance grows with how much it likes them and, with the social need
 // on (social.h), with how lonely it is. Each one asked accepts by its own liking (and
-// loneliness). Two players: tag; three or more: tag, hide and seek or follow the leader. Such
+// loneliness). Tag, hide and seek or follow the leader (two players or more). Such
 // a game ends after gameMinSeconds..gameMaxSeconds; everyone leaving a game waits gameCooldown
-// before the next.
+// before the next. A free mover that sees such a game near by, with players it likes, may join
+// it (gameJoinChance; the kind's join hook: tag a runner, hide and seek a hider or "found" till
+// the next round, follow the leader at the back of the line), up to the kind's maxPlayers.
 extern bool autoGames;
 extern float gameChance;         // chance per check (each free mover ~4x/s) with a friend near by
 extern float gameMinSeconds, gameMaxSeconds, gameCooldown;
-extern long autoGameStarts[ACT_KIND_COUNT], autoGameDeclined, autoGameEnded;
+extern float gameJoinChance;     // chance per check that it joins a game of friends it sees near by
+extern long autoGameStarts[ACT_KIND_COUNT], autoGameDeclined, autoGameEnded, autoGameJoins;
+extern long autoGamePlayersSum;  // players at the start plus every join (average per game: / starts)
 extern double autoGameSecondsSum;   // how long the proposed games lasted (all ended ones)
 int  ActivityStartWith(int kind, const int* players, int n, float seconds);   // -1 if it didn't start
 float ActivityCooldown(int i);   // seconds before it may play again

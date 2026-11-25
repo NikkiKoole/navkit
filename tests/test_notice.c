@@ -1449,9 +1449,10 @@ describe(games_by_themselves) {
         RunPlay(1.0f);
         int g = MoverActivity(a);
         expect(g >= 0 && MoverActivity(b) == g && activities[g].timeLeft > 0.0f);
-        expect(activities[g].kind == ACT_TAG);   // two players: tag
+        int k = activities[g].kind;   // any game two can play
+        expect(k == ACT_TAG || k == ACT_HIDE_SEEK || k == ACT_FOLLOW_LEADER);
         expect(MoverActivity(c) < 0 && MoverActivity(d) < 0);
-        expect(autoGameStarts[ACT_TAG] == 1);
+        expect(autoGameStarts[k] == 1);
         ClearChase();
     }
 
@@ -1515,11 +1516,76 @@ describe(games_by_themselves) {
         expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "counting") != NULL);
         expect(ChaseDescribe(p[1], buf, sizeof(buf)) && strstr(buf, "Hide and seek") != NULL);
         ClearChase();
-        expect(ActivityStartWith(ACT_HIDE_SEEK, p, 2, 30.0f) < 0);   // hide and seek takes three
+        g = ActivityStartWith(ACT_HIDE_SEEK, p, 2, 30.0f);   // two can play: one seeks, one hides
+        expect(g >= 0 && activities[g].count == 2 && HideSeeker() == p[0]);
+        ClearChase();
         g = ActivityStartWith(ACT_FOLLOW_LEADER, p, 3, 30.0f);
         expect(g >= 0 && FollowLeader() == p[0] && FollowPlace(p[2]) == 2);
         expect(ChaseDescribe(p[0], buf, sizeof(buf)) && strstr(buf, "leading") != NULL);
         expect(ActivityStartWith(ACT_PACK_HUNT, p, 3, 30.0f) < 0);   // never proposed
+        ClearChase();
+    }
+}
+
+// Three friends: a and b play (a game they started), c is free near by
+static int JoinSetup(int kind, int* c) {
+    PlaySetup();
+    gameChance = 0.0f;       // nobody proposes
+    gameJoinChance = 1.0f;   // joins at once if it may
+    int p[2] = { AddMover(4, 4, 1), AddMover(6, 4, 1) };
+    *c = AddMover(5, 7, 1);
+    RelationSetPair(p[0], p[1], 60.0f, 60.0f);
+    RelationSetPair(p[0], *c, 60.0f, 60.0f);
+    RelationSetPair(p[1], *c, 60.0f, 60.0f);
+    return ActivityStartWith(kind, p, 2, 60.0f);
+}
+
+describe(joining_a_game) {
+    it("a free friend near by joins a game of tag; a stranger doesn't") {
+        int c;
+        int g = JoinSetup(ACT_TAG, &c);
+        int s = AddMover(5, 1, 1);   // knows nobody
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && activities[g].count == 3 && autoGameJoins == 1);
+        expect(MoverActivity(s) < 0);
+        ClearChase();
+    }
+
+    it("a game from a scenario (no end time): nobody joins it") {
+        PlaySetup();
+        gameChance = 0.0f; gameJoinChance = 1.0f;
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(5, 7, 1);
+        RelationSetPair(a, c, 60.0f, 60.0f); RelationSetPair(b, c, 60.0f, 60.0f);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetIt(a);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) < 0);
+        ClearChase();
+    }
+
+    it("hide and seek: while the seeker counts it hides too; once it seeks, it waits as found") {
+        int c;
+        int g = JoinSetup(ACT_HIDE_SEEK, &c);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && !HideIsFound(c));   // counting: off to hide
+        char buf[80];
+        expect(ChaseDescribe(c, buf, sizeof(buf)) && (strstr(buf, "hide") || strstr(buf, "hiding")));
+        ClearChase();
+        g = JoinSetup(ACT_HIDE_SEEK, &c);
+        movers[c - 1].x = 22.5f * CELL_SIZE; movers[c - 1].y = 10.5f * CELL_SIZE;   // the hider: far out of sight
+        movers[c].active = false;   // (out of the way while the seeker counts)
+        RunPlay(10.2f);   // the seeker has counted to ten (HS_COUNT_TIME) and starts looking
+        movers[c].active = true;
+        expect(HideSeeker() >= 0 && !HideIsCounting(HideSeeker()));
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && HideIsFound(c));
+        ClearChase();
+    }
+
+    it("follow the leader: it joins at the back of the line") {
+        int c;
+        int g = JoinSetup(ACT_FOLLOW_LEADER, &c);
+        RunPlay(0.5f);
+        expect(MoverActivity(c) == g && FollowPlace(c) == 2);
         ClearChase();
     }
 }
@@ -1646,5 +1712,6 @@ int main(int argc, char* argv[]) {
     test(joint_activities);
     test(social_need);
     test(games_by_themselves);
+    test(joining_a_game);
     return summary();
 }

@@ -1299,6 +1299,8 @@ static void PlaytimePrintStats(void) {
     printf("Games by themselves: %s; started %ld (tag %ld, hide and seek %ld, follow the leader %ld), declined %ld\n",
            autoGames ? "on" : "off", starts, autoGameStarts[ACT_TAG], autoGameStarts[ACT_HIDE_SEEK],
            autoGameStarts[ACT_FOLLOW_LEADER], autoGameDeclined);
+    printf("Joined a running game %ld times; %.1f players per game on average\n",
+           autoGameJoins, starts ? (double)autoGamePlayersSum / starts : 0.0);
     printf("Ended %ld, lasting %.0f s on average; playing %.0f%% of the time; left a game %ld times\n",
            autoGameEnded, autoGameEnded ? autoGameSecondsSum / autoGameEnded : 0.0,
            ptTicks && moverCount ? 100.0 * ptPlaying / ((double)ptTicks * moverCount) : 0.0, playLeftCount);

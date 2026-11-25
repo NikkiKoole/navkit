@@ -178,9 +178,15 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
      (6 friends, 4 game days): 13 games (11 tag, 1 hide and seek, 1 follow the leader), 40 s
      each, playing 13% of the time, meals 91 vs 89 with games off, lowest hunger 0.20 vs 0.19;
      dollhouse (2): 3 games in 2 days. The seven older game scenarios: identical output.
+     **Joining (2026-11-25):** a free mover that sees a game the movers started (8 cells),
+     with players it likes and nobody minding it, may join (`gameJoinChance` x liking; the
+     kind's `join` hook: tag a runner, hide and seek off to hide while the seeker counts or
+     "found" till the next round, follow the leader at the back), up to `maxPlayers`, not
+     in its last 15 s. Hide and seek and follow the leader take two now (they grow by
+     joining). `playtime`, 4 days: 9 games (4 tag, 3 hide and seek, 2 follow the leader; was
+     11 of 13 tag), 9 joins, 3.1 players per game (was 2.2), meals 91 vs 89 off.
      Not yet: **lonely movers going out to find company** (walk to where others are) - so the
-     social need stays off; free friends **joining a running game** (games are mostly tag: at
-     the moment of proposing usually one friend is free and close).
+     social need stays off.
    - **2c, done 2026-11-25**: describe lines for every role (`ChaseDescribe`): "Playing tag: it,
      counting to three / it, after Mara / running from Ben", "Hide and seek: counting, eyes shut
      / seeking / running off to hide / hiding / found", "Follow the leader: leading / behind

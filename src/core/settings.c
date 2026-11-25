@@ -603,6 +603,8 @@ static const Setting settings[] = {
       "Idle movers propose a game (tag, hide and seek, follow the leader) to ones they like near by; lonelier ones more often (Social need). A game rule: on where people talk (Stop to Talk); scenarios: off unless they ask."),
     SET_FLOAT("gameChance", "Games: chance", "Entities/Movers/Noticing", gameChance, 0.001f, 0.0f, 1.0f,
       "Chance per check (each idle mover ~4 times a second) that it proposes a game to a friend near by (scaled by how much it likes them).", NULL),
+    SET_FLOAT("gameJoinChance", "Games: join chance", "Entities/Movers/Noticing", gameJoinChance, 0.005f, 0.0f, 1.0f,
+      "Chance per check that an idle mover joins a game it sees near by (friends playing, room left), scaled by how much it likes them.", NULL),
     SET_FLOAT("gameMinSeconds", "Games: min (s)", "Entities/Movers/Noticing", gameMinSeconds, 1.0f, 5.0f, 600.0f,
       "Shortest a game the movers started lasts, seconds.", NULL),
     SET_FLOAT("gameMaxSeconds", "Games: max (s)", "Entities/Movers/Noticing", gameMaxSeconds, 1.0f, 5.0f, 1200.0f,

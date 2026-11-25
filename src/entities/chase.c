@@ -413,10 +413,13 @@ static void TagBegin(int a, const int* players, int n) {
     if (ActivityHas(a, players[0])) TagSetIt(TagOf(a), players[0]);
 }
 
+// Joining: one more to run from "it"
+static bool TagJoin(int a, int i) { return ActivityAdd(a, i); }
+
 const ActivityDef tagActivityDef = {
     "tag", "Playing tag", sizeof(TagState),
     TagTick, TagMoverTick, TagSpeedScale, TagMemberLeft, TagTooSmall, NULL,
-    2, 8, TagBegin,
+    2, 8, TagBegin, TagJoin,
 };
 
 // ============================================================================
@@ -654,10 +657,26 @@ static void HideBegin(int a, const int* players, int n) {
     if (ActivityHas(a, players[0])) HideRound(a, players[0]);
 }
 
+// Joining: while the seeker counts, it runs off to hide too; once it seeks, it waits at home
+// with the found ones and hides next round
+static bool HideJoin(int a, int i) {
+    if (!ActivityAdd(a, i)) return false;
+    HideState* hs = HideOf(a);
+    if (hs->phase == HS_COUNT) {
+        hiderState[i] = HIDER_GOING;
+        fleeing[i] = true;
+        PickHidingSpot(a, i);
+    } else {
+        hiderState[i] = HIDER_FOUND;
+        PathTo(i, hs->home.x, hs->home.y, hs->home.z);
+    }
+    return true;
+}
+
 const ActivityDef hideSeekActivityDef = {
     "hide-and-seek", "Playing hide and seek", sizeof(HideState),
     HideTick, HideMoverTick, NULL, HideMemberLeft, HideTooSmall, HideEnd,
-    3, 8, HideBegin,
+    2, 8, HideBegin, HideJoin,   // (two can play: one seeks, one hides; others join)
 };
 
 // ============================================================================
@@ -865,10 +884,23 @@ static void FollowMemberLeft(int a, int i) {
 
 static bool FollowTooSmall(int a) { return FollowOf(a)->count < 2; }
 
+// Joining: at the back of the line
+static bool FollowJoin(int a, int i) {
+    FollowState* fl = FollowOf(a);
+    if (fl->count >= FOLLOW_MAX || !ActivityAdd(a, i)) return false;
+    int s = fl->count++;
+    fl->order[s] = i;
+    fl->trailLen[s] = 0; fl->trailHead[s] = 0;
+    TrailRecord(fl, s, movers[i].x, movers[i].y);
+    movers[i].pathLength = 0;
+    movers[i].pathIndex = -1;
+    return true;
+}
+
 const ActivityDef followLeaderActivityDef = {
     "follow-the-leader", "Playing follow the leader", sizeof(FollowState),
     FollowTick, FollowMoverTick, FollowSpeedScale, FollowMemberLeft, FollowTooSmall, NULL,
-    3, 6, FollowBegin,
+    2, 6, FollowBegin, FollowJoin,
 };
 
 // ============================================================================
@@ -1299,7 +1331,7 @@ static bool PackTooSmall(int a) {
 const ActivityDef packHuntActivityDef = {
     "pack-hunt", "Hunting as a pack", sizeof(PackState),
     PackTick, PackMoverTick, PackSpeedScale, PackMemberLeft, PackTooSmall, NULL,
-    0, 0, NULL,   // (hunting, not play: never proposed)
+    0, 0, NULL, NULL,   // (hunting, not play: never proposed, nobody joins)
 };
 
 // ============================================================================
