@@ -79,7 +79,7 @@ float PersonalSpaceScale(int a, int b) {
     float fam = 0.5f * (RelationFamiliarity(a, b) + RelationFamiliarity(b, a));
     float s = 1.0f - like * 0.012f;                       // like +25: 0.7, -25: 1.3
     if (fam < 20.0f) s += 0.25f * (1.0f - fam / 20.0f);   // strangers keep a little more
-    return Clampf(s, 0.6f, 1.5f);
+    return Clampf(s, 0.75f, 1.5f);   // (0.75: about 1.1 cells apart in a pair; closer and they overlap)
 }
 
 void RelationAdd(int a, int b, float like, float familiarity) {

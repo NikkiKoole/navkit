@@ -1211,7 +1211,7 @@ describe(personal_space) {
         const Talk* t1 = &talks[MoverTalk(a)];
         const Talk* t2 = &talks[MoverTalk(c)];
         float d1 = fabsf(t1->slotX[0] - t1->slotX[1]), d2 = fabsf(t2->slotX[0] - t2->slotX[1]);
-        expect(d1 < 1.2f * CELL_SIZE);          // 1.5 x 0.7
+        expect(d1 < 1.2f * CELL_SIZE);          // 1.5 x 0.75
         expect(d2 > 1.7f * CELL_SIZE);          // 1.5 x 1.25
     }
 

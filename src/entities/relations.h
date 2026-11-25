@@ -45,9 +45,9 @@ void RelationSetPair(int a, int b, float like, float familiarity);   // both way
 const char* RelationLabel(float like, float familiarity);        // "friend", "familiar face", ...
 
 // Personal space: how close two stand or pass, as a scale on the normal distance (both views
-// averaged): friends 0.6-0.7, someone you know 1, strangers 1.25, disliked up to 1.5. Used by
-// talk circles (members' spacing), walking side by side, and polite passing (friends pass
-// closer; never wider than normal: a stronger sideways drift pushed walkers through one-way doors).
+// averaged): friends 0.75 (closer and they overlap), someone you know 1, strangers 1.25,
+// disliked up to 1.5. Used by talk circles (members' spacing), walking side by side (only wider), and polite
+// passing (friends pass closer; never wider than normal: a stronger sideways drift pushed walkers through one-way doors).
 // Setting personalSpace (off: 1 for everyone).
 extern bool personalSpace;
 float PersonalSpaceScale(int a, int b);

@@ -914,8 +914,11 @@ static bool WalkSlot(const Talk* tk, int k, float* tx, float* ty) {
     if (!WalkHeading(tk->members[0], &hx, &hy)) return false;
     const Mover* L = &movers[tk->members[0]];
     float rx = -hy, ry = hx;
-    float right = slotRight[k];   // beside the one on its left: as close as they're friends
-    if (right > 0.0f) right *= PersonalSpaceScale(tk->members[k], tk->members[k - 1]);
+    float right = slotRight[k];   // beside the one on its left: further if they're not close (never
+    if (right > 0.0f) {           // nearer: 0.8 cells is as close as two can walk without overlapping)
+        float space = PersonalSpaceScale(tk->members[k], tk->members[k - 1]);
+        if (space > 1.0f) right *= space;
+    }
     float x = L->x + (hx * slotFwd[k] + rx * right) * CELL_SIZE;
     float y = L->y + (hy * slotFwd[k] + ry * right) * CELL_SIZE;
     int z = (int)L->z;
