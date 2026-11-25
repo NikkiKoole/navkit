@@ -813,6 +813,54 @@ static bool HideAndSeekCheck(char* why, int whyLen) {
     return true;
 }
 
+// mingle: 20 guests on a lawn: two circles of six friends, eight strangers, four friendships
+// across the circles. Talks form and break up; with mingling people move between groups.
+// Compare setting mingle on/off: switches, how many different people each guest talks with,
+// time spent in a group.
+#define MINGLE_GUESTS 20
+static long mgTicks, mgInGroup;
+static unsigned char mgTalked[MINGLE_GUESTS][MINGLE_GUESTS];
+
+static void SetupMingle(void) {
+    mgTicks = mgInGroup = 0;
+    memset(mgTalked, 0, sizeof(mgTalked));
+    endlessMoverMode = true;
+    noticeEnabled = talkEnabled = true;
+    walkChance = 0.0f;                    // walks off: mingling on its own
+    moverWanderPause = 3.0f;
+    talkChance = 0.1f;
+    for (int i = 0; i < MINGLE_GUESTS; i++) SpawnMoverAt(4 + (i % 5) * 6, 4 + (i / 5) * 7, 1);
+    for (int g = 0; g < 2; g++)
+        for (int a = g * 6; a < g * 6 + 6; a++)
+            for (int b = a + 1; b < g * 6 + 6; b++) RelationSetPair(a, b, 50.0f, 80.0f);
+    RelationSetPair(0, 6, 45.0f, 70.0f); RelationSetPair(1, 7, 45.0f, 70.0f);
+    RelationSetPair(2, 12, 40.0f, 60.0f); RelationSetPair(8, 15, 40.0f, 60.0f);
+    currentViewZ = 1;
+    AddMessage("Mingle: two circles of friends (0-5, 6-11), strangers 12-19, a few friendships across", GREEN);
+}
+
+static void MingleTickStats(void) {
+    mgTicks++;
+    for (int a = 0; a < MINGLE_GUESTS && a < moverCount; a++) {
+        int t = MoverTalk(a);
+        if (t < 0 || talks[t].kind == TALK_WALK) continue;
+        mgInGroup++;
+        for (int k = 0; k < talks[t].count; k++) {
+            int b = talks[t].members[k];
+            if (b != a && b < MINGLE_GUESTS) mgTalked[a][b] = 1;
+        }
+    }
+}
+
+static void MinglePrintStats(void) {
+    int partners = 0, n = moverCount < MINGLE_GUESTS ? moverCount : MINGLE_GUESTS;
+    for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) partners += mgTalked[a][b];
+    printf("Mingle: %s; moves to another group: %ld; talks started: %ld\n", mingleEnabled ? "on" : "off", mingleCount,
+           talkStartedCount);
+    printf("Different people each guest talked with: %.1f on average; time in a group: %.0f%%\n",
+           n ? partners / (double)n : 0.0, mgTicks && n ? 100.0 * mgInGroup / ((double)mgTicks * n) : 0.0);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3781,7 +3829,7 @@ static void SetupBottleRun(void) {
     bodyTempEnabled = false;
     dayLength = 360.0f;
     balance.baseMoverSpeed = 600.0f;
-    endlessMoverMode = false;
+    endlessMoverMode = true;   // off, a mover with nothing left to do at its goal is removed (pathing demos)
     for (int b = 0; b < BOTTLE_BINS; b++) {
         float bx = bottleBinX[b] * CELL_SIZE + CELL_SIZE * 0.5f, by = 13 * CELL_SIZE + CELL_SIZE * 0.5f;
         bottleBins[b] = SpawnItem(bx, by, 1, ITEM_TRASH_BIN);
@@ -3810,6 +3858,7 @@ static void BottleRunPrintStats(void) {
 
 static bool BottleRunCheck(char* why, int whyLen) {
     int want = bottleBinCans[0] + bottleBinCans[1] + bottleBinCans[2] + bottleBinCans[3];
+    if (!movers[0].active) { snprintf(why, (size_t)whyLen, "the collector is gone"); return false; }
     if (QueueBusy(0)) { snprintf(why, (size_t)whyLen, "the bottle run didn't finish"); return false; }
     if (BottleCansCarried() != want) { snprintf(why, (size_t)whyLen, "%d cans carried, expected %d", BottleCansCarried(), want); return false; }
     return true;
@@ -3954,6 +4003,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"mingle",     "20 guests, two circles of friends and strangers: talks form, break up, people move between groups (setting mingle)",
+                   NULL,        SetupMingle,   MingleTickStats, MinglePrintStats, NULL, 0, 0},
     {"hide-and-seek", "A yard with walls, huts and pillars, 8 players: hiding out of sight and seeking (setting hideSmart)",
                    NULL,        SetupHideAndSeek, HideAndSeekTickStats, HideAndSeekPrintStats, HideAndSeekCheck, 0, 0},
     {"tag",        "Tag on a plaza with pillars, 8 players: chasing and fleeing (setting fleeSmart)",
