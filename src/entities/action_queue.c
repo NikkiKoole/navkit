@@ -11,6 +11,9 @@
 #include "../core/event_log.h"
 #include "../core/time.h"
 #include "../world/pathfinding.h"
+#include "../world/cell_defs.h"
+#include "jobs.h"
+#include "namegen.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -250,6 +253,118 @@ const char* QueueStepName(int moverIdx) {
         case ACT_WAIT:    return "Waiting";
         default:          return NULL;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Player commands
+// ---------------------------------------------------------------------------
+
+static const char* StepLabel(const MoverAction* a) {
+    const char* what = "";
+    if (a->targetKind == ATGT_ITEM && QItemValid(a->target)) what = ItemName(items[a->target].type);
+    else if (a->targetKind == ATGT_FURNITURE && QFurnitureValid(a->target)) what = GetFurnitureDef(furniture[a->target].type)->name;
+    switch (a->type) {
+        case ACT_WALK_TO: return a->targetKind == ATGT_CELL ? TextFormat("Walk to %d,%d", a->x, a->y) : TextFormat("Walk to %s", what);
+        case ACT_PICK_UP: return TextFormat("Pick up %s", what);
+        case ACT_SIT:     return "Sit";
+        case ACT_EAT:     return "Eat";
+        case ACT_WAIT:    return "Wait";
+        default:          return "?";
+    }
+}
+
+void QueueDescribe(int moverIdx, char* buf, int len) {
+    buf[0] = '\0';
+    if (!QueueBusy(moverIdx)) return;
+    const MoverQueue* q = &moverQueues[moverIdx];
+    int n = 0;
+    for (int s = q->current; s < q->count && n < len - 1; s++) {
+        const char* l = StepLabel(&q->steps[s]);
+        n += snprintf(buf + n, (size_t)(len - n), s == q->current ? "%s[%s]" : "%s%s", s > q->current ? " > " : "", l);
+    }
+}
+
+// Drop what the mover was busy with: a job, or a need's target (an item it reserved, the
+// furniture it sat or lay on). Its own gear stays reserved.
+static void DropCurrentBusiness(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+    if (QueueBusy(moverIdx)) QueueEnd(moverIdx);
+    if (m->freetimeState != FREETIME_NONE) {
+        ReleaseFurnitureForMover(moverIdx);
+        for (int i = 0; i < itemHighWaterMark; i++)
+            if (items[i].active && items[i].reservedBy == moverIdx && !ItemIsMoverGear(moverIdx, i))
+                ReleaseItemReservation(i);
+        m->freetimeState = FREETIME_NONE;
+        m->needTarget = -1;
+    }
+}
+
+// The item on cell (x,y,z) a command means: food first, then anything not fixed in place
+static int ItemForCommand(int moverIdx, int x, int y, int z) {
+    int best = -1;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        const Item* it = &items[i];
+        if (!it->active || (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE)) continue;
+        if ((int)(it->x / CELL_SIZE) != x || (int)(it->y / CELL_SIZE) != y || (int)it->z != z) continue;
+        if (it->reservedBy != -1 && it->reservedBy != moverIdx) continue;
+        if (ItemIsEdible(it->type) && it->condition != CONDITION_ROTTEN) return i;
+        if (best < 0 && !(itemDefs[it->type].flags & IF_FIXED)) best = i;
+    }
+    return best;
+}
+
+bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, int saidLen) {
+    said[0] = '\0';
+    if (moverIdx < 0 || moverIdx >= moverCount || !movers[moverIdx].active) return false;
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    MoverQueue* q = &moverQueues[moverIdx];
+    bool adding = append && QueueBusy(moverIdx) && q->source == QUEUE_FROM_PLAYER;
+    const char* who = MoverDisplayName(moverIdx);
+
+    // What is there
+    int item = ItemForCommand(moverIdx, x, y, z);
+    int f = GetFurnitureAt(x, y, z);
+    bool seat = f >= 0 && (GetFurnitureDef(furniture[f].type)->capabilities & CAP_SEATING) &&
+                (FurnitureHasRoom(f) || q->seat == f);
+    bool ground = IsCellWalkableAt(z, y, x);
+    if (item < 0 && !seat && !ground) return false;
+    if (seat && adding && q->seat >= 0 && q->seat != f) { snprintf(said, (size_t)saidLen, "%s: one seat per queue", who); return false; }
+
+    MoverAction steps[4];
+    int n = 0;
+    const char* doing;
+    if (item >= 0 && ItemIsEdible(items[item].type)) {
+        steps[n++] = ActWalkToItem(item, false);
+        steps[n++] = ActPickUp(item, false);
+        steps[n++] = ActEatHeld();
+        doing = TextFormat("eat %s", ItemName(items[item].type));
+    } else if (item >= 0) {
+        steps[n++] = ActWalkToItem(item, false);
+        steps[n++] = ActPickUp(item, false);
+        doing = TextFormat("pick up %s", ItemName(items[item].type));
+    } else if (seat) {
+        steps[n++] = ActWalkToFurniture(f, false);
+        steps[n++] = ActSit(f, false);
+        steps[n++] = ActWait(GameHoursToGameSeconds(QUEUE_SIT_WHILE_GH));
+        doing = TextFormat("sit on the %s", GetFurnitureDef(furniture[f].type)->name);
+    } else {
+        steps[n++] = ActWalkToCell(x, y, z, false);
+        doing = TextFormat("go to %d,%d", x, y);
+    }
+    if (adding && q->count + n > MAX_MOVER_ACTIONS) { snprintf(said, (size_t)saidLen, "%s: queue is full", who); return false; }
+
+    if (!adding) {
+        DropCurrentBusiness(moverIdx);
+        QueueReset(moverIdx);
+    }
+    for (int i = 0; i < n; i++) QueuePush(moverIdx, steps[i]);
+    if (item >= 0 && items[item].reservedBy == -1) ReserveItem(item, moverIdx);
+    if (seat && q->seat != f) { ReserveFurniture(f, moverIdx); q->seat = f; }
+    if (!adding) QueueStart(moverIdx, QUEUE_FROM_PLAYER);
+    snprintf(said, (size_t)saidLen, "%s: %s%s", who, adding ? "then " : "", doing);
+    EventLog("Mover %d player command: %s%s", moverIdx, adding ? "then " : "", doing);
+    return true;
 }
 
 // ---------------------------------------------------------------------------

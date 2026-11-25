@@ -1,6 +1,6 @@
 # Action queue and need index: player control and needs at scale
 
-> Status: step 1 done, step 2 started: the queue + sit-then-eat built (2026-11-25). Decided with the user after the toolbar talk:
+> Status: step 1 done; steps 2 and 3 started: the queue, sit-then-eat, player commands (2026-11-25). Decided with the user after the toolbar talk:
 > City 1999 and Dollhouse need a way for the player to tell one person what to do, and the
 > design for that (the action queue, `../dollhouse-domestic-life.md` "Future Systems") was never
 > built. This doc checks it against the code of today and against thousands of agents.
@@ -116,6 +116,15 @@ measurement that needs it.
 3. **Player commands into the queue**: act on a hovered or selected thing (hover + key or the
    inspector; no right mouse button needed), Shift appends; the queue shown in the character
    panel.
+   **Built 2026-11-25 (first part):** select a mover, point at a cell, press **E**: food = walk
+   there, pick one up, eat (hungry or not); another item = walk there, pick it up; a seat =
+   walk there, sit half a game hour; ground = walk there. **Shift+E** appends to a running player
+   queue (one seat per queue, 8 steps). A command drops the job or need it was busy with
+   (reservations released). The description shows the queue: "Queue: [Walk to Chair] > Sit >
+   Wait". `QueueCommandAt` in action_queue.c; tests in `tests/test_action_queue.c`. Not yet:
+   needs interrupting a player queue (a starving mover follows orders to the end), commands
+   in the inspector / palette, the queue drawn in the world, cancel / reorder steps, more step
+   kinds (drop, put into a container, use a bed, search a bin: City 1999).
 4. **Advertisements + autonomy per game**: objects say which need they serve; the dial per game.
 5. Later: coarse fast-forward for movers out of view.
 

@@ -92,6 +92,16 @@ static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
 }
 
+// Player commands (step 3): the selected mover does what fits the cell the player points at:
+// food -> walk there, pick it up, eat; another item -> walk there, pick it up; a seat (chair,
+// sofa, desk) -> walk there, sit a while; walkable ground -> walk there. append (Shift) adds it
+// to a running player queue instead of replacing it. A job or a need it was busy with is
+// dropped. Fills *said with what it will do ("Kira: eat Berries"). False: nothing to do there.
+bool QueueCommandAt(int moverIdx, int x, int y, int z, bool append, char* said, int saidLen);
+// "Walk to Chair > [Sit] > Wait" (the current step in brackets), "" when no queue runs
+void QueueDescribe(int moverIdx, char* buf, int len);
+#define QUEUE_SIT_WHILE_GH 0.5f   // a commanded sit lasts this long (game hours)
+
 // Sit-then-eat (needs.c): at its food, a mover with a free hand and a free seat nearby takes
 // one unit to the seat and eats there. True = the queue was started.
 bool QueueSitThenEat(int moverIdx, int foodItem);

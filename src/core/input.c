@@ -17,6 +17,7 @@
 #include "pie_menu.h"
 #include "selection.h"
 #include "global_keys.h"
+#include "../entities/action_queue.h"
 #include "../ui/commands.h"
 #include "../entities/elevators.h"
 #include "../entities/belts.h"
@@ -2874,6 +2875,16 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
+        // E: the selected mover does what fits the cell under the mouse (eat that, sit there, go
+        // there); Shift+E adds it to its queue (src/entities/action_queue.c)
+        if (CheckKey(KEY_E) && selection.kind == SEL_MOVER && SelectionValid()) {
+            Vector2 g = ScreenToGrid(GetMousePosition());
+            bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+            char said[128];
+            if (QueueCommandAt(selection.idx, (int)g.x, (int)g.y, z, shift, said, sizeof(said))) AddMessage(said, SKYBLUE);
+            else AddMessage(said[0] ? said : "Nothing to do there", GRAY);
+            return;
+        }
         // D while hovering a mover drafts/undrafts (before D = draw mode): the mover verbs (selection.c)
         if (hoveredMover >= 0 && hoveredMover < moverCount && RunSelectionVerbKeys(SEL_MOVER, hoveredMover)) return;
         if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }

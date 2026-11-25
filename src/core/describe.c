@@ -140,8 +140,6 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
             DescAdd(d, DESC_INFO, "  Going back for its %s", ItemName(items[m->needTarget].type));
         else if (m->freetimeState == FREETIME_EATING)
             DescAdd(d, DESC_GOOD, "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
-        else if (m->freetimeState == FREETIME_QUEUE && QueueStepName((int)(m - movers)))
-            DescAdd(d, DESC_GOOD, "  %s", QueueStepName((int)(m - movers)));   // action queue step
     }
 
     // Thirst
@@ -437,6 +435,11 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
 
     DescAdd(out, job ? DESC_GOOD : DESC_MUTED, "Job: %s (step %d)",
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
+    if (QueueBusy(idx)) {   // the action queue (action_queue.h): what it will do, in order
+        char q[200];
+        QueueDescribe(idx, q, sizeof(q));
+        DescAdd(out, DESC_INFO, "Queue: %s", q);
+    }
     DescribeMoverGear(m, job, out);
     DescribeMoverRelations(idx, detail, out);
     int partner = TalkPartner(idx);

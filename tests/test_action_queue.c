@@ -160,10 +160,97 @@ describe(action_queue_basics) {
     }
 }
 
+// Run until the queue is done (or the time is up); true = it finished
+static bool RunQueue(int maxTicks) {
+    for (int t = 0; t < maxTicks; t++) {
+        Tick(); NeedsTick(); ProcessFreetimeNeeds();
+        if (!QueueBusy(0)) return true;
+    }
+    return false;
+}
+static int CellX(void) { return (int)(movers[0].x / CELL_SIZE); }
+static int CellY(void) { return (int)(movers[0].y / CELL_SIZE); }
+
+describe(player_commands) {
+    it("ground: walks there") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        char said[128];
+        expect(QueueCommandAt(0, 12, 4, 0, false, said, sizeof(said)));
+        expect(strstr(said, "go to 12,4") != NULL);
+        expect(movers[0].freetimeState == FREETIME_QUEUE);
+        expect(RunQueue(20000));
+        expect(CellX() == 12 && CellY() == 4);
+    }
+    it("food: walks there, picks one up and eats it (even when not hungry)") {
+        Setup(openFloor);
+        movers[0].hunger = 0.6f;
+        char said[128];
+        expect(QueueCommandAt(0, 3, 2, 0, false, said, sizeof(said)));
+        expect(strstr(said, "eat") != NULL);
+        expect(RunQueue(20000));
+        expect(movers[0].hunger > 0.6f);
+        expect(items[food].active && items[food].stackCount == 2 && items[food].reservedBy == -1);
+    }
+    it("a seat: walks there, sits a while, then the seat is free again") {
+        Setup(openFloor);
+        movers[0].hunger = 1.0f;
+        int chair = SpawnFurniture(9, 2, 0, FURNITURE_CHAIR, MAT_OAK);
+        char said[128];
+        expect(QueueCommandAt(0, 9, 2, 0, false, said, sizeof(said)));
+        expect(!FurnitureHasRoom(chair));   // reserved for it
+        bool satThere = false;
+        for (int t = 0; t < 40000 && QueueBusy(0); t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (moverQueues[0].current == 2 && CellX() == 9 && CellY() == 2) satThere = true;
+        }
+        expect(satThere && !QueueBusy(0));
+        expect(FurnitureHasRoom(chair));
+    }
+    it("Shift appends: go there, then eat") {
+        Setup(openFloor);
+        movers[0].hunger = 0.6f;
+        char said[128];
+        expect(QueueCommandAt(0, 12, 4, 0, false, said, sizeof(said)));
+        expect(QueueCommandAt(0, 3, 2, 0, true, said, sizeof(said)));
+        expect(strstr(said, "then eat") != NULL);
+        expect(moverQueues[0].count == 4);
+        bool wasThere = false;
+        for (int t = 0; t < 40000 && QueueBusy(0); t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (CellX() == 12 && CellY() == 4) wasThere = true;
+        }
+        expect(wasThere && movers[0].hunger > 0.6f);
+    }
+    it("a command replaces what it was doing (here: on its way to food)") {
+        Setup(openFloor);
+        for (int t = 0; t < 200 && movers[0].freetimeState != FREETIME_SEEKING_FOOD; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+        }
+        expect(movers[0].freetimeState == FREETIME_SEEKING_FOOD);
+        expect(items[food].reservedBy == 0);
+        char said[128];
+        expect(QueueCommandAt(0, 12, 4, 0, false, said, sizeof(said)));
+        expect(movers[0].freetimeState == FREETIME_QUEUE);
+        expect(items[food].reservedBy == -1);   // the food it was going for is free again
+        expect(RunQueue(20000));
+        expect(CellX() == 12 && CellY() == 4);
+    }
+    it("a wall: nothing to do there") {
+        Setup("................\n"
+              "........#.......\n"
+              "................\n");
+        char said[128];
+        expect(!QueueCommandAt(0, 8, 1, 0, false, said, sizeof(said)));
+        expect(!QueueBusy(0));
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(sit_then_eat);
     test(action_queue_basics);
+    test(player_commands);
     return summary();
 }

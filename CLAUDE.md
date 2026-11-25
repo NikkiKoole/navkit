@@ -221,6 +221,8 @@ Left-click in normal mode selects a mover, animal, workshop, stockpile or bluepr
 `src/render/inspector.c` outlines it and shows a fixed panel bottom-right: the describe lines
 plus buttons. Actions behind buttons live in `selection.c` (`ToggleMoverDraft`, `WorkshopAddBill`,
 ...) and the old hover keys call the same functions, so keys and buttons can't drift apart.
+With a mover selected, **E** puts what fits the cell under the mouse in its action queue (eat
+that, sit there, go there; Shift+E appends): `src/entities/action_queue.c`.
 New per-entity actions go there too; object-level ones as a row in the `SelectionVerb` table
 (name, label, key, run): the hover keys, the inspector's button row and the `?` help panel read it.
 

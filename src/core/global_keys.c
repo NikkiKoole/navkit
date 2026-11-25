@@ -14,6 +14,7 @@ static const GlobalKey globalKeys[] = {
     { KEY_F,      "F",           "Follow the hovered (or selected) mover",      "follow",       true  },
     { 0,          NULL,          "--- General ---",                             NULL,           false },
     { 0,          "L-click",     "Select a mover, animal, workshop, stockpile", NULL,           false },
+    { 0,          "E",           "Selected mover: eat / sit / go there (Shift: then)", NULL,  false },
     { 0,          "/",           "Find anything (over a thing: its actions)",   NULL,           false },
     { KEY_TAB,    "Tab",         "Dev overlay (tools, settings)",               "overlay",      false },
     { 0,          "`",           "Console (type help)",                         NULL,           false },
