@@ -153,7 +153,7 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
 
 - **"Can it reach that?"**: call `MoverCanReach(m, x, y, z)` (mover.c: in the thing's cell or
   within 0.75 cells). Walking ends as soon as the mover is in the goal cell, so a bare radius
-  misses things lying at the far edge (docs/bugs/food-off-centre-out-of-reach.md). Jobs use
+  misses things lying at the far edge (docs/done/bugs/food-off-centre-out-of-reach.md). Jobs use
   `TryFinalApproach` instead.
 - **Enum shifts**: adding ItemType/MaterialType shifts `ITEM_TYPE_COUNT`/`MAT_COUNT` — stockpile `allowedTypes[]` array sizes change, breaking save compat. Always add migration.
 - **Mover struct is ~12.4KB** due to embedded `path[1024]` (Point = 12 bytes). See `docs/todo/architecture/simd-optimization-candidates.md`.
