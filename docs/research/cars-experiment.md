@@ -948,6 +948,26 @@ So first: cars 2 x 1 cells (4.5 x 2.25 m), `carWidth` 1 (was 2).
   619 -> 921; Dutch 75: 511 -> 497. 0 touches; pedestrians inside a car fewer. Stats line
   `network:` now shows lanes, curves, bays, kerb spots, lane width and the car's size.
 
+## Road tiles: roads on an 8x8-cell grid (carCityLayout 3, 2026-11-25)
+
+User: draw / generate roads a level up, SimCity-like. `src/entities/road_tiles.c/.h`: a grid of
+`RT_SIZE` (8) cell tiles, each empty or street / arterial / highway / roundabout; connections
+from the neighbours. `RoadTilesBuild` makes the road network: a node where a road tile isn't
+one road straight through (dead end, T, crossing, corner, roundabout) or where a straight road's
+class rises (on the smaller road's tile, only if the bigger road goes straight on there - a
+street's tile next to the junction tile of the road it meets made two nodes a tile apart, a
+road too short for any curves: two lanes nobody could route from, 2.6 million failed route
+searches); a road along each straight run (highways two lanes each way); roundabouts at
+`RT_RING_MIN` 9 cells (3x3 tiles: at 8 a four-arm ring held 8 slots at 1 slot/step and one
+seed in three locked; 10 slower). `RoadTilesFromText`: one character a tile ('.', s, a, h, O).
+- Test town `cityTileTown` (scenarios.c, 41 x 32 tiles = the 330 x 260 map): a ring road, two
+  through roads (roundabouts where they meet it and each other), streets in each quarter with
+  junctions 5-8 tiles apart, a highway north of town to the ring's corners. 37 nodes, 75 roads.
+- 10 min, 120 cars, 3 seeds: 826 / 789 / 799 trips (6.7 a car; the hand-placed Dutch town with
+  75 cars ~6.6), travel time x2.6, standing 37%, 0 touches, every route found.
+- Next: a drawing tool for the tiles (drag like the town game's roads), then a generator; the
+  highway over the town (bridges, a diamond) on tiles.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

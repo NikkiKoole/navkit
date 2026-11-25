@@ -613,7 +613,7 @@ static bool SlNewTrip(int i) {
         else {
             slRoutes++;
             n = RoadRoute(cur, dl, r, SL_MAX_ROUTE - 8);
-            if (n <= 0) { slRouteFails++; continue; }
+            if (n <= 0) { slRouteFails++; if (getenv("SL_ROUTEFAIL") && slRouteFails < 15) { float ax, ay, ah, bx, by, bh; RoadPointAt(cur, 0, &ax, &ay, &ah); RoadPointAt(dl, 0, &bx, &by, &bh); { const RdNode* N = &rdNodes[rdSegs[cur].to]; int out = 0; for (int q = 0; q < N->nConn; q++) if (rdSegs[N->conn[q]].from == cur) out++; printf("no route: lane %d at (%.0f,%.0f) -> lane %d at (%.0f,%.0f); it ends at node %d (%.0f,%.0f) with %d roads, %d curves, %d from this lane, ring %d\n", cur, ax / CELL_SIZE, ay / CELL_SIZE, dl, bx / CELL_SIZE, by / CELL_SIZE, rdSegs[cur].to, N->x / CELL_SIZE, N->y / CELL_SIZE, N->nEdge, N->nConn, out, N->ring); } } continue; }
         }
         SlSetRoute(c, r, n, ds);
         SlTripStart(c);

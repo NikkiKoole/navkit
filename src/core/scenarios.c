@@ -16,6 +16,7 @@
 #include "../entities/belts.h"
 #include "../entities/cars.h"
 #include "../entities/roads.h"
+#include "../entities/road_tiles.h"
 #include "../entities/traffic.h"
 #include "../entities/slots.h"
 #include "../entities/elevators.h"
@@ -3490,6 +3491,51 @@ static bool CityConnected(const unsigned char* gone, int nodes) {
 // overpass over the access road, with a diamond whose slip roads end at two roundabouts (the
 // usual Dutch interchange), and comes back down at both ends to join the ring road on the west
 // and east. Scaled to the map (330x260 by default).
+static void BuildDutch(void);
+
+// A town drawn on road tiles (carCityLayout 3), 8x8 cells a character: '.' none, 's' street,
+// 'a' arterial, 'h' highway, 'O' roundabout. A ring road with two through roads (roundabouts
+// where they meet it and each other), streets in each quarter, a highway north of town coming
+// down to the ring's corners with an access road to its north roundabout. 41 x 32 tiles fill the
+// default 330 x 260 map.
+static const char* const cityTileTown[] = {
+    ".........................................",
+    "....hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh....",
+    "....h...............a...............h....",
+    "....h...............a...............h....",
+    "....aaaaaaaaaaaaaaaaOaaaaaaaaaaaaaaaa....",
+    "....a.......s.......a.......s.......a....",
+    "....a.......s.......a.......s.......a....",
+    "....a.......s.......a.......s.......a....",
+    "....a.......s.......a.......s.......a....",
+    "....a.......s.......a.......s.......a....",
+    "....asssssssssssssssasssssssssssssssa....",
+    "....a.......s.......a.......s..s....a....",
+    "....a.......s.......a.......s..s....a....",
+    "....a.......s.......a.......s..s....a....",
+    "....a.......s.......a.......s..s....a....",
+    "....a.......s.......a.......s..s....a....",
+    "....OaaaaaaaaaaaaaaaOaaaaaaaaaaaaaaaO....",
+    "....a.....s....s....a.....s.........a....",
+    "....a.....s....s....a.....s.........a....",
+    "....a.....s....s....a.....s.........a....",
+    "....a.....s....s....a.....s.........a....",
+    "....a.....s....s....a.....s.........a....",
+    "....asssssssssssssssasssssssssssssssa....",
+    "....a.....s....s....a.....s....s....a....",
+    "....a.....s....s....a.....s....s....a....",
+    "....a.....s....s....a.....s....s....a....",
+    "....a.....s....s....a.....s....s....a....",
+    "....aaaaaaaaaaaaaaaaOaaaaaaaaaaaaaaaa....",
+};
+static void BuildTileTown(void) {
+    int rows = (int)(sizeof(cityTileTown) / sizeof(cityTileTown[0]));
+    RoadTilesClear(gridWidth / RT_SIZE, gridHeight / RT_SIZE);
+    RoadTilesFromText(cityTileTown, rows);
+    int n = RoadTilesBuild();
+    if (getenv("SL_XLOG")) printf("road tiles: %d x %d, %d junctions and bends, %d roads\n", RoadTilesW(), RoadTilesH(), n, rdEdgeCount);
+}
+
 static void BuildDutch(void) {
     float W = (float)gridWidth, H = (float)gridHeight, sx = W / 330.0f, sy = H / 260.0f;
     RoadsClear();
@@ -3881,6 +3927,7 @@ static void SetupCarsCity(void) {
     rdLaneRules = carCityLaneRules && carCitySlots;   // (steered cars: not yet - they deadlock with them)
     if (carCityLayout == 1) BuildManhattan();
     else if (carCityLayout == 2) BuildDutch();
+    else if (carCityLayout == 3) BuildTileTown();
     else {
         // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
         const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
