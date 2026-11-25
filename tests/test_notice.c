@@ -11,6 +11,8 @@ bool LoadWorld(const char* filename);
 #include "../src/entities/talk.h"
 #include "../src/entities/relations.h"
 #include "../src/entities/chase.h"
+#include "../src/entities/action_queue.h"
+#include "../src/entities/furniture.h"
 #include "../src/core/time.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
@@ -801,6 +803,43 @@ describe(glances_and_greetings) {
     }
 }
 
+// A mover sitting on chair f, in the middle of eating (as sit-then-eat leaves it)
+static int DinerAt(int f) {
+    int i = AddMover(furniture[f].x, furniture[f].y, 1);
+    QueueReset(i);
+    QueuePush(i, ActEatHeld());
+    moverQueues[i].seat = f;
+    QueueStart(i, QUEUE_FROM_FREETIME);
+    return i;
+}
+
+describe(table_talk) {
+    it("two eating at the same table talk, look at the table and get to know each other") {
+        TalkSetup();
+        ClearFurniture();
+        int table = SpawnFurniture(10, 6, 1, FURNITURE_TABLE, MAT_OAK);
+        int c1 = SpawnFurniture(9, 6, 1, FURNITURE_CHAIR, MAT_OAK), c2 = SpawnFurniture(11, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+        int a = DinerAt(c1), b = DinerAt(c2);
+        TalkTick(TICK_DT);
+        expect(MoverDiningAt(a) == table && MoverDiningAt(b) == table);
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));
+        float lx, ly;
+        expect(TalkLookAt(a, &lx, &ly) && fabsf(lx - 10.5f * CELL_SIZE) < 0.5f);
+        for (int t = 0; t < 5 * TICK_RATE; t++) TalkTick(TICK_DT);
+        expect(RelationFamiliarity(a, b) > 1.5f);
+    }
+
+    it("alone at a table: nobody to talk to") {
+        TalkSetup();
+        ClearFurniture();
+        SpawnFurniture(10, 6, 1, FURNITURE_TABLE, MAT_OAK);
+        int c1 = SpawnFurniture(9, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+        int a = DinerAt(c1);
+        TalkTick(TICK_DT);
+        expect(!MoverIsSpeaking(a));
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -814,5 +853,6 @@ int main(int argc, char* argv[]) {
     test(tag);
     test(hide_and_seek);
     test(glances_and_greetings);
+    test(table_talk);
     return summary();
 }

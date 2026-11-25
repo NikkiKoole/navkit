@@ -29,6 +29,7 @@
 #include "../entities/talk.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
+#include "../entities/action_queue.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -539,12 +540,16 @@ static void SocialTiesPrintStats(void) {
 #define GP_FIRE_X 16
 #define GP_FIRE_Y 16
 static long gpTicks, gpAtFireSum, gpAtFireMax, gpTalkSum, gpMeals, gpDarkTicks, gpDarkFireSum;
+static long gpMealsSeated;
+static int gpLastDined[MAX_MOVERS];   // gpTicks when it last sat eating at a table
 static long gpWalkTicks, gpWalkDistN; static double gpWalkDistSum; static long gpWalkSide, gpWalkBehind;
 static float gpPrevHunger[MAX_MOVERS];
 
 static void SetupGardenParty(void) {
     gpTicks = gpAtFireSum = gpAtFireMax = gpTalkSum = gpMeals = gpDarkTicks = gpDarkFireSum = 0;
     gpWalkTicks = gpWalkDistN = gpWalkSide = gpWalkBehind = 0; gpWalkDistSum = 0.0;
+    gpMealsSeated = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) gpLastDined[i] = -100;
     hungerEnabled = true;
     thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
     dayLength = 360.0f;                 // the games' pace: 6-minute day, walking 3x
@@ -561,12 +566,14 @@ static void SetupGardenParty(void) {
     CreateWorkshop(GP_FIRE_X, GP_FIRE_Y, 1, WORKSHOP_GROUND_FIRE);   // the campfire (its sprite)...
     SetFireSource(GP_FIRE_X, GP_FIRE_Y, 1, true);                      // ...burning for good
     // Two tables with chairs on the lawn, a buffet (food stockpile) between them
-    SpawnFurniture(6, 6, 1, FURNITURE_CHAIR, MAT_OAK);
-    SpawnFurniture(7, 6, 1, FURNITURE_TABLE, MAT_OAK);
-    SpawnFurniture(8, 6, 1, FURNITURE_CHAIR, MAT_OAK);
-    SpawnFurniture(23, 6, 1, FURNITURE_CHAIR, MAT_OAK);
-    SpawnFurniture(24, 6, 1, FURNITURE_TABLE, MAT_OAK);
-    SpawnFurniture(25, 6, 1, FURNITURE_CHAIR, MAT_OAK);
+    for (int t = 0; t < 2; t++) {   // two tables, a chair on each side (eat sitting: sitToEat, table talk)
+        int tx = t ? 24 : 7, ty = 7;
+        SpawnFurniture(tx, ty, 1, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(tx - 1, ty, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx + 1, ty, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx, ty - 1, 1, FURNITURE_CHAIR, MAT_OAK);
+        SpawnFurniture(tx, ty + 1, 1, FURNITURE_CHAIR, MAT_OAK);
+    }
     CreateStockpile(13, 5, 1, 6, 1);
     for (int i = 0; i < 6; i++) {
         int idx = SpawnItem((13 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1,
@@ -600,7 +607,11 @@ static void GardenPartyTickStats(void) {
         if (MoverIsWatching(i)) atFire++;
         if (MoverTalk(i) >= 0 && !MoverIsWatching(i) && !MoverIsWalkingWith(i)) gpTalkSum++;
         if (MoverIsWalkingWith(i)) gpWalkTicks++;
-        if (movers[i].hunger > gpPrevHunger[i] + 0.05f) gpMeals++;
+        if (MoverDiningAt(i) >= 0) gpLastDined[i] = (int)gpTicks;
+        if (movers[i].hunger > gpPrevHunger[i] + 0.05f) {
+            gpMeals++;
+            if (gpTicks - gpLastDined[i] <= 2) gpMealsSeated++;   // eaten in a seat at a table
+        }
         gpPrevHunger[i] = movers[i].hunger;
     }
     for (int t = 0; t < MAX_TALKS; t++) {   // walking pairs: how far apart, side by side or one behind
@@ -632,6 +643,8 @@ static void GardenPartyPrintStats(void) {
            gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
     printf("Talks started: %ld, joined: %ld; glances: %ld, greetings: %ld\n", talkStartedCount, talkJoinedCount,
            glanceCount, greetCount);
+    printf("Meals at a table: %ld of %ld (sit to eat %s); table talk: %.1f diner-minutes\n", gpMealsSeated, gpMeals,
+           sitToEat ? "on" : "off", tableTalkTicks / (double)TICK_RATE / 60.0);
     printf("Walks: %ld started, %.0f%% of the time walking with someone; pair %.2f cells apart, side by side %.0f%%\n",
            walkStartedCount, gpTicks && active ? 100.0 * gpWalkTicks / ((double)gpTicks * active) : 0.0,
            gpWalkDistN ? gpWalkDistSum / gpWalkDistN : 0.0,

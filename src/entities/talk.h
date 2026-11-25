@@ -81,6 +81,14 @@ bool TalkWalkStart(int leader, int follower);   // false if the leader found now
 float TalkWalkSpeedScale(int moverIdx);         // the leader's pace (1 if not leading a walk)
 bool MoverIsWalkingWith(int moverIdx);
 
+// --- Table talk: movers eating seated (sit-then-eat, action_queue.c) next to the same table
+// chat with each other: the speaker takes turns, they look at the table and get to know each
+// other (half a conversation's rate). They stay busy with their meal; no talk record.
+extern bool tableTalkEnabled;
+extern long tableTalkTicks;          // diner-ticks with someone to talk to at the table (stats)
+int MoverDiningAt(int moverIdx);     // the table it eats at (furniture index), -1 if none
+void TableTalkTick(float dt);        // (TalkTick calls it)
+
 // Passers-by give a conversation room: a walker with a talk's middle ahead, near its line,
 // drifts sideways around the circle (like polite passing). Out: sideways direction * weight.
 extern bool talkGiveRoom;

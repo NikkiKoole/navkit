@@ -3,6 +3,8 @@
 #include "notice.h"
 #include "relations.h"
 #include "chase.h"
+#include "action_queue.h"
+#include "furniture.h"
 #include "../simulation/needs.h"
 #include "../simulation/weather.h"
 #include "mover.h"
@@ -10,6 +12,7 @@
 #include "../world/cell_defs.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 Talk talks[MAX_TALKS];
 bool talkEnabled = false;   // a per-game rule: games set it (dollhouse on)
@@ -36,6 +39,12 @@ static int talkHigh = 0;   // talks[] entries at or above this are all free
 static int moverTalkIdx[MAX_MOVERS];        // talk index + 1, 0 = none
 static float moverTalkCooldown[MAX_MOVERS]; // sim seconds until it may talk again
 static unsigned int talkTickCounter = 0;
+static int dinerTable[MAX_MOVERS];          // table it eats at, -1 (rebuilt every tick)
+static int tableSpeaker[MAX_FURNITURE];      // who talks at that table, -1
+static float tableSpeakTimer[MAX_FURNITURE];
+bool tableTalkEnabled = true;
+long tableTalkTicks = 0;
+
 
 #define TALK_CHECK_EVERY   15       // ticks between start checks per mover (staggered)
 #define TALK_SLOT_HALF     0.75f    // cells from the middle to each speaker (pair: 1.5 apart)
@@ -65,6 +74,9 @@ void ClearTalks(void) {
     memset(moverTalkCooldown, 0, sizeof(moverTalkCooldown));
     talkStartedCount = 0;
     talkJoinedCount = 0;
+    tableTalkTicks = 0;
+    for (int i = 0; i < MAX_MOVERS; i++) dinerTable[i] = -1;
+    for (int f = 0; f < MAX_FURNITURE; f++) tableSpeaker[f] = -1;
     watchJoinedCount = 0;
     walkStartedCount = 0;
     talkHigh = 0;
@@ -105,7 +117,10 @@ bool MoverIsWatching(int i) {
 
 bool MoverIsSpeaking(int i) {
     int t = MoverTalk(i);
-    if (t < 0) return false;
+    if (t < 0) {   // eating at a table: its turn to talk?
+        int tb = MoverDiningAt(i);
+        return tb >= 0 && tableSpeaker[tb] == i;
+    }
     if (talks[t].kind == TALK_WATCH && talks[t].focus >= 0) return talks[t].focus == i;   // the performer sings
     if (talks[t].kind == TALK_WATCH && talks[t].count < 2) return false;   // round a place: they chat
     return talks[t].members[talks[t].speaker] == i;
@@ -128,6 +143,12 @@ static bool WalkHeading(int j, float* hx, float* hy) {
 }
 
 bool TalkLookAt(int i, float* x, float* y) {
+    int tb = MoverDiningAt(i);
+    if (tb >= 0 && MoverTalk(i) < 0) {   // at a table: looks at it (and the others round it)
+        *x = (furniture[tb].x + 0.5f) * CELL_SIZE;
+        *y = (furniture[tb].y + 0.5f) * CELL_SIZE;
+        return true;
+    }
     int t = MoverTalk(i);
     if (t < 0 || talks[t].focus == i) return false;   // the performer faces its audience (front)
     if (talks[t].kind == TALK_WALK) {   // walking: the speaker looks at the other, else ahead
@@ -501,6 +522,7 @@ static void TryStartTalk(int i) {
 }
 
 void TalkTick(float dt) {
+    TableTalkTick(dt);
     for (int i = 0; i < moverCount; i++)
         if (moverTalkCooldown[i] > 0.0f) moverTalkCooldown[i] -= dt;
 
@@ -702,4 +724,61 @@ bool TalkGiveRoomSteer(int i, float hx, float hy, float* sideX, float* sideY) {
     *sideX = sx;
     *sideY = sy;
     return any;
+}
+
+// --- Table talk ---
+int MoverDiningAt(int i) {
+    return (i >= 0 && i < moverCount) ? dinerTable[i] : -1;
+}
+
+// The table next to seat f (a flat surface in the 8 cells round it), -1 if none
+static int TableNextTo(int f) {
+    for (int k = 0; k < MAX_FURNITURE; k++) {
+        if (!furniture[k].active || furniture[k].z != furniture[f].z) continue;
+        if (!(GetFurnitureDef(furniture[k].type)->capabilities & CAP_FLAT_SURFACE)) continue;
+        if (abs(furniture[k].x - furniture[f].x) <= 1 && abs(furniture[k].y - furniture[f].y) <= 1) return k;
+    }
+    return -1;
+}
+
+void TableTalkTick(float dt) {
+    // who eats seated at a table right now
+    int tables[64], tableCount = 0;
+    for (int i = 0; i < moverCount; i++) {
+        dinerTable[i] = -1;
+        if (!tableTalkEnabled || !movers[i].active || !QueueBusy(i)) continue;
+        const MoverQueue* q = &moverQueues[i];
+        if (q->seat < 0 || q->current >= q->count || q->steps[q->current].type != ACT_EAT) continue;
+        const Furniture* seat = &furniture[q->seat];
+        float sx = (seat->x + 0.5f) * CELL_SIZE - movers[i].x, sy = (seat->y + 0.5f) * CELL_SIZE - movers[i].y;
+        if (sx * sx + sy * sy > (CELL_SIZE * 0.6f) * (CELL_SIZE * 0.6f)) continue;   // eating, but not in the seat
+        int tb = TableNextTo(q->seat);
+        if (tb < 0) continue;
+        dinerTable[i] = tb;
+        bool seen = false;
+        for (int k = 0; k < tableCount; k++) if (tables[k] == tb) seen = true;
+        if (!seen && tableCount < 64) tables[tableCount++] = tb;
+    }
+    // at each table with two or more: turns, and they get to know each other
+    for (int k = 0; k < tableCount; k++) {
+        int tb = tables[k], diners[16], n = 0;
+        for (int i = 0; i < moverCount && n < 16; i++) if (dinerTable[i] == tb) diners[n++] = i;
+        if (n < 2) { tableSpeaker[tb] = -1; continue; }
+        tableTalkTicks += n;
+        bool speakerHere = false;
+        for (int d = 0; d < n; d++) if (diners[d] == tableSpeaker[tb]) speakerHere = true;
+        tableSpeakTimer[tb] -= dt;
+        if (!speakerHere || tableSpeakTimer[tb] <= 0.0f) {
+            int pick = diners[GetRandomValue(0, n - 1)];
+            if (pick == tableSpeaker[tb]) pick = diners[(GetRandomValue(1, n - 1) + 0) % n];
+            tableSpeaker[tb] = pick;
+            tableSpeakTimer[tb] = RandRange(TALK_TURN_MIN, TALK_TURN_MAX);
+        }
+        for (int a = 0; a < n; a++)
+            for (int b = 0; b < n; b++) {
+                if (a == b) continue;
+                float like = relTalkLikePerSec * (movers[diners[a]].mood + 0.3f) * dt * 0.5f;
+                RelationAdd(diners[a], diners[b], like, relTalkFamiliarityPerSec * dt * 0.5f);
+            }
+    }
 }
