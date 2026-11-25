@@ -62,7 +62,18 @@ static long slAntUsed = 0, slStops = 0;
 // network stats: finished trips (time, time on empty roads, length), car-steps on the road,
 // of them standing, slots driven
 static double slTripT = 0, slTripFree = 0, slTripLen = 0;
-static long slTripsDone = 0, slCarSteps = 0, slStandSteps = 0, slSlotsDriven = 0;   // speeds raised by anticipation; moving cars that came to a stand
+static long slTripsDone = 0, slCarSteps = 0, slStandSteps = 0, slSlotsDriven = 0;
+// why a car on the road stands this step (stats): its curve refused (by reason), the lane's end
+// before a lane change, a car ahead, a pedestrian, dawdling at the start, something else
+enum { SW_LIGHT, SW_ENTERING, SW_SIBLING, SW_PEDCURVE, SW_NOROOM, SW_CLASH, SW_BIGGER, SW_RINGFULL, SW_RINGGAP, SW_RINGEXIT,
+       SW_LANECHANGE, SW_CAR, SW_PED, SW_DAWDLE, SW_STOPLINE, SW_OTHER, SW_COUNT };
+static const char* swName[SW_COUNT] = {"red light", "another car entering that lane", "a car from our lane on the curves",
+    "pedestrian on the curve", "no room past the junction", "crossing curve in use", "bigger road's traffic", "ring full",
+    "no gap in the ring", "no room at the ring exit", "lane end before a lane change", "car ahead", "pedestrian ahead",
+    "dawdled at the start", "stop line (curve not asked yet)", "other"};
+static long slStandWhy[SW_COUNT];
+static unsigned char* slGrantNo = NULL;   // car: why its curve was refused this step (SW_*)
+static unsigned char* slWhy = NULL;       // car: why it stands this step   // speeds raised by anticipation; moving cars that came to a stand
 bool carSlotAnticipate = true;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
@@ -165,6 +176,7 @@ void SlotsClear(void) {
     slAntUsed = slStops = 0;
     slTripT = slTripFree = slTripLen = 0;
     slTripsDone = slCarSteps = slStandSteps = slSlotsDriven = 0;
+    memset(slStandWhy, 0, sizeof(slStandWhy));
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
     slChoseDrive = slChoseWalk = 0;
@@ -175,9 +187,15 @@ void SlotsClear(void) {
 
 static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
 // a segment's top speed, slots per step (its class's limit; a street: SL_VMAX)
+// A curved lane (a roundabout's ring) no faster than its curve allows: rings were driven at the
+// road's limit, 12 cells/s on a curve good for ~7
+bool carSlotLaneCurves = true;   // (TEST: off = lanes at their class's limit whatever their curve)
 static int SlSegV(int seg) {
-    if (!rdClasses) return SL_VMAX;
-    int v = (int)(RoadSegSpeed(seg) * SL_STEP / SL_SLOT_CELLS + 0.5f);
+    int v = rdClasses ? (int)(RoadSegSpeed(seg) * SL_STEP / SL_SLOT_CELLS + 0.5f) : SL_VMAX;
+    if (carSlotLaneCurves && rdSegs[seg].kind == RD_LANE && rdSegs[seg].vmax < 1e8f) {
+        int vc = (int)(rdSegs[seg].vmax * SL_STEP / SL_SLOT_CELLS);
+        if (vc < v) v = vc;
+    }
     return v < 1 ? 1 : v;
 }
 static int SlVmaxAny(void) {   // the fastest class's
@@ -194,6 +212,11 @@ static int SlVmax(const SlotCar* c) {    // top speed, slots per step
 static int SlBrakeSlots(void);
 static int SlBrakeDist(int v, int D);
 static float SlDawdle(const SlotCar* c) { return c->temper == SL_SPEEDER ? 0.05f : (c->temper == SL_SLOW ? 0.35f : SL_DAWDLE); }
+// Dawdling (a slot slower now and then) never stops a moving car: curves are mostly 1 slot per
+// step, so a car alone came to a stand on one curve step in five (8-12% of its time standing).
+// A standing car may still be slow to start (a queue's front)
+bool carSlotDawdleStop = false;   // (TEST: dawdling may stop a moving car, as before)
+static bool SlDawdleStops(const SlotCar* c) { return c->v == 0 || carSlotDawdleStop; }
 static int SlGapMargin(const SlotCar* c) { return c->temper == SL_SPEEDER ? 1 : (c->temper == SL_SLOW ? -2 : 0); }   // slots of a gap it can do without
 // Is a car `back` free slots behind, at speed vBehind, too close for c to pull in front of it?
 // (standing: never; moving: it must be able to stop, give or take c's character)
@@ -445,6 +468,8 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         slAntFree = realloc(slAntFree, sizeof(int) * slScratchCap);
         slAntDawdle = realloc(slAntDawdle, (size_t)slScratchCap);
         slGrantStep = realloc(slGrantStep, sizeof(int) * slScratchCap);
+        slGrantNo = realloc(slGrantNo, (size_t)slScratchCap);
+        slWhy = realloc(slWhy, (size_t)slScratchCap);
         slReqCars = realloc(slReqCars, sizeof(int) * slScratchCap);
         slRouteQ = realloc(slRouteQ, sizeof(int) * slScratchCap);
     }
@@ -522,12 +547,13 @@ static void SlSetRoute(SlotCar* c, const unsigned short* r, int n, int destSlot)
 }
 
 // a trip starts (its route is set): note the step, its length and its time on empty roads
+static int SlCurveV(int conn);
 static void SlTripStart(SlotCar* c) {
     float t = 0; int len = 0;
     for (int k = c->ri; k < c->routeLen; k++) {
         int seg = c->route[k];
         int a = k == c->ri ? c->slot : 0, b = k == c->routeLen - 1 ? c->destSlot + 1 : slSegN[seg];
-        if (b > a) { len += b - a; t += (float)(b - a) / SlSegV(seg); }
+        if (b > a) { len += b - a; t += (float)(b - a) / (rdSegs[seg].kind == RD_CONN ? SlCurveV(seg) : SlSegV(seg)); }
     }
     c->tripStep = slStep; c->tripFree = t; c->tripSlots = len;
 }
@@ -1021,10 +1047,15 @@ static void SlGrantCurves(void) {
         const RdSeg* C = &rdSegs[conn];
         const RdNode* N = &rdNodes[C->node];
         int light = TrafficLightAt(C->node, C->from);
+        slGrantNo[i] = SW_LIGHT;
         if (light == 0 || (light == 1 && c->temper != SL_SPEEDER)) continue;   // red / amber (speeders go on amber)
+        slGrantNo[i] = SW_ENTERING;
         if (slExitStamp[C->to] == slStep) continue;                       // someone else enters that lane now
+        slGrantNo[i] = SW_SIBLING;
         if (SlSiblingBusy(conn)) continue;                                // a car from our lane still where the curves start together
+        slGrantNo[i] = SW_PEDCURVE;
         if (SlPedOn(conn)) continue;                                      // someone walking across the curve
+        slGrantNo[i] = SW_NOROOM;
         // room past the junction for us and every car already on this curve: else a car can
         // end up waiting inside the junction, blocking the crossing paths (that gridlocked)
         int freeRun = 0;
@@ -1037,11 +1068,14 @@ static void SlGrantCurves(void) {
             if (other == conn || !N->conflict[C->ci][j]) continue;
             if (slSegCount[other] > 0 || slConnStamp[other] == slStep) clash = true;
         }
+        slGrantNo[i] = SW_CLASH;
         if (clash) continue;
+        slGrantNo[i] = SW_BIGGER;
         if (light < 0 && SlYieldToBigger(i, conn)) { slClassYields++; continue; }
         // entering a roundabout: room on the ring, and a gap in the ring traffic arriving here
         if (!rdSegs[C->from].priority && rdSegs[C->to].priority && N->ringOf >= 0) {
             int r = N->ringOf;
+            slGrantNo[i] = SW_RINGFULL;
             if (slRingCount[r] >= SlRingRoom(r)) { slRingFullWaits++; SlRingWhy(r, 0); continue; }
             // a gap: no car coming round that would reach us - one standing, or leaving the ring
             // right here (its indicator), doesn't count (ring cars ask first: one that can go, goes)
@@ -1061,6 +1095,7 @@ static void SlGrantCurves(void) {
                     if (SlBrakeDist(oc->v + 1, SlBrakeSlots()) >= slSegN[in] - k - 1 || k >= slSegN[in] - 2) gap = false;
                 }
             }
+            slGrantNo[i] = SW_RINGGAP;
             if (!gap) { slRingGapWaits++; SlRingWhy(r, 1); continue; }
             // and room where we leave it, past the cars already on the ring that leave there too
             // (else two roundabouts joined by a short road locked up: each ring full of cars
@@ -1069,6 +1104,7 @@ static void SlGrantCurves(void) {
             if (ex >= 0) {
                 int fr = 0;
                 while (fr < slSegN[ex] && SlFree(SlIdx(ex, fr))) fr++;
+                slGrantNo[i] = SW_RINGEXIT;
                 if (fr <= slExitNeed[ex]) { slRingExitWaits++; SlRingWhy(r, 2); continue; }
                 slExitNeed[ex]++;
             }
@@ -1189,7 +1225,16 @@ static void SlRunStep(void) {
         int f = SlFreeAhead(i, v);
         if (v > f) { v = f; if (slAheadCar >= 0) { slAntLead[i] = slAheadCar; slAntFree[i] = f; } }   // (held back by that car)
         bool dawdle = SlRand() < (unsigned)(SlDawdle(c) * 32768);
-        if (v > 0 && dawdle) v--;
+        if (v == 0) {   // (stats: why it stands)
+            int seg = c->route[c->ri];
+            bool atEnd = c->ri + 1 < c->routeLen && c->slot == slSegN[seg] - 1;
+            if (slAntLead[i] >= 0) slWhy[i] = SW_CAR;
+            else if (atEnd && rdSegs[seg].parallel == c->route[c->ri + 1]) slWhy[i] = SW_LANECHANGE;
+            else if (atEnd && rdSegs[c->route[c->ri + 1]].kind == RD_CONN) slWhy[i] = SlWantsCurve(i) >= 0 ? slGrantNo[i] : SW_STOPLINE;
+            else if (slPedStamp[SlIdx(seg, c->slot + 1 < slSegN[seg] ? c->slot + 1 : c->slot)] == slStep) slWhy[i] = SW_PED;
+            else slWhy[i] = SW_OTHER;
+        } else if (v == 1 && dawdle && SlDawdleStops(c)) slWhy[i] = SW_DAWDLE;
+        if (v > 0 && dawdle && (v > 1 || SlDawdleStops(c))) v--;
         slAntDawdle[i] = dawdle;
         if (v < c->v - SlBrakeSlots()) slHardStops++;
         slStepV[i] = v;
@@ -1216,7 +1261,7 @@ static void SlRunStep(void) {
             slSlotCar[li] = L;
             if (v > f2) v = f2;
             if (carSlotPhysical) { slAntCar = L; slAntV = slStepV[L]; int vs = SlSafeSpeed(i); slAntCar = -1; if (v > vs) v = vs; }
-            if (v > 0 && slAntDawdle[i]) v--;
+            if (v > 0 && slAntDawdle[i] && (v > 1 || SlDawdleStops(c))) v--;
             if (v > slStepV[i]) { slStepV[i] = v; slAntUsed++; }
         }
     for (int i = 0; i < slotCarCount; i++)   // (first every mover leaves its slot: one may move into the slot another leaves)
@@ -1231,7 +1276,7 @@ static void SlRunStep(void) {
         c->vBefore = c->v;
         if (c->v > 0 && v == 0) slStops++;   // (stop-and-go: how often a moving car comes to a stand)
         c->v = v;
-        if (!c->needRoute && !c->kerb && c->stopSteps == 0) { slCarSteps++; if (v == 0) slStandSteps++; slSlotsDriven += v; }
+        if (!c->needRoute && !c->kerb && c->stopSteps == 0) { slCarSteps++; if (v == 0) { slStandSteps++; slStandWhy[slWhy[i]]++; } slSlotsDriven += v; }
         if (v == 0 && c->stopSteps == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
         else c->waitSteps = 0;
         if (v > 0) {
@@ -2022,13 +2067,21 @@ void SlotsPrintStats(void) {
                slTripFree > 0 ? slTripT / slTripFree : 0.0, cells / hours, slotCarCount ? cells / hours / slotCarCount : 0.0,
                100.0 * slStandSteps / slCarSteps, slTotal ? 100.0 * slCarSteps / slStep / slTotal : 0.0);
     }
+    if (slStandSteps > 0) {
+        printf("  standing (%% of the standing time):");
+        for (int w = 0; w < SW_COUNT; w++) if (slStandWhy[w] * 200 >= slStandSteps) printf(" %s %.0f%%,", swName[w], 100.0 * slStandWhy[w] / slStandSteps);
+        printf("\n");
+    }
     if (slRingFullWaits + slRingGapWaits + slRingExitWaits > 0)
         printf("  roundabout entries held: %ld ring full, %ld no gap in the ring traffic, %ld no room at the exit\n", slRingFullWaits, slRingGapWaits, slRingExitWaits);
     if (getenv("SL_RINGWHY"))
         for (int r = 0; r < rdNodeCount && r < RD_MAX_NODES; r++)
-            if (slRingLanes && slRingLanes[r] > 0)
-                printf("  roundabout %d at (%.0f,%.0f): %d arms, %d ring slots (room %d, %d on it now); held: %ld full, %ld no gap, %ld no exit room\n", r,
-                       rdNodes[r].x / CELL_SIZE, rdNodes[r].y / CELL_SIZE, slRingLanes[r], slRingSlots[r], SlRingRoom(r), slRingCount[r], slRingWhy[r][0], slRingWhy[r][1], slRingWhy[r][2]);
+            if (slRingLanes && slRingLanes[r] > 0) {
+                float curveV = 1e9f; int laneV = 0;   // the ring lanes: their curve's speed, cells/s, and the speed driven there, slots/step
+                for (int i = 0; i < RoadLaneCount(); i++) { int s = RoadLaneAt(i); if (rdSegs[s].priority && rdNodes[rdSegs[s].to].ringOf == r) { if (rdSegs[s].vmax < curveV) curveV = rdSegs[s].vmax; laneV = SlSegV(s); } }
+                printf("  roundabout %d at (%.0f,%.0f): %d arms, %d ring slots (room %d, %d on it now), ring curve %.1f cells/s, driven at %d slots/step; held: %ld full, %ld no gap, %ld no exit room\n", r,
+                       rdNodes[r].x / CELL_SIZE, rdNodes[r].y / CELL_SIZE, slRingLanes[r], slRingSlots[r], SlRingRoom(r), slRingCount[r], curveV, laneV, slRingWhy[r][0], slRingWhy[r][1], slRingWhy[r][2]);
+            }
     printf("  lane changes: %ld to overtake, %ld back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", slOvertakes, slKeepRights, slMerges, slMergeGiveUps);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }

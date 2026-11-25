@@ -126,6 +126,8 @@ void SlotsNoteChoice(bool drove, float tWalk, float tDrive);
 extern bool carSlotReal;
 extern bool carSlotPhysical;   // braking over several steps, curve speeds (needed for carSlotReal)
 extern bool carSlotLaneChange; // overtaking / keeping right on two-lane roads
+extern bool carSlotDawdleStop; // (test) dawdling may stop a moving car
+extern bool carSlotLaneCurves; // a curved lane (a ring) no faster than its curve allows
 extern bool carSlotAnticipate; // a car held back by the car ahead also counts the room that car makes this step
 // Kerb spots (setting carSlotKerbs): every second slot along the right-hand lane (not near
 // junctions or other roads) has a spot beside it at the kerb, RD_BAY_OFF cells to the right.

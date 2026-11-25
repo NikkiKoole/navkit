@@ -847,6 +847,53 @@ slower driving, the traffic rules.
 - Left: some junctions have no crossings (probably the roundabouts: the bands fall inside the ring's lanes), so people cut
   across them; "cars eased off" stays ~0 - people off the crossings only go into a real gap.
 
+## Slot traffic: base numbers to aim for (2026-11-25)
+
+User: we have many levers now - analyse the network and throughput, decide what to aim for.
+The stats line `network:` (any slot run): finished trips' mean length and time, their time on
+empty roads (at the roads' limits, curves at their curve speed), the ratio (travel time index),
+car-cells driven per hour, share of the time standing, density (cars on the road / slots).
+`standing (...)`: why cars on the road stand (a curve refused and why, a car ahead, ...).
+1 cell = 2.25 m, a slot (3 cells, 6.75 m) is about a real queue's spacing.
+
+Real cities, for scale: off-peak trips ~1.2-1.4x their empty-road time (lights included), rush
+hour 1.4-1.6x (the worst cities 1.8-2.0x); standing 20-30% of urban driving time; mean speed
+20-35 km/h (2.5-4 cells/s); driving 4-6x faster than walking over 1-3 km; a network moves the
+most cars at ~20-30% of queue density.
+
+| target | value |
+|---|---|
+| one car alone, everything on | x1.2-1.3, standing <= 10% |
+| normal day (5% of the slots on the road) | x1.3-1.5, standing 20-30%, >= 3 cells/s |
+| rush hour (10%) | x1.8-2.0, standing ~40%, no standstill over 2 min |
+| most trips per minute | at 12-15% of the slots or more, then a gentle drop |
+| driving vs walking (1.2 cells/s) | >= 2.5x faster across town (was 0.6x) |
+
+Cars on the road per layout for those: grid ~120 / ~250, Manhattan ~140 / ~275, Dutch town
+~75 / ~150 (parked cars and cabs at a fare on top: about half of them at any time).
+Order: (1) a car alone, (2) pedestrians and crossings, (3) junction capacity (roundabouts,
+the Dutch inner junctions); car counts last.
+
+### Step 1: a car alone
+
+Measured before (one car, no pedestrians, lights, characters, kerbs): grid x1.53, Manhattan
+x1.75, Dutch x2.71 against the roads' limits, standing 8-12% - all of it dawdling: curves are
+mostly 1 slot/step, and the 20% dawdle took a car at 1 to 0 on one curve step in five.
+- **Dawdling never stops a moving car** (a standing one may still be slow to start: a queue's
+  front). `carSlotDawdleStop` (test) brings the old rule back.
+- **A curved lane no faster than its curve** (`carSlotLaneCurves`): rings were driven at 4
+  slots/step (12 cells/s) on curves good for ~7 (now 2). `SL_RINGWHY` shows both.
+- Empty-road time counts curves at their curve speed (a real car can't take a junction at
+  the road's limit).
+- A car alone now: grid x1.24, Manhattan x1.29, Dutch x1.46 (the rest: braking for and
+  accelerating out of curves, ~5% dawdling at speed), standing 0%.
+- Everything on, 10 min, mean over carCitySeed 1-2, trips: grid 100 cars 433 -> 490, 200 cars
+  569 -> 692; Manhattan 200: 556 -> 611; Dutch 100: 401 -> 554, 200: 435 -> 560.
+- At the "normal day" loads (grid 120, Manhattan 140, Dutch 75): x2.6 / x3.5 / x2.1, standing
+  48 / 57 / 33%. Standing is mostly a car ahead (41-56%: queues), red lights (17% grid, 27%
+  Manhattan), refused curves (crossing curve in use, no room past the junction: 15-25%),
+  pedestrians 4-10%.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
