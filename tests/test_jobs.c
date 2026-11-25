@@ -14788,7 +14788,7 @@ extern char runningGameName[];
 extern float tideWaveHours, beltSpeed;
 extern int tideBeachReach;
 describe(game_rules_save) {
-    it("talk, gatherings, mood, job distance, plumbing, the running game, tide wave and belt speed survive a load") {
+    it("talk, gatherings, mood, job distance, plumbing, the running game, tide wave, belt speed and day length survive a load") {
         InitTestGridFromAscii(
             "......\n"
             "......\n");
@@ -14798,12 +14798,14 @@ describe(game_rules_save) {
         jobDistanceWeight = 0.7f; toiletsPlumbed = true;
         strcpy(runningGameName, "dollhouse");
         tideWaveHours = 5.0f; tideBeachReach = 9; beltSpeed = 4.0f;   // v116
+        dayLength = 360.0f;                                          // v118
         expect(SaveWorld("/tmp/test_game_rules_save.bin"));
 
         talkEnabled = false; autoGatherings = true; moodEnabled = true;
         jobDistanceWeight = 0.0f; toiletsPlumbed = false;
         runningGameName[0] = '\0';
         tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
+        dayLength = 60.0f;
         expect(LoadWorld("/tmp/test_game_rules_save.bin"));
 
         expect(talkEnabled == true);
@@ -14813,7 +14815,9 @@ describe(game_rules_save) {
         expect(toiletsPlumbed == true);
         expect(strcmp(runningGameName, "dollhouse") == 0);
         expect(tideWaveHours == 5.0f && tideBeachReach == 9 && beltSpeed == 4.0f);
+        expect(dayLength == 360.0f);
         tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
+        dayLength = 60.0f;
         moodEnabled = true; autoGatherings = false; talkEnabled = false;   // test defaults back
         jobDistanceWeight = 0.0f; toiletsPlumbed = true; runningGameName[0] = '\0';
     }

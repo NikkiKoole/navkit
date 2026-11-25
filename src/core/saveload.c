@@ -620,6 +620,8 @@ bool SaveWorld(const char* filename) {
     fwrite(&tideSurfHeight, sizeof(int), 1, f);
     fwrite(&tideBeachReach, sizeof(int), 1, f);
     fwrite(&beltSpeed, sizeof(float), 1, f);
+    // v118+: day length (a load used to fall back to time.c's 60 s: days ran 6x fast)
+    fwrite(&dayLength, sizeof(float), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1666,6 +1668,11 @@ bool LoadWorld(const char* filename) {
         // the startup defaults (tide.c, belts.c)
         tideWaveHours = 2.0f; tideWaveAngle = 0.0f; tideSurf = true; tideSurfReach = 6;
         tideSurfPeriod = 1.5f; tideSurfHeight = 2; tideBeachReach = 3; beltSpeed = 1.5f;
+    }
+    if (version >= V118_DAY_LENGTH) {
+        fread(&dayLength, sizeof(float), 1, f);
+    } else if (runningGameName[0] || gameMode == GAME_MODE_SURVIVAL) {
+        dayLength = 360.0f;   // every game's pace (games.c)
     }
     TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 
