@@ -48,6 +48,7 @@ typedef struct {
     int kerbFrom;            // ... from this slot
     int owner;               // a mover's own car (-1: nobody's): parked until its owner drives it
     bool ownerIn;            // the owner is driving it
+    int boardStep;           // ... since this step (gets out after a pull-in after it)
     float goalX, goalY;      // owner's drive: park as near this as a free kerb spot allows (px)
     int trips;
     int routeLen;

@@ -609,7 +609,7 @@ static void SlKerbMoves(void) {
             if (c->cab) slFareStops++; else slParks++;
             continue;
         }
-        if (c->kerb && c->ownerIn && c->kerbStep != slStep) { SlDriverOut(i); continue; }   // parked: the driver gets out
+        if (c->kerb && c->ownerIn && c->kerbIn && c->kerbStep > c->boardStep && c->kerbStep != slStep) { SlDriverOut(i); continue; }   // parked again: the driver gets out
         if (!c->kerb || c->kerbStep == slStep || c->stopSteps > 0 || c->needRoute) continue;
         // pull out: diagonally into the lane, one slot on; passing beside lane slot k
         if (k + 1 >= N || !SlFree(SlIdx(L, k)) || !SlFree(SlIdx(L, k + 1))) { slPullOutWaits++; continue; }
@@ -1148,7 +1148,7 @@ void SlotsTick(float dt) {
             movers[slotCars[i].owner].x = x;
             movers[slotCars[i].owner].y = y;
             movers[slotCars[i].owner].transportState = TRANSPORT_RIDING;   // (the goal picker's path planning resets it: MaybeTakeTrain)
-            ClearMoverPath(slotCars[i].owner);
+            movers[slotCars[i].owner].needsRepath = false;                 // (the repath pass doesn't skip riders)
         }
     PROFILE_BEGIN(SlotsReal);
     SlRealTick(dt);
@@ -1304,10 +1304,13 @@ bool SlotsMoverBoard(int mi, int car) {
     c->goalY = (m->transportFinalGoal.y + 0.5f) * CELL_SIZE;
     if (!SlDriveTo(car)) { slDriveFails++; c->stopSteps = 1 << 30; return false; }
     c->ownerIn = true;
+    c->boardStep = slStep;
     m->transportState = TRANSPORT_RIDING;
+    TrainsMarkPersonalTrip(mi, true);   // its own trip: the jobs' idle pass leaves the ride alone
     m->transportTrainIdx = -1;
     ClearMoverPath(mi);
     slDrives++;
+    if (getenv("SL_DRIVELOG")) printf("t %.1f: mover %d gets in car %d at (%.0f,%.0f), to (%d,%d)\n", gameTime, mi, car, m->x / CELL_SIZE, m->y / CELL_SIZE, m->transportFinalGoal.x, m->transportFinalGoal.y);
     return true;
 }
 
@@ -1330,12 +1333,14 @@ static void SlDriverOut(int car) {
     m->y = (by + 0.5f) * CELL_SIZE;
     m->lastX = m->x; m->lastY = m->y;
     m->transportState = TRANSPORT_NONE;
+    TrainsMarkPersonalTrip(c->owner, false);
     m->goal = m->transportFinalGoal;
     ClearMoverPath(c->owner);
     m->needsRepath = true;
     c->ownerIn = false;
     c->stopSteps = 1 << 30;
     slDrivesDone++;
+    if (getenv("SL_DRIVELOG")) printf("t %.1f: mover %d gets out of car %d at (%.0f,%.0f)\n", gameTime, c->owner, car, m->x / CELL_SIZE, m->y / CELL_SIZE);
 }
 
 // Is (x, y) inside car `car`'s body (grown by `grow` px)?
@@ -1544,6 +1549,12 @@ void SlotsPrintStats(void) {
                 }
             }
             if (on) onRoadNow++;
+            if (on && getenv("SL_PEDLIST")) {
+                const Mover* m = &movers[mi];
+                printf("   in road: ped %d at (%.1f,%.1f) state %d owns car %d (in %d) held %.1f s ago path %d/%d goal (%d,%d) road %d noProgress %.1f\n", mi, m->x / CELL_SIZE, m->y / CELL_SIZE,
+                       m->transportState, SlotsCarOf(mi), SlotsCarOf(mi) >= 0 ? slotCars[SlotsCarOf(mi)].ownerIn : -1, mi < slPedHeldCap ? gameTime - slPedHeldAt[mi] : -1.0,
+                       m->pathIndex, m->pathLength, m->goal.x, m->goal.y, SlRoadAt(m->x, m->y, (int)m->z), m->timeWithoutProgress);
+            }
         }
         printf("  pedestrians in the road now: %d\n", onRoadNow);
         if (getenv("SL_PEDNODE")) {

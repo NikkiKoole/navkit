@@ -579,8 +579,17 @@ Setting `carCityDrivers` (20, out of the pedestrians): a mover owns a car parked
   growing squares; a spot taken on arrival: the next one), pulls out, drives with the traffic,
   pulls in; the step after, the owner gets out on the nearest pavement cell and walks to the goal.
 
-250 cars, 80 pedestrians (20 drivers), 10 minutes: grid 28 drives, Manhattan 24, all parked and
-got out; pedestrians inside a car as without drivers (86 / 49 samples).
+Two bugs hid the drives at first (the "drives" counted were fake): the owner got out again while
+the car still stood at its spot (now: after a pull-in after boarding), and the jobs' idle pass
+reset the ride state of a jobless mover every tick (a drive is now marked as the mover's own trip,
+`TrainsMarkPersonalTrip`) - the drivers stood in the road and the cars waited for them. Keeping
+the ride state by clearing the path each tick made the repath pass plan 50000 paths (148 ms/tick).
+
+Drawing: a driven car has the mover's head sprite on its seat and a white ring (far out: a ring).
+Camera follow (`carFollow`) in slot mode follows mover 0, a driver.
+
+Manhattan, 10 minutes: 250 cars + 20 drivers: 51 drives, 38 done; 80 cars + 60 drivers (of 100
+pedestrians): 281 drives, 244 done, 0.15 ms/tick; mover 0 drove 8 trips of 45-110 s.
 
 ## Open questions / next steps
 
