@@ -651,24 +651,23 @@ static int CmdMover(const CmdValue* v) {
     if (mi < 0 || mi >= moverCount || !movers[mi].active) { Say(YELLOW, "Which mover? Select one or give its number"); return -1; }
     return mi;
 }
-static int GuildersToCents(float g) { return (int)(g * 100.0f + (g < 0 ? -0.5f : 0.5f)); }
-// money <guilders> [mover]: into the purse (negative takes it away)
+// money <coins> [mover]: into the purse (negative takes them away)
 static void RunMoney(const CmdValue* v) {
     int mi = CmdMover(&v[1]);
     if (mi < 0) return;
-    MoverAddCents(mi, GuildersToCents(v[0].f));
+    MoverAddCoins(mi, v[0].i);
     char mb[24];
-    Say(GREEN, "%s has %s", MoverDisplayName(mi), MoneyFormat(MoverCents(mi), mb, sizeof mb));
+    Say(GREEN, "%s has %s", MoverDisplayName(mi), MoneyFormat(MoverCoins(mi), mb, sizeof mb));
 }
-// dropmoney <guilders> [mover]: out of the purse onto the ground at the mover's feet
+// dropmoney <coins> [mover]: out of the purse onto the ground at the mover's feet
 static void RunDropMoney(const CmdValue* v) {
     int mi = CmdMover(&v[1]);
     if (mi < 0) return;
-    int it = MoverDropCents(mi, GuildersToCents(v[0].f));
+    int it = MoverDropCoins(mi, v[0].i);
     char mb[24], mb2[24];
     if (it < 0) { Say(YELLOW, "%s has no money", MoverDisplayName(mi)); return; }
     Say(GREEN, "%s dropped %s (%s left)", MoverDisplayName(mi), MoneyFormat(items[it].stackCount, mb, sizeof mb),
-        MoneyFormat(MoverCents(mi), mb2, sizeof mb2));
+        MoneyFormat(MoverCoins(mi), mb2, sizeof mb2));
 }
 
 static void RunSupport(const CmdValue* v) {
@@ -770,11 +769,11 @@ static const CommandDef commandTable[] = {
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
       RunCharge, NULL },
-    { "money", "Entities/Movers", "Put guilders in a mover's purse (negative takes them away): the mover number, else the selected one",
-      2, { { .name = "guilders", .type = CARG_FLOAT, .lo = -100000, .hi = 100000 },
+    { "money", "Entities/Movers", "Put coins in a mover's purse (negative takes them away): the mover number, else the selected one",
+      2, { { .name = "coins", .type = CARG_INT, .lo = -100000, .hi = 100000 },
            { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 } }, RunMoney },
-    { "dropmoney", "Entities/Movers", "A mover (number, else the selected one) drops guilders from its purse as coins at its feet",
-      2, { { .name = "guilders", .type = CARG_FLOAT, .lo = 0.01f, .hi = 100000 },
+    { "dropmoney", "Entities/Movers", "A mover (number, else the selected one) drops coins from its purse at its feet",
+      2, { { .name = "coins", .type = CARG_INT, .lo = 1, .hi = 100000 },
            { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 } }, RunDropMoney },
     { "throw", "Entities/Movers", "A mover (number, else the selected one) fetches something small (its hands, pockets, else the nearest) and throws it at the cell at the mouse (or x y z)",
       4, { { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 },

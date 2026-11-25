@@ -512,7 +512,7 @@ bool SaveWorld(const char* filename) {
         fwrite(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
     }
     fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
-    fwrite(moverCents, sizeof(int), moverCount, f);           // v119: purses (money.h)
+    fwrite(moverCoins, sizeof(int), moverCount, f);           // v119: purses (money.h)
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1378,7 +1378,7 @@ bool LoadWorld(const char* filename) {
     if (version >= V112_ACTION_QUEUE) fread(moverQueues, sizeof(MoverQueue), moverCount, f);
     // Purses (v119+), after the queues; older saves: empty
     MoneyResetAll();
-    if (version >= V119_MONEY) fread(moverCents, sizeof(int), moverCount, f);
+    if (version >= V119_MONEY) fread(moverCoins, sizeof(int), moverCount, f);
 
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);

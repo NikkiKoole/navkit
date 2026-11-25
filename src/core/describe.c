@@ -451,7 +451,7 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         DescAdd(out, DESC_INFO, "Queue: %s", q);
     }
     DescribeMoverGear(m, job, out);
-    if (MoverCents(idx) > 0) { char mb[24]; DescAdd(out, DESC_INFO, "Money: %s", MoneyFormat(MoverCents(idx), mb, sizeof mb)); }
+    if (MoverCoins(idx) > 0) { char mb[24]; DescAdd(out, DESC_INFO, "Money: %s", MoneyFormat(MoverCoins(idx), mb, sizeof mb)); }
     DescribeMoverRelations(idx, detail, out);
     if (MoverIsMingling(idx)) DescAdd(out, DESC_INFO, "Going over to another group");
     int partner = TalkPartner(idx);
@@ -1069,7 +1069,7 @@ void DescribeItemLine(int idx, DescLines* out) {
         else if (item->condition == CONDITION_STALE) tone = DESC_SOFT_WARN;
     }
 
-    if (ItemIsMoney(item->type)) {   // stackCount is cents (money.h)
+    if (ItemIsMoney(item->type)) {   // stackCount is coins (money.h)
         char mb[24];
         DescAdd(out, DESC_GOOD, "#%d: %s %s (%s)", idx, name, MoneyFormat(item->stackCount, mb, sizeof mb), state);
     } else if (item->stackCount > 1)
@@ -1082,7 +1082,7 @@ void DescribeItemsAt(const int* itemIndices, int itemCount, int cellX, int cellY
     out->count = 0;
     if (itemCount <= 0) return;
     int totalUnits = 0;
-    for (int i = 0; i < itemCount; i++) totalUnits += ItemIsMoney(items[itemIndices[i]].type) ? 1 : items[itemIndices[i]].stackCount;   // coins: stackCount is cents
+    for (int i = 0; i < itemCount; i++) totalUnits += ItemIsMoney(items[itemIndices[i]].type) ? 1 : items[itemIndices[i]].stackCount;   // coins: stackCount is coins
     DescAdd(out, DESC_MILD, "Cell (%d,%d): %d unit%s", cellX, cellY, totalUnits, totalUnits == 1 ? "" : "s");
     // At most 16 item lines, as before
     for (int i = 0; i < itemCount && i < 16; i++) DescribeItemLine(itemIndices[i], out);

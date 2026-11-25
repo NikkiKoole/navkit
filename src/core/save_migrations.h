@@ -130,7 +130,7 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // they ran a game or survival rules, else the session's value.
 #define V118_DAY_LENGTH 118
 // v119: money (money.h): ITEM_COIN appended (stockpile allowedTypes grows from
-// V118_ITEM_TYPE_COUNT) and one int per saved mover (moverCents, the purse) right after the
+// V118_ITEM_TYPE_COUNT) and one int per saved mover (moverCoins, the purse) right after the
 // action queues. Older saves: empty purses.
 #define V119_MONEY 119
 #define V118_ITEM_TYPE_COUNT 85

@@ -117,7 +117,7 @@ static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static Point (*insp_moverPaths)[MAX_MOVER_PATH] = NULL;
-static int insp_moverCents[MAX_MOVERS];   // purses (v119+, money.h)
+static int insp_moverCoins[MAX_MOVERS];   // purses (v119+, money.h)
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -214,7 +214,7 @@ static void print_mover(int idx) {
     printf("Thirst: %.1f%%\n", m->thirst * 100.0f);
     printf("Energy: %.1f%%\n", m->energy * 100.0f);
     printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
-    { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCents[m - insp_movers], mb, sizeof mb)); }
+    { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCoins[m - insp_movers], mb, sizeof mb)); }
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
@@ -1746,8 +1746,8 @@ int InspectSaveFile(int argc, char** argv) {
     // Action queues (v112+): not shown yet, skipped
     if (version >= V112_ACTION_QUEUE) fseek(f, (long)sizeof(MoverQueue) * insp_moverCount, SEEK_CUR);
     // Purses (v119+)
-    memset(insp_moverCents, 0, sizeof(insp_moverCents));
-    if (version >= V119_MONEY) fread(insp_moverCents, sizeof(int), insp_moverCount, f);
+    memset(insp_moverCoins, 0, sizeof(insp_moverCoins));
+    if (version >= V119_MONEY) fread(insp_moverCoins, sizeof(int), insp_moverCount, f);
 
     // Animals
     fread(&insp_animalCount, 4, 1, f);
@@ -1998,7 +1998,7 @@ int InspectSaveFile(int argc, char** argv) {
         memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
         memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
         memcpy(moverPaths, insp_moverPaths, sizeof(Point) * MAX_MOVER_PATH * insp_moverCount);
-        memcpy(moverCents, insp_moverCents, sizeof(int) * insp_moverCount);
+        memcpy(moverCoins, insp_moverCoins, sizeof(int) * insp_moverCount);
         moverCount = insp_moverCount;
         // Init job pool (allocates activeJobList) then copy data
         InitJobPool();
