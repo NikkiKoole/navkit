@@ -63,6 +63,7 @@
 #include "entities/animals.c"
 #include "entities/trains.c"
 #include "entities/belts.c"
+#include "entities/throwing.c"
 #include "entities/service.c"
 #include "entities/ladders.c"
 #include "entities/elevators.c"

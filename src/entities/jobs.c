@@ -22,6 +22,7 @@
 #include "butchering.h"
 #include "tool_quality.h"
 #include "../simulation/farming.h"
+#include "throwing.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -3439,6 +3440,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_FILL_WATER_POT] = RunJob_FillWaterPot,
     [JOBTYPE_WATER_CROP] = RunJob_WaterCrop,
     [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
+    [JOBTYPE_THROW] = RunJob_Throw,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types

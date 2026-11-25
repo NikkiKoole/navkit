@@ -10,6 +10,7 @@
 #include "../entities/trains.h"
 #include "../entities/belts.h"
 #include "../entities/jobs.h"
+#include "../entities/throwing.h"
 #include "../world/designations.h"
 #include "../simulation/needs.h"
 #include "../simulation/mood.h"
@@ -23,6 +24,7 @@ void SimStep(float dt) {
 
     PROFILE_BEGIN(Items);
     ItemsTick(dt);
+    ThrowsTick(dt);
     ExplosionsTick(dt);
     PROFILE_END(Items);
 

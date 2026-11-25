@@ -32,6 +32,7 @@
 #include "../entities/action_queue.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
+#include "../entities/throwing.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -634,6 +635,16 @@ static const Setting settings[] = {
       "Hunters' running pace, x walking speed (the runner: Flee speed, slower when worn out).", NULL),
     SET_BOOL("fleeSmart", "Flee: smart", "Entities/Movers/Noticing", fleeSmart,
       "Fleeing (tag, later animals): run along a path to a good open spot away from the threat. Off: straight away from it."),
+    SET_FLOAT("throwSpeed", "Throw: top speed", "Entities/Movers/Throwing", throwSpeed, 0.5f, 2.0f, 60.0f,
+      "Launch speed (cells/s) of a full-strength throw of a 1 kg thing. Heavier things leave slower (1/sqrt kg), very light ones lose to the air.", NULL),
+    SET_FLOAT("throwGravity", "Throw: gravity", "Entities/Movers/Throwing", throwGravity, 0.5f, 2.0f, 200.0f,
+      "Cells/s^2 pulling thrown things down. Range on flat ground = speed^2 / gravity.", NULL),
+    SET_FLOAT("throwBounce", "Throw: bounce", "Entities/Movers/Throwing", throwBounce, 0.01f, 0.0f, 0.95f,
+      "Part of the speed straight off a wall or the ground a thrown thing keeps when it bounces.", NULL),
+    SET_FLOAT("throwSpread", "Throw: spread", "Entities/Movers/Throwing", throwSpread, 0.05f, 0.0f, 5.0f,
+      "How much a throw goes wrong (direction and strength, more far away). 0 = perfect.", NULL),
+    SET_FLOAT("throwMaxWeight", "Throw: max weight (kg)", "Entities/Movers/Throwing", throwMaxWeight, 0.1f, 0.1f, 30.0f,
+      "Heaviest unit a mover throws (two-handed things never).", NULL),
     SET_FLOAT("chaseSpeed", "Chase: speed", "Entities/Movers/Noticing", chaseSpeed, 0.05f, 0.5f, 3.0f,
       "Running pace of a chaser, x walking speed.", NULL),
     SET_FLOAT("fleeSpeed", "Flee: speed", "Entities/Movers/Noticing", fleeSpeed, 0.05f, 0.5f, 3.0f,

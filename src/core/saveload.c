@@ -28,6 +28,7 @@ void RebuildPostLoadState(void);
 #include "../world/material.h"
 #include "../world/biome.h"
 #include "../entities/tool_quality.h"
+#include "../entities/throwing.h"
 #include "../entities/namegen.h"
 #include "save_migrations.h"
 #include "save_rle.h"
@@ -641,6 +642,7 @@ void RebuildPostLoadState(void) {
     RebuildCapabilityGrid();   // not saved: prep surfaces of tables, counters, ...
     RebuildContainerLists();   // contents lists follow containedIn (old saves have none)
     RecalcAllCarried();        // carried weight per mover (inventory.c, not saved)
+    ThrowLandAll();            // flights aren't saved: things in the air lie where they are
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (furniture[i].active && furniture[i].occupant >= 0) {
             if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {

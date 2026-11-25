@@ -10,6 +10,7 @@
 #include "../entities/item_defs.h"
 #include "../entities/animals.h"
 #include "../entities/stockpiles.h"
+#include "../entities/throwing.h"
 #include "../world/cell_defs.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -580,6 +581,23 @@ static void RunCharge(const CmdValue* v) {
     else Say(YELLOW, "Too many lit fuses");
 }
 
+// ---- throwing ----
+// throw [mover] [x y z]: the mover (else the selected one) throws something small at the cell
+// (else the mouse on the viewed level)
+static void RunThrow(const CmdValue* v) {
+    int mi = v[0].given ? v[0].i : (SelectionValid() && selection.kind == SEL_MOVER ? selection.idx : -1);
+    if (mi < 0) { Say(YELLOW, "Which mover? Select one or give its number"); return; }
+    int x, y, z;
+    if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
+    z = v[3].given ? v[3].i : currentViewZ;
+    const char* why = "";
+    int job = ThrowOrder(mi, -1, x, y, z, &why);
+    if (job < 0) { Say(YELLOW, "Can't throw: %s", why); return; }
+    int it = jobs[job].targetItem;
+    Say(GREEN, "Mover %d throws %s at %d,%d,%d (range %.0f cells)", mi, ItemName(items[it].type), x, y, z, ThrowRange(it));
+}
+
 // ---- rendering toys ----
 static void RunCutscene(const CmdValue* v) { (void)v; PlayTestCutscene(); }
 static const char* const shakeChoices[] = { "small", "medium", "large" };
@@ -670,6 +688,12 @@ static const CommandDef commandTable[] = {
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
       RunCharge, NULL },
+    { "throw", "Entities/Movers", "A mover (number, else the selected one) fetches something small (its hands, pockets, else the nearest) and throws it at the cell at the mouse (or x y z)",
+      4, { { .name = "mover", .type = CARG_INT, .optional = true, .lo = 0, .hi = MAX_MOVERS - 1 },
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "z", .type = CARG_INT, .optional = true, .lo = 0, .hi = 255 } },
+      RunThrow, NULL },
     { "cutscene", "Rendering & Debug", "Play the test cutscene", 0, { { 0 } }, RunCutscene, NULL },
     { "shake", "Rendering & Debug", "Screen shake: small, medium, large", 1, { ARG_CHOICE("size", shakeChoices) }, RunShake, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",

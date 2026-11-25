@@ -31,6 +31,7 @@
 #include "../entities/relations.h"
 #include "../entities/chase.h"
 #include "../entities/action_queue.h"
+#include "../entities/throwing.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -4254,6 +4255,109 @@ static bool ExplosionsCheck(char* why, int whyLen) {
     return true;
 }
 
+// throwing: four lanes, a mover at the west end of each with a sharp stone, throwing it at a
+// goal cell again and again (it fetches the stone where it came to rest and throws from there).
+// 0 open ground, 8 cells. 1 far (13 cells) with a granite wall 3 cells behind the goal: long
+// throws bounce off it. 2 a 2-high wall in the way: the thrower lobs over it. 3 the goal on top
+// of a 2-high granite block (z3): throwing uphill. Prints per lane how close the stones come
+// down to the goal; --check: every lane threw, lane 0 mostly lands near, nothing in a wall,
+// the state audit is clean.
+#define THROW_LANES 4
+static int throwLaneMover[THROW_LANES], throwLaneItem[THROW_LANES];
+static int throwLaneGoal[THROW_LANES][3];
+static bool throwLaneFlying[THROW_LANES];
+static int throwLaneThrows[THROW_LANES], throwLaneNear[THROW_LANES], throwLaneOnLevel[THROW_LANES];
+static float throwLaneMissSum[THROW_LANES];
+static int throwInWall;
+static const int throwLaneStartY[THROW_LANES] = { 5, 12, 19, 27 };
+
+static void ThrowWallBox(int x0, int y0, int x1, int y1, int z0, int z1) {
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) { GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); }
+}
+
+static void ThrowLaneOrder(int k) {
+    ThrowOrder(throwLaneMover[k], throwLaneItem[k], throwLaneGoal[k][0], throwLaneGoal[k][1], throwLaneGoal[k][2], NULL);
+}
+
+static void SetupThrowing(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;   // they stand where they are put
+    ThrowWallBox(20, 9, 20, 15, 1, 2);    // lane 1: the wall behind the goal
+    ThrowWallBox(8, 17, 8, 21, 1, 2);     // lane 2: the wall in the way
+    ThrowWallBox(12, 25, 16, 29, 1, 2);   // lane 3: the block (top at z3)
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    const int* laneY = throwLaneStartY;
+    static const int goal[THROW_LANES][3] = { { 12, 5, 1 }, { 17, 12, 1 }, { 13, 19, 1 }, { 14, 27, 3 } };
+    for (int k = 0; k < THROW_LANES; k++) {
+        throwLaneMover[k] = moverCount;
+        SpawnMoverAt(4, laneY[k], 1);
+        throwLaneItem[k] = SpawnItemWithMaterial(3.5f * CELL_SIZE, (laneY[k] + 0.5f) * CELL_SIZE, 1.0f,
+                                                 ITEM_SHARP_STONE, DefaultMaterialForItemType(ITEM_SHARP_STONE));
+        for (int a = 0; a < 3; a++) throwLaneGoal[k][a] = goal[k][a];
+        throwLaneFlying[k] = false;
+        throwLaneThrows[k] = throwLaneNear[k] = throwLaneOnLevel[k] = 0;
+        throwLaneMissSum[k] = 0.0f;
+        ThrowLaneOrder(k);
+    }
+    throwInWall = 0;
+    currentViewZ = 1;
+    AddMessage("Throwing: four movers throw a stone at a goal again and again (open, far + wall behind, over a wall, uphill)", GREEN);
+}
+
+static void ThrowingTickStats(void) {
+    for (int k = 0; k < THROW_LANES; k++) {
+        int it = throwLaneItem[k], m = throwLaneMover[k];
+        if (it < 0 || !items[it].active || m >= moverCount || !movers[m].active) continue;
+        if (items[it].state == ITEM_IN_FLIGHT) { throwLaneFlying[k] = true; continue; }
+        if (throwLaneFlying[k]) {   // came to rest: how close?
+            throwLaneFlying[k] = false;
+            const Item* t = &items[it];
+            float dx = t->x / CELL_SIZE - (throwLaneGoal[k][0] + 0.5f), dy = t->y / CELL_SIZE - (throwLaneGoal[k][1] + 0.5f);
+            float d = sqrtf(dx * dx + dy * dy);
+            bool onLevel = (int)t->z == throwLaneGoal[k][2];
+            throwLaneThrows[k]++;
+            throwLaneMissSum[k] += d;
+            if (onLevel) throwLaneOnLevel[k]++;
+            if (onLevel && d <= 1.5f) throwLaneNear[k]++;
+            int cx = (int)(t->x / CELL_SIZE), cy = (int)(t->y / CELL_SIZE), cz = (int)t->z;
+            if (CellIsSolid(GRID(cx, cy, cz)) || CellBlocksMovement(GRID(cx, cy, cz))) throwInWall++;
+            // Back to the throwing spot for the next one (the mover walks back to fetch it)
+            items[it].x = 3.5f * CELL_SIZE;
+            items[it].y = (throwLaneStartY[k] + 0.5f) * CELL_SIZE;
+            items[it].z = 1.0f;
+        }
+        if (movers[m].currentJobId < 0 && items[it].reservedBy < 0) ThrowLaneOrder(k);
+    }
+}
+
+static void ThrowingPrintStats(void) {
+    static const char* names[THROW_LANES] = { "open 8", "far 13 + wall behind", "over a wall", "uphill (z3)" };
+    printf("Throwing: %ld throws, %ld bounces, %d stones ended in a wall\n", throwCount, throwBounceCount, throwInWall);
+    for (int k = 0; k < THROW_LANES; k++) {
+        int n = throwLaneThrows[k];
+        printf("  lane %d %-22s throws %3d  within 1.5 cells %3d (%3.0f%%)  on the goal's level %3d  mean miss %.1f cells\n",
+               k, names[k], n, throwLaneNear[k], n ? 100.0f * throwLaneNear[k] / n : 0.0f, throwLaneOnLevel[k],
+               n ? throwLaneMissSum[k] / n : 0.0f);
+    }
+}
+
+static bool ThrowingCheck(char* why, int whyLen) {
+    for (int k = 0; k < THROW_LANES; k++)
+        if (throwLaneThrows[k] < 3) { snprintf(why, (size_t)whyLen, "lane %d threw only %d times", k, throwLaneThrows[k]); return false; }
+    if (throwLaneNear[0] * 2 < throwLaneThrows[0]) {
+        snprintf(why, (size_t)whyLen, "open lane: only %d of %d throws within 1.5 cells", throwLaneNear[0], throwLaneThrows[0]);
+        return false;
+    }
+    if (throwInWall > 0) { snprintf(why, (size_t)whyLen, "%d stones came to rest inside a wall", throwInWall); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4349,6 +4453,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
+    {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",
+                   NULL,        SetupThrowing, ThrowingTickStats, ThrowingPrintStats, ThrowingCheck, 40, 32},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",

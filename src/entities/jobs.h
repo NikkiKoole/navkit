@@ -47,6 +47,7 @@ typedef enum {
     JOBTYPE_WATER_CROP,              // Pick up water, carry to dry farm cell, pour
     JOBTYPE_GATHER_REEDS,            // Gather reeds (creates reeds item)
     JOBTYPE_REMOVE_BELT,             // Walk onto a belt, take it down
+    JOBTYPE_THROW,                   // Fetch a small item, throw it at a goal cell (throwing.c)
     JOBTYPE_COUNT
 } JobType;
 
@@ -88,6 +89,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_WATER_CROP]           = "WATER_CROP",
         [JOBTYPE_GATHER_REEDS]         = "GATHER_REEDS",
         [JOBTYPE_REMOVE_BELT]         = "REMOVE_BELT",
+        [JOBTYPE_THROW]               = "THROW",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }

@@ -21,6 +21,7 @@
 #include "../core/sim_manager.h"
 #include "../entities/trains.h"
 #include "../entities/belts.h"
+#include "../entities/throwing.h"
 #include "../entities/elevators.h"
 #include "../simulation/balance.h"
 #include <math.h>
@@ -2509,6 +2510,36 @@ static void DrawJobLines(void) {
     }
 }
 
+// Thrown things (throwing.c): a shadow on the ground under it, the item raised above the shadow
+// by its height (half a cell per level: enough to read the arc from above)
+static void DrawThrownItems(Color skyColor) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    for (int f = 0; f < ThrowFlightCount(); f++) {
+        int idx, shadowZ;
+        float x, y, h;
+        if (!ThrowFlightInfo(f, &idx, &x, &y, &h, &shadowZ)) continue;
+        if (shadowZ > viewZ || shadowZ < viewZ - MAX_VISIBLE_DEPTH) continue;
+        int cx = (int)x, cy = (int)y;
+        if (shadowZ < viewZ && !IsCellVisibleFromAbove(cx, cy, shadowZ + 1, viewZ)) continue;
+        float sx = offset.x + x * size, sy = offset.y + y * size;
+        // Shadow: smaller and fainter the higher it is
+        float sh = size * (0.45f - fminf(h, 4.0f) * 0.05f);
+        unsigned char a = (unsigned char)(110.0f / (1.0f + h * 0.5f));
+        FastSprite(atlas, SpriteGetRect(SPRITE_middle_dot), (Rectangle){ sx - sh / 2, sy - sh / 2, sh, sh }, (Color){ 0, 0, 0, a });
+        // The item
+        Item* item = &items[idx];
+        int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
+        float itemSize = size * ITEM_SIZE_GROUND;
+        float lift = h * size * 0.5f;
+        Color lightTint = GetLightColor(cx, cy, shadowZ, skyColor);
+        Color tint = MultiplyColor(MaterialTint((MaterialType)item->material), lightTint);
+        tint = MultiplyColor(tint, ItemTypeTint(item->type));
+        if (shadowZ < viewZ) tint = MultiplyColor(tint, GetDepthTint(shadowZ, viewZ));
+        FastSprite(atlas, SpriteGetRect(sprite), (Rectangle){ sx - itemSize / 2, sy - lift - itemSize / 2, itemSize, itemSize }, tint);
+    }
+}
+
 static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -2520,6 +2551,7 @@ static void DrawItems(void) {
         if (!item->active) continue;
         if (item->state == ITEM_CARRIED) continue;
         if (item->state == ITEM_IN_STOCKPILE) continue;
+        if (item->state == ITEM_IN_FLIGHT) continue;   // DrawThrownItems
 
         int itemZ = (int)item->z;
         if (itemZ > viewZ || itemZ < viewZ - MAX_VISIBLE_DEPTH) continue;
@@ -2569,6 +2601,7 @@ static void DrawItems(void) {
             FastSprite(atlas, src, dest, tint);
         }
     }
+    DrawThrownItems(skyColor);
 }
 
 static void DrawLightSources(void) {

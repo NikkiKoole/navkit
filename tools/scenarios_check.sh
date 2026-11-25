@@ -54,6 +54,7 @@ done <<'EOF'
 127 | 0 | --scenario pack-hunt
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
+0   | 0 | --scenario throwing
 7   | 0 | --scenario train
 9   | 0 | --scenario train-long
 60  | 0 | --set scenarioMovers 16 --scenario train-long
