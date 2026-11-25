@@ -4,6 +4,9 @@
 #include "mover.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "action_queue.h"
+#include "../simulation/needs.h"
+#include "../simulation/balance.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -16,6 +19,7 @@ long tagCount = 0;
 double tagChaseSecondsSum = 0.0;
 
 static bool playing[MAX_MOVERS];
+static float wanderTimer[MAX_MOVERS];   // a calm player's pause between strolls
 static float stamina[MAX_MOVERS];   // 0..1: running drains it, resting refills it
 static bool fleeing[MAX_MOVERS];
 static float replanTimer[MAX_MOVERS];
@@ -49,6 +53,8 @@ static void ClearFollow(void);
 
 static void ClearPack(void);
 
+long playLeftCount = 0;
+
 void ClearChase(void) {
     ClearHideSeek();
     ClearFollow();
@@ -61,9 +67,55 @@ void ClearChase(void) {
     tagTargetHeld = tagFreeze = tagChaseTime = 0.0f;
     tagCount = 0;
     tagChaseSecondsSum = 0.0;
+    playLeftCount = 0;
+    memset(wanderTimer, 0, sizeof(wanderTimer));
+    for (int i = 0; i < moverCount; i++)   // nobody is playing any more
+        if (movers[i].freetimeState == FREETIME_PLAY) movers[i].freetimeState = FREETIME_NONE;
 }
 
-void ChaseSetPlayer(int i, bool on) { if (i >= 0 && i < MAX_MOVERS) { playing[i] = on; stamina[i] = 1.0f; } }
+// --- Playing is a free-time state (FREETIME_PLAY) ---
+static void GameDrop(int i);
+
+static bool PlayerFree(int i) {
+    const Mover* m = &movers[i];
+    return m->active && m->currentJobId < 0 && !m->isDrafted && !QueueSuspended(i) &&
+           (m->freetimeState == FREETIME_NONE || m->freetimeState == FREETIME_PLAY);
+}
+
+bool ChaseJoin(int i) {
+    if (i < 0 || i >= moverCount || !PlayerFree(i)) return false;
+    if (!playing[i]) { stamina[i] = 1.0f; fleeing[i] = false; wanderTimer[i] = 0.0f; }
+    playing[i] = true;
+    movers[i].freetimeState = FREETIME_PLAY;
+    return true;
+}
+
+void ChaseLeave(int i) {
+    if (i < 0 || i >= MAX_MOVERS || !playing[i]) return;
+    playing[i] = false;
+    fleeing[i] = false;
+    GameDrop(i);
+    if (i < moverCount && movers[i].freetimeState == FREETIME_PLAY) {   // (a need, job, draft or command took over: theirs now)
+        Mover* m = &movers[i];
+        m->freetimeState = FREETIME_NONE;
+        m->pathLength = 0;
+        m->pathIndex = -1;
+    }
+    playLeftCount++;
+}
+
+void ChaseSetPlayer(int i, bool on) { if (on) ChaseJoin(i); else ChaseLeave(i); }
+
+// A need that would send it off (hungry, thirsty, tired, bladder, or anything critical): it
+// leaves the game to see to it
+bool PlayWantsToStop(int i) {
+    const Mover* m = &movers[i];
+    return (hungerEnabled && m->hunger < balance.hungerSeekThreshold) ||
+           (thirstEnabled && m->thirst < balance.thirstSeekThreshold) ||
+           (bladderEnabled && m->bladder < balance.bladderSeekThreshold) ||
+           (energyEnabled && m->energy < balance.energyTiredThreshold) ||
+           MoverHasCriticalNeed(i, false);
+}
 float ChaseStamina(int i) { return (i >= 0 && i < MAX_MOVERS) ? stamina[i] : 1.0f; }
 bool ChaseIsPlaying(int i) { return i >= 0 && i < moverCount && playing[i] && movers[i].active; }
 bool ChaseIsFleeing(int i) { return ChaseIsPlaying(i) && fleeing[i]; }
@@ -219,7 +271,12 @@ static void FollowLeaderTick(float dt);
 
 static void PackTick(float dt);
 
+static void PlaySweep(void);
+static void PlayWander(float dt);
+
 void ChaseTick(float dt) {
+    PlaySweep();
+    PlayWander(dt);
     HideSeekTick(dt);
     FollowLeaderTick(dt);
     PackTick(dt);
@@ -341,9 +398,8 @@ static void ClearHideSeek(void) {
 int HideSeeker(void) { return hsPhase != HS_NONE && hsSeeker >= 0 && hsSeeker < moverCount ? hsSeeker : -1; }
 bool HideIsCounting(int i) { return hsPhase == HS_COUNT && i == hsSeeker; }
 bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_HIDDEN; }
-static bool FollowControls(int i);
-static bool PackControls(int i);
-bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i) || PackControls(i); }
+// Every player's goals come from its game (a calm one wanders round the others: PlayWander)
+bool HideControls(int i) { return ChaseIsPlaying(i); }
 bool PackIsDucking(int i);
 bool MoverCrouching(int i) { return HideIsHidden(i) || PackIsDucking(i); }
 bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
@@ -537,7 +593,6 @@ static int FollowSlot(int i) {   // index in flOrder, -1
 }
 int FollowPlace(int i) { return FollowSlot(i); }
 int FollowLeader(void) { return flCount > 0 ? flOrder[0] : -1; }
-static bool FollowControls(int i) { return flCount > 0 && FollowSlot(i) >= 0; }
 
 static float FollowSpeedScale(int i) {
     int k = FollowSlot(i);
@@ -565,7 +620,7 @@ void FollowLeaderStart(const int* players, int n) {
     for (int k = 0; k < flCount; k++) {
         flOrder[k] = players[k];
         flTrailLen[k] = 0; flTrailHead[k] = 0;
-        playing[players[k]] = true;
+        ChaseJoin(players[k]);
         TrailRecord(k, movers[players[k]].x, movers[players[k]].y);
         movers[players[k]].pathLength = 0;
         movers[players[k]].pathIndex = -1;
@@ -727,8 +782,6 @@ static int PackSlot(int i) {
     return -1;
 }
 int PackRole(int i) { int k = PackSlot(i); return k >= 0 && PackTarget() >= 0 ? packRole[k] : -1; }
-// (the runner wanders when calm; ducked, it stays put)
-static bool PackControls(int i) { return PackTarget() >= 0 && (PackSlot(i) >= 0 || (i == packTarget && packDucked)); }
 bool PackIsDucking(int i) { return PackTarget() >= 0 && i == packTarget && packDucked && movers[i].pathIndex < 0; }
 bool PackLost(float* seconds) { if (PackTarget() < 0 || packLost <= 0.0f) return false; if (seconds) *seconds = packLost; return true; }
 
@@ -745,10 +798,10 @@ void PackHuntStart(const int* hunters, int n, int target) {
         packHunters[k] = hunters[k];
         packRole[k] = 0;
         packReplan[k] = 0.1f * k;   // staggered
-        playing[hunters[k]] = true;
+        ChaseJoin(hunters[k]);
     }
     packTarget = target;
-    playing[target] = true;
+    ChaseJoin(target);
     stamina[target] = 1.0f;
     fleeing[target] = false;
     packTime = 0.0f;
@@ -1038,5 +1091,106 @@ static void PackTick(float dt) {
         }
         int ox, oy;
         if (!NearWalkable(px, py, z, &ox, &oy) || !PathTo(h, ox, oy, z)) ChaseRun(h, tgt);
+    }
+}
+
+// ============================================================================
+// Players come and go (playing is FREETIME_PLAY: no jobs, no talk)
+// ============================================================================
+static bool InAGame(int i) {
+    return ChaseIt() >= 0 || hsPhase != HS_NONE || FollowSlot(i) >= 0 || PackSlot(i) >= 0 || i == PackTarget();
+}
+
+static int PlayerCount(void) {
+    int n = 0;
+    for (int i = 0; i < moverCount; i++) if (ChaseIsPlaying(i)) n++;
+    return n;
+}
+
+// Someone leaves: the game carries on without it (a new "it", seeker or leader), or ends
+static void GameDrop(int i) {
+    if (tagTarget == i) tagTarget = -1;
+    if (tagIt == i) {   // the nearest one still playing is "it" now
+        int next = -1;
+        float best = 1e18f;
+        for (int j = 0; j < moverCount; j++) {
+            if (!ChaseIsPlaying(j)) continue;
+            float d = Dist(i, j);
+            if (d < best) { best = d; next = j; }
+        }
+        if (next >= 0) ChaseSetIt(next); else tagIt = -1;
+    }
+    if (hsPhase != HS_NONE && i == hsSeeker) {   // a new round with someone else seeking
+        int next = -1;
+        for (int j = 0; j < moverCount && next < 0; j++) if (ChaseIsPlaying(j)) next = j;
+        if (next >= 0) HideSeekStart(next); else hsPhase = HS_NONE;
+    }
+    int k = FollowSlot(i);
+    if (k >= 0) {   // out of the line (the next one leads if it was the leader)
+        for (int q = k; q < flCount - 1; q++) {
+            flOrder[q] = flOrder[q + 1];
+            memcpy(flTrailX[q], flTrailX[q + 1], sizeof(flTrailX[q]));
+            memcpy(flTrailY[q], flTrailY[q + 1], sizeof(flTrailY[q]));
+            flTrailHead[q] = flTrailHead[q + 1];
+            flTrailLen[q] = flTrailLen[q + 1];
+        }
+        flCount--;
+        if (k == 0) flTurn = FL_TURN_TIME;
+    }
+    int p = PackSlot(i);
+    if (p >= 0) {
+        for (int q = p; q < packN - 1; q++) {
+            packHunters[q] = packHunters[q + 1];
+            packRole[q] = packRole[q + 1];
+            packReplan[q] = packReplan[q + 1];
+        }
+        packN--;
+    }
+    if (i == packTarget) { packTarget = -1; packN = 0; }   // the hunt is over (the hunters leave)
+}
+
+// Players whose state something else took over (a need, a job, drafting, a command: they are no
+// longer FREETIME_PLAY) leave; a game too small to go on ends and its last players leave
+static void PlaySweep(void) {
+    for (int i = 0; i < moverCount; i++) {
+        if (!playing[i]) continue;
+        const Mover* m = &movers[i];
+        if (!m->active || m->isDrafted || m->currentJobId >= 0 || m->freetimeState != FREETIME_PLAY) ChaseLeave(i);
+    }
+    int n = PlayerCount();
+    if (ChaseIt() >= 0 && n < 2) tagIt = -1;
+    if (hsPhase != HS_NONE && n < 2) hsPhase = HS_NONE;
+    if (flCount > 0 && flCount < 2) flCount = 0;
+    if (packTarget >= 0 && (packN == 0 || !ChaseIsPlaying(packTarget))) { packTarget = -1; packN = 0; }
+    for (int i = 0; i < moverCount; i++)
+        if (playing[i] && !InAGame(i)) ChaseLeave(i);
+}
+
+// A calm player (tag: not running, "it" with nobody in sight; the pack's runner, at ease)
+// strolls about near the others, with a pause now and then
+static void PlayWander(float dt) {
+    bool tag = ChaseIt() >= 0;
+    if (!tag && PackTarget() < 0) return;
+    float cx = 0.0f, cy = 0.0f;
+    int n = 0;
+    for (int i = 0; i < moverCount; i++)
+        if (ChaseIsPlaying(i)) { cx += movers[i].x; cy += movers[i].y; n++; }
+    if (n == 0) return;
+    cx /= n; cy /= n;
+    for (int i = 0; i < moverCount; i++) {
+        if (!ChaseIsPlaying(i) || fleeing[i]) continue;
+        bool calm = tag ? (i != tagIt || (tagTarget < 0 && tagFreeze <= 0.0f)) : (i == packTarget && !packDucked);
+        if (!calm || movers[i].pathIndex >= 0) continue;
+        if ((wanderTimer[i] -= dt) > 0.0f) continue;
+        wanderTimer[i] = ChaseRandRange(0.5f, 2.0f);
+        Mover* m = &movers[i];
+        int z = (int)m->z;
+        for (int tries = 0; tries < 6; tries++) {   // somewhere 3-7 cells off, toward the others if far from them
+            float a = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 7.0f);
+            float tx = m->x + cosf(a) * d * CELL_SIZE, ty = m->y + sinf(a) * d * CELL_SIZE;
+            float fx = tx - cx, fy = ty - cy;
+            if (fx * fx + fy * fy > (10.0f * CELL_SIZE) * (10.0f * CELL_SIZE)) { tx = (tx + cx) * 0.5f; ty = (ty + cy) * 0.5f; }
+            if (PathTo(i, (int)(tx / CELL_SIZE), (int)(ty / CELL_SIZE), z)) break;
+        }
     }
 }

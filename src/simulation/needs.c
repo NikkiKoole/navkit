@@ -10,6 +10,7 @@
 //   FREETIME_SEEKING_REST → (arrived/ground) → FREETIME_RESTING
 //   FREETIME_RESTING → (energy >= wake threshold) → FREETIME_NONE
 
+#include "../entities/chase.h"   // FREETIME_PLAY
 #include "needs.h"
 #include "../entities/action_queue.h"
 #include "balance.h"
@@ -1247,6 +1248,11 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             }
             break;
         }
+
+        case FREETIME_PLAY:   // in a game (chase.c moves it): a need ends its play
+            if (!ChaseIsPlaying(moverIdx)) { m->freetimeState = FREETIME_NONE; break; }   // the game ended (or a load)
+            if (PlayWantsToStop(moverIdx)) ChaseLeave(moverIdx);
+            break;
 
         case FREETIME_QUEUE:
             // A critical need puts the queue aside (ProcessFreetimeNeeds weighs the needs again

@@ -16,7 +16,9 @@ bool LoadWorld(const char* filename);
 #include "../src/simulation/fire.h"
 #include "../src/entities/workshops.h"
 #include "../src/core/time.h"
-#include "../src/core/time.h"
+#include "../src/simulation/needs.h"
+#include "../src/simulation/balance.h"
+#include "../src/entities/jobs.h"
 #include "test_helpers.h"
 #include <string.h>
 #include <math.h>
@@ -1296,6 +1298,79 @@ describe(pack_stealth) {
     }
 }
 
+describe(playing_is_busy) {
+    it("joining makes it busy: FREETIME_PLAY, no jobs, no talk; a busy mover can't join") {
+        TagSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1), busy = AddMover(12, 4, 1);
+        movers[busy].freetimeState = FREETIME_SEEKING_FOOD;
+        expect(ChaseJoin(a) && ChaseJoin(b));
+        expect(!ChaseJoin(busy) && !ChaseIsPlaying(busy));
+        expect(movers[a].freetimeState == FREETIME_PLAY);
+        RebuildIdleMoverList();
+        expect(!moverIsInIdleList[a] && !moverIsInIdleList[b]);   // no jobs handed out
+        movers[busy].freetimeState = FREETIME_NONE;
+        ClearChase();
+        expect(movers[a].freetimeState == FREETIME_NONE);
+    }
+
+    it("hungry: it leaves the game (needs.c); the game carries on with the others") {
+        TagSetup();
+        hungerEnabled = true;
+        int a = AddMover(4, 4, 1), b = AddMover(8, 4, 1), c = AddMover(12, 4, 1);
+        movers[a].hunger = movers[b].hunger = movers[c].hunger = 1.0f;
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(c, true);
+        ChaseSetIt(a);
+        movers[b].hunger = balance.hungerSeekThreshold - 0.05f;
+        ProcessFreetimeNeeds();
+        expect(!ChaseIsPlaying(b));
+        expect(movers[b].freetimeState != FREETIME_PLAY);   // (seeing to its hunger, or about to)
+        expect(ChaseIsPlaying(a) && ChaseIsPlaying(c) && ChaseIt() == a);
+        hungerEnabled = false;
+        ClearChase();
+    }
+
+    it("'it' drafted away: someone else is it; down to one player the game ends and it's free again") {
+        TagSetup();
+        int a = AddMover(4, 4, 1), b = AddMover(6, 4, 1), c = AddMover(14, 4, 1);
+        ChaseSetPlayer(a, true); ChaseSetPlayer(b, true); ChaseSetPlayer(c, true);
+        ChaseSetIt(a);
+        movers[a].isDrafted = true;
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(a) && movers[a].freetimeState == FREETIME_NONE);
+        expect(ChaseIt() == b);                     // the nearest one
+        movers[a].isDrafted = false;
+        movers[c].freetimeState = FREETIME_QUEUE;   // a player command took c over
+        RunChase(0.1f);
+        expect(!ChaseIsPlaying(c) && movers[c].freetimeState == FREETIME_QUEUE);   // (left as the command set it)
+        expect(ChaseIt() < 0 && !ChaseIsPlaying(b));   // one left: game over
+        expect(movers[b].freetimeState == FREETIME_NONE);
+        movers[c].freetimeState = FREETIME_NONE;
+    }
+
+    it("the seeker or the pack's runner leaves: a new round / the hunt ends") {
+        TagSetup();
+        int s = AddMover(4, 4, 1), h1 = AddMover(10, 4, 1), h2 = AddMover(14, 8, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h1, true); ChaseSetPlayer(h2, true);
+        HideSeekStart(s);
+        ChaseLeave(s);
+        expect(HideSeeker() >= 0 && HideSeeker() != s);
+        ClearChase();
+        int hs[2] = { s, h1 };
+        PackHuntStart(hs, 2, h2);
+        ChaseLeave(h2);
+        RunChase(0.1f);
+        expect(PackTarget() < 0 && !ChaseIsPlaying(s) && !ChaseIsPlaying(h1));
+    }
+
+    it("after a load (no game): a mover left in FREETIME_PLAY is free again") {
+        TagSetup();
+        int a = AddMover(4, 4, 1);
+        movers[a].freetimeState = FREETIME_PLAY;
+        ProcessFreetimeNeeds();
+        expect(movers[a].freetimeState == FREETIME_NONE);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1318,5 +1393,6 @@ int main(int argc, char* argv[]) {
     test(cover);
     test(personal_space);
     test(pack_stealth);
+    test(playing_is_busy);
     return summary();
 }

@@ -100,7 +100,13 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
   block of the movement step and dropped when they point at a drop (walking into air = falling).
 - "Free to socialise" = `CanTalk` in talk.c: no job, `FREETIME_NONE`, not drafted / travelling,
   no suspended action queue, not in a game. A new busy state must make this false.
-- In the idle branch, `HideControls(i)` (games give the goals) comes before the deactivate-else.
+- Playing is a free-time state, `FREETIME_PLAY` (chase.c): join with `ChaseJoin` (only a free
+  mover), and anything that takes the mover over just changes its state (a need via
+  `PlayWantsToStop` in needs.c, a job, drafting, `FREETIME_QUEUE`): `PlaySweep` sees it is no
+  longer `FREETIME_PLAY` and drops it from the game (a new "it" / seeker / leader, or the game
+  ends). A load leaves `FREETIME_PLAY` without a game: needs.c sets it back to `FREETIME_NONE`.
+- In the idle branch, `HideControls(i)` (any player: its game gives the goals, a calm one strolls
+  via `PlayWander`) comes before the deactivate-else.
 - Game rules `talkEnabled`, `autoGatherings`: each game's start sets them; scenarios restore them
   (`ScenarioSettings` snapshot): add new social toggles there too.
 - Transient (a load ends them): noticing, talks, gatherings, walks, games, greetings. Saved:

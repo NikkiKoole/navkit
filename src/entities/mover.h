@@ -66,6 +66,7 @@ typedef enum {
     FREETIME_SCROUNGING,            // Rummaging in the bin (then eats what it found)
     FREETIME_FETCHING_OWN,          // Going back for something it put down for a job (a bag)
     FREETIME_QUEUE,                 // Working through its action queue (action_queue.h): sit-then-eat, ...
+    FREETIME_PLAY,                  // In a game (tag, hide and seek, ...: chase.h); leaves it for a need
 } FreetimeState;
 
 

@@ -737,6 +737,61 @@ static void SetupTag(void) {
     AddMessage(TextFormat("Tag: %d players, mover 0 is it (smart fleeing %s)", n, fleeSmart ? "on" : "off"), GREEN);
 }
 
+// play-hungry: a game of tag with hunger on and berries lying by the side of the field. Playing
+// is a free-time state: a player that gets hungry leaves the game to eat; the game goes on with
+// the others and ends when one is left. Check: players left, they ate, nobody starved.
+static long phMeals, phPlayersEnd;
+static float phLowestHunger;
+static int phPrevState[MAX_MOVERS];
+
+static void SetupPlayHungry(void) {
+    phMeals = phPlayersEnd = 0;
+    phLowestHunger = 1.0f;
+    hungerEnabled = true;
+    thirstEnabled = energyEnabled = bladderEnabled = bodyTempEnabled = false;
+    dayLength = 360.0f;
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    CreateStockpile(2, 2, 1, 4, 4);
+    for (int i = 0; i < 16; i++) {   // (cell centres: docs/bugs/food-off-centre-out-of-reach.md)
+        int idx = SpawnItem((2 + i % 4 + 0.5f) * CELL_SIZE, (2 + i / 4 + 0.5f) * CELL_SIZE, 1, ITEM_DRIED_BERRIES);
+        if (idx >= 0) items[idx].stackCount = 20;
+    }
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    for (int i = 0; i < n; i++) {
+        SpawnMoverAt(12 + (i % 4) * 3, 12 + (i / 4) * 4, 1);
+        movers[moverCount - 1].hunger = 0.33f + 0.05f * i;   // hungry one after the other
+        phPrevState[moverCount - 1] = FREETIME_NONE;
+    }
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    ChaseSetIt(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Tag with hunger on: %d players leave the game to eat (berries top left)", n), GREEN);
+}
+
+static void PlayHungryTickStats(void) {
+    phPlayersEnd = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        if (movers[i].freetimeState == FREETIME_EATING && phPrevState[i] != FREETIME_EATING) phMeals++;
+        phPrevState[i] = movers[i].freetimeState;
+        if (movers[i].hunger < phLowestHunger) phLowestHunger = movers[i].hunger;
+        if (ChaseIsPlaying(i)) phPlayersEnd++;
+    }
+}
+
+static void PlayHungryPrintStats(void) {
+    printf("Play: left the game %ld times, meals %ld, still playing %ld, lowest hunger %.2f\n",
+           playLeftCount, phMeals, phPlayersEnd, phLowestHunger);
+}
+
+static bool PlayHungryCheck(char* why, int whyLen) {
+    if (playLeftCount == 0) { snprintf(why, (size_t)whyLen, "nobody left the game to eat"); return false; }
+    if (phMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
+    if (phLowestHunger <= 0.0f) { snprintf(why, (size_t)whyLen, "someone starved while playing"); return false; }
+    return true;
+}
+
 static void TagTickStats(void) {
     tagTicks++;
     int it = ChaseIt();
@@ -4984,6 +5039,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupCover,    CoverTickStats, CoverPrintStats, HideAndSeekCheck, 0, 0},
     {"hunt-cover", "The pack hunt in an overgrown garden: the runner breaks sight and ducks behind cover, the pack searches (setting packStealth)",
                    NULL,        SetupHuntCover, HuntCoverTickStats, HuntCoverPrintStats, PackHuntCheck, 0, 0},
+    {"play-hungry", "Tag with hunger on: players leave the game to eat, the game goes on without them (playing is a free-time state)",
+                   NULL,        SetupPlayHungry, PlayHungryTickStats, PlayHungryPrintStats, PlayHungryCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
                    NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",

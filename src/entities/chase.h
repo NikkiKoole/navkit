@@ -21,7 +21,16 @@ extern long tagCount;            // tags since ClearChase
 extern double tagChaseSecondsSum;   // sum of chase durations (for the average)
 
 void ClearChase(void);
-void ChaseSetPlayer(int moverIdx, bool playing);
+// Playing is a free-time state (FREETIME_PLAY): a player gets no jobs and doesn't stop to talk.
+// Only a free mover joins (no job, no need being seen to, not drafted). It leaves when something
+// else takes it over (a need - hungry, thirsty, tired, bladder or anything critical, see
+// PlayWantsToStop -, a job, drafting, a player command: its state is no longer FREETIME_PLAY),
+// and the game carries on without it (a new "it", seeker or leader) or ends when too few are left.
+bool ChaseJoin(int moverIdx);            // false if it isn't free to play
+void ChaseLeave(int moverIdx);
+void ChaseSetPlayer(int moverIdx, bool playing);   // join / leave
+bool PlayWantsToStop(int moverIdx);      // a need it should see to (needs.c ends its play)
+extern long playLeftCount;               // players who left a game
 bool ChaseIsPlaying(int moverIdx);
 int ChaseIt(void);                       // who is "it", -1 if no game
 void ChaseSetIt(int moverIdx);
@@ -46,7 +55,7 @@ int HideSeeker(void);                // -1 if no game
 bool HideIsCounting(int moverIdx);   // the seeker, eyes shut
 bool HideIsHidden(int moverIdx);     // in its spot, not found yet
 bool HideIsFound(int moverIdx);
-bool HideControls(int moverIdx);     // a player in a game of hide and seek: the game gives its goals
+bool HideControls(int moverIdx);     // a player in any game: the game gives its goals (the mover loop doesn't wander it)
 bool MoverCrouching(int moverIdx);   // ducked down (a hider in its spot): low cover hides it (notice.h)
 
 // --- Follow the leader ---
