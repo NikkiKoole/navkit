@@ -81,7 +81,8 @@ done <<'EOF'
 21  | 0 | --scenario worksplit
 36  | 0 | --set jobDistanceWeight 0.2 --scenario worksplit
 171 | 0 | --set jobDistanceWeight 0.2 --set scenarioMovers 40 --scenario worksplit
-24  | 0 | --game dollhouse
+# dollhouse: the residents stop to talk (talk.c), so they walk less: 28 -> 20
+16  | 0 | --game dollhouse
 2   | 0 | --game survival
 23  | 0 | --game island
 EOF

@@ -5,6 +5,7 @@
 #include "namegen.h"
 #include "animals.h"
 #include "notice.h"
+#include "talk.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -1139,6 +1140,7 @@ float MoverRouteCellsLeft(int i) {
 
 void ClearMovers(void) {
     ClearNotices();
+    ClearTalks();
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));
     repathCursor = 0;
@@ -1603,6 +1605,7 @@ void UpdateMovers(void) {
         if (!m->active) continue;
         if (ElevatorRiderTick(i, dt)) continue;   // in an elevator car: it carries the mover
         if (ElevatorQueueTick(i, dt)) continue;   // in the line at an elevator door
+        if (TalkMoverTick(i, dt)) continue;       // standing in a conversation (talk.c)
         
         // Decrement fall timer for visual feedback
         if (m->fallTimer > 0) {

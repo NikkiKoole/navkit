@@ -6,9 +6,12 @@ static bool test_verbose = false;
 #include "../src/world/grid.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/notice.h"
+#include "../src/entities/talk.h"
+#include "../src/core/time.h"
 #include "../src/core/time.h"
 #include "test_helpers.h"
 #include <string.h>
+#include <math.h>
 
 #define W 24
 #define H 12
@@ -213,10 +216,95 @@ describe(polite_passing) {
     }
 }
 
+static void TalkSetup(void) {
+    SetupWorld();
+    ClearTalks();
+    dayLength = 60.0f;
+    talkEnabled = true;
+    talkChance = 1.0f;
+    talkStartRadius = 3.0f;
+    talkMinSeconds = 5.0f;
+    talkMaxSeconds = 5.0f;
+    talkCooldown = 30.0f;
+}
+
+static void RunTalk(float seconds) {
+    int ticks = (int)(seconds * TICK_RATE);
+    for (int t = 0; t < ticks; t++) {
+        TalkTick(TICK_DT);
+        for (int i = 0; i < moverCount; i++) TalkMoverTick(i, TICK_DT);
+    }
+}
+
+static float Dist(int a, int b) {
+    float dx = movers[a].x - movers[b].x, dy = movers[a].y - movers[b].y;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+describe(stop_to_talk) {
+    it("two idle movers close by start talking, stop walking and take spots 1.5 cells apart") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        WalkToward(a, 20, 5);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0 && MoverTalk(a) == MoverTalk(b));
+        expect(movers[a].pathIndex < 0 && movers[a].pathLength == 0);
+        expect(TalkPartner(a) == b && TalkPartner(b) == a);
+        RunTalk(2.0f);
+        expect(fabsf(Dist(a, b) - 1.5f * CELL_SIZE) < 2.0f);
+        expect(MoverIsSpeaking(a) != MoverIsSpeaking(b));   // one speaks, one listens
+    }
+
+    it("ends after its time, then a cooldown keeps them from starting again at once") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0);
+        RunTalk(5.0f);
+        expect(MoverTalk(a) < 0 && MoverTalk(b) < 0);
+        Look();
+        RunTalk(2.0f);
+        expect(MoverTalk(a) < 0);
+        expect(talkStartedCount == 1);
+    }
+
+    it("a job ends it for that mover, and a talk of one ends") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        Look();
+        RunTalk(0.5f);
+        expect(MoverTalk(a) >= 0);
+        movers[b].currentJobId = 0;
+        RunTalk(0.1f);
+        expect(MoverTalk(b) < 0);
+        expect(MoverTalk(a) < 0);
+        movers[b].currentJobId = -1;
+    }
+
+    it("busy, too far or switched off: no talk") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1), far = AddMover(5, 10, 1);
+        movers[b].currentJobId = 0;
+        (void)far;
+        Look();
+        RunTalk(1.0f);
+        expect(MoverTalk(a) < 0);
+        movers[b].currentJobId = -1;
+        talkEnabled = false;
+        Look();
+        RunTalk(1.0f);
+        expect(MoverTalk(a) < 0);
+        talkEnabled = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(notice_basics);
     test(polite_passing);
+    test(stop_to_talk);
     return summary();
 }

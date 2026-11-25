@@ -25,6 +25,7 @@
 #include <string.h>
 #include <strings.h>
 #include "../entities/notice.h"
+#include "../entities/talk.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -32,7 +33,7 @@
 // needs + speed) don't leak into the next.
 // ---------------------------------------------------------------------------
 typedef struct {
-    bool hunger, thirst, energy, endless, preferDiffZ, mood;
+    bool hunger, thirst, energy, endless, preferDiffZ, mood, talk;
     float wanderPause, dayLength, baseMoverSpeed, jobDistanceWeight, trainSpeed;
 } ScenarioSettings;
 
@@ -56,7 +57,7 @@ static void SpawnGroundCrowd(int n) {
 static void SnapshotOrRestoreSettings(void) {
     if (!haveSavedSettings) {
         savedSettings = (ScenarioSettings){hungerEnabled, thirstEnabled, energyEnabled,
-                                           endlessMoverMode, preferDifferentZ, moodEnabled,
+                                           endlessMoverMode, preferDifferentZ, moodEnabled, talkEnabled,
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed};
         haveSavedSettings = true;
@@ -68,6 +69,7 @@ static void SnapshotOrRestoreSettings(void) {
     endlessMoverMode = savedSettings.endless;
     preferDifferentZ = savedSettings.preferDiffZ;
     moodEnabled = savedSettings.mood;
+    talkEnabled = savedSettings.talk;
     moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
@@ -204,10 +206,12 @@ static void SetupFaces(void) {
 // social: 10 movers wandering a plaza with two wall pieces (line of sight), noticing each
 // other (notice.c). Standing between goals they look at whoever they noticed most.
 // Headless stats: noticed per mover, how often attention switches, standing movers looking.
+static long socialTalkTicks;
 static long socialTicks, socialNoticedSum, socialSwitches, socialFlickBacks, socialStanding, socialStandingLooking;
 static int socialPrevTop[MAX_MOVERS], socialPrevPrevTop[MAX_MOVERS];
 
 static void SetupSocial(void) {
+    socialTalkTicks = 0;
     socialTicks = socialNoticedSum = socialSwitches = socialFlickBacks = socialStanding = socialStandingLooking = 0;
     for (int i = 0; i < MAX_MOVERS; i++) socialPrevTop[i] = socialPrevPrevTop[i] = -1;
     for (int y = 6; y <= 12; y++) { GRID(16, y, 1) = CELL_WALL; SetWallMaterial(16, y, 1, MAT_GRANITE); }
@@ -217,6 +221,7 @@ static void SetupSocial(void) {
     InvalidateLighting();
     endlessMoverMode = true;
     noticeEnabled = true;
+    talkEnabled = true;
     moverWanderPause = 3.0f;   // stand a while between goals: that is when they look around
     int n = scenarioMovers > 0 ? scenarioMovers : 10;
     for (int i = 0; i < n; i++) SpawnMoverAt(4 + (i % 5) * 6, 4 + (i / 5) * 20 % 28, 1);
@@ -229,6 +234,7 @@ static void SocialTickStats(void) {
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) continue;
         socialNoticedSum += moverNotice[i].count;
+        if (MoverTalk(i) >= 0) socialTalkTicks++;
         int top = NoticeTop(i);
         if (top != socialPrevTop[i] && socialPrevTop[i] >= 0 && top >= 0) {
             socialSwitches++;
@@ -251,6 +257,9 @@ static void SocialPrintStats(void) {
            socialTicks && active ? socialNoticedSum / (double)(socialTicks * active) : 0.0);
     printf("Attention switches per mover per minute: %.1f\n",
            minutes > 0 && active ? socialSwitches / (minutes * active) : 0.0);
+    printf("Talks started: %ld (%.1f per mover per minute), time spent talking: %.0f%%\n", talkStartedCount,
+           minutes > 0 && active ? talkStartedCount / (minutes * active) : 0.0,
+           socialTicks && active ? 100.0 * socialTalkTicks / (socialTicks * active) : 0.0);
     printf("  of which back to the one before (A->B->A): %.1f\n",
            minutes > 0 && active ? socialFlickBacks / (minutes * active) : 0.0);
     printf("Standing mover-ticks: %ld, ", socialStanding);

@@ -8,6 +8,7 @@
 #include "../core/input_mode.h"
 #include "../core/time.h"
 #include "../entities/notice.h"
+#include "../entities/talk.h"
 #include "../entities/workshops.h"
 #include "../entities/furniture.h"
 #include "../entities/item_defs.h"
@@ -1752,8 +1753,11 @@ static void DrawMoverFace(Rectangle dest, int view, int mouth, Color tint) {
 static unsigned char moverFaceView[MAX_MOVERS];   // last view, for hysteresis near diagonals
 
 static int MoverFaceView(int i, const Mover* m) {
-    float dx, dy;
-    if (m->pathLength > 0 && m->pathIndex >= 0) {
+    float dx, dy, lookX, lookY;
+    if (TalkLookAt(i, &lookX, &lookY)) {   // in a conversation: look at its middle
+        dx = lookX - m->x;
+        dy = lookY - m->y;
+    } else if (m->pathLength > 0 && m->pathIndex >= 0) {
         Point wp = moverPaths[i][m->pathIndex];
         dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
         dy = wp.y * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
@@ -1773,8 +1777,9 @@ static int MoverFaceView(int i, const Mover* m) {
     return moverFaceView[i] = side ? (dx < 0 ? FACE_LEFT : FACE_RIGHT) : (dy < 0 ? FACE_UP : FACE_DOWN);
 }
 
-static int MoverMouth(const Mover* m) {
+static int MoverMouth(int i, const Mover* m) {
     if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
+    if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
     if (m->mood > 0.4f) return MOUTH_SMILE;
     if (m->mood < -0.45f) return MOUTH_SAD;
     if (m->mood < -0.15f) return MOUTH_FLAT;
@@ -1924,7 +1929,7 @@ static void DrawMovers(void) {
             DrawRectangleLinesEx(draftDest, 1.0f, (Color){255, 60, 60, 180});
         }
 
-        if (moverFaces) DrawMoverFace(dest, MoverFaceView(i, m), MoverMouth(m), moverColor);
+        if (moverFaces) DrawMoverFace(dest, MoverFaceView(i, m), MoverMouth(i, m), moverColor);
         else FastSprite(atlas, src, dest, moverColor);
 
         DrawCarriedItem(m, sx, sy, viewZ, skyColor);

@@ -1,4 +1,5 @@
 // games.c - The games this engine hosts (see games.h)
+#include "../entities/talk.h"
 #include "games.h"
 #include "scenarios.h"
 #include "../game_state.h"
@@ -194,6 +195,7 @@ static void SetSurvivalRules(void) {
         }
     }
     gameMode = GAME_MODE_SURVIVAL;
+    talkEnabled = false;      // idle movers stopping to chat: dollhouse only for now
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
@@ -537,6 +539,7 @@ static void StartDollhouse(void) {
         }
     }
     gameMode = GAME_MODE_SANDBOX;
+    talkEnabled = true;       // the residents stop to chat (talk.c)
     hungerEnabled = true;
     energyEnabled = true;
     thirstEnabled = true;
@@ -558,6 +561,7 @@ static void StartSandbox(void) {
     ResetTime();
     balance.baseMoverSpeed = 200.0f;         // balance.c default (survival/dollhouse change it)
     gameMode = GAME_MODE_SANDBOX;
+    talkEnabled = false;
     hungerEnabled = false;
     energyEnabled = false;
     thirstEnabled = false;

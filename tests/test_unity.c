@@ -125,6 +125,7 @@ bool bladderEnabled = false;
 #include "../src/entities/elevators.c"
 #include "../src/entities/mover.c"
 #include "../src/entities/notice.c"
+#include "../src/entities/talk.c"
 #include "../src/entities/namegen.c"
 #include "../src/entities/workshops.c"
 #include "../src/entities/furniture.c"

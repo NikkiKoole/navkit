@@ -11,6 +11,7 @@
 #include "../entities/namegen.h"
 #include "../entities/animals.h"
 #include "../entities/notice.h"
+#include "../entities/talk.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -404,6 +405,15 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     DescAdd(out, job ? DESC_GOOD : DESC_MUTED, "Job: %s (step %d)",
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
     DescribeMoverGear(m, job, out);
+    int partner = TalkPartner(idx);
+    if (partner >= 0) {
+        int t = MoverTalk(idx);
+        if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Talking with %s%s", movers[partner].name,
+                                             talks[t].count > 2 ? " and others" : "");
+        else DescAdd(out, DESC_INFO, "Talking with #%d", partner);
+        if (detail == DESC_DEBUG) DescAdd(out, DESC_MUTED, "Talk %d: %.0f s left, %s", t, talks[t].timeLeft,
+                                          MoverIsSpeaking(idx) ? "speaking" : "listening");
+    }
 
     // Train trip: the lines still ahead (planned when it last chose, i.e. at its last stop)
     int routeLines[TRAIN_PLAN_CHANGES_MAX + 1];

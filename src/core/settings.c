@@ -28,6 +28,7 @@
 #include "../ui/console.h"
 #include "../simulation/tide.h"
 #include "../entities/notice.h"
+#include "../entities/talk.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -562,6 +563,18 @@ static const Setting settings[] = {
       "How far a mover notices others, in cells.", NULL),
     SET_INT("noticeEveryTicks", "Look every N ticks", "Entities/Movers/Noticing", noticeEveryTicks, 1.0f, 1, 120,
       "Each mover looks around once per this many ticks (staggered over movers).", NULL),
+    SET_BOOL("talk", "Stop to Talk", "Entities/Movers/Noticing", talkEnabled,
+      "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in the dollhouse. Needs Noticing."),
+    SET_FLOAT("talkRadius", "Talk: start (cells)", "Entities/Movers/Noticing", talkStartRadius, 0.1f, 1.0f, 8.0f,
+      "How close two idle movers must be to start talking.", NULL),
+    SET_FLOAT("talkChance", "Talk: chance", "Entities/Movers/Noticing", talkChance, 0.01f, 0.0f, 1.0f,
+      "Chance per check (each mover checks about 4 times a second) that a talk starts.", NULL),
+    SET_FLOAT("talkMin", "Talk: min (s)", "Entities/Movers/Noticing", talkMinSeconds, 0.5f, 1.0f, 120.0f,
+      "Shortest conversation, seconds.", NULL),
+    SET_FLOAT("talkMax", "Talk: max (s)", "Entities/Movers/Noticing", talkMaxSeconds, 0.5f, 1.0f, 300.0f,
+      "Longest conversation, seconds.", NULL),
+    SET_FLOAT("talkCooldown", "Talk: cooldown (s)", "Entities/Movers/Noticing", talkCooldown, 1.0f, 0.0f, 600.0f,
+      "Seconds after a talk before that mover may start another.", NULL),
     SET_BOOL("politePassing", "Polite Passing", "Entities/Movers/Noticing", politePassing,
       "Someone noticed coming at you: drift aside early (away from their side, else to the right) and slow a little. Needs Noticing."),
     SET_FLOAT("passRadius", "Pass: start (cells)", "Entities/Movers/Noticing", passRadius, 0.1f, 1.0f, 8.0f,
