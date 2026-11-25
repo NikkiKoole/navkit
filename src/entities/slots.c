@@ -58,7 +58,11 @@ static long slYields = 0, slYieldMerges = 0, slClassYields = 0, slRingExitWaits 
 static long slHwSteps = 0, slRampSteps = 0, slUseSteps = 0;   // car-steps on highways / slip roads, steps counted
 static int *slAntLead = NULL, *slAntFree = NULL;   // per car this step: the car it's held back by, free slots to it
 static unsigned char* slAntDawdle = NULL;
-static long slAntUsed = 0, slStops = 0;   // speeds raised by anticipation; moving cars that came to a stand
+static long slAntUsed = 0, slStops = 0;
+// network stats: finished trips (time, time on empty roads, length), car-steps on the road,
+// of them standing, slots driven
+static double slTripT = 0, slTripFree = 0, slTripLen = 0;
+static long slTripsDone = 0, slCarSteps = 0, slStandSteps = 0, slSlotsDriven = 0;   // speeds raised by anticipation; moving cars that came to a stand
 bool carSlotAnticipate = true;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
@@ -159,6 +163,8 @@ void SlotsClear(void) {
     slYields = slYieldMerges = slClassYields = slRingExitWaits = slRingFullWaits = slRingGapWaits = 0;
     slHwSteps = slRampSteps = slUseSteps = 0;
     slAntUsed = slStops = 0;
+    slTripT = slTripFree = slTripLen = 0;
+    slTripsDone = slCarSteps = slStandSteps = slSlotsDriven = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
     slChoseDrive = slChoseWalk = 0;
@@ -515,6 +521,17 @@ static void SlSetRoute(SlotCar* c, const unsigned short* r, int n, int destSlot)
     c->destSlot = destSlot;
 }
 
+// a trip starts (its route is set): note the step, its length and its time on empty roads
+static void SlTripStart(SlotCar* c) {
+    float t = 0; int len = 0;
+    for (int k = c->ri; k < c->routeLen; k++) {
+        int seg = c->route[k];
+        int a = k == c->ri ? c->slot : 0, b = k == c->routeLen - 1 ? c->destSlot + 1 : slSegN[seg];
+        if (b > a) { len += b - a; t += (float)(b - a) / SlSegV(seg); }
+    }
+    c->tripStep = slStep; c->tripFree = t; c->tripSlots = len;
+}
+
 static bool SlNewTrip(int i) {
     SlotCar* c = &slotCars[i];
     int cur = c->route[c->ri];
@@ -540,6 +557,7 @@ static bool SlNewTrip(int i) {
             if (n <= 0) { slRouteFails++; continue; }
         }
         SlSetRoute(c, r, n, ds);
+        SlTripStart(c);
         c->needRoute = false;
         return true;
     }
@@ -1213,6 +1231,7 @@ static void SlRunStep(void) {
         c->vBefore = c->v;
         if (c->v > 0 && v == 0) slStops++;   // (stop-and-go: how often a moving car comes to a stand)
         c->v = v;
+        if (!c->needRoute && !c->kerb && c->stopSteps == 0) { slCarSteps++; if (v == 0) slStandSteps++; slSlotsDriven += v; }
         if (v == 0 && c->stopSteps == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
         else c->waitSteps = 0;
         if (v > 0) {
@@ -1225,6 +1244,7 @@ static void SlRunStep(void) {
         // arrived: the next trip is planned within the budget (it waits at its lane's end)
         if (!c->needRoute && c->ri == c->routeLen - 1 && c->slot >= c->destSlot) {
             c->trips++;
+            slTripsDone++; slTripT += slStep - c->tripStep; slTripFree += c->tripFree; slTripLen += c->tripSlots;
             c->needRoute = true;
             c->destSlot = slSegN[c->route[c->ri]] - 1;
             if (c->parkNext) { c->parkNext = false; c->wantKerb = true; }   // pulls in next step
@@ -1604,6 +1624,7 @@ static bool SlDriveTo(int car) {
             if (n <= 0) { slRouteFails++; continue; }
         }
         SlSetRoute(c, r, n, k - 1);
+        SlTripStart(c);
         c->needRoute = false;
         c->parkNext = true;
         if (c->kerb) c->stopSteps = 0;   // pulls out as soon as there's a gap
@@ -1990,6 +2011,16 @@ void SlotsPrintStats(void) {
         for (int i = 0; i < slotCarCount; i++) trips += slotCars[i].trips;
         printf("  anticipation: %ld speeds raised (the car ahead moving on); stop-and-go: %ld stands from moving, %.1f a trip\n",
                slAntUsed, slStops, trips ? (double)slStops / trips : 0.0);
+    }
+    if (slTripsDone > 0 && slCarSteps > 0) {
+        // the network's numbers: how long a trip takes against empty roads (travel time index),
+        // how far cars drive per hour (car-cells/h: throughput), how much of the time they stand
+        double hours = slStep * SL_STEP / 3600.0, cells = slSlotsDriven * SL_SLOT_CELLS;
+        printf("  network: %ld trips of %.0f cells (mean), %.0f s each, %.0f s on empty roads: travel time x%.2f; "
+               "%.0f car-cells/h driven (%.0f per car), %.0f%% of the time standing, density %.1f%% of the slots\n",
+               slTripsDone, slTripLen / slTripsDone * SL_SLOT_CELLS, slTripT / slTripsDone * SL_STEP, slTripFree / slTripsDone * SL_STEP,
+               slTripFree > 0 ? slTripT / slTripFree : 0.0, cells / hours, slotCarCount ? cells / hours / slotCarCount : 0.0,
+               100.0 * slStandSteps / slCarSteps, slTotal ? 100.0 * slCarSteps / slStep / slTotal : 0.0);
     }
     if (slRingFullWaits + slRingGapWaits + slRingExitWaits > 0)
         printf("  roundabout entries held: %ld ring full, %ld no gap in the ring traffic, %ld no room at the exit\n", slRingFullWaits, slRingGapWaits, slRingExitWaits);

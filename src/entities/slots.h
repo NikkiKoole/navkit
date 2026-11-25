@@ -61,6 +61,9 @@ typedef struct {
     float boardX, boardY;
     float goalX, goalY;      // owner's drive: park as near this as a free kerb spot allows (px)
     int trips;
+    long tripStep;           // the step this trip's route was set (stats: time per trip)
+    float tripFree;          // ... its time on empty roads at the roads' limits, steps
+    int tripSlots;           // ... its length, slots
     int routeLen;
     unsigned short route[SL_MAX_ROUTE];   // RdSegId
 } SlotCar;
