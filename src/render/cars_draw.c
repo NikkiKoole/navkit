@@ -175,8 +175,7 @@ static void DrawSlotCars(void) {
         Vector2 sc = CarScreen(x, y);
         if (sc.x < -carPx || sc.y < -carPx || sc.x > sw + carPx || sc.y > sh + carPx) continue;
         Color col = slotCars[i].cab ? CAB_YELLOW : carColors[i % (int)(sizeof(carColors) / sizeof(carColors[0]))];
-        bool driven = SlotCarDriven(i);   // a mover is driving it: marked (a ring far out, the driver's head close up)
-        if (driven && carPx < 8) DrawRing(sc, fmaxf(5.0f, L * 0.8f * zoom), fmaxf(5.0f, L * 0.8f * zoom) + 2.0f, 0, 360, 24, WHITE);
+        bool driven = SlotCarDriven(i);   // a mover is driving it: its head on the seat
         if (carPx < 3) { DrawRectangle((int)sc.x - 1, (int)sc.y - 1, 2, 2, col); continue; }
         if (carPx < 8) {
             Rectangle r = {sc.x, sc.y, (L - 2) * zoom, (W - 4) * zoom};
@@ -184,12 +183,11 @@ static void DrawSlotCars(void) {
             continue;
         }
         DrawCarSpriteAt(x, y, h, col);
-        if (driven) {   // the driver: the mover's head sprite on the left seat, and a white ring round the car
+        if (driven) {   // the driver: the mover's head sprite on the left seat
             float ch = cosf(h), sh = sinf(h), u = -L * 0.25f, v = carWidth <= 1.25f ? 0 : -W * 0.25f;
             Vector2 hp = CarScreen(x + ch * u - sh * v, y + sh * u + ch * v);
             float ms = CELL_SIZE * MOVER_SIZE * zoom;
             DrawTexturePro(atlas, SpriteGetRect(SPRITE_head), (Rectangle){hp.x - ms * 0.5f, hp.y - ms * 0.5f, ms, ms}, (Vector2){0, 0}, 0, WHITE);
-            DrawRing(sc, L * 0.8f * zoom, L * 0.8f * zoom + 2.0f, 0, 360, 24, WHITE);
         }
         // indicators (amber, blinking) and brake lights
         int sig = SlotCarSignals(i);
