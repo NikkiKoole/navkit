@@ -69,8 +69,8 @@ bool FollowTrailDistance(int moverIdx, float* cells);   // how far a follower is
 // from all of them (away from the nearest, not past one), with stamina. Caught: the runner
 // turns up again somewhere >= 10 cells from the hunters (a new round).
 // packStealth: the pack only knows where one of them last saw the runner (12 cells, line of
-// sight, not crouched behind cover). The runner flees toward spots they can't see (round a corner
-// if need be). Out of their sight for 0.4 s, it lies low: a spot within 4 cells next to cover (or
+// sight, not crouched behind cover). (Fleeing toward spots they can't see made it easier to catch:
+// it ran into corners; dropped.) Out of their sight for 0.4 s, it lies low: a spot within 4 cells next to cover (or
 // in a bush), hidden from every hunter and from where they'll come looking (where it was last seen
 // and where it was heading); there it crouches and gets its breath back. Seen for 0.4 s (a glimpse
 // isn't enough), or a hunter within 2.5 cells, and it runs again. The hunters, lost: first to
@@ -82,7 +82,8 @@ extern double packDuckSecondsSum;   // time crouched in its spots
 bool PackIsDucking(int moverIdx);       // the runner crouched in its spot
 bool PackLost(float* seconds);          // the pack has lost sight of the runner (for how long)
 extern bool packTactics;
-extern float packSpeed;          // hunters' running pace (x walking); the runner: fleeSpeed
+extern float packSpeed;          // hunters' running pace (x walking)
+extern float packRunnerSpeed;    // the runner's, fresh (worn out: slower)
 extern long packCatches;
 extern double packCatchSecondsSum;
 void PackHuntStart(const int* hunters, int n, int target);

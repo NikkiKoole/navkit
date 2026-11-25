@@ -153,10 +153,6 @@ static float SegDist(float px, float py, float ax, float ay, float bx, float by)
 // Flee from one or more threats: candidate spots round the "away" direction (away from all,
 // the nearest weighing most), the best = far from the nearest threat, open round it, a straight
 // run that doesn't pass close by a threat
-// > 0: a spot out of the threats' sight is worth this much more (a runner that can hide); it may
-// then also run round a corner to get there
-static float fleeBreakSight = 0.0f;
-
 static void FleeRunFrom(int i, const int* threats, int n) {
     const Mover* m = &movers[i];
     int z = (int)m->z;
@@ -181,8 +177,7 @@ static void FleeRunFrom(int i, const int* threats, int n) {
         float a = base + ChaseRandRange(-1.75f, 1.75f), d = ChaseRandRange(FLEE_MIN, FLEE_MAX);
         int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
-        bool straight = HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z);
-        if (!straight && fleeBreakSight <= 0.0f) continue;   // a straight run
+        if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z)) continue;   // a straight run
         float px = (cx + 0.5f) * CELL_SIZE, py = (cy + 0.5f) * CELL_SIZE;
         float nearest = 1e9f, pass = 1e9f;
         for (int k = 0; k < n; k++) {
@@ -198,14 +193,6 @@ static void FleeRunFrom(int i, const int* threats, int n) {
                 if ((ox || oy) && IsCellWalkableAt(z, cy + oy, cx + ox)) open++;
         float score = nearest / CELL_SIZE + open * 0.5f;
         if (pass < 1.5f * CELL_SIZE) score -= 10.0f;   // runs right past a hunter
-        if (fleeBreakSight > 0.0f) {   // out of their sight there
-            int hidden = 0;
-            for (int k = 0; k < n; k++) {
-                const Mover* t = &movers[threats[k]];
-                if (!CanSeeCell((int)(t->x / CELL_SIZE), (int)(t->y / CELL_SIZE), cx, cy, z)) hidden++;
-            }
-            score += fleeBreakSight * hidden / (float)n;
-        }
         if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
     }
     if (bestX < 0 || !PathTo(i, bestX, bestY, z)) {   // nothing in the open: straight away
@@ -700,6 +687,7 @@ bool FollowTrailDistance(int i, float* cells) {
 // ============================================================================
 bool packTactics = true;
 float packSpeed = 1.1f;
+float packRunnerSpeed = 1.4f;   // (faster than the hunters: they need their roles. 1.4: catch 15.5 s vs 19.3 s all-straight)
 long packCatches = 0;
 double packCatchSecondsSum = 0.0;
 
@@ -747,7 +735,7 @@ bool PackLost(float* seconds) { if (PackTarget() < 0 || packLost <= 0.0f) return
 static float PackSpeedScale(int i) {
     if (PackTarget() < 0) return 0.0f;
     if (PackSlot(i) >= 0) return packSpeed;
-    if (i == packTarget) return fleeing[i] ? (stamina[i] > TIRED ? fleeSpeed : TIRED_SPEED) : 1.0f;
+    if (i == packTarget) return fleeing[i] ? (stamina[i] > TIRED ? packRunnerSpeed : TIRED_SPEED) : 1.0f;
     return 0.0f;
 }
 
@@ -996,9 +984,7 @@ static void PackTick(float dt) {
             if (threat) {
                 packTargetReplan -= dt;
                 if (!fleeing[tgt] || T->pathIndex < 0 || packTargetReplan <= 0.0f) {
-                    fleeBreakSight = packStealth ? 12.0f : 0.0f;   // it can hide: run where they can't see it
                     FleeRunFrom(tgt, packHunters, packN);
-                    fleeBreakSight = 0.0f;
                     packTargetReplan = CHASE_REPLAN;
                 }
             }
