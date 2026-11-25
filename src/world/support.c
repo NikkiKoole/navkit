@@ -14,6 +14,7 @@
 #include "../simulation/smoke.h"
 #include "../simulation/rooms.h"
 #include "../simulation/explosion.h"
+#include "../core/effects.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -403,10 +404,11 @@ static void Fall(int* cells, int n, bool quiet) {
         if (z + 1 < gridDepth) DropItemsInCell(x, y, z + 1);
         DropItemsInCell(x, y, z);
     }
-    for (int i = 0; i < landedN && !quiet; i += 3) {
+    for (int i = 0; i < landedN && !quiet; i += 2) {   // dust where it landed (looks only)
         int x, y, z;
         Unkey(landed[i], &x, &y, &z);
-        if (z + 1 < gridDepth && !CellIsSolid(GRID(x, y, z + 1))) AddSmoke(x, y, z + 1, 2);
+        if (z + 1 < gridDepth && !CellIsSolid(GRID(x, y, z + 1)))
+            FxDust((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z + 1, GetWallMaterial(x, y, z), 2, CELL_SIZE * 0.4f);
     }
     free(landed);
     ValidateAndCleanupRamps(bx0 - 1, by0 - 1, bz0 - 1, bx1 + 1, by1 + 1, bz1 + 1);
@@ -432,12 +434,17 @@ static void Schedule(void) {
     memcpy(p->cells, visitList, sizeof(int) * (size_t)visitCount);
     p->t = collapseWarning;
     RebuildPendingSet();
-    // The warning: dust trickles from its underside
-    int puffs = 0;
-    for (int i = 0; i < p->n && puffs < 32; i++) {
+    // The warning: dust trickles from its underside (looks only)
+    int puffs = 0, stride = p->n / 24 > 1 ? p->n / 24 : 1;   // spread over the whole piece
+    for (int i = 0; i < p->n && puffs < 24; i += stride) {
         int x, y, z;
         Unkey(p->cells[i], &x, &y, &z);
-        if (z > 0 && !CellIsSolid(GRID(x, y, z - 1)) && !HAS_FLOOR(x, y, z)) { AddSmoke(x, y, z - 1, 1); puffs++; }
+        if (z > 0 && !CellIsSolid(GRID(x, y, z - 1)) && !HAS_FLOOR(x, y, z)) {
+            int fz = z - 1;   // it trickles down to the floor below: seen from there
+            while (fz > 0 && !CellIsSolid(GRID(x, y, fz - 1)) && !HAS_FLOOR(x, y, fz)) fz--;
+            FxEmitDustFall(x, y, fz, IsSolidNode(x, y, z) ? GetWallMaterial(x, y, z) : GetFloorMaterial(x, y, z), collapseWarning);
+            puffs++;
+        }
     }
     int x, y, z;
     Unkey(p->cells[0], &x, &y, &z);

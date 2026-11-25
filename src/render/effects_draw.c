@@ -1,0 +1,164 @@
+// effects_draw.c - Draws src/core/effects.c's effects (blasts, flashes, dust, chunks, sparks).
+//
+// Blasts, flashes and dust are dithered discs: one quad each through a small shader that works
+// on the 8x8 sprite pixel grid (CELL_SIZE / 8 world units per pixel), keeps a pixel when a 4x4
+// Bayer threshold (anchored to the world, so it doesn't crawl with the camera) is below the
+// disc's density there, and colours it in hard steps. Fading = fewer pixels, never alpha.
+// Chunks and sparks are single sprite pixels. With no effects alive nothing is drawn.
+#include "../core/effects.h"
+#include "../game_state.h"
+#include "../entities/mover.h"
+#include "raylib.h"
+#include "raylib/rlgl.h"
+#include <math.h>
+
+#define FX_PIXEL (CELL_SIZE / 8.0f)   // world units per sprite pixel
+
+static const char* fxDiscFS =
+    "#version 330\n"
+    "in vec2 fragTexCoord;\n"
+    "in vec4 fragColor;\n"
+    "out vec4 finalColor;\n"
+    "uniform vec2 quadPix;\n"      // quad size in sprite pixels
+    "uniform vec2 quadOrigin;\n"   // world sprite-pixel coordinate of the quad's top-left corner
+    "uniform vec2 center;\n"       // disc centre, quad-local sprite pixels
+    "uniform float radius;\n"      // sprite pixels
+    "uniform float density;\n"     // 0..1 at the centre
+    "uniform float falloff;\n"     // how much the density drops toward the rim (0..1)
+    "uniform float ragged;\n"      // how uneven the rim is (0..1)
+    "uniform float innerFrac;\n"   // inside this fraction of the radius: the inner colour
+    "uniform vec3 innerCol;\n"
+    "uniform vec3 outerCol;\n"
+    "uniform float seed;\n"
+    "uniform float noiseAmt;\n"   // clumping: density +- this, from blobs about 3 pixels across
+    "const float bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,\n"
+    "                                  3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);\n"
+    "float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + seed) * 43758.5453); }\n"
+    "float vnoise(vec2 p) {\n"     // value noise: smooth blobs, so the dither clumps instead of a checkerboard
+    "    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);\n"
+    "    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);\n"
+    "}\n"
+    "void main() {\n"
+    "    vec2 local = floor(fragTexCoord * quadPix);\n"
+    "    vec2 world = local + quadOrigin;\n"
+    "    float r = length(local + 0.5 - center) / max(radius, 0.5);\n"
+    "    float rim = 1.0 + (hash(floor(world / 2.0)) - 0.5) * ragged;\n"   // in 2-pixel blocks: chunky
+    "    if (r > rim) discard;\n"
+    "    float dens = density * (1.0 - falloff * r * r) + (vnoise(world / 3.0) - 0.5) * 2.0 * noiseAmt;\n"
+    "    ivec2 b = ivec2(mod(world, 4.0));\n"
+    "    if ((bayer[b.x + b.y * 4] + 0.5) / 16.0 >= dens) discard;\n"
+    "    float edge = innerFrac + (vnoise(world / 2.0 + 17.0) - 0.5) * 0.3;\n"
+    "    finalColor = vec4(r < edge ? innerCol : outerCol, 1.0);\n"
+    "}\n";
+
+static Shader fxShader;
+static Texture2D fxWhite;
+static bool fxReady = false, fxFailed = false;
+static int locQuadPix, locQuadOrigin, locCenter, locRadius, locDensity, locFalloff, locRagged,
+           locInnerFrac, locInnerCol, locOuterCol, locSeed, locNoise;
+
+static bool FxInit(void) {
+    if (fxReady) return true;
+    if (fxFailed) return false;
+    fxShader = LoadShaderFromMemory(NULL, fxDiscFS);
+    if (fxShader.id == (unsigned int)rlGetShaderIdDefault()) { fxFailed = true; TraceLog(LOG_WARNING, "Effects: disc shader failed"); return false; }
+    Image img = GenImageColor(1, 1, WHITE);
+    fxWhite = LoadTextureFromImage(img);
+    UnloadImage(img);
+    locQuadPix = GetShaderLocation(fxShader, "quadPix");
+    locQuadOrigin = GetShaderLocation(fxShader, "quadOrigin");
+    locCenter = GetShaderLocation(fxShader, "center");
+    locRadius = GetShaderLocation(fxShader, "radius");
+    locDensity = GetShaderLocation(fxShader, "density");
+    locFalloff = GetShaderLocation(fxShader, "falloff");
+    locRagged = GetShaderLocation(fxShader, "ragged");
+    locInnerFrac = GetShaderLocation(fxShader, "innerFrac");
+    locInnerCol = GetShaderLocation(fxShader, "innerCol");
+    locOuterCol = GetShaderLocation(fxShader, "outerCol");
+    locSeed = GetShaderLocation(fxShader, "seed");
+    locNoise = GetShaderLocation(fxShader, "noiseAmt");
+    fxReady = true;
+    return true;
+}
+
+static void Col3(float* out, int r, int g, int b) { out[0] = r / 255.0f; out[1] = g / 255.0f; out[2] = b / 255.0f; }
+
+// A dithered disc centred at (cx, cy) world units, radius in world units
+static void DrawDisc(float cx, float cy, float radius, float density, float falloff, float ragged,
+                     float noise, float innerFrac, const float* inner, const float* outer, uint32_t seed) {
+    if (density <= 0.0f || radius <= 0.0f) return;
+    float reach = radius * (1.0f + 0.5f * ragged) + FX_PIXEL;
+    float x0 = floorf((cx - reach) / FX_PIXEL), y0 = floorf((cy - reach) / FX_PIXEL);
+    float x1 = ceilf((cx + reach) / FX_PIXEL), y1 = ceilf((cy + reach) / FX_PIXEL);
+    float pix = FX_PIXEL * zoom;
+    Rectangle dest = { offset.x + x0 * pix, offset.y + y0 * pix, (x1 - x0) * pix, (y1 - y0) * pix };
+    if (dest.x > GetScreenWidth() || dest.y > GetScreenHeight() || dest.x + dest.width < 0 || dest.y + dest.height < 0) return;
+    float quadPix[2] = { x1 - x0, y1 - y0 }, quadOrigin[2] = { x0, y0 };
+    float center[2] = { cx / FX_PIXEL - x0, cy / FX_PIXEL - y0 };
+    float rad = radius / FX_PIXEL, s = (float)(seed % 1000u) * 0.37f;
+    SetShaderValue(fxShader, locQuadPix, quadPix, SHADER_UNIFORM_VEC2);
+    SetShaderValue(fxShader, locQuadOrigin, quadOrigin, SHADER_UNIFORM_VEC2);
+    SetShaderValue(fxShader, locCenter, center, SHADER_UNIFORM_VEC2);
+    SetShaderValue(fxShader, locRadius, &rad, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locDensity, &density, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locFalloff, &falloff, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locRagged, &ragged, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locInnerFrac, &innerFrac, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locInnerCol, inner, SHADER_UNIFORM_VEC3);
+    SetShaderValue(fxShader, locOuterCol, outer, SHADER_UNIFORM_VEC3);
+    SetShaderValue(fxShader, locSeed, &s, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(fxShader, locNoise, &noise, SHADER_UNIFORM_FLOAT);
+    DrawTexturePro(fxWhite, (Rectangle){ 0, 0, 1, 1 }, dest, (Vector2){ 0, 0 }, 0.0f, WHITE);
+    rlDrawRenderBatchActive();   // the next disc sets other uniforms
+}
+
+// A fireball's colours over its life: hard steps, hotter inside
+static void BlastColours(float t, float* inner, float* outer) {
+    if (t < 0.12f)      { Col3(inner, 255, 255, 240); Col3(outer, 255, 230, 110); }
+    else if (t < 0.3f)  { Col3(inner, 255, 230, 110); Col3(outer, 255, 150, 40); }
+    else if (t < 0.5f)  { Col3(inner, 255, 150, 40);  Col3(outer, 200, 70, 30); }
+    else if (t < 0.7f)  { Col3(inner, 200, 70, 30);   Col3(outer, 110, 100, 95); }
+    else                { Col3(inner, 110, 100, 95);  Col3(outer, 80, 76, 72); }
+}
+
+// The viewed level, the one below (blast craters) and the one above (dust over a fallen slab)
+static bool FxVisible(int z) { return z <= currentViewZ + 1 && z >= currentViewZ - 1; }
+
+void DrawEffects(void) {
+    if (fxCount == 0 || !FxInit()) return;
+    float inner[3], outer[3];
+    // Discs: flashes under the rest, then dust, then fireballs on top
+    BeginShaderMode(fxShader);
+    for (int pass = 0; pass < 3; pass++) {
+        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : FX_BLAST;
+        for (int i = 0; i < fxCount; i++) {
+            const Fx* f = &fx[i];
+            if (f->kind != want || !FxVisible(f->z)) continue;
+            float t = f->age / f->life;
+            if (f->kind == FX_BLAST) {
+                float grow = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+                float dens = t < 0.3f ? 1.0f : 1.0f - (t - 0.3f) / 0.7f;
+                BlastColours(t, inner, outer);
+                DrawDisc(f->x, f->y, f->radius * (0.3f + 0.7f * grow), dens, 0.45f, 0.35f, 0.1f + 0.35f * t, 0.55f, inner, outer, f->seed);
+            } else if (f->kind == FX_FLASH) {
+                Col3(inner, 255, 255, 235);
+                DrawDisc(f->x, f->y, f->radius, 0.6f * (1.0f - t), 1.0f, 0.3f, 0.2f, 1.0f, inner, inner, f->seed);   // a halo, thin at the rim
+            } else {
+                Col3(outer, f->r, f->g, f->b);
+                Col3(inner, f->r + (255 - f->r) / 5, f->g + (255 - f->g) / 5, f->b + (255 - f->b) / 5);   // a shade lighter
+                DrawDisc(f->x, f->y, f->radius * (1.0f + 0.8f * t), 0.7f * (1.0f - t), 0.6f, 0.6f, 0.25f, 0.4f, inner, outer, f->seed);
+            }
+        }
+    }
+    EndShaderMode();
+    // Chunks and sparks: sprite pixels
+    float pix = FX_PIXEL * zoom;
+    for (int i = 0; i < fxCount; i++) {
+        const Fx* f = &fx[i];
+        if ((f->kind != FX_CHUNK && f->kind != FX_SPARK) || !FxVisible(f->z)) continue;
+        float px = floorf(f->x / FX_PIXEL), py = floorf((f->y - f->h) / FX_PIXEL);
+        float size = f->kind == FX_CHUNK ? f->radius : 1.0f;
+        DrawRectangleRec((Rectangle){ offset.x + px * pix, offset.y + py * pix, size * pix, size * pix },
+                         (Color){ f->r, f->g, f->b, 255 });
+    }
+}

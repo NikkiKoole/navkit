@@ -17,6 +17,7 @@
 #include "../simulation/mood.h"
 #include "../simulation/explosion.h"
 #include "../world/support.h"
+#include "effects.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -31,6 +32,7 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Support);
     SupportTick(dt);
     PROFILE_END(Support);
+    FxTick(dt);   // visual effects age on game time (frozen while paused)
     PROFILE_END(Items);
 
     PROFILE_BEGIN(Notice);

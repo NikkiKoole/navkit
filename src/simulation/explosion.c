@@ -19,6 +19,7 @@
 #include "../world/designations.h"
 #include "../world/pathfinding.h"
 #include "../world/support.h"
+#include "../core/effects.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../entities/mover.h"
@@ -109,6 +110,7 @@ static int knockedCount;   // movers with knockDaze > 0 (fast exit when none)
 
 void ClearExplosions(void) {
     ClearSupport();   // pending collapses: transient like fuses
+    ClearFx();
     fuseCount = 0;
     flyingCount = 0;
     explosionsTotal = 0;
@@ -128,6 +130,7 @@ bool MoverKnocked(int i) { return i >= 0 && i < MAX_MOVERS && knockDaze[i] > 0.0
 bool ExplosionLightFuse(int x, int y, int z, float power, float seconds) {
     if (fuseCount >= MAX_FUSES) return false;
     fuses[fuseCount++] = (Fuse){ x, y, z, power, seconds };
+    FxEmitSparks(x, y, z, seconds);
     EventLog("Fuse lit at (%d,%d,z%d) power %.1f, %.1fs", x, y, z, power, seconds);
     return true;
 }
@@ -411,6 +414,12 @@ ExplosionResult Explode(int x, int y, int z, float power) {
         for (int cy = y0; cy <= y1; cy++)
             for (int cx = x0; cx <= x1; cx++) {
                 if (!breakCell[BIDX(cx, cy, cz)]) continue;
+                if (res.cellsBroken < 48) {   // what flies off it (looks only: the drops are real)
+                    int mat = GetWallMaterial(cx, cy, cz);
+                    float v = best[BIDX(cx, cy, cz)];
+                    FxChunks(cx, cy, cz, mat, (x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, 3, 110.0f + 25.0f * (v > 0.0f ? v : 0.0f));
+                    if (res.cellsBroken % 2 == 0) FxDust((cx + 0.5f) * CELL_SIZE, (cy + 0.5f) * CELL_SIZE, cz, mat, 1, CELL_SIZE * 0.3f);
+                }
                 CompleteMineDesignation(cx, cy, cz);
                 res.cellsBroken++;
             }
@@ -480,6 +489,7 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     free(breakCell);
     free(breakFloor);
 
+    FxBlast((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, power);
     float shake = power * 0.8f;
     TriggerScreenShake(shake > 8.0f ? 8.0f : shake, 0.3f + power * 0.03f);
     TraceLog(LOG_INFO, "Explosion at (%d,%d,z%d) power %.1f: %d walls, %d floors, %d items, %d movers, %d fires",

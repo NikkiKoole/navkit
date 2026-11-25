@@ -802,6 +802,7 @@ void DrawTrains(void);
 void DrawElevators(void);
 void DrawBelts(void);
 void DrawJobLines(void);
+void DrawEffects(void);   // render/effects_draw.c
 void DrawItems(void);
 void DrawLightSources(void);
 void DrawGatherZones(void);
@@ -1884,6 +1885,7 @@ int main(int argc, char** argv) {
         DrawTrains();
         DrawElevators();
         DrawJobLines();
+        DrawEffects();   // blasts, dust, chunks, sparks (render/effects_draw.c)
 
         // Phase 5: Mist overlay (after all world elements, before UI)
         DrawMist();

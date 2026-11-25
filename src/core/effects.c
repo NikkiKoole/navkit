@@ -1,0 +1,183 @@
+// effects.c - Short visual effects (see effects.h; drawn by src/render/effects_draw.c)
+#include "effects.h"
+#include "../entities/mover.h"     // CELL_SIZE
+#include "../world/material.h"
+#include <math.h>
+#include <string.h>
+
+Fx fx[MAX_FX];
+int fxCount;
+bool effectsEnabled = true;   // setting effects
+
+#define MAX_EMITTERS 128
+typedef struct { uint8_t kind; uint8_t r, g, b; int x, y, z; float t, acc, rate; } FxEmitter;
+static FxEmitter emitters[MAX_EMITTERS];
+static int emitterCount;
+static uint32_t fxRng = 0x9e3779b9u;
+
+// Deterministic (headless runs and screenshots repeat)
+static float FxRand01(void) {
+    fxRng ^= fxRng << 13; fxRng ^= fxRng >> 17; fxRng ^= fxRng << 5;
+    return (float)(fxRng >> 8) / 16777216.0f;
+}
+static float FxRandRange(float a, float b) { return a + (b - a) * FxRand01(); }
+
+void ClearFx(void) {
+    fxCount = 0;
+    emitterCount = 0;
+    fxRng = 0x9e3779b9u;
+}
+
+int FxCount(void) { return fxCount; }
+
+static Fx* NewFx(FxKind kind) {
+    if (!effectsEnabled || fxCount >= MAX_FX) return NULL;
+    Fx* f = &fx[fxCount++];
+    memset(f, 0, sizeof(*f));
+    f->kind = (uint8_t)kind;
+    f->seed = fxRng;
+    FxRand01();
+    return f;
+}
+
+// What a broken or falling bit of a material looks like in dust and chunks
+static void MaterialRGB(int mat, uint8_t* r, uint8_t* g, uint8_t* b) {
+    int c[3] = { 130, 125, 120 };
+    switch (mat) {
+        case MAT_GRANITE:   c[0] = 145; c[1] = 142; c[2] = 145; break;
+        case MAT_SANDSTONE: c[0] = 205; c[1] = 172; c[2] = 120; break;
+        case MAT_SLATE:     c[0] = 95;  c[1] = 100; c[2] = 112; break;
+        case MAT_DIRT:      c[0] = 125; c[1] = 88;  c[2] = 56;  break;
+        case MAT_CLAY:      c[0] = 172; c[1] = 102; c[2] = 70;  break;
+        case MAT_GRAVEL:    c[0] = 150; c[1] = 145; c[2] = 135; break;
+        case MAT_SAND:      c[0] = 218; c[1] = 196; c[2] = 140; break;
+        case MAT_PEAT:      c[0] = 75;  c[1] = 58;  c[2] = 42;  break;
+        case MAT_BRICK:     c[0] = 170; c[1] = 82;  c[2] = 62;  break;
+        case MAT_CONCRETE:  c[0] = 172; c[1] = 172; c[2] = 166; break;
+        case MAT_IRON:      c[0] = 112; c[1] = 112; c[2] = 122; break;
+        case MAT_GLASS:     c[0] = 200; c[1] = 228; c[2] = 238; break;
+        case MAT_MUD: case MAT_COB: c[0] = 132; c[1] = 96; c[2] = 66; break;
+        default:
+            if (mat >= 0 && mat < MAT_COUNT && IsWoodMaterial((MaterialType)mat)) { c[0] = 150; c[1] = 106; c[2] = 62; }
+            break;
+    }
+    *r = (uint8_t)c[0]; *g = (uint8_t)c[1]; *b = (uint8_t)c[2];
+}
+
+void FxBlast(float wx, float wy, int z, float power) {
+    Fx* f = NewFx(FX_BLAST);
+    if (!f) return;
+    f->x = wx; f->y = wy; f->z = z;
+    f->radius = power * CELL_SIZE * 0.8f;
+    f->life = 0.45f + 0.05f * power;
+    Fx* fl = NewFx(FX_FLASH);
+    if (fl) { fl->x = wx; fl->y = wy; fl->z = z; fl->radius = power * CELL_SIZE * 0.7f; fl->life = 0.1f; }
+    // Smoke left behind, drifting off
+    FxDust(wx, wy, z, -1, 4 + (int)power, power * CELL_SIZE * 0.4f);
+}
+
+void FxDust(float wx, float wy, int z, int mat, int n, float spread) {
+    uint8_t r, g, b;
+    MaterialRGB(mat, &r, &g, &b);
+    if (mat < 0) { r = 92; g = 88; b = 84; }   // smoke
+    for (int i = 0; i < n; i++) {
+        Fx* f = NewFx(FX_DUST);
+        if (!f) return;
+        float a = FxRandRange(0.0f, 6.2832f), d = FxRandRange(0.0f, spread);
+        f->x = wx + cosf(a) * d; f->y = wy + sinf(a) * d; f->z = z;
+        f->vx = FxRandRange(-6.0f, 6.0f);
+        f->vy = FxRandRange(-14.0f, -6.0f);   // drifts up the screen (rising)
+        f->radius = CELL_SIZE * FxRandRange(0.3f, 0.5f);
+        f->life = FxRandRange(0.9f, 1.6f);
+        f->r = r; f->g = g; f->b = b;
+    }
+}
+
+void FxChunks(int cx, int cy, int cz, int mat, float fromX, float fromY, int n, float speed) {
+    uint8_t r, g, b;
+    MaterialRGB(mat, &r, &g, &b);
+    float px = (cx + 0.5f) * CELL_SIZE, py = (cy + 0.5f) * CELL_SIZE;
+    float dx = px - fromX, dy = py - fromY, d = sqrtf(dx * dx + dy * dy);
+    if (d < 1.0f) { dx = 0.0f; dy = -1.0f; d = 1.0f; }
+    for (int i = 0; i < n; i++) {
+        Fx* f = NewFx(FX_CHUNK);
+        if (!f) return;
+        float a = atan2f(dy, dx) + FxRandRange(-0.6f, 0.6f), s = speed * FxRandRange(0.5f, 1.2f);
+        f->x = px + FxRandRange(-10.0f, 10.0f); f->y = py + FxRandRange(-10.0f, 10.0f); f->z = cz;
+        f->vx = cosf(a) * s; f->vy = sinf(a) * s;
+        f->h = FxRandRange(2.0f, 10.0f); f->vh = FxRandRange(60.0f, 140.0f);
+        f->life = 1.2f;
+        float shade = FxRandRange(0.7f, 1.05f);
+        f->r = (uint8_t)fminf(255.0f, r * shade); f->g = (uint8_t)fminf(255.0f, g * shade); f->b = (uint8_t)fminf(255.0f, b * shade);
+        f->radius = FxRand01() < 0.3f ? 2.0f : 1.0f;   // sprite pixels across
+    }
+}
+
+static void AddEmitter(FxKind kind, int x, int y, int z, int mat, float seconds, float rate) {
+    if (!effectsEnabled || emitterCount >= MAX_EMITTERS) return;
+    FxEmitter* e = &emitters[emitterCount++];
+    memset(e, 0, sizeof(*e));
+    e->kind = (uint8_t)kind; e->x = x; e->y = y; e->z = z; e->t = seconds; e->rate = rate;
+    MaterialRGB(mat, &e->r, &e->g, &e->b);
+}
+
+void FxEmitSparks(int x, int y, int z, float seconds) { AddEmitter(FX_SPARK, x, y, z, -1, seconds, 24.0f); }
+void FxEmitDustFall(int x, int y, int z, int mat, float seconds) { AddEmitter(FX_DUST, x, y, z, mat, seconds, 5.0f); }
+
+static void EmitterTick(FxEmitter* e, float dt) {
+    e->acc += dt * e->rate;
+    while (e->acc >= 1.0f) {
+        e->acc -= 1.0f;
+        Fx* f = NewFx((FxKind)e->kind);
+        if (!f) return;
+        f->z = e->z;
+        if (e->kind == FX_SPARK) {
+            f->x = (e->x + 0.5f) * CELL_SIZE + FxRandRange(-4.0f, 4.0f);
+            f->y = (e->y + 0.5f) * CELL_SIZE + FxRandRange(-4.0f, 4.0f);
+            float a = FxRandRange(0.0f, 6.2832f), s = FxRandRange(20.0f, 60.0f);
+            f->vx = cosf(a) * s; f->vy = sinf(a) * s - 20.0f;
+            f->life = FxRandRange(0.15f, 0.35f);
+            bool white = FxRand01() < 0.4f;
+            f->r = 255; f->g = white ? 250 : 210; f->b = white ? 220 : 70;
+        } else {   // dust trickling from the underside: small, slow, falling away
+            f->x = (e->x + FxRandRange(0.15f, 0.85f)) * CELL_SIZE;
+            f->y = (e->y + FxRandRange(0.15f, 0.85f)) * CELL_SIZE;
+            f->vx = FxRandRange(-2.0f, 2.0f); f->vy = FxRandRange(2.0f, 6.0f);
+            f->radius = CELL_SIZE * FxRandRange(0.12f, 0.2f);
+            f->life = FxRandRange(0.5f, 0.9f);
+            f->r = e->r; f->g = e->g; f->b = e->b;
+        }
+    }
+}
+
+void FxTick(float dt) {
+    if (dt <= 0.0f) return;
+    for (int i = 0; i < emitterCount; ) {
+        EmitterTick(&emitters[i], dt);
+        emitters[i].t -= dt;
+        if (emitters[i].t <= 0.0f) emitters[i] = emitters[--emitterCount];
+        else i++;
+    }
+    int w = 0;
+    for (int i = 0; i < fxCount; i++) {
+        Fx* f = &fx[i];
+        f->age += dt;
+        if (f->age >= f->life) continue;
+        f->x += f->vx * dt;
+        f->y += f->vy * dt;
+        if (f->kind == FX_CHUNK) {
+            f->vh -= 420.0f * dt;   // gravity (world units / s^2)
+            f->h += f->vh * dt;
+            if (f->h <= 0.0f) {      // lands: a small bounce, then slides to a stop
+                f->h = 0.0f;
+                f->vh = f->vh < -60.0f ? -f->vh * 0.3f : 0.0f;
+                f->vx *= 0.5f; f->vy *= 0.5f;
+            }
+        } else if (f->kind == FX_DUST) {
+            f->vx *= 1.0f - 1.5f * dt; f->vy *= 1.0f - 1.5f * dt;
+        }
+        if (w != i) fx[w] = *f;
+        w++;
+    }
+    fxCount = w;
+}

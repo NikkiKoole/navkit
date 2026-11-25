@@ -32,6 +32,7 @@
 #include "simulation/smoke.c"
 #include "simulation/explosion.c"
 #include "world/support.c"
+#include "core/effects.c"
 #include "simulation/steam.c"
 #include "simulation/groundwear.c"
 #include "simulation/floordirt.c"
@@ -103,6 +104,7 @@
 
 // Rendering
 #include "render/world_batch.c"
+#include "render/effects_draw.c"
 #include "render/rendering.c"
 #include "render/tooltips.c"
 #include "render/inspector.c"

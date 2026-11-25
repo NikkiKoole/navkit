@@ -3,8 +3,8 @@
 Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural rock too: blast
 mining), throw loose items by weight, knock movers back (slice 1); structural support: what
 loses its connection to the ground creaks and falls, landing as walls (slice 2); gunpowder and
-blast mining as a job (slice 3); gunpowder goes off in fire and chains (slice 4). Not yet:
-animals, visuals, overhang limits.
+blast mining as a job (slice 3); gunpowder goes off in fire and chains (slice 4); dithered
+blast / dust / chunk / spark effects (slice 5). Not yet: animals, overhang limits.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -135,8 +135,28 @@ Scenario `powder-fire` (in scenarios-check), tests in test_explosion "gunpowder_
 - Headless runs now check the simulation activity counters at the end (as the windowed loop does
   every 60 s): found `docs/bugs/smoke-activity-counter-drift.md` (smoke.c, not explosions).
 
-Next: animals knocked too, a fuse sprite and a flash / debris particles, movers keeping away
-from a lit charge or a burning powder store, maybe span limits per material for built things.
+## Built: blast and dust effects (slice 5, 2026-11-25)
+
+Procedural, no sprites (user's call: dithering and circles changing colour). `src/core/effects.c`
+(data, spawn, aged on sim ticks in SimStep: frozen while paused, same in headless runs and
+`--screenshot-ticks`), `src/render/effects_draw.c` (drawing). Setting `effects` (Rendering & Debug).
+
+- Dithered discs, one quad each through a small shader: snapped to the 8x8 sprite pixel grid,
+  a 4x4 Bayer threshold anchored to the world (doesn't crawl with the camera), density falling
+  toward the rim plus value noise (clumps, not a checkerboard), a ragged rim in 2-pixel blocks,
+  hard colour steps (inner / outer). Fading = fewer pixels, never alpha.
+- Blast: grows to 0.8 x power cells, white -> yellow -> orange -> red -> smoke over 0.45 + 0.05 x
+  power s, thinning after 30 %. Flash: a white halo for 0.1 s. Smoke puffs drift off.
+- Chunks (1-2 sprite pixels, the broken wall's material colour) fly out in an arc with a bounce;
+  dust puffs from broken walls, where a collapse lands, and trickling under a creaking piece
+  (shown on the floor it falls to); sparks from a burning fuse.
+- Effects show on the viewed level, the one below and the one above. With none alive nothing is
+  drawn (pictures byte-identical to before).
+- Look at them: `--scenario explosions --look-at 12,16 --exec "set zoom 2" --screenshot-ticks 130
+  --screenshot f.png` (the field charge goes off at tick 120).
+
+Next: animals knocked too, movers keeping away from a lit charge or a burning powder store, a
+gunpowder / saltpeter / charge sprite, maybe span limits per material for built things.
 
 ## What exists to build on
 

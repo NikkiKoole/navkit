@@ -9,6 +9,7 @@
 #include "../src/simulation/explosion.h"
 #include "../src/core/state_audit.h"
 #include "../src/world/designations.h"
+#include "../src/core/effects.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -285,6 +286,40 @@ describe(gunpowder_fire) {
     }
 }
 
+describe(blast_effects) {
+    it("leaves a fireball, dust and chunks that age away, none when switched off") {
+        FlatWorld();
+        Wall(14, 12, 1, MAT_OAK);
+        Explode(12, 12, 1, 5.0f);
+        int blasts = 0, chunks = 0, dust = 0;
+        for (int i = 0; i < fxCount; i++) {
+            if (fx[i].kind == FX_BLAST) blasts++;
+            if (fx[i].kind == FX_CHUNK) chunks++;
+            if (fx[i].kind == FX_DUST) dust++;
+        }
+        expect(blasts == 1);
+        expect(chunks > 0);
+        expect(dust > 0);
+        for (int i = 0; i < 180; i++) FxTick(1.0f / 60.0f);
+        expect(FxCount() == 0);
+
+        ClearExplosions();
+        effectsEnabled = false;
+        Explode(12, 12, 1, 5.0f);
+        expect(FxCount() == 0);
+        effectsEnabled = true;
+    }
+
+    it("sparks for as long as a fuse burns") {
+        FlatWorld();
+        ExplosionLightFuse(12, 12, 1, 5.0f, 1.0f);
+        for (int i = 0; i < 30; i++) { FxTick(1.0f / 60.0f); ExplosionsTick(1.0f / 60.0f); }
+        int sparks = 0;
+        for (int i = 0; i < fxCount; i++) if (fx[i].kind == FX_SPARK) sparks++;
+        expect(sparks > 0);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -295,5 +330,6 @@ int main(int argc, char** argv) {
     test(explosion_fuse);
     test(blast_designation);
     test(gunpowder_fire);
+    test(blast_effects);
     return summary();
 }

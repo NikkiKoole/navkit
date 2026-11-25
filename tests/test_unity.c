@@ -90,6 +90,7 @@ bool bladderEnabled = false;
 #include "../src/simulation/smoke.c"
 #include "../src/simulation/explosion.c"
 #include "../src/world/support.c"
+#include "../src/core/effects.c"
 #include "../src/simulation/steam.c"
 #include "../src/simulation/groundwear.c"
 #include "../src/simulation/floordirt.c"
