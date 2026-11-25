@@ -607,6 +607,15 @@ bool SaveWorld(const char* filename) {
     fwrite(&jobDistanceWeight, sizeof(float), 1, f);
     fwrite(&toiletsPlumbed, sizeof(bool), 1, f);
     fwrite(runningGameName, 1, SAVED_GAME_NAME_LEN, f);
+    // v116+: tide wave + surf, belt speed (a load used to keep the session's values)
+    fwrite(&tideWaveHours, sizeof(float), 1, f);
+    fwrite(&tideWaveAngle, sizeof(float), 1, f);
+    fwrite(&tideSurf, sizeof(bool), 1, f);
+    fwrite(&tideSurfReach, sizeof(int), 1, f);
+    fwrite(&tideSurfPeriod, sizeof(float), 1, f);
+    fwrite(&tideSurfHeight, sizeof(int), 1, f);
+    fwrite(&tideBeachReach, sizeof(int), 1, f);
+    fwrite(&beltSpeed, sizeof(float), 1, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1632,6 +1641,20 @@ bool LoadWorld(const char* filename) {
         moodEnabled = true;
         jobDistanceWeight = 0.2f;
         toiletsPlumbed = false;
+    }
+    if (version >= V116_TIDE_WAVE_BELT) {
+        fread(&tideWaveHours, sizeof(float), 1, f);
+        fread(&tideWaveAngle, sizeof(float), 1, f);
+        fread(&tideSurf, sizeof(bool), 1, f);
+        fread(&tideSurfReach, sizeof(int), 1, f);
+        fread(&tideSurfPeriod, sizeof(float), 1, f);
+        fread(&tideSurfHeight, sizeof(int), 1, f);
+        fread(&tideBeachReach, sizeof(int), 1, f);
+        fread(&beltSpeed, sizeof(float), 1, f);
+    } else {
+        // the startup defaults (tide.c, belts.c)
+        tideWaveHours = 2.0f; tideWaveAngle = 0.0f; tideSurf = true; tideSurfReach = 6;
+        tideSurfPeriod = 1.5f; tideSurfHeight = 2; tideBeachReach = 3; beltSpeed = 1.5f;
     }
     TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 

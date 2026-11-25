@@ -14785,8 +14785,10 @@ describe(construction_cancellation) {
 // keep whatever the session had, so a dollhouse save loaded at startup had no talk)
 extern bool talkEnabled, autoGatherings, moodEnabled, toiletsPlumbed;
 extern char runningGameName[];
+extern float tideWaveHours, beltSpeed;
+extern int tideBeachReach;
 describe(game_rules_save) {
-    it("talk, gatherings, mood, job distance, plumbing and the running game survive a load") {
+    it("talk, gatherings, mood, job distance, plumbing, the running game, tide wave and belt speed survive a load") {
         InitTestGridFromAscii(
             "......\n"
             "......\n");
@@ -14795,11 +14797,13 @@ describe(game_rules_save) {
         talkEnabled = true; autoGatherings = false; moodEnabled = false;
         jobDistanceWeight = 0.7f; toiletsPlumbed = true;
         strcpy(runningGameName, "dollhouse");
+        tideWaveHours = 5.0f; tideBeachReach = 9; beltSpeed = 4.0f;   // v116
         expect(SaveWorld("/tmp/test_game_rules_save.bin"));
 
         talkEnabled = false; autoGatherings = true; moodEnabled = true;
         jobDistanceWeight = 0.0f; toiletsPlumbed = false;
         runningGameName[0] = '\0';
+        tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
         expect(LoadWorld("/tmp/test_game_rules_save.bin"));
 
         expect(talkEnabled == true);
@@ -14808,6 +14812,8 @@ describe(game_rules_save) {
         expect(jobDistanceWeight > 0.69f && jobDistanceWeight < 0.71f);
         expect(toiletsPlumbed == true);
         expect(strcmp(runningGameName, "dollhouse") == 0);
+        expect(tideWaveHours == 5.0f && tideBeachReach == 9 && beltSpeed == 4.0f);
+        tideWaveHours = 2.0f; tideBeachReach = 3; beltSpeed = 1.5f;
         moodEnabled = true; autoGatherings = false; talkEnabled = false;   // test defaults back
         jobDistanceWeight = 0.0f; toiletsPlumbed = true; runningGameName[0] = '\0';
     }

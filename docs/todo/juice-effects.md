@@ -16,7 +16,7 @@
 
 ### Screen Shake
 
-- **Thunder**: shake on lightning strike (~3.0/0.3s) — lightning flash exists but no shake yet, easy add in `TryLightningStrike`
+- ~~**Thunder**~~ done 2026-11-25: `TriggerScreenShake(3.0f, 0.35f)` next to the flash in `TryLightningStrike`
 - **Mining complete**: small shake when wall breaks (~1.5/0.15s)
 - **Large construction complete**: subtle shake when a big wall finishes (~1.0/0.1s)
 
@@ -44,7 +44,7 @@
 ## Implementation Notes
 
 - Most non-particle effects are 5-10 lines each
-- Thunder shake is the easiest win — add `TriggerScreenShake(3.0f, 0.3f)` next to existing `TriggerLightningFlash()` in `TryLightningStrike()`
+- ~~Thunder shake~~ done (2026-11-25)
 - Sprite tweens need a per-entity `tweenTimer` float (or a small global tween pool)
 - Screen flash can be a fullscreen rect with alpha fade, similar to existing lightning flash / cloud shadow overlay
 - Particle system is a bigger investment — defer until several particle effects are wanted

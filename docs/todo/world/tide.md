@@ -13,7 +13,7 @@ and surf ("branding"); the user picked tide: "interesting gameplay, emergent beh
 3. **`islandTide` on by default** in the island game (the user's call).
 4. Movers stay naive about the tide (user: "pretty good as is"); only add a route cost for cells
    that flood soon if play shows a need.
-5. Loose ends: the wave settings (`tideWave*`, `tideSurf*`, `tideBeachReach`) aren't saved; the
+5. Loose ends: ~~the wave settings aren't saved~~ (saved since v116, with `beltSpeed`); the
    island's shore ramps come from `TidePrepareShore`, not the generator (island_gen.c untouched).
 
 ## The idea

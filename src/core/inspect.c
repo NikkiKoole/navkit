@@ -472,10 +472,22 @@ static void print_cell(int x, int y, int z) {
     }
     
     // Walkability (requires globals to be set up)
+    // IsCellWalkableAt reads the global water layer, which --inspect doesn't load: apply its
+    // water rules from the save's water here (deep water blocks, deep ice below holds you)
     bool walkable = IsCellWalkableAt(z, y, x);
+    bool deepWater = water.level >= WATER_BLOCKS_MOVEMENT;
+    bool iceBelow = false;
+    if (!walkable && !deepWater && z > 0 && !CellBlocksMovement(cell) && !CellIsSolid(cell) &&
+        !(insp_cellFlags[idx] & CELL_FLAG_WORKSHOP_BLOCK)) {
+        WaterCell below = insp_waterCells[(z-1) * insp_gridH * insp_gridW + y * insp_gridW + x];
+        iceBelow = below.isFrozen && below.level >= WATER_BLOCKS_MOVEMENT;
+        if (iceBelow) walkable = true;
+    }
+    if (deepWater) walkable = false;
     printf("Walkable: %s", walkable ? "YES" : "NO");
     if (walkable) {
-        if (CellIsLadder(cell)) printf(" (ladder)");
+        if (iceBelow) printf(" (ice below)");
+        else if (CellIsLadder(cell)) printf(" (ladder)");
         else if (CellIsRamp(cell)) printf(" (ramp)");
         else if (insp_cellFlags[idx] & CELL_FLAG_HAS_FLOOR) printf(" (constructed floor)");
         else if (z == 0) printf(" (bedrock below)");
@@ -485,7 +497,8 @@ static void print_cell(int x, int y, int z) {
             printf(" (solid below: %s)", CellTypeName(cellBelow));
         }
     } else {
-        if (CellBlocksMovement(cell)) printf(" (blocks movement)");
+        if (deepWater && !CellBlocksMovement(cell)) printf(" (deep water %d/7)", water.level);
+        else if (CellBlocksMovement(cell)) printf(" (blocks movement)");
         else if (insp_cellFlags[idx] & CELL_FLAG_WORKSHOP_BLOCK) printf(" (workshop blocks)");
         else if (z > 0) {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;

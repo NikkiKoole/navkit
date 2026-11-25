@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 115
+#define CURRENT_SAVE_VERSION 116
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -119,6 +119,10 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // Older saves: survival-mode saves get survival's rules; others keep the session's values.
 #define V115_GAME_RULES 115
 #define SAVED_GAME_NAME_LEN 16
+// v116: tide wave + surf settings (tideWaveHours, tideWaveAngle, tideSurf, tideSurfReach,
+// tideSurfPeriod, tideSurfHeight, tideBeachReach) and beltSpeed, after the v115 game rules.
+// Older saves: the startup defaults.
+#define V116_TIDE_WAVE_BELT 116
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)

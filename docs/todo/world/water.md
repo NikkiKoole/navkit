@@ -157,8 +157,9 @@ Parked ideas (spring size by catchment, soaking, showcases, rafts, flecks): `wat
    the pressure search crosses chunks) only if water still binds at 1024+.
 3. **Old saves:** hills-water saves made before f444e432 keep their old rivers (sources along the
    river, inland ends): they still flood slowly. New worlds only.
-4. **Inspector mismatch:** `--inspect --cell` says "Walkable: YES" for cells in deep water (or on a
-   flooded ramp) that the game treats as not walkable.
-5. **Flaky `test_terrain`** "connectivity_fix_preserves_largest": varied run to run at 035ff9f8 on
+4. ~~**Inspector mismatch**~~ fixed 2026-11-25: `--inspect --cell` applies the water rules from the
+   save's water (the game's rule reads the global water layer, which --inspect doesn't load):
+   "NO (deep water 5/7)", and "YES (ice below)" over deep ice.
+5. ~~**Flaky `test_terrain`**~~ fixed 2026-11-23 (6560fbc2: the connectivity tests set their own grid and seed). Was: "connectivity_fix_preserves_largest": varied run to run at 035ff9f8 on
    an 8x8 map (ASan/UBSan clean, so probably an uninitialised read). Moot since f444e432 (no rivers
    under 24 cells); the test should set its own grid size and seed.
