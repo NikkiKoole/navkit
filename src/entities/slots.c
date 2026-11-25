@@ -55,6 +55,7 @@ static int slCrossW = 0, slCrossH = 0, *slCrossList = NULL, slCrossN = 0, slCros
 static long slPedSlows = 0, slPedJay = 0, slPedZebra = 0;
 static int *slYieldUntil = NULL, *slYieldCar = NULL;   // a slot held open for a merging car (until that step)
 static long slYields = 0, slYieldMerges = 0, slClassYields = 0;
+static long slHwSteps = 0, slRampSteps = 0, slUseSteps = 0;   // car-steps on highways / slip roads, steps counted
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
 static long slDrives = 0, slDrivesDone = 0, slDriveFails = 0;
@@ -145,6 +146,7 @@ void SlotsClear(void) {
     slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
     slPedSlows = slPedJay = slPedZebra = 0;
     slYields = slYieldMerges = slClassYields = 0;
+    slHwSteps = slRampSteps = slUseSteps = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
     slChoseDrive = slChoseWalk = 0;
@@ -289,6 +291,7 @@ static void SlBuildKerbs(void) {
             for (int L = 0; L < rdSegCount; L++) {
                 const RdSeg* S = &rdSegs[L];
                 if (S->kind != RD_LANE || S->laneIdx != 0 || S->priority || rdEdges[S->edge].arc || rdEdges[S->edge].lifted) continue;
+                if (rdEdges[S->edge].cls == RD_CLS_HIGHWAY || rdNodes[S->from].z != rdNodes[S->to].z) continue;   // (highways, slip roads)
                 for (int k = 2; k <= slSegN[L] - 3; k++) {
                     float x, y, h;
                     SlKerbPoint(L, k, &x, &y, &h);
@@ -1036,7 +1039,13 @@ static void SlRunStep(void) {
         const RdSeg* S = &rdSegs[seg];
         if (S->kind == RD_LANE && S->priority) slRingCount[rdNodes[S->to].ringOf]++;
         else if (S->kind == RD_CONN && rdSegs[S->to].priority && rdNodes[S->node].ringOf >= 0) slRingCount[rdNodes[S->node].ringOf]++;
+        if (S->kind == RD_LANE && rdClasses) {
+            const RdEdge* E = &rdEdges[S->edge];
+            if (E->cls == RD_CLS_HIGHWAY) slHwSteps++;
+            else if (E->oneWay && !E->arc && rdNodes[E->a].z != rdNodes[E->b].z) slRampSteps++;
+        }
     }
+    slUseSteps++;
     // Queues make a lane look longer to new routes (drivers avoid jams, as in the full sim):
     // every 5 steps, 8 cells per stopped car
     if (slStep % 5 == 0) {
@@ -1794,6 +1803,19 @@ void SlotsPrintStats(void) {
                n[1], n[1] ? (double)tr[1] / n[1] : 0.0, n[1] ? (double)vs[1] / n[1] * SL_SLOT_CELLS : 0.0,
                n[2], n[2] ? (double)tr[2] / n[2] : 0.0, n[2] ? (double)vs[2] / n[2] * SL_SLOT_CELLS : 0.0, slYields, slYieldMerges);
     }
+    if (getenv("SL_HOT")) {   // (diagnostic) the junctions with the most cars standing before them
+        static int cnt[RD_MAX_NODES];
+        memset(cnt, 0, sizeof(int) * (size_t)rdNodeCount);
+        for (int i = 0; i < slotCarCount; i++) { const SlotCar* c = &slotCars[i]; if (!c->kerb && c->v == 0) cnt[rdSegs[c->route[c->ri]].node]++; }
+        for (int t = 0; t < 8; t++) {
+            int best = -1;
+            for (int n = 0; n < rdNodeCount; n++) if (cnt[n] > 0 && (best < 0 || cnt[n] > cnt[best])) best = n;
+            if (best < 0) break;
+            printf("  hot: node %d at (%.0f,%.0f) z %.0f, %d edges%s: %d cars standing before it\n", best, rdNodes[best].x / CELL_SIZE, rdNodes[best].y / CELL_SIZE,
+                   rdNodes[best].z, rdNodes[best].nEdge, rdNodes[best].noLeft ? " (interchange)" : "", cnt[best]);
+            cnt[best] = 0;
+        }
+    }
     if (rdClasses) {   // road classes: lanes, their cars' speed now, yields to the bigger road
         static const char* nm[RD_CLS_COUNT] = {"lane", "street", "arterial", "highway"};
         int lanes[RD_CLS_COUNT] = {0}, cars[RD_CLS_COUNT] = {0}; long vs[RD_CLS_COUNT] = {0};
@@ -1804,6 +1826,8 @@ void SlotsPrintStats(void) {
         for (int k = RD_CLS_COUNT - 1; k >= 0; k--) if (lanes[k])
             printf(" %s %d lanes (limit %.0f, %d cars at %.1f)", nm[k], lanes[k], rdClassSpeed[k], cars[k], cars[k] ? (double)vs[k] / cars[k] * SL_SLOT_CELLS : 0.0);
         printf(" [cells/s]; %ld curves held for the bigger road's traffic\n", slClassYields);
+        if (slHwSteps + slRampSteps > 0)
+            printf("  highway use: %.1f cars on it on average, %.1f on the slip roads\n", (double)slHwSteps / (slUseSteps ? slUseSteps : 1), (double)slRampSteps / (slUseSteps ? slUseSteps : 1));
     }
     {   // heights: lifted roads, how much of them is up a level
         int lifted = 0, up = 0, pts = 0;

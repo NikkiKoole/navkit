@@ -3546,6 +3546,52 @@ static void BuildManhattan(void) {
 // Avenues: the middle row / column of a small city, every 8th in a big one
 static bool CityAvenueRow(int k, int n) { return n <= 12 ? k == n / 2 : (k % 8) == 4; }
 
+// The highway (grid layout, slot traffic): a level up along the middle of a wider corridor between
+// block rows hj and hj+1, two lanes each way, from the west edge street to the east one (down to
+// them at the ends, T junctions); a diamond where it crosses the avenue column ha: two junctions
+// on the highway CITY_HW_RAMP_X cells either side (no left turns, no lights), two on the avenue
+// CITY_HW_RAMP_Y cells above and below it (lights), four one-way slip roads between them.
+#define CITY_HW_GAP 60.0f      // cells the corridor is taller than a block
+#define CITY_HW_RAMP_X 36.0f
+#define CITY_HW_RAMP_Y 22.0f
+static bool CityHwSplit(int a, int b, int cols, int hj, int ha) {   // a road the highway splits (crossing the corridor)
+    int ia = a % cols, ja = a / cols, ib = b % cols, jb = b / cols;
+    if (ia != ib || (ia != 0 && ia != ha && ia != cols - 1)) return false;
+    return (ja == hj && jb == hj + 1) || (jb == hj && ja == hj + 1);
+}
+static void CityHighway(int cols, int hj, int ha) {
+    float CS = CELL_SIZE;
+    int na = hj * cols + ha, nb = (hj + 1) * cols + ha;
+    float xa = rdNodes[na].x / CS, yh = 0.5f * (rdNodes[na].y + rdNodes[nb].y) / CS;
+    int ends[2];
+    for (int t = 0; t < 2; t++) {   // the edge streets: a T where the highway comes down
+        int i = t == 0 ? 0 : cols - 1, a = hj * cols + i, b = (hj + 1) * cols + i;
+        ends[t] = RoadAddNode(rdNodes[a].x / CS, yh);
+        RoadAddEdge(a, ends[t], 0);
+        RoadAddEdge(ends[t], b, 0);
+    }
+    // the avenue, split: north terminal, under the highway, south terminal
+    int tn = RoadAddNode(xa, yh - CITY_HW_RAMP_Y), ts = RoadAddNode(xa, yh + CITY_HW_RAMP_Y);
+    int av[3] = {RoadAddEdge(na, tn, 0), RoadAddEdge(tn, ts, 0), RoadAddEdge(ts, nb, 0)};
+    for (int k = 0; k < 3; k++) if (carCityAvenues) RoadSetAvenue(av[k]);
+    // the highway's junctions with the slip roads, a level up
+    int hw = RoadAddNode(xa - CITY_HW_RAMP_X, yh), he = RoadAddNode(xa + CITY_HW_RAMP_X, yh);
+    for (int k = 0; k < 2; k++) {
+        RdNode* N = &rdNodes[k ? he : hw];
+        N->z = rdBaseZ + 1;
+        N->noLeft = true;
+        N->setback = 13.0f;   // (the slip road leaves at ~30 degrees: clear of the highway's lanes by then)
+    }
+    int seg[3] = {RoadAddEdge(ends[0], hw, 0), RoadAddEdge(hw, he, 0), RoadAddEdge(he, ends[1], 0)};
+    for (int k = 0; k < 3; k++) { RoadSetAvenue(seg[k]); RoadSetClass(seg[k], RD_CLS_HIGHWAY); RoadSetLifted(seg[k]); }
+    // slip roads (right-hand traffic, y down: eastbound keeps to the south side)
+    int ramps[4] = {RoadAddEdge(hw, ts, 0),    // eastbound off
+                    RoadAddEdge(ts, he, 0),    // eastbound on
+                    RoadAddEdge(he, tn, 0),    // westbound off
+                    RoadAddEdge(tn, hw, 0)};   // westbound on
+    for (int k = 0; k < 4; k++) { RoadSetOneWay(ramps[k]); RoadSetClass(ramps[k], RD_CLS_STREET); }   // (give way to the avenue and the highway)
+}
+
 // Pavements: two cells of concrete floor round every road (all the ground the roads leave);
 // the cells, for the pedestrians' goals
 static int* cityWalk = NULL;
@@ -3681,14 +3727,20 @@ static void SetupCarsCity(void) {
         // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
         const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;
         int J = carCityJitter;
-        int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin) / sy) + 1;
+        // (the highway: a corridor between rows hj and hj+1, CITY_HW_GAP cells taller than a block)
+        bool hw = carCitySlots && carCityHighway;
+        float G = hw ? CITY_HW_GAP : 0;
+        int cols = (int)((gridWidth - 2 * origin) / sx) + 1, rows = (int)((gridHeight - 2 * origin - G) / sy) + 1;
         if (cols < 3) cols = 3;
         if (rows < 3) rows = 3;
         if (cols * rows > RD_MAX_NODES / 2) rows = RD_MAX_NODES / 2 / cols;
+        int hj = (rows - 1) / 2, ha = cols / 2;
+        for (int i = 0; i < cols; i++) if (CityAvenueRow(i, cols)) { ha = i; break; }
+        if (hw && (rows < 2 || cols < 3)) hw = false;
         RoadsClear();
         for (int j = 0; j < rows; j++)
             for (int i = 0; i < cols; i++)
-                RoadAddNode(origin + sx * i + (CityRand(2 * J + 1) - J), origin + sy * j + (CityRand(2 * J + 1) - J));
+                RoadAddNode(origin + sx * i + (CityRand(2 * J + 1) - J), origin + sy * j + (hw && j > hj ? G : 0) + (CityRand(2 * J + 1) - J));
         for (int j = 0; j < rows; j++)
             for (int i = 0; i < cols; i++) {
                 float bend = CityRand(100) < (int)(carCityBends * 100) ? (float)(CityRand(2) ? 1 : -1) * (2 + CityRand(3)) : 0;
@@ -3704,6 +3756,7 @@ static void SetupCarsCity(void) {
         for (int tries = 0; tries < 2000 && want > 0; tries++) {
             int e = CityRand(rdEdgeCount);
             if (gone[e] || deg[rdEdges[e].a] < 3 || deg[rdEdges[e].b] < 3) continue;
+            if (hw && CityHwSplit(rdEdges[e].a, rdEdges[e].b, cols, hj, ha)) continue;   // (kept: the highway splits it)
             gone[e] = 1;
             if (!CityConnected(gone, rdNodeCount)) { gone[e] = 0; continue; }
             deg[rdEdges[e].a]--; deg[rdEdges[e].b]--;
@@ -3719,6 +3772,7 @@ static void SetupCarsCity(void) {
         RoadsClear();
         for (int n = 0; n < nodes; n++) RoadAddNode(nx[n], ny[n]);
         for (int e = 0; e < nk; e++) {
+            if (hw && CityHwSplit(keep[e].a, keep[e].b, cols, hj, ha)) continue;   // (CityHighway adds it, split)
             int ne = RoadAddEdge(keep[e].a, keep[e].b, keep[e].bend);
             // Avenues: the middle row and the middle column, two lanes each way
             int ia = keep[e].a % cols, ja = keep[e].a / cols, ib = keep[e].b % cols, jb = keep[e].b / cols;
@@ -3743,6 +3797,7 @@ static void SetupCarsCity(void) {
             near[n] = 1;
             made++;
         }
+        if (hw) CityHighway(cols, hj, ha);
         // A flyover: corner to corner, a level over every road and junction it crosses
         if (carCitySlots && carCityFlyover) {
             int fe = RoadAddEdge(0, nodes - 1, 0);

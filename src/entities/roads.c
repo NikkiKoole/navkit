@@ -83,6 +83,7 @@ void RoadSetLifted(int edge) { if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge
 void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lanes its way
     if (edge >= 0 && edge < rdEdgeCount) { rdEdges[edge].lanesPerDir = 2; if (rdEdges[edge].cls < RD_CLS_ARTERIAL) rdEdges[edge].cls = RD_CLS_ARTERIAL; }
 }
+void RoadSetOneWay(int edge) { if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].oneWay = true; }
 void RoadSetClass(int edge, int cls) { if (edge >= 0 && edge < rdEdgeCount && cls >= 0 && cls < RD_CLS_COUNT) rdEdges[edge].cls = cls; }
 int RoadSegClass(int seg) {
     const RdSeg* S = &rdSegs[seg];
@@ -211,16 +212,18 @@ static int EdgeCentre(const RdEdge* e) {
 static float EdgeZ(const RdEdge* e, float s, float len) {
     float za = rdNodes[e->a].z, zb = rdNodes[e->b].z;
     float z = len > 0 ? za + (zb - za) * s / len : za;
-    if (!e->lifted) return z;
+    if (za == zb && !e->lifted) return z;
     float ramp = RD_RAMP_CELLS * CELL_SIZE;
-    for (int k = 0; k < e->nLift; k++) {
+    for (int k = 0; e->lifted && k < e->nLift; k++) {
         float d = s < e->liftS0[k] ? e->liftS0[k] - s : (s > e->liftS1[k] ? s - e->liftS1[k] : 0);
         z = fmaxf(z, e->liftZ[k] - d / ramp);
     }
-    // down to the junctions in time (lanes start a setback from them)
+    // at the junctions' levels where the lanes start (a setback from them), ramps from there:
+    // down in time, and up in time (a slip road up to a highway junction)
     float sa = rdNodes[e->a].setback * CELL_SIZE, sb = rdNodes[e->b].setback * CELL_SIZE;
-    z = fminf(z, za + fmaxf(0, s - sa) / ramp);
-    z = fminf(z, zb + fmaxf(0, len - sb - s) / ramp);
+    float ra = fmaxf(0, s - sa) / ramp, rb = fmaxf(0, len - sb - s) / ramp;
+    z = fminf(z, za + ra); z = fmaxf(z, za - ra);
+    z = fminf(z, zb + rb); z = fmaxf(z, zb - rb);
     return z;
 }
 
@@ -600,6 +603,7 @@ static void BuildAll(float latAccel) {
                     int od = ej->a == ni ? 0 : 1;                      // the direction leaving here
                     int o0 = ej->lane[od], o1 = ej->lane2[od];
                     if (o0 < 0) continue;
+                    if (nd->noLeft && TurnOf(ins[k], o0) < 0) continue;   // (interchange: off to the right, on from the right)
                     if (!rdLaneRules) {   // the old rule: to the lane with the same index (or the only one)
                         int out = (k == 1 && o1 >= 0) ? o1 : o0;
                         BuildConnector(ni, ins[k], out, RD_MAX_TURN);
@@ -845,7 +849,7 @@ void RoadsDecks(void) {
                     float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
                     if (dx * dx + dy * dy > r * r) continue;
                     // (over solid ground too: a road surface you can see, not the block's roof)
-                    if (!HAS_FLOOR(x, y, L)) { SET_FLOOR(x, y, L); SetFloorMaterial(x, y, L, MAT_CONCRETE); }
+                    if (!HAS_FLOOR(x, y, L)) { SET_FLOOR(x, y, L); SetFloorMaterial(x, y, L, MAT_SLATE); }   // (dark: a road, not a pavement)
                 }
         }
 }

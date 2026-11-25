@@ -722,6 +722,29 @@ ramps 14 cells a level.)
 - Not done: pedestrians kept off highways (the flyover is up a level, nobody reaches it; an
   at-grade highway would need it); steered cars ignore classes (`rdClasses` only in slot mode).
 
+### Phase 3 built: a diamond interchange (2026-11-25)
+
+- `carCityHighway` (grid layout, slot mode; replaces the corner-to-corner flyover, now off by
+  default): the grid gets a corridor `CITY_HW_GAP` (60) cells taller than a block between the two
+  middle rows; a highway a level up along its middle, two lanes each way, from the west edge street
+  to the east one (comes down to them: T junctions, the highway first). Where it crosses the
+  middle avenue, a diamond (`CityHighway`): two junctions on the highway 36 cells either side
+  (level 2, setback 13 so the slip road is clear of the highway's lanes by the time its lane
+  starts), two on the avenue 22 cells above and below it, four one-way slip roads.
+- `RdNode.noLeft`: at the highway's junctions no connector turns left - off to the right, on from
+  the right, nobody crosses the other carriageway (a dual carriageway isn't needed). No lights
+  there; the slip road gives way (it's a street, the highway first).
+- Heights: `EdgeZ` now keeps every edge at its junctions' levels over their setbacks and ramps in
+  between (up as well as down), so a slip road from level 1 to 2 is flat at both junctions.
+- Lights at the slip roads' ends on the avenue backed the queues up through the avenue junctions
+  ~25 cells away (lights a few slots apart): 537 trips. Without them (`TrafficSetupLights` skips a
+  junction with a slip road; the slip roads give way to the avenue): 575.
+- Decks are slate now (dark, a road; the pavements' concrete looked like pavement).
+- 250 cars, 10 min, grid: 575 trips (561 the same city without the highway), on average 6 cars on
+  the highway and 6.5 on the slip roads, 0 touches, 0 jumps. Manhattan unchanged (586).
+- Diagnostic `SL_HOT`: the junctions with the most cars standing before them. The hottest is the
+  two avenues' crossing just north of the diamond (everyone heading for the avenue column).
+
 ## Slot traffic: crossings and the rules for pedestrians (2026-11-25)
 
 User: cars stopped for every pedestrian; with zebra crossings the pedestrian should have right of

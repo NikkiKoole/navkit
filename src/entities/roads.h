@@ -53,6 +53,7 @@ typedef struct {
     float z;                            // level (the junction is flat at it)
     float setback;                      // cells: lanes stop this far from it (RD_SETBACK; less on a roundabout)
     bool ring;                          // a junction on a roundabout
+    bool noLeft;                        // an interchange's diverge / merge: no left turns (nobody crosses the other way), no lights
     int ringOf;                         // ring junction: the roundabout's centre node (-1: none)
     int edge[RD_MAX_NODE_EDGES], nEdge;
     int conn[RD_MAX_CONN], nConn;       // connector segments through this junction
@@ -113,6 +114,7 @@ int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
 void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild); an arterial
 void RoadSetClass(int edge, int cls);     // (RdClass)
+void RoadSetOneWay(int edge);             // a -> b only (one lane on the centre line; RoadSetAvenue after: two)
 int RoadSegClass(int seg);                // a lane's road's class; a connector: the smaller of its lanes'
 float RoadSegSpeed(int seg);              // cells/s: its class's speed limit (rdClasses off: a street's)
 int RoadNodeClass(int node);              // the biggest class of the roads at a junction

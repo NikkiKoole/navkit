@@ -122,6 +122,13 @@ void TrafficSetupLights(bool on) {
         const RdNode* N = &rdNodes[nd];
         if (N->nEdge != 4) continue;
         if (rdClasses && RoadNodeClass(nd) < RD_CLS_ARTERIAL) continue;   // streets: the bigger road first, no lights
+        if (N->noLeft) continue;   // (an interchange's diverge / merge)
+        {   // a slip road's end on the crossing road: no lights, the slip roads give way (lights there,
+            // a few slots from the next junction's, backed the queues up through both: -4% trips)
+            bool ramp = false;
+            for (int k = 0; k < N->nEdge; k++) { const RdEdge* E = &rdEdges[N->edge[k]]; if (E->oneWay && !E->arc && rdNodes[E->a].z != rdNodes[E->b].z) ramp = true; }
+            if (ramp) continue;
+        }
         // roads by their direction from here; opposite ones (0,2) and (1,3) after sorting
         int idx[4]; float ang[4];
         for (int k = 0; k < 4; k++) {
