@@ -1785,6 +1785,7 @@ static int MoverMouth(int i, const Mover* m) {
     if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
     if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
     if (MoverNodTime(i) > 0.0f || MoverThanksTime(i) > 0.0f) return MOUTH_SMILE;   // "after you" / thanks
+    if (MoverIsWatching(i)) return MOUTH_SMILE;   // enjoying the show
     if (MoverYieldingFor(i) >= 0) {   // waiting at a doorway: how it takes it depends on its patience
         float waited = MoverYieldWaitTime(i), patience = MoverPatience(m);
         if (patience > 1.0f) return MOUTH_SMILE;

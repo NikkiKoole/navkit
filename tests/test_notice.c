@@ -346,11 +346,76 @@ describe(stop_to_talk) {
     }
 }
 
+describe(gatherings) {
+    it("an idle mover in range comes to watch: a spot on the first ring, on its own side, facing in") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchRadius = 6.0f;
+        watchMinSeconds = watchMaxSeconds = 20.0f;
+        int p = AddMover(12, 6, 1), w = AddMover(7, 6, 1);   // watcher 5 cells west
+        expect(GatheringStart(p, 100.0f) >= 0);
+        expect(MoverIsPerforming(p) && MoverIsSpeaking(p));
+        RunTalk(0.5f);
+        expect(MoverIsWatching(w) && TalkPartner(w) == p);
+        RunTalk(4.0f);
+        expect(fabsf(Dist(w, p) - 1.5f * CELL_SIZE) < 3.0f);
+        expect(movers[w].x < movers[p].x);                    // stayed on the west side
+        float lx, ly;
+        expect(TalkLookAt(w, &lx, &ly) && fabsf(lx - movers[p].x) < 0.5f);
+    }
+
+    it("a wall between: does not come; out of range: does not come") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchRadius = 4.0f;
+        int p = AddMover(12, 6, 1), hidden = AddMover(9, 6, 1), far = AddMover(12, 1, 1);   // 3 and 5 cells
+        for (int y = 0; y < H; y++) GRID(10, y, 1) = CELL_WALL;
+        GatheringStart(p, 100.0f);
+        RunTalk(1.0f);
+        expect(!MoverIsWatching(hidden));
+        expect(!MoverIsWatching(far));
+        watchRadius = 6.0f;
+    }
+
+    it("onlookers leave after their time; the performer keeps performing") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchMinSeconds = watchMaxSeconds = 2.0f;
+        talkCooldown = 60.0f;
+        int p = AddMover(12, 6, 1), w = AddMover(9, 6, 1);
+        GatheringStart(p, 100.0f);
+        RunTalk(0.5f);
+        expect(MoverIsWatching(w));
+        RunTalk(2.5f);
+        expect(!MoverIsWatching(w));
+        expect(MoverIsPerforming(p));
+    }
+
+    it("a full first ring: the next one goes to the second ring") {
+        TalkSetup();
+        watchChance = 1.0f;
+        watchMinSeconds = watchMaxSeconds = 60.0f;
+        int p = AddMover(12, 6, 1);
+        int t = GatheringStart(p, 100.0f);
+        for (int k = 0; k < 10; k++) AddMover(10 + (k % 5), 3 + (k / 5) * 6, 1);   // all within 4 cells
+        Look();
+        RunTalk(2.0f);
+        int ring0 = 0, ring1 = 0;
+        for (int k = 0; k < talks[t].count; k++) {
+            if (talks[t].spot[k] / 64 == 0) ring0++;
+            else if (talks[t].spot[k] / 64 == 1) ring1++;
+        }
+        expect(talks[t].count == 10);
+        expect(ring0 == 9 && ring1 == 1);   // 2*pi*1.5 / 1.0 = 9 spots on the first ring
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(notice_basics);
     test(polite_passing);
     test(stop_to_talk);
+    test(gatherings);
     return summary();
 }

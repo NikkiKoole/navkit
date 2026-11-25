@@ -412,6 +412,58 @@ static void DoorwayPrintStats(void) {
     printf("Close contacts near the door (walking pairs within half a cell): %ld ticks\n", doorwayContacts);
 }
 
+// gathering: a performer in the middle of the plaza, 30 movers wandering: onlookers come and
+// stand in rings round it (talk.c, TALK_WATCH), walkers steer round the crowd.
+static long gatherTicks, gatherWatchSum, gatherWatchMax, gatherRingCount[4], gatherIntrusions;
+
+static void SetupGathering(void) {
+    gatherTicks = gatherWatchSum = gatherWatchMax = gatherIntrusions = 0;
+    memset(gatherRingCount, 0, sizeof(gatherRingCount));
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    talkEnabled = true;
+    moverWanderPause = 2.0f;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the performer
+    int n = scenarioMovers > 0 ? scenarioMovers : 30;
+    for (int i = 0; i < n; i++) SpawnMoverAt(2 + (i % 6) * 5, 2 + (i / 6) * 6 % 28, 1);
+    GatheringStart(0, 1e9f);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Gathering: a performer and %d movers on a plaza", n), GREEN);
+}
+
+static void GatheringTickStats(void) {
+    gatherTicks++;
+    for (int t = 0; t < MAX_TALKS; t++) {
+        const Talk* tk = &talks[t];
+        if (!tk->active || tk->kind != TALK_WATCH) continue;
+        gatherWatchSum += tk->count;
+        if (tk->count > gatherWatchMax) gatherWatchMax = tk->count;
+        for (int k = 0; k < tk->count; k++) {
+            float dx = movers[tk->members[k]].x - tk->slotX[k], dy = movers[tk->members[k]].y - tk->slotY[k];
+            if (dx * dx + dy * dy < 4.0f && tk->spot[k] / 64 < 4) gatherRingCount[tk->spot[k] / 64]++;
+        }
+        float in = 1.5f * CELL_SIZE * 0.8f;   // inside the first ring
+        for (int i = 0; i < moverCount; i++) {
+            if (!movers[i].active || MoverTalk(i) >= 0 || movers[i].pathIndex < 0) continue;
+            float dx = movers[i].x - tk->centerX, dy = movers[i].y - tk->centerY;
+            if (dx * dx + dy * dy < in * in) gatherIntrusions++;
+        }
+    }
+}
+
+static void GatheringPrintStats(void) {
+    printf("Onlookers: avg %.1f, most %ld; came to watch: %ld times\n",
+           gatherTicks ? gatherWatchSum / (double)gatherTicks : 0.0, gatherWatchMax, watchJoinedCount);
+    printf("Standing in place by ring (mover-ticks): 1st %ld, 2nd %ld, 3rd %ld\n", gatherRingCount[0],
+           gatherRingCount[1], gatherRingCount[2]);
+    printf("Walkers inside the first ring (give room %s): %ld ticks\n", talkGiveRoom ? "on" : "off", gatherIntrusions);
+}
+
+static bool GatheringCheck(char* why, int whyLen) {
+    if (watchJoinedCount == 0) { snprintf(why, (size_t)whyLen, "nobody came to watch"); return false; }
+    return true;
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -3498,6 +3550,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorOneWay, DoorTickStats, DoorPrintStats, DoorCheck, 0, 0},
     {"faces",      "16 movers wandering with fixed moods: head sprites by walking direction and mood",
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
+    {"gathering",  "A performer on a plaza, 30 movers: onlookers stand in rings round it (settings watch*)",
+                   NULL,        SetupGathering, GatheringTickStats, GatheringPrintStats, GatheringCheck, 0, 0},
     {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",

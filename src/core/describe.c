@@ -406,7 +406,12 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
             job ? JobTypeName(job->type) : "IDLE", job ? job->step : 0);
     DescribeMoverGear(m, job, out);
     int partner = TalkPartner(idx);
-    if (partner >= 0) {
+    if (MoverIsPerforming(idx)) {
+        DescAdd(out, DESC_INFO, "Performing for %d", talks[MoverTalk(idx)].count);
+    } else if (MoverIsWatching(idx) && partner >= 0) {
+        if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Watching %s", movers[partner].name);
+        else DescAdd(out, DESC_INFO, "Watching #%d", partner);
+    } else if (partner >= 0) {
         int t = MoverTalk(idx);
         if (movers[partner].name[0]) DescAdd(out, DESC_INFO, "Talking with %s%s", movers[partner].name,
                                              talks[t].count > 2 ? " and others" : "");

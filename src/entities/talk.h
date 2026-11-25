@@ -10,13 +10,20 @@
 
 #include <stdbool.h>
 
-#define TALK_MAX_MEMBERS 4
+#define TALK_MAX_MEMBERS 4      // a chat: at most 4
+#define TALK_SLOTS 32           // array size: a gathering of onlookers can be bigger
 #define MAX_TALKS 512
+
+typedef enum { TALK_CHAT, TALK_WATCH } TalkKind;
 
 typedef struct {
     bool active;
-    int members[TALK_MAX_MEMBERS];
-    float slotX[TALK_MAX_MEMBERS], slotY[TALK_MAX_MEMBERS];   // where each member stands (pixels)
+    int kind;                 // TalkKind
+    int focus;                // TALK_WATCH: the mover everyone watches (stands in the middle), -1 none
+    int members[TALK_SLOTS];
+    float slotX[TALK_SLOTS], slotY[TALK_SLOTS];   // where each member stands (pixels)
+    int spot[TALK_SLOTS];     // TALK_WATCH: ring * 64 + spot on that ring
+    float stay[TALK_SLOTS];   // TALK_WATCH: seconds this onlooker still stays
     int count;
     float centerX, centerY;   // the shared middle (o-space)
     float radius;             // pixels from the middle to the members' spots
@@ -44,6 +51,19 @@ bool TalkLookAt(int moverIdx, float* x, float* y);   // where a talking mover lo
 int TalkPartner(int moverIdx);           // another member (for describe), -1 if none
 void TalkStart(int a, int b);            // start a talk between two movers now (tests, scenarios)
 void TalkJoin(int t, int moverIdx);      // add a mover to talk t (room permitting)
+
+// --- Gatherings: onlookers in rings round something worth watching (a performer, later a fire,
+// someone cooking, the cat). Idle movers within watchRadius cells that can see it may come and
+// watch: each takes the free spot on the innermost ring (1.5 cells out, spots ~1 cell apart;
+// full -> the next ring, 1 cell further) nearest the side it came from, faces it, stays
+// watchMin..watchMax s. The performer stands still and "sings" (MoverIsSpeaking).
+extern float watchRadius;       // cells
+extern float watchChance;       // chance per check that an idle mover in range comes to watch
+extern float watchMinSeconds, watchMaxSeconds;
+extern long watchJoinedCount;
+int GatheringStart(int focusMover, float seconds);   // -1 if none free
+bool MoverIsWatching(int moverIdx);                  // an onlooker (not the performer)
+bool MoverIsPerforming(int moverIdx);
 
 // Passers-by give a conversation room: a walker with a talk's middle ahead, near its line,
 // drifts sideways around the circle (like polite passing). Out: sideways direction * weight.
