@@ -29,6 +29,7 @@ typedef struct {
     int moversKnocked;
     int cellsIgnited;
     int powderSetOff;    // gunpowder lying in its reach, lit (goes off a moment later)
+    int waterThrown;     // water levels thrown out of the blast's inner half
 } ExplosionResult;
 
 // Blast at cell (x, y, z). A charge inside a wall (drilled in) breaks that wall first.

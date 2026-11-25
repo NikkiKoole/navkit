@@ -154,6 +154,28 @@ void FxChunks(int cx, int cy, int cz, int mat, float fromX, float fromY, int n, 
     }
 }
 
+void FxSplash(float wx, float wy, int z, float dirX, float dirY, int n, float speed) {
+    for (int i = 0; i < n; i++) {
+        Fx* f = NewFx(FX_CHUNK);   // a droplet: a pixel flying in an arc, like a chunk
+        if (!f) return;
+        float a = atan2f(dirY, dirX) + FxRandRange(-0.7f, 0.7f), s = speed * FxRandRange(0.4f, 1.1f);
+        f->x = wx + FxRandRange(-10.0f, 10.0f); f->y = wy + FxRandRange(-10.0f, 10.0f); f->z = z;
+        f->vx = cosf(a) * s; f->vy = sinf(a) * s;
+        f->h = FxRandRange(0.0f, 6.0f); f->vh = FxRandRange(90.0f, 180.0f);
+        f->life = 1.0f;
+        if (FxRand01() < 0.5f) { f->r = 226; f->g = 238; f->b = 250; }
+        else { f->r = 120; f->g = 170; f->b = 224; }
+        f->radius = 1.0f;
+    }
+    Fx* p = NewFx(FX_DUST);   // spray
+    if (!p) return;
+    p->x = wx; p->y = wy; p->z = z;
+    p->vx = dirX * 10.0f; p->vy = dirY * 10.0f - 8.0f;
+    p->radius = CELL_SIZE * FxRandRange(0.35f, 0.55f);
+    p->life = FxRandRange(0.5f, 0.9f);
+    p->r = 228; p->g = 236; p->b = 244;
+}
+
 static void AddEmitter(FxKind kind, int x, int y, int z, int mat, float seconds, float rate) {
     if (!effectsEnabled || emitterCount >= MAX_EMITTERS) return;
     FxEmitter* e = &emitters[emitterCount++];

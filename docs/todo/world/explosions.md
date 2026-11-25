@@ -178,6 +178,60 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
 Next: animals knocked too, movers keeping away from a lit charge or a burning powder store, a
 gunpowder / saltpeter / charge sprite, maybe span limits per material for built things.
 
+## Next: terrain effects (planned 2026-11-25, user: "write these up and start on them")
+
+Brainstorm with the user; these three were picked to go first, in this order.
+
+### Built: slice 6, blasting into water (2026-11-25)
+
+- Breaking the wall that holds water back already floods: the broken cell goes through
+  `CompleteMineDesignation` (`DestabilizeWater`), the water sim does the rest. Nothing added.
+- A blast throws water (step 6 in `Explode`): each water surface cell in the blast's inner half
+  (power >= half, the cell above dry, not frozen) is thrown along the line from the charge,
+  through the air one level up, as far as the blast reaches and the way is open, and lands
+  there (as much as fits; the rest stays). Nothing is made or lost; the water sim runs it back
+  or spreads it thin. `ExplosionResult.waterThrown`.
+- `FxSplash`: droplets (light and mid blue pixels flying in arcs, like chunks) and a white spray puff.
+- Scenario `flood` (in scenarios-check): a charge over a field pond (63 water levels out of 441
+  thrown over the bank, most run back), one drilled into the 2-cell wall between a pond in a
+  granite hill and a dry tunnel (the pond runs out through the tunnel onto the field). Tests in
+  `test_explosion` (`explosion_water`).
+- Not done: steam from a blast in water, a wave or ripple.
+
+### Slice 7: landslides (loose soil slides)
+
+- Loose material (sand, gravel, dirt: decide per material) with a drop beside it slides down a
+  level when it's disturbed: a blast nearby, mining next to it, a collapse landing, rain.
+- Only disturbed cells are looked at (like structural support's changed-cell list), so fresh
+  worlds never slide by themselves at generation. Rock never slides.
+- A slid cell lands as the same wall material one level down (like a collapse), pushing and
+  dazing whoever is there; it can disturb the cells beside it, so one slide can start a few
+  more but dies down.
+- Effects: dust where it slides and where it lands.
+
+### Slice 8: craters and rubble
+
+- A blast on open ground today digs a shallow bowl and drops ~35 dirt items. Make it read as a
+  crater: the rim cells become ramps where they can (walk down into it), and part of the
+  broken soil stays as loose fill on the floor instead of items.
+- Darkened (scorched) floor in the middle that fades with time.
+
+### Other ideas from the brainstorm (not planned yet)
+
+- Explosions touching other sims: steam explosions (lava or a hot cell meeting water), dust
+  explosions (flour or sawdust in a closed room + a spark: the Town mill), smoke-then-sparks
+  before a burning powder store goes up.
+- Ground: a big collapse shaking its neighbours (stress spreading, a hillside coming down in
+  stages), sinkholes (water eating the soil under a floor, then the floor drops).
+- Forces: blasts going further along tunnels than in the open, doors blown open or off, trees
+  knocked down by a blast, a blast in a pond sending out a wave.
+- Effects: a ripple ring on water, embers drifting downwind and starting fires, smoke filling a
+  mine and making workers cough, debris falling past the view from a higher level, lightning
+  (a small blast + a fire + a flash).
+- Gameplay: demolition by blasting (faster, materials lost), tripwire traps, fireworks
+  (movers gather to watch), blast quarrying (bigger stones, or cracked rock that's quicker to
+  dig).
+
 ## What exists to build on
 
 | Need | Already there |

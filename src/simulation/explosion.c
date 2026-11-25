@@ -490,6 +490,44 @@ ExplosionResult Explode(int x, int y, int z, float power) {
                 }
             }
 
+    // 6. Water: the surface in the inner half of the blast is thrown outward, along the
+    // direction from the charge, as far as the blast reaches, and lands there. Nothing is made
+    // or lost (what finds no room falls back where it was); the water simulation runs it back
+    for (int cz = z0; cz <= z1; cz++)
+        for (int cy = y0; cy <= y1; cy++)
+            for (int cx = x0; cx <= x1; cx++) {
+                float v = best[BIDX(cx, cy, cz)];
+                if (v < power * 0.5f) continue;
+                int lvl = GetWaterLevel(cx, cy, cz);
+                if (lvl <= 0 || IsWaterFrozen(cx, cy, cz)) continue;
+                if (cz + 1 < gridDepth && GetWaterLevel(cx, cy, cz + 1) > 0) continue;   // under the surface
+                float dx = (float)(cx - x), dy = (float)(cy - y), d = sqrtf(dx * dx + dy * dy);
+                if (d < 0.5f) { float a = HashAngle(cx * 31 + cy * 17 + cz); dx = cosf(a); dy = sinf(a); d = 1.0f; }
+                dx /= d; dy /= d;
+                // Thrown up and out: it flies through the air over the surface (the level above,
+                // when that's open) while the blast still reaches and the way is open, then falls
+                int az = (cz + 1 < gridDepth && !CellIsSolid(GRID(cx, cy, cz + 1))) ? cz + 1 : cz;
+                int lx = cx, ly = cy;
+                for (float t = 1.0f; t <= power * 1.5f; t += 0.5f) {
+                    int tx = (int)floorf(cx + 0.5f + dx * t), ty = (int)floorf(cy + 0.5f + dy * t);
+                    if (tx == lx && ty == ly) continue;
+                    if (tx < 0 || ty < 0 || tx >= gridWidth || ty >= gridHeight) break;
+                    if (CellIsSolid(GRID(tx, ty, az))) break;
+                    lx = tx; ly = ty;
+                    if (az > z1 || tx < x0 || tx > x1 || ty < y0 || ty > y1 || best[BIDX(tx, ty, az)] <= 0.0f) break;
+                }
+                if (lx == cx && ly == cy) continue;
+                int room = WATER_MAX_LEVEL - GetWaterLevel(lx, ly, az);
+                int moved = lvl < room ? lvl : room;
+                if (moved <= 0) continue;
+                RemoveWater(cx, cy, cz, moved);
+                AddWater(lx, ly, az, moved);
+                res.waterThrown += moved;
+                if (res.waterThrown < 200) {   // looks only: droplets and spray
+                    FxSplash((cx + 0.5f) * CELL_SIZE, (cy + 0.5f) * CELL_SIZE, cz, dx, dy, 3 + moved, 90.0f + 20.0f * v);
+                }
+            }
+
     #undef BIDX
     free(best);
     free(breakCell);

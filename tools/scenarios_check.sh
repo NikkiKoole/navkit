@@ -61,6 +61,7 @@ done <<'EOF'
 0   | 0 | --scenario collapse
 0   | 0 | --scenario blasting
 0   | 0 | --scenario powder-fire
+0   | 0 | --scenario flood
 0   | 0 | --scenario throwing
 0   | 0 | --scenario throwscare
 0   | 0 | --scenario throwhunt

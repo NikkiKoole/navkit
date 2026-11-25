@@ -10,6 +10,7 @@
 #include "../src/core/state_audit.h"
 #include "../src/world/designations.h"
 #include "../src/core/effects.h"
+#include "../src/simulation/water.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -327,6 +328,44 @@ describe(blast_effects) {
     }
 }
 
+describe(explosion_water) {
+    it("throws the water of a pond out over its bank, none made or lost") {
+        FlatWorld();
+        ClearWater();
+        for (int y = 8; y <= 16; y++)
+            for (int x = 8; x <= 16; x++) { GRID(x, y, 0) = CELL_AIR; SetWallMaterial(x, y, 0, MAT_NONE); SetWaterLevel(x, y, 0, WATER_MAX_LEVEL); }
+        int total = 0, pond = 0, after = 0, out = 0;
+        for (int z = 0; z < gridDepth; z++) for (int y = 0; y < gridHeight; y++) for (int x = 0; x < gridWidth; x++) total += GetWaterLevel(x, y, z);
+        ExplosionResult r = Explode(12, 12, 1, 5.0f);
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) {
+                    int w = GetWaterLevel(x, y, z);
+                    after += w;
+                    if (z == 0 && x >= 8 && x <= 16 && y >= 8 && y <= 16) pond += w; else out += w;
+                }
+        expect(r.waterThrown > 0);
+        expect(after == total);
+        expect(GetWaterLevel(12, 12, 0) == 0);
+        expect(out > 0);
+        expect(pond < total);
+    }
+
+    it("lets a pond into the tunnel when it breaks the wall between them") {
+        FlatWorld();
+        ClearWater();
+        for (int y = 4; y <= 20; y++) for (int x = 4; x <= 20; x++) Wall(x, y, 1, MAT_GRANITE);
+        for (int y = 6; y <= 18; y++) for (int x = 6; x <= 10; x++) { GRID(x, y, 1) = CELL_AIR; SetWaterLevel(x, y, 1, WATER_MAX_LEVEL); }
+        for (int x = 13; x <= 20; x++) GRID(x, 12, 1) = CELL_AIR;   // a tunnel, 2 cells of granite from the pond
+        Explode(12, 12, 1, 5.0f);                                    // drilled into the wall's tunnel face
+        expect(GRID(11, 12, 1) == CELL_AIR);
+        for (int i = 0; i < 300; i++) UpdateWater();
+        int tunnel = 0;
+        for (int x = 13; x <= 20; x++) tunnel += GetWaterLevel(x, 12, 1);
+        expect(tunnel > 0);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -338,5 +377,6 @@ int main(int argc, char** argv) {
     test(blast_designation);
     test(gunpowder_fire);
     test(blast_effects);
+    test(explosion_water);
     return summary();
 }

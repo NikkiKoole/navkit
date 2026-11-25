@@ -5034,6 +5034,82 @@ static bool PowderFireCheck(char* why, int whyLen) {
     return true;
 }
 
+// flood: blasting into water. A granite hill holds a pond (3 levels deep, open to the sky) and,
+// behind a wall 2 cells thick, a dry tunnel out to the field. A charge drilled into the wall
+// (3 s) opens it: the pond runs into the tunnel and out. A second pond dug into the field gets a
+// charge over its middle (1.5 s): the water is thrown out over the bank and runs back.
+// Check: water in the tunnel, the field pond's water thrown out, state audit clean.
+static int floodSplashThrown, floodTunnelMost;
+
+static int FloodWaterIn(int x0, int x1, int y0, int y1, int z0, int z1) {
+    int n = 0;
+    for (int z = z0; z <= z1; z++)
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) n += GetWaterLevel(x, y, z);
+    return n;
+}
+
+static void SetupFlood(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    waterEnabled = true;
+    floodSplashThrown = floodTunnelMost = 0;
+    for (int z = 1; z <= 4; z++)
+        for (int y = 6; y <= 26; y++)
+            for (int x = 16; x <= 40; x++) {
+                GRID(x, y, z) = CELL_WALL; SetWallMaterial(x, y, z, MAT_GRANITE); SetWallNatural(x, y, z);
+            }
+    // The pond: x 18..24, y 10..22, open to the sky, water 3 levels deep
+    for (int z = 1; z <= 4; z++)
+        for (int y = 10; y <= 22; y++)
+            for (int x = 18; x <= 24; x++) {
+                GRID(x, y, z) = CELL_AIR; SetWallMaterial(x, y, z, MAT_NONE); ClearWallNatural(x, y, z);
+                if (z <= 3) SetWaterLevel(x, y, z, WATER_MAX_LEVEL);
+            }
+    // The tunnel: x 27..40 at y 15..16, z1, out to the field (the wall x 25..26 holds the pond)
+    for (int y = 15; y <= 16; y++)
+        for (int x = 27; x <= 40; x++) { GRID(x, y, 1) = CELL_AIR; SetWallMaterial(x, y, 1, MAT_NONE); ClearWallNatural(x, y, 1); }
+    // The field pond: dug into the ground (z0), x 4..10, y 12..20, full
+    for (int y = 12; y <= 20; y++)
+        for (int x = 4; x <= 10; x++) {
+            GRID(x, y, 0) = CELL_AIR; SetWallMaterial(x, y, 0, MAT_NONE); SetVegetation(x, y, 0, VEG_NONE);
+            SetWaterLevel(x, y, 0, WATER_MAX_LEVEL);
+        }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    ExplosionLightFuse(26, 16, 1, 5.0f, 3.0f);   // drilled into the wall's tunnel face
+    ExplosionLightFuse(7, 16, 1, 5.0f, 1.5f);    // just over the field pond
+    currentViewZ = 1;
+    AddMessage("Flood: a charge over a pond in the field (1.5 s), one drilled into the wall holding a pond back from a tunnel (3 s)", ORANGE);
+}
+
+static void FloodTickStats(void) {
+    // Before the wall goes (the hill pond's water reaches the whole field later)
+    if (ExplosionCount() == 1) {
+        int thrown = FloodWaterIn(0, 15, 0, gridHeight - 1, 0, 3) - FloodWaterIn(4, 10, 12, 20, 0, 0);
+        if (thrown > floodSplashThrown) floodSplashThrown = thrown;
+    }
+    int tunnel = FloodWaterIn(27, 40, 15, 16, 1, 1);
+    if (tunnel > floodTunnelMost) floodTunnelMost = tunnel;
+}
+
+static void FloodPrintStats(void) {
+    printf("Flood: explosions %d, water in the tunnel %d (most %d), in the hill pond %d (was %d), field pond %d (was %d), thrown out of it %d\n",
+           ExplosionCount(), FloodWaterIn(27, 40, 15, 16, 1, 1), floodTunnelMost, FloodWaterIn(18, 24, 10, 22, 1, 4),
+           7 * 13 * 3 * 7, FloodWaterIn(4, 10, 12, 20, 0, 0), 7 * 7 * 9, floodSplashThrown);
+}
+
+static bool FloodCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions", ExplosionCount()); return false; }
+    if (floodTunnelMost < 20) { snprintf(why, (size_t)whyLen, "the tunnel stayed dry"); return false; }
+    if (FloodWaterIn(18, 24, 10, 22, 1, 4) > 7 * 13 * 3 * 7 / 2) { snprintf(why, (size_t)whyLen, "the hill pond didn't run out"); return false; }
+    if (floodSplashThrown < 20) { snprintf(why, (size_t)whyLen, "the field charge threw only %d water out of its pond", floodSplashThrown); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -5141,6 +5217,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBlasting, BlastingTickStats, BlastingPrintStats, BlastingCheck, 48, 32},
     {"collapse",   "Structural support: charges take the foot out of a granite pillar with an arm, a roof slab over a mover and a wooden deck with a log on it; each creaks, falls and lands as walls",
                    NULL,        SetupCollapse, CollapseTickStats, CollapsePrintStats, CollapseCheck, 48, 32},
+    {"flood",      "Blasting into water: a charge opens the wall between a pond in a granite hill and a dry tunnel (the pond runs out through it); one over a field pond throws the water out over the bank",
+                   NULL,        SetupFlood, FloodTickStats, FloodPrintStats, FloodCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",
