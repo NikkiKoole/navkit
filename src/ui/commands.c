@@ -25,6 +25,7 @@
 #include "../world/designations.h"
 #include "../core/scenarios.h"
 #include "../core/games.h"
+#include "../entities/road_plan.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -248,6 +249,50 @@ static void RunSpawnMovers(const CmdValue* v) {
 
 // find: search every table row (src/ui/find.c), or browse its tree with a leading '/'
 static void FindSay(const char* line) { Say(WHITE, "%s", line); printf("%s\n", line); }
+
+// ---- road: edit the cars-city road plan (road_plan.h) ----
+static const char* const roadChoices[] = {"add", "remove", "roundabout", "plain", "check", "print", "clear", "tiles", "build"};
+static const char* const roadClassNames[] = {"lane", "street", "arterial", "highway"};
+static void RoadSay(Color c, const char* line) { Say(c, "%s", line); printf("%s\n", line); }
+static void RunRoad(const CmdValue* v) {
+    const char* rest = v[1].given && v[1].s ? v[1].s : "";
+    char line[160];
+    switch (v[0].choice) {
+        case 0: {   // add <class> x1 y1 x2 y2 [cx cy]
+            char cls[16] = "street";
+            float x1, y1, x2, y2, cx, cy;
+            int n = sscanf(rest, "%15s %f %f %f %f %f %f", cls, &x1, &y1, &x2, &y2, &cx, &cy);
+            if (n < 5) { RoadSay(RED, "road add <lane|street|arterial|highway> x1 y1 x2 y2 [cx cy] (cells; cx cy: the curve's control point)"); return; }
+            int k = 1;
+            for (int i = 0; i < 4; i++) if (strcasecmp(cls, roadClassNames[i]) == 0) k = i;
+            int pieces = RoadPlanAdd(x1, y1, x2, y2, n >= 7, cx, cy, k);
+            snprintf(line, sizeof(line), "road: %d piece%s added (%d roads, %d junctions); `road build` to apply", pieces, pieces == 1 ? "" : "s", RoadPlanRoads(), RoadPlanJunctions());
+            RoadSay(pieces > 0 ? GREEN : ORANGE, line);
+            return;
+        }
+        case 1: case 2: case 3: {   // remove / roundabout / plain x y
+            float x, y;
+            if (sscanf(rest, "%f %f", &x, &y) < 2) { RoadSay(RED, "road remove|roundabout|plain x y (cells)"); return; }
+            bool ok = v[0].choice == 1 ? RoadPlanRemoveAt(x, y, 4.0f) : RoadPlanSetRoundabout(x, y, v[0].choice == 2);
+            snprintf(line, sizeof(line), ok ? "road: done (%d roads, %d junctions); `road build` to apply" : "road: nothing there (%d roads, %d junctions)", RoadPlanRoads(), RoadPlanJunctions());
+            RoadSay(ok ? GREEN : ORANGE, line);
+            return;
+        }
+        case 4: {   // check
+            char lines[24][128];
+            int n = RoadPlanCheck(lines, 24);
+            snprintf(line, sizeof(line), "road plan: %d roads, %d junctions, %d problem%s", RoadPlanRoads(), RoadPlanJunctions(), n, n == 1 ? "" : "s");
+            RoadSay(n ? ORANGE : GREEN, line);
+            for (int i = 0; i < n; i++) RoadSay(ORANGE, lines[i]);
+            return;
+        }
+        case 5: RoadPlanPrint(); return;
+        case 6: RoadPlanClear(); RoadSay(GREEN, "road plan cleared; `road build` to apply"); return;
+        case 7: CityPlanFromTileTown(); snprintf(line, sizeof(line), "road plan: the tile town (%d roads); `road build` to apply", RoadPlanRoads()); RoadSay(GREEN, line); return;
+        case 8: CityRebuildFromPlan(); snprintf(line, sizeof(line), "road plan built: %d roads", RoadPlanRoads()); RoadSay(GREEN, line); return;
+        default: return;
+    }
+}
 static void RunFind(const CmdValue* v) {
     FindBuildIndex();
     const char* text = v[0].given ? v[0].s : "";
@@ -334,6 +379,8 @@ static const CommandDef commandTable[] = {
       1, { ARG_NAME("scenario", ScenarioNameCount, ScenarioNameAt) }, RunScenarioCmd, ScenarioList },
     { "game", "Games", "Start a game",
       1, { ARG_NAME("game", GameNameCount, GameNameAt) }, RunGameCmd, GameList },
+    { "road", "Experiments/Cars", "Edit the cars-city road plan: add <class> x1 y1 x2 y2 [cx cy], remove x y, roundabout x y, plain x y, check, print, clear, tiles, build",
+      2, { ARG_CHOICE("action", roadChoices), { .name = "args", .type = CARG_TEXT, .optional = true } }, RunRoad, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
       1, { { .name = "text", .type = CARG_TEXT, .optional = true } }, RunFind, NULL },
     { "spawnmovers", "Entities/Movers", "Replace all movers with N wandering ones (add: keep the current ones)",

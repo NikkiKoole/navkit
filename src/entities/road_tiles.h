@@ -34,5 +34,8 @@ int RoadTilesFromText(const char* const* rows, int nRows);
 // The road network from the tiles (RoadsClear first); returns the junctions + bends made.
 // Then rdClasses / RoadsBuild as for any network.
 int RoadTilesBuild(void);
+// ... the junctions and roads only; roundaboutNode[node] (rdNodeCount long) says which become
+// roundabouts (the road plan takes it from here)
+int RoadTilesBuildGraph(bool* roundaboutNode);
 
 #endif

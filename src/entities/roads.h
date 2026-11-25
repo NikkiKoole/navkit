@@ -76,6 +76,8 @@ typedef struct {
     int nLift;         // ... where it must be a level up: centre arc length s0..s1 (px), at level z
     float liftS0[32], liftS1[32], liftZ[32];
     float arcX, arcY, arcR;
+    bool hasCtrl;      // a curve through its own control point (ctrlX, ctrlY px; RoadSetControl) instead of `bend`
+    float ctrlX, ctrlY;
 } RdEdge;
 
 typedef struct {
@@ -116,7 +118,8 @@ void RoadCarveDisc(float cellX, float cellY, float rCells, int z);   // open gro
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);
 void RoadSetAvenue(int edge);             // two lanes each way (before RoadsBuild); an arterial
-void RoadSetClass(int edge, int cls);     // (RdClass)
+void RoadSetClass(int edge, int cls);
+void RoadSetControl(int edge, float cellX, float cellY);   // the road a quadratic curve through this control point     // (RdClass)
 void RoadSetOneWay(int edge);             // a -> b only (one lane on the centre line; RoadSetAvenue after: two)
 int RoadSegClass(int seg);                // a lane's road's class; a connector: the smaller of its lanes'
 float RoadSegSpeed(int seg);              // cells/s: its class's speed limit (rdClasses off: a street's)

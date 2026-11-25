@@ -63,6 +63,7 @@
 #include "entities/cars.c"       // cars experiment (scenario "cars" only)
 #include "entities/roads.c"      // cars experiment: road network
 #include "entities/road_tiles.c" // cars experiment: roads drawn on 8x8-cell tiles
+#include "entities/road_plan.c"  // cars experiment: the roads as an editable graph (curves, junctions where roads meet)
 #include "entities/traffic.c"    // cars experiment: road traffic
 #include "entities/slots.c"      // cars experiment: abstract slot traffic
 #include "entities/belts.c"

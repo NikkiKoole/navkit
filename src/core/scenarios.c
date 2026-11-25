@@ -17,6 +17,7 @@
 #include "../entities/cars.h"
 #include "../entities/roads.h"
 #include "../entities/road_tiles.h"
+#include "../entities/road_plan.h"
 #include "../entities/traffic.h"
 #include "../entities/slots.h"
 #include "../entities/elevators.h"
@@ -3536,6 +3537,28 @@ static void BuildTileTown(void) {
     if (getenv("SL_XLOG")) printf("road tiles: %d x %d, %d junctions and bends, %d roads\n", RoadTilesW(), RoadTilesH(), n, rdEdgeCount);
 }
 
+// The road plan (carCityLayout 4): the roads as an editable graph (road_plan.h; console `road`).
+// Empty the first time: it starts as the tile town (its roundabouts as flags)
+void CityPlanFromTileTown(void) {
+    static bool rb[RD_MAX_NODES];
+    int rows = (int)(sizeof(cityTileTown) / sizeof(cityTileTown[0]));
+    RoadTilesClear(gridWidth / RT_SIZE, gridHeight / RT_SIZE);
+    RoadTilesFromText(cityTileTown, rows);
+    RoadTilesBuildGraph(rb);
+    RoadPlanFromNetwork(rb);
+}
+static void BuildPlanTown(void) {
+    if (RoadPlanRoads() == 0) CityPlanFromTileTown();
+    RoadPlanToNetwork();
+}
+
+// Rebuild the city from the road plan (after an edit): the scenario again on layout 4 - the
+// ground, pavements, crossings, slots; every car placed again, the pedestrians too
+void CityRebuildFromPlan(void) {
+    carCityLayout = 4;
+    RunScenario("cars-city");
+}
+
 static void BuildDutch(void) {
     float W = (float)gridWidth, H = (float)gridHeight, sx = W / 330.0f, sy = H / 260.0f;
     RoadsClear();
@@ -3928,6 +3951,7 @@ static void SetupCarsCity(void) {
     if (carCityLayout == 1) BuildManhattan();
     else if (carCityLayout == 2) BuildDutch();
     else if (carCityLayout == 3) BuildTileTown();
+    else if (carCityLayout == 4) BuildPlanTown();
     else {
         // The grid of junctions fills the map (330x260: 9 x 7; --set scenarioSize N for more)
         const float origin = 20, sx = carCitySpacingX, sy = carCitySpacingY;

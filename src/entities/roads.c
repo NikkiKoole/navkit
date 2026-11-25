@@ -81,6 +81,13 @@ int RoadAddEdge(int a, int b, float bendCells) {
     return rdEdgeCount++;
 }
 
+void RoadSetControl(int edge, float cellX, float cellY) {
+    if (edge < 0 || edge >= rdEdgeCount) return;
+    rdEdges[edge].hasCtrl = true;
+    rdEdges[edge].ctrlX = cellX * CELL_SIZE;
+    rdEdges[edge].ctrlY = cellY * CELL_SIZE;
+}
+
 void RoadSetLifted(int edge) { if (edge >= 0 && edge < rdEdgeCount) rdEdges[edge].lifted = true; }
 
 void RoadSetAvenue(int edge) {   // two lanes each way; a one-way road: two lanes its way
@@ -201,6 +208,7 @@ static int EdgeCentre(const RdEdge* e) {
     float mx = (ax + bx) * 0.5f, my = (ay + by) * 0.5f;
     float dx = bx - ax, dy = by - ay, L = sqrtf(dx * dx + dy * dy);
     float cx = mx + (-dy / L) * 2.0f * e->bend * CELL_SIZE, cy = my + (dx / L) * 2.0f * e->bend * CELL_SIZE;
+    if (e->hasCtrl) { cx = e->ctrlX; cy = e->ctrlY; }
     int n = 400;
     for (int i = 0; i <= n; i++) {
         float t = (float)i / n, u = 1 - t;
@@ -376,6 +384,39 @@ static int BuildConnector(int node, int in, int out, float maxTurn) {
     if (turn > maxTurn) return -1;   // a U-turn, or (> ~120 degrees) so sharp it sweeps the stop lines
     float d = sqrtf((x3 - x0) * (x3 - x0) + (y3 - y0) * (y3 - y0));
     float k = d * (turn < 0.3f ? 0.33f : 0.42f);
+    float x1 = x0 + cosf(h0) * k, y1 = y0 + sinf(h0) * k;
+    float x2 = x3 - cosf(h3) * k, y2 = y3 - sinf(h3) * k;
+    int n = 128;
+    for (int i = 0; i <= n; i++) {
+        float t = (float)i / n, u = 1 - t;
+        tmpX[i] = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+        tmpY[i] = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+    }
+    tmpZConst = rdNodes[node].z;
+    int seg = SegFromTmp(n + 1, RD_CONN);
+    if (seg < 0) return -1;
+    RdSeg* sg = &rdSegs[seg];
+    sg->node = node;
+    sg->from = in;
+    sg->to = out;
+    RdNode* nd = &rdNodes[node];
+    if (nd->nConn >= RD_MAX_CONN) { rdSegCount--; return -1; }
+    sg->ci = nd->nConn;
+    nd->conn[nd->nConn++] = seg;
+    RdSeg* L = &rdSegs[in];
+    if (L->nOut < RD_MAX_OUT) L->out[L->nOut++] = seg;
+    return seg;
+}
+
+// A turning loop at a dead end: from the end of lane `in` round to the start of lane `out` (the
+// other way along the same road), bulging forward into the room the lanes leave before the end
+static int BuildUTurn(int node, int in, int out) {
+    const RdSeg* a = &rdSegs[in];
+    const RdSeg* b = &rdSegs[out];
+    float x0 = rdX[a->p0 + a->n - 1], y0 = rdY[a->p0 + a->n - 1];
+    float x3 = rdX[b->p0], y3 = rdY[b->p0];
+    float h0 = SegHeading(in, a->n - 1), h3 = SegHeading(out, 0);
+    float k = fmaxf(rdNodes[node].setback, 2.0f) * CELL_SIZE * 1.3f;   // (the loop reaches ~3/4 of this forward)
     float x1 = x0 + cosf(h0) * k, y1 = y0 + sinf(h0) * k;
     float x2 = x3 - cosf(h3) * k, y2 = y3 - sinf(h3) * k;
     int n = 128;
@@ -658,6 +699,13 @@ static void BuildAll(float latAccel) {
                         if (in2 >= 0) BuildConnector(ni, in2, out, RD_MAX_TURN_SHARP);
                     }
             }
+        }
+        // a dead end: a turning loop from the lane in to the lane out (else the lane in led
+        // nowhere - cars arriving were stuck, and every route from there failed)
+        if (nd->nEdge == 1 && !nd->ring) {
+            const RdEdge* e0 = &rdEdges[nd->edge[0]];
+            int in = e0->a == ni ? e0->lane[1] : e0->lane[0], out = e0->a == ni ? e0->lane[0] : e0->lane[1];
+            if (in >= 0 && out >= 0 && rdSegs[in].nOut == 0) BuildUTurn(ni, in, out);
         }
         for (int i = 0; i < nd->nConn; i++)
             for (int j = 0; j < nd->nConn; j++)

@@ -968,6 +968,33 @@ seed in three locked; 10 slower). `RoadTilesFromText`: one character a tile ('.'
 - Next: a drawing tool for the tiles (drag like the town game's roads), then a generator; the
   highway over the town (bridges, a diamond) on tiles.
 
+## Road plan: roads as an editable graph with curves (carCityLayout 4, 2026-11-26)
+
+User, after the tiles: a graph with bezier lines would be easier and nicer. Agreed: roads.c
+already is a graph; tiles were only an input. Keep what made the tiles good with rules +
+snapping instead. `src/entities/road_plan.c/.h`: junctions + roads, each road a quadratic curve
+through a control point (`RdEdge.hasCtrl`/`ctrlX/Y`, `RoadSetControl`; straight = halfway).
+- `RoadPlanAdd`: an end near a junction (RP_MERGE 2.5 cells) uses it, an end on a road splits
+  it there; where the new road crosses roads both get a junction; every piece is the exact
+  sub-curve (de Casteljau), so a split road keeps its shape.
+- `RoadPlanRemoveAt`: the road nearest; a junction left joining two straight pieces of one road
+  straight on becomes road again; a junction left with none goes.
+- `RoadPlanCheck`: junctions closer than RP_MIN_LEN (24 cells) along a road (pass-through
+  junctions don't count), roads meeting under RP_MIN_ANGLE (50 degrees), curves tighter than
+  their class takes (street 6, arterial 10, highway 24 cells), roundabouts with < 3 roads, more
+  than 6 roads at a junction, dead ends. It found 2 in the tile town: two streets joining the
+  middle arterial from opposite sides 16 cells apart.
+- Dead ends get a turning loop (`BuildUTurn`): before, a lane into one led nowhere - cars
+  arriving were stuck and every route from there failed (2.5 million searches).
+- Console `road add <class> x1 y1 x2 y2 [cx cy] | remove x y | roundabout x y | plain x y |
+  check | print | clear | tiles | build`. Edits change the plan; `road build` rebuilds the city
+  from it (the scenario again on layout 4: every car and pedestrian placed again). `road print`
+  gives the plan as `road add` lines. Layout 4 starts as the tile town (same traffic: 816 trips).
+- A curved street across the south-east quarter (3 pieces, crossing two streets, a dead end):
+  813 trips, every route found, 0 touches.
+- Next: the mouse tool (click-click to draw, drag to bend, snapping to the 8-cell grid and to
+  angles, preview with the check's warnings, right-click to remove).
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

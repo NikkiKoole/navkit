@@ -31,6 +31,9 @@ const Scenario* ScenarioCurrent(void);            // last scenario started, or N
 // Reset the world and run the scenario. Returns false (and prints the known
 // names to stdout) if the name is unknown.
 bool RunScenario(const char* name);
+// cars-city road plan (carCityLayout 4): rebuild the city from it after an edit; fill it with the tile town
+void CityRebuildFromPlan(void);
+void CityPlanFromTileTown(void);
 void ScenarioPrintList(void);                     // names + descriptions to stdout
 
 // Clear entities and simulations, generate the terrain (NULL = flat 32x32 dirt

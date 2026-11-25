@@ -1,6 +1,7 @@
 // Road tiles -> road network. See road_tiles.h.
 #include "road_tiles.h"
 #include "roads.h"
+#include "mover.h"   // CELL_SIZE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,7 +80,7 @@ static bool RtIsNode(int x, int y) {
     return false;
 }
 
-int RoadTilesBuild(void) {
+int RoadTilesBuildGraph(bool* roundaboutNode) {
     RoadsClear();
     if (rtW <= 0 || rtH <= 0) return 0;
     int* nodeAt = malloc(sizeof(int) * (size_t)(rtW * rtH));
@@ -117,16 +118,28 @@ int RoadTilesBuild(void) {
                 if (cls == RD_CLS_HIGHWAY) RoadSetAvenue(e);   // (two lanes each way)
             }
         }
+    if (roundaboutNode) {
+        for (int n = 0; n < rdNodeCount; n++) roundaboutNode[n] = false;
+        for (int y = 0; y < rtH; y++)
+            for (int x = 0; x < rtW; x++)
+                if (RoadTileAt(x, y) == RT_ROUNDABOUT && nodeAt[y * rtW + x] >= 0) roundaboutNode[nodeAt[y * rtW + x]] = true;
+    }
+    free(nodeAt);
+    return nodes;
+}
+
+int RoadTilesBuild(void) {
+    static bool rb[RD_MAX_NODES];
+    int nodes = RoadTilesBuildGraph(rb);
+    int n0 = rdNodeCount;   // (roundabouts add ring junctions after these)
     // roundabouts: radius RT_RING_MIN cells or the smallest above it the roads' angles allow
     // (a 3x3-tile block; at 8 a four-arm ring held 8 slots driven at 1 slot/step - its curve good
     // for 5.7 cells/s - and one seed in three locked up; 10 was slower again)
-    for (int y = 0; y < rtH; y++)
-        for (int x = 0; x < rtW; x++) {
-            if (RoadTileAt(x, y) != RT_ROUNDABOUT || nodeAt[y * rtW + x] < 0) continue;
-            bool made = false;
-            for (float r = RT_RING_MIN; r <= 12.0f && !made; r += 1.0f) made = RoadMakeRoundabout(nodeAt[y * rtW + x], r);
-            if (!made) printf("road tiles: no roundabout at tile (%d,%d) - fewer than 3 roads, or too close in angle\n", x, y);
-        }
-    free(nodeAt);
+    for (int n = 0; n < n0; n++) {
+        if (!rb[n]) continue;
+        bool made = false;
+        for (float r = RT_RING_MIN; r <= 12.0f && !made; r += 1.0f) made = RoadMakeRoundabout(n, r);
+        if (!made) printf("road tiles: no roundabout at (%.0f,%.0f) - fewer than 3 roads, or too close in angle\n", rdNodes[n].x / CELL_SIZE, rdNodes[n].y / CELL_SIZE);
+    }
     return nodes;
 }

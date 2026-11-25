@@ -122,6 +122,7 @@ bool bladderEnabled = false;
 #include "../src/entities/cars.c"
 #include "../src/entities/roads.c"
 #include "../src/entities/road_tiles.c"
+#include "../src/entities/road_plan.c"
 #include "../src/entities/traffic.c"
 #include "../src/entities/slots.c"
 #include "../src/entities/belts.c"
