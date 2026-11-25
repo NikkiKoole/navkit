@@ -529,6 +529,7 @@ static void SocialTiesPrintStats(void) {
            tiesEnemyN ? tiesEnemySum / tiesEnemyN : 0.0);
     printf("Enemy pairs within 1.5 cells: %ld pair-ticks\n", tiesEnemyClose);
     printf("Talks started: %ld, walks: %ld\n", talkStartedCount, walkStartedCount);
+    printf("Glances: %ld, greetings: %ld\n", glanceCount, greetCount);
 }
 
 // garden-party: a lawn with a stone patio, a campfire in the middle, two tables with chairs and a
@@ -629,7 +630,8 @@ static void GardenPartyPrintStats(void) {
     printf("At the fire by day: avg %.1f, after dark: avg %.1f\n",
            gpTicks > gpDarkTicks ? (gpAtFireSum - gpDarkFireSum) / (double)(gpTicks - gpDarkTicks) : 0.0,
            gpDarkTicks ? gpDarkFireSum / (double)gpDarkTicks : 0.0);
-    printf("Talks started: %ld, joined: %ld\n", talkStartedCount, talkJoinedCount);
+    printf("Talks started: %ld, joined: %ld; glances: %ld, greetings: %ld\n", talkStartedCount, talkJoinedCount,
+           glanceCount, greetCount);
     printf("Walks: %ld started, %.0f%% of the time walking with someone; pair %.2f cells apart, side by side %.0f%%\n",
            walkStartedCount, gpTicks && active ? 100.0 * gpWalkTicks / ((double)gpTicks * active) : 0.0,
            gpWalkDistN ? gpWalkDistSum / gpWalkDistN : 0.0,

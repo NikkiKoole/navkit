@@ -20,6 +20,23 @@ float passStrength = 1.0f;
 float passSlow = 0.0f;
 
 static unsigned int noticeTickCounter = 0;
+static unsigned int noticeClock = 0;   // ticks, for glance/greet timers (no per-tick loop over movers)
+
+bool glancesEnabled = true, greetingsEnabled = true;
+long glanceCount = 0, greetCount = 0;
+#define GLANCE_TICKS     48     // 0.8 s
+#define GREET_TICKS      60     // 1 s
+#define GREET_RANGE      4.0f   // cells
+#define GREET_APART      (180 * 60)  // ticks out of sight before the same two greet again (3 minutes)
+#define GLANCE_STRANGER  30     // % chance to glance at a stranger
+#define GREET_MEMORY     16
+typedef struct { int who; unsigned int until; } GreetMemo;
+static int glanceAt[MAX_MOVERS];
+static unsigned int glanceUntil[MAX_MOVERS];
+static bool glanceAway[MAX_MOVERS];
+static unsigned char greetKind[MAX_MOVERS];
+static unsigned int greetFrom[MAX_MOVERS];
+static GreetMemo greeted[MAX_MOVERS][GREET_MEMORY];
 
 // Salience bonuses on top of closeness (1 at the same spot, 0 at the radius edge)
 #define NOTICE_STICKY_BONUS    0.35f   // already noticed: attention doesn't flick between equals
@@ -28,6 +45,11 @@ static unsigned int noticeTickCounter = 0;
 void ClearNotices(void) {
     memset(moverNotice, 0, sizeof(moverNotice));
     noticeTickCounter = 0;
+    noticeClock = 0;
+    memset(glanceUntil, 0, sizeof(glanceUntil));
+    memset(greetKind, 0, sizeof(greetKind));
+    memset(greeted, 0, sizeof(greeted));
+    glanceCount = greetCount = 0;
 }
 
 int NoticeTop(int moverIdx) {
@@ -69,6 +91,83 @@ static const NoticeEntry* FindEntry(const MoverNotice* n, int j) {
     return NULL;
 }
 
+int NoticeGlanceAt(int i, bool* away) {
+    if (i < 0 || i >= moverCount || noticeClock >= glanceUntil[i]) return -1;
+    int j = glanceAt[i];
+    if (j < 0 || j >= moverCount || !movers[j].active) return -1;
+    if (away) *away = glanceAway[i];
+    return j;
+}
+
+int NoticeGreeting(int i, float* phase) {
+    if (i < 0 || i >= moverCount || greetKind[i] == GREET_NONE) return GREET_NONE;
+    unsigned int age = noticeClock - greetFrom[i];
+    if (age >= GREET_TICKS) { greetKind[i] = GREET_NONE; return GREET_NONE; }
+    if (phase) *phase = age / (float)GREET_TICKS;
+    return greetKind[i];
+}
+
+static bool GreetedRecently(int i, int j) {
+    for (int k = 0; k < GREET_MEMORY; k++)
+        if (greeted[i][k].who == j + 1 && noticeClock < greeted[i][k].until) return true;
+    return false;
+}
+
+static void RememberGreet(int i, int j) {
+    int slot = 0;
+    for (int k = 0; k < GREET_MEMORY; k++)   // a free or the oldest slot
+        if (noticeClock >= greeted[i][k].until) { slot = k; break; }
+        else if (greeted[i][k].until < greeted[i][slot].until) slot = k;
+    greeted[i][slot] = (GreetMemo){ j + 1, noticeClock + GREET_APART };
+}
+
+// Still in sight of someone it greeted: the greeting holds (no new one until they've been apart)
+static void KeepGreeted(int i, int j) {
+    for (int k = 0; k < GREET_MEMORY; k++)
+        if (greeted[i][k].who == j + 1 && noticeClock < greeted[i][k].until) {
+            greeted[i][k].until = noticeClock + GREET_APART;
+            return;
+        }
+}
+
+static void StartGreet(int i, int j, int kind) {
+    greetKind[i] = (unsigned char)kind;
+    greetFrom[i] = noticeClock;
+    glanceAt[i] = j;
+    glanceAway[i] = false;
+    glanceUntil[i] = noticeClock + GREET_TICKS;
+    RememberGreet(i, j);
+}
+
+// Someone it has just noticed: glance, greet, or look away
+static void ReactToNewlyNoticed(int i, int j) {
+    float like = RelationLike(i, j), fam = RelationFamiliarity(i, j);
+    float dx = movers[j].x - movers[i].x, dy = movers[j].y - movers[i].y;
+    bool near = dx * dx + dy * dy <= (GREET_RANGE * CELL_SIZE) * (GREET_RANGE * CELL_SIZE);
+    if (like <= -20.0f) {   // someone it dislikes: look away
+        if (!glancesEnabled) return;
+        glanceAt[i] = j; glanceAway[i] = true; glanceUntil[i] = noticeClock + GLANCE_TICKS;
+        greetKind[i] = GREET_AWAY; greetFrom[i] = noticeClock;
+        glanceCount++;
+        return;
+    }
+    if (greetingsEnabled && fam >= 15.0f && near && !GreetedRecently(i, j)) {
+        int kind = like >= 50.0f ? GREET_HI : GREET_NOD;
+        StartGreet(i, j, kind);
+        // they greet back if they've seen it too and know it (one greeting each)
+        if (!GreetedRecently(j, i) && RelationLike(j, i) > -20.0f && RelationFamiliarity(j, i) >= 15.0f)
+            StartGreet(j, i, RelationLike(j, i) >= 50.0f ? GREET_HI : GREET_NOD);
+        RelationAdd(i, j, 0.5f, 0.5f);
+        RelationAdd(j, i, 0.5f, 0.5f);
+        greetCount++;
+        return;
+    }
+    if (!glancesEnabled || movers[i].pathIndex < 0) return;   // glances: while walking past
+    if (fam < 15.0f && GetRandomValue(0, 99) >= GLANCE_STRANGER) return;
+    glanceAt[i] = j; glanceAway[i] = false; glanceUntil[i] = noticeClock + GLANCE_TICKS;
+    glanceCount++;
+}
+
 void NoticeMover(int i) {
     MoverNotice* n = &moverNotice[i];
     const Mover* m = &movers[i];
@@ -98,6 +197,7 @@ void NoticeMover(int i) {
                 if (dSq > radiusSq) continue;
                 int ocx = (int)(movers[j].x / CELL_SIZE), ocy = (int)(movers[j].y / CELL_SIZE);
                 if (!HasLineOfSight(mcx, mcy, ocx, ocy, z)) continue;
+                KeepGreeted(i, j);   // in sight (noticed or not): a greeting still holds
 
                 const NoticeEntry* old = FindEntry(n, j);
                 float s = 1.0f - sqrtf(dSq) / radius;
@@ -117,6 +217,10 @@ void NoticeMover(int i) {
             }
         }
     }
+    // The most salient one it hadn't noticed before: glance / greet / look away (unless busy with one)
+    if ((glancesEnabled || greetingsEnabled) && noticeClock >= glanceUntil[i])
+        for (int k = 0; k < fresh.count; k++)
+            if (!FindEntry(n, fresh.e[k].mover)) { ReactToNewlyNoticed(i, fresh.e[k].mover); break; }
     *n = fresh;
     // Seeing someone makes them familiar, slowly
     float seenSec = (noticeEveryTicks < 1 ? 1 : noticeEveryTicks) / (float)TICK_RATE;
@@ -126,6 +230,7 @@ void NoticeMover(int i) {
 void NoticeTick(void) {
     if (!noticeEnabled) return;
     int every = noticeEveryTicks < 1 ? 1 : noticeEveryTicks;
+    noticeClock++;
     unsigned int phase = noticeTickCounter++ % (unsigned int)every;
     for (int i = (int)phase; i < moverCount; i += every) NoticeMover(i);
 }

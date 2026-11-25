@@ -46,6 +46,18 @@ extern float passSlow;              // speed lost at full weight (0..1)
 // up to ~1) and a speed scale. Returns false when there is nobody to give way to.
 bool NoticePassSteer(int moverIdx, float hx, float hy, float* sideX, float* sideY, float* speedScale);
 
+// --- Glances and greetings ---
+// Walking past someone it has just noticed, a mover glances at them (its face turns, the feet
+// keep going): always at someone it knows, sometimes at a stranger. Two who know each other
+// (familiar, not disliked) within 4 cells greet when they meet after being apart (3 minutes out of sight): a nod
+// and a smile, friends a "hi" first; it raises familiarity and like a little. Someone it
+// dislikes: it looks away. Transient (not saved).
+extern bool glancesEnabled, greetingsEnabled;
+extern long glanceCount, greetCount;
+typedef enum { GREET_NONE, GREET_NOD, GREET_HI, GREET_AWAY } GreetKind;
+int NoticeGlanceAt(int moverIdx, bool* away);     // whom it is glancing at (-1 none); away: looking away
+int NoticeGreeting(int moverIdx, float* phase);   // GreetKind now; phase 0..1 through it
+
 // --- Friends and foes (relations.c) ---
 // Seek: an idle wanderer that noticed someone it likes (like >= 20) sometimes walks to a spot
 // near them instead of a random one. Avoid: a walker drifts sideways round someone it dislikes

@@ -743,6 +743,64 @@ describe(hide_and_seek) {
     }
 }
 
+describe(glances_and_greetings) {
+    it("two who know each other meet: both greet (friends say hi), and it warms them a little") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 60.0f, 50.0f);
+        Look();
+        float p;
+        expect(NoticeGreeting(a, &p) == GREET_HI);
+        expect(NoticeGreeting(b, &p) == GREET_HI);
+        expect(NoticeGlanceAt(a, NULL) == b);
+        expect(RelationLike(a, b) > 60.0f);
+        int c = AddMover(5, 9, 1), d = AddMover(7, 9, 1);
+        RelationSetPair(c, d, 10.0f, 30.0f);   // acquaintances: a nod
+        Look();
+        expect(NoticeGreeting(c, &p) == GREET_NOD);
+    }
+
+    it("strangers don't greet; someone disliked: it looks away") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        float p;
+        Look();
+        expect(NoticeGreeting(a, &p) == GREET_NONE);
+        int c = AddMover(5, 9, 1), e = AddMover(7, 9, 1);
+        RelationAdd(c, e, -40.0f, 50.0f);
+        Look();
+        bool away = false;
+        expect(NoticeGlanceAt(c, &away) == e && away);
+        expect(NoticeGreeting(c, &p) == GREET_AWAY);
+        (void)b;
+    }
+
+    it("no second greeting while they stay in sight of each other") {
+        TalkSetup();
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 20.0f, 50.0f);
+        Look();
+        long first = greetCount;
+        expect(first == 1);
+        movers[b].x += 20 * CELL_SIZE;          // out of notice for a moment ...
+        for (int t = 0; t < 10; t++) Look();
+        movers[b].x -= 20 * CELL_SIZE;          // ... and back within a minute
+        for (int t = 0; t < 10; t++) Look();
+        expect(greetCount == first);
+    }
+
+    it("switched off: no glances, no greetings") {
+        TalkSetup();
+        glancesEnabled = greetingsEnabled = false;
+        int a = AddMover(5, 5, 1), b = AddMover(7, 5, 1);
+        RelationSetPair(a, b, 60.0f, 50.0f);
+        Look();
+        float p;
+        expect(NoticeGreeting(a, &p) == GREET_NONE && NoticeGlanceAt(a, NULL) < 0);
+        glancesEnabled = greetingsEnabled = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -755,5 +813,6 @@ int main(int argc, char* argv[]) {
     test(walking_together);
     test(tag);
     test(hide_and_seek);
+    test(glances_and_greetings);
     return summary();
 }

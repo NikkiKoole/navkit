@@ -1762,6 +1762,11 @@ static int MoverFaceView(int i, const Mover* m) {
     } else if (yieldTo >= 0) {              // waiting at a doorway: look at who it lets through
         dx = movers[yieldTo].x - m->x;
         dy = movers[yieldTo].y - m->y;
+    } else if (NoticeGlanceAt(i, NULL) >= 0) {   // a glance / greeting (or looking away)
+        bool away = false;
+        int g = NoticeGlanceAt(i, &away);
+        dx = (movers[g].x - m->x) * (away ? -1.0f : 1.0f);
+        dy = (movers[g].y - m->y) * (away ? -1.0f : 1.0f);
     } else if (m->pathLength > 0 && m->pathIndex >= 0) {
         Point wp = moverPaths[i][m->pathIndex];
         dx = wp.x * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
@@ -1786,6 +1791,11 @@ static int MoverMouth(int i, const Mover* m) {
     if (m->freetimeState == FREETIME_RESTING) return MOUTH_CLOSE;
     if (MoverIsSpeaking(i)) return ((int)(GetTime() * 5.0) & 1) ? MOUTH_OPEN : MOUTH_SMALL;   // talking
     if (MoverNodTime(i) > 0.0f || MoverThanksTime(i) > 0.0f) return MOUTH_SMILE;   // "after you" / thanks
+    float gp = 0.0f;
+    int greet = NoticeGreeting(i, &gp);
+    if (greet == GREET_HI) return gp < 0.35f ? MOUTH_OPEN : MOUTH_SMILE;   // "hi!", then a smile
+    if (greet == GREET_NOD) return MOUTH_SMILE;
+    if (greet == GREET_AWAY) return MOUTH_FLAT;
     if (MoverIsWatching(i)) return MOUTH_SMILE;   // enjoying the show
     if (HideIsCounting(i)) return MOUTH_CLOSE;   // eyes shut, counting
     if (HideIsHidden(i)) return MOUTH_SMALL;     // holding its breath
@@ -1921,6 +1931,10 @@ static void DrawMovers(void) {
         float moverSize = size * MOVER_SIZE;
         float nod = MoverNodTime(i);   // "after you": dips one sprite pixel and back
         if (moverFaces && nod > 0.0f) sy += sinf(nod / 0.6f * 3.14159265f) * moverSize / 8.0f;
+        float gp = 0.0f;               // a greeting: the same nod, in the second half
+        int greet = NoticeGreeting(i, &gp);
+        if (moverFaces && (greet == GREET_NOD || greet == GREET_HI) && gp > 0.4f)
+            sy += sinf((gp - 0.4f) / 0.6f * 3.14159265f) * moverSize / 8.0f;
         Rectangle src = SpriteGetRect(moverFaces ? SPRITE_head_back : SPRITE_head);   // silhouette for clothes
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
 
