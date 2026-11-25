@@ -8,6 +8,7 @@
 #include "../core/scenarios.h"
 #include "../core/games.h"
 #include "../core/describe.h"
+#include "../entities/namegen.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
 #include "../../shared/ui.h"
@@ -18,7 +19,7 @@
 // State
 // ---------------------------------------------------------------------------
 
-typedef enum { PE_HEADER, PE_INFO, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE } PalEntryKind;
+typedef enum { PE_HEADER, PE_INFO, PE_UP, PE_BRANCH, PE_ROW, PE_CHOICE, PE_PLACE } PalEntryKind;
 static bool Pickable(PalEntryKind k) { return k != PE_HEADER && k != PE_INFO; }
 typedef struct {
     PalEntryKind kind;
@@ -92,7 +93,30 @@ static struct {
     SelectionKind kind;
     int idx;
     DescLines desc;
+    bool fromHover;          // the mouse was on it (else: the selection)
 } ctx;
+
+// The cell the mouse was over when / was pressed: its place verbs, and the "here" of commands
+// run from the palette (src/ui/commands.h CommandSetHere)
+static struct { bool valid; int x, y, z; DescLines desc; } cell;
+
+typedef enum { PV_SPAWN_ITEM, PV_SPAWN_MOVER, PV_LOOK, PV_REMOVE_ITEMS, PV_TELEPORT, PV_COUNT } PlaceVerb;
+static const struct { const char* name; const char* help; } placeVerbs[PV_COUNT] = {
+    [PV_SPAWN_ITEM]   = { "Spawn item here",         "spawn <count> <item> on this cell" },
+    [PV_SPAWN_MOVER]  = { "Spawn mover here",        "A new mover stands here" },
+    [PV_LOOK]         = { "Look here",               "Centre the camera on this cell (tp)" },
+    [PV_REMOVE_ITEMS] = { "Remove loose items here", "Items lying on this cell (not reserved, not in a stockpile)" },
+    [PV_TELEPORT]     = { "Teleport selected here",  "The selected mover jumps to this cell" },
+};
+static bool PlaceVerbShown(int v) {
+    if (v == PV_TELEPORT) return SelectionValid() && selection.kind == SEL_MOVER;
+    return true;
+}
+static const char* PlaceVerbLabel(int v) {
+    if (v == PV_TELEPORT && SelectionValid() && selection.kind == SEL_MOVER)
+        return TextFormat("Teleport %s here", MoverDisplayName(selection.idx));
+    return placeVerbs[v].name;
+}
 
 static const char* CtxKindLabel(SelectionKind k) {
     switch (k) {
@@ -109,11 +133,12 @@ static void PickContext(void) {
     ctx.kind = SEL_NONE;
     ctx.idx = -1;
     ctx.desc.count = 0;
+    ctx.fromHover = true;
     if (hoveredMover >= 0)          { ctx.kind = SEL_MOVER;     ctx.idx = hoveredMover; }
     else if (hoveredAnimal >= 0)    { ctx.kind = SEL_ANIMAL;    ctx.idx = hoveredAnimal; }
     else if (hoveredWorkshop >= 0)  { ctx.kind = SEL_WORKSHOP;  ctx.idx = hoveredWorkshop; }
     else if (hoveredStockpile >= 0) { ctx.kind = SEL_STOCKPILE; ctx.idx = hoveredStockpile; }
-    else if (SelectionValid())      { ctx.kind = selection.kind; ctx.idx = selection.idx; }
+    else if (SelectionValid())      { ctx.kind = selection.kind; ctx.idx = selection.idx; ctx.fromHover = false; }
     switch (ctx.kind) {
         case SEL_MOVER:     DescribeMover(ctx.idx, DESC_PLAYER, &ctx.desc); break;
         case SEL_ANIMAL:    DescribeAnimal(ctx.idx, &ctx.desc); break;
@@ -122,6 +147,12 @@ static void PickContext(void) {
         case SEL_BLUEPRINT: DescribeBlueprint(ctx.idx, &ctx.desc); break;
         default: break;
     }
+    // The cell under the mouse (the palette window will cover it)
+    Vector2 g = ScreenToGrid(GetMousePosition());
+    cell.x = (int)g.x; cell.y = (int)g.y; cell.z = currentViewZ;
+    cell.valid = cell.x >= 0 && cell.x < gridWidth && cell.y >= 0 && cell.y < gridHeight;
+    cell.desc.count = 0;
+    if (cell.valid) DescribeCell(cell.x, cell.y, cell.z, &cell.desc);
 }
 
 // A verb row that applies to the context thing
@@ -148,10 +179,12 @@ void Palette_Open(void) {
     pal.cmdRow = -1;
     brushItem = -1;
     PickContext();
+    if (cell.valid) CommandSetHere(cell.x, cell.y, cell.z);
 }
 
 void Palette_Close(void) {
     if (pal.open) SaveUse();
+    CommandClearHere();
     pal.open = false;
     pal.cmdRow = -1;
 }
@@ -245,12 +278,36 @@ static void AddCommandChoices(void) {
     }
 }
 
+static bool WordMatch(const char* text, const char* q) {   // a word of text starts with q
+    size_t n = strlen(q);
+    for (const char* c = text; *c; c++)
+        if ((c == text || c[-1] == ' ') && strncasecmp(c, q, n) == 0) return true;
+    return false;
+}
+
+// "Here: 12,7 (level 1)", a few describe lines, the place verbs (filtered by the query)
+static void AddCellSection(bool filtered) {
+    if (!cell.valid || (ctx.fromHover && ctx.kind != SEL_NONE)) return;
+    bool any = false;
+    for (int v = 0; v < PV_COUNT; v++) {
+        if (!PlaceVerbShown(v) || (filtered && !WordMatch(PlaceVerbLabel(v), pal.query))) continue;
+        if (!any) {
+            // (describe line 0 is "Cell (x, y, z)": the header says that already)
+            Add(PE_HEADER, -1, TextFormat("Here: %d,%d (level %d)", cell.x, cell.y, cell.z));
+            if (!filtered) for (int i = 1; i < cell.desc.count && i < 4; i++) Add(PE_INFO, -1, cell.desc.lines[i].text);
+            any = true;
+        }
+        Add(PE_PLACE, v, PlaceVerbLabel(v));
+    }
+}
+
 static void BuildEntries(void) {
     pal.count = 0;
     pal.nearMiss = false;
     if (pal.cmdRow >= 0) {
         AddCommandChoices();
     } else if (pal.qlen > 0) {
+        AddCellSection(true);
         // The hovered thing's verbs that match come first
         bool any = false;
         for (int r = 0; r < FindCount(); r++) {
@@ -264,6 +321,7 @@ static void BuildEntries(void) {
         else if (any && n > 0) Add(PE_HEADER, -1, "Everything");
         for (int i = 0; i < n; i++) if (!IsCtxVerb(hits[i])) Add(PE_ROW, hits[i], FindRowAt(hits[i])->label);
     } else {
+        if (pal.path[0] == '\0') AddCellSection(false);
         if (pal.path[0] == '\0' && ctx.kind != SEL_NONE) {
             // The hovered (or selected) thing: who it is, a few lines about it, what you can do
             Add(PE_HEADER, -1, TextFormat("%s: %s", CtxKindLabel(ctx.kind), ctx.desc.count ? ctx.desc.lines[0].text : ""));
@@ -387,6 +445,51 @@ static void ActivateRow(int row) {
     }
 }
 
+static int CommandRowNamed(const char* name) {
+    for (int r = 0; r < FindCount(); r++)
+        if (FindRowAt(r)->kind == FIND_COMMAND && strcmp(FindRowAt(r)->name, name) == 0) return r;
+    return -1;
+}
+
+static void ActivatePlace(int v) {
+    switch (v) {
+        case PV_SPAWN_ITEM: {   // type the count and item; spawn runs at this cell (CommandHere)
+            int row = CommandRowNamed("spawn");
+            if (row < 0) return;
+            pal.cmdRow = row;
+            SetQuery("1 ");
+            pal.sel = 0;
+            pal.scroll = 0;
+            return;
+        }
+        case PV_SPAWN_MOVER: {
+            int before = moverCount;
+            SpawnMoverAt(cell.x, cell.y, cell.z);
+            if (moverCount > before) AddMessage(TextFormat("Spawned %s at %d,%d", MoverDisplayName(moverCount - 1), cell.x, cell.y), GREEN);
+            else AddMessage("Can't stand there", YELLOW);
+            break;
+        }
+        case PV_LOOK: CommandRunLine(TextFormat("tp %d %d %d", cell.x, cell.y, cell.z)); break;
+        case PV_REMOVE_ITEMS: {
+            int removed = 0;
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                Item* it = &items[i];
+                if (!it->active || it->state != ITEM_ON_GROUND || it->reservedBy != -1) continue;
+                if ((int)(it->x / CELL_SIZE) != cell.x || (int)(it->y / CELL_SIZE) != cell.y || (int)it->z != cell.z) continue;
+                DeleteItem(i);
+                removed++;
+            }
+            AddMessage(TextFormat("Removed %d item%s", removed, removed == 1 ? "" : "s"), removed ? GREEN : GRAY);
+            break;
+        }
+        case PV_TELEPORT:
+            if (SelectionValid() && selection.kind == SEL_MOVER) MoverTeleportTo(selection.idx, cell.x, cell.y, cell.z);
+            break;
+        default: break;
+    }
+    Palette_Close();
+}
+
 static void Activate(int i) {
     if (i < 0 || i >= pal.count) {
         if (pal.cmdRow >= 0) RunCommandLine();   // no choices: run what was typed
@@ -404,6 +507,7 @@ static void Activate(int i) {
             break;
         }
         case PE_ROW: ActivateRow(e->row); break;
+        case PE_PLACE: ActivatePlace(e->row); break;
         case PE_CHOICE: {
             // Complete the word being typed; run when that was the last argument
             const char* partial;
@@ -585,9 +689,10 @@ bool Palette_Update(void) {
     bool pinKey = IsKeyPressed(KEY_ENTER) && shift;
     if ((IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && hover >= 0) || pinKey) {
         int i = pinKey ? pal.sel : hover;
-        if (i >= 0 && i < pal.count && pal.entries[i].kind == PE_ROW)
+        if (i >= 0 && i < pal.count && pal.entries[i].kind == PE_ROW) {
             FindSetPinned(pal.entries[i].row, !FindIsPinned(pal.entries[i].row));
             SaveUse();
+        }
     } else if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
         Activate(pal.count > 0 ? pal.sel : -1);
     }
@@ -664,6 +769,10 @@ void Palette_Draw(void) {
                 DrawTextShadow(TextFormat("%s  >", e->text), (int)lx, (int)ty, PAL_FONT, WHITE);
                 break;
             case PE_CHOICE: DrawTextShadow(e->text, (int)lx, (int)ty, PAL_FONT, WHITE); break;
+            case PE_PLACE:
+                DrawTextShadow(e->text, (int)lx, (int)ty, PAL_FONT, WHITE);
+                DrawRight("here", right, ty, PAL_MUTED);
+                break;
             case PE_ROW: {
                 const FindRow* fr = FindRowAt(e->row);
                 bool pin = FindIsPinned(e->row);
@@ -713,6 +822,8 @@ void Palette_Draw(void) {
     if (pal.cmdRow >= 0) {   // command mode: the usage made from its argument spec
         CommandUsage(CommandAt(FindRowAt(pal.cmdRow)->ref), usage, sizeof(usage));
         about = usage;
+    } else if (pal.sel < pal.count && pal.entries[pal.sel].kind == PE_PLACE) {
+        about = placeVerbs[pal.entries[pal.sel].row].help;
     } else if (pal.sel < pal.count && pal.entries[pal.sel].kind == PE_ROW) {
         const FindRow* fr = FindRowAt(pal.entries[pal.sel].row);
         about = fr->help ? TextFormat("%s: %s", fr->path, fr->help) : fr->path;

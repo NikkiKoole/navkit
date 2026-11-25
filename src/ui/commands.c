@@ -71,13 +71,25 @@ static const char* ScenarioNameAt(int i) { return ScenarioAt(i)->name; }
 static int GameNameCount(void) { return GameCount(); }
 static const char* GameNameAt(int i) { return GameAt(i)->name; }
 
+// ---- here: the place commands act on ----
+static struct { bool set; int x, y, z; } here;
+void CommandSetHere(int x, int y, int z) { here.set = true; here.x = x; here.y = y; here.z = z; }
+void CommandClearHere(void) { here.set = false; }
+bool CommandHere(int* x, int* y, int* z) {
+    if (here.set) { *x = here.x; *y = here.y; *z = here.z; }
+    else {
+        Vector2 g = ScreenToGrid(GetMousePosition());
+        *x = (int)g.x; *y = (int)g.y; *z = currentViewZ;
+    }
+    return *x >= 0 && *x < gridWidth && *y >= 0 && *y < gridHeight && *z >= 0 && *z < gridDepth;
+}
+
 // ---- spawn <count> <item> ----
 static void RunSpawn(const CmdValue* v) {
     int count = v[0].i;
     ItemType type = (ItemType)v[1].i;
-    Vector2 gridPos = ScreenToGrid(GetMousePosition());
-    int mx = (int)gridPos.x, my = (int)gridPos.y, mz = currentViewZ;
-    if (mx < 0 || mx >= gridWidth || my < 0 || my >= gridHeight || mz < 0 || mz >= gridDepth) {
+    int mx, my, mz;
+    if (!CommandHere(&mx, &my, &mz)) {
         Say(YELLOW, "Mouse position out of bounds");
         return;
     }
@@ -104,7 +116,7 @@ static void RunSpawn(const CmdValue* v) {
             spawned++;
         }
     }
-    Say(GREEN, "Spawned %d %s at mouse position", spawned, itemDefs[type].name);
+    Say(GREEN, "Spawned %d %s at %d,%d,%d", spawned, itemDefs[type].name, mx, my, mz);
 }
 
 // ---- clear <what> ----
