@@ -18,7 +18,7 @@
 #include <stdlib.h>
 
 Talk talks[MAX_TALKS];
-bool talkEnabled = false;   // a per-game rule: games set it (dollhouse on)
+bool talkEnabled = false;   // a per-game rule: games set it (on in survival, island, dollhouse, town)
 float talkStartRadius = 3.0f;
 float talkChance = 0.05f;
 float talkMinSeconds = 6.0f;

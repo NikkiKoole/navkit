@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 114
+#define CURRENT_SAVE_VERSION 115
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -114,6 +114,11 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v114: saltpeter and gunpowder (blast mining): stockpile allowedTypes grows from
 // V113_ITEM_TYPE_COUNT. DESIGNATION_BLAST and JOBTYPE_BLAST are appended (no size change).
 #define V114_GUNPOWDER 114
+// v115: game rules after the springs settings: talkEnabled, autoGatherings, moodEnabled,
+// jobDistanceWeight, toiletsPlumbed, and the running game's name (char[16], "" = none).
+// Older saves: survival-mode saves get survival's rules; others keep the session's values.
+#define V115_GAME_RULES 115
+#define SAVED_GAME_NAME_LEN 16
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
 #define MOVER_V108_SIZE 360   // sizeof(Mover) in v106-v108 (ends with wornBack)

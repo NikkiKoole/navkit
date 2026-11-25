@@ -586,7 +586,7 @@ static const Setting settings[] = {
     SET_INT("noticeEveryTicks", "Look every N ticks", "Entities/Movers/Noticing", noticeEveryTicks, 1.0f, 1, 120,
       "Each mover looks around once per this many ticks (staggered over movers).", NULL),
     SET_BOOL("talk", "Stop to Talk", "Entities/Movers/Noticing", talkEnabled,
-      "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in the dollhouse. Needs Noticing."),
+      "Two idle movers that noticed each other close by may stop, face each other and talk a while. A game rule: on in survival, island, dollhouse and town. Needs Noticing."),
     SET_FLOAT("watchRadius", "Watch: range (cells)", "Entities/Movers/Noticing", watchRadius, 0.1f, 1.0f, 20.0f,
       "How far an idle mover comes from to watch something (a performer), if it can see it.", NULL),
     SET_FLOAT("watchChance", "Watch: chance", "Entities/Movers/Noticing", watchChance, 0.01f, 0.0f, 1.0f,

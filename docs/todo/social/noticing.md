@@ -45,8 +45,10 @@ Entities/Movers/Walls for doorways).
 | Cover | a crouching mover (a hider in its spot) behind low cover is out of sight from the far side: railings, bushes (from every side), tables, desks, sofas, tills, baths, fridges; within 2 cells you look over it. Hiders pick spots behind cover, the seeker goes to look behind it; drawn smaller and darker | `cover` | `cover` | found after 8.8 s vs 6.6 s (12 players: 11.8 vs 5.5) |
 | Personal space | how close two stand and pass by how they feel (`PersonalSpaceScale`, relations.c): friends 0.75x (closer and they overlap), known 1x, strangers 1.25x, disliked up to 1.5x; talk circles, walking side by side (only wider: 0.8 cells is already close), polite passing (friends pass closer; never a wider berth than normal: that pushed walkers through one-way doors) | `personalSpace` | `personal-space` | talking pair: friends 1.14 cells apart, strangers 1.80 (off: 1.5 both) |
 
-Game rules: `talkEnabled` on in the dollhouse only (talks cut walking throughput in the
-pathfinding scenarios); `autoGatherings` on in survival, island and dollhouse. Walks only
+Game rules: `talkEnabled` on in survival, island, dollhouse and town (off in the sandbox and
+the pathfinding scenarios, where talks cut walking throughput); `autoGatherings` on in survival,
+island and dollhouse. Both are saved since v115 (with `moodEnabled`, `jobDistanceWeight`,
+`toiletsPlumbed` and the running game). Walks only
 outdoors (`IsExposedToSky`).
 
 ## Next

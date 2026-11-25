@@ -130,6 +130,11 @@ static inline bool RowElemIsZero(const unsigned char* p, size_t es) {
 #define MARKER_SETTINGS 0x53455454  // "SETT"
 #define MARKER_END      0x454E4421  // "END!"
 
+// The running game's name (games.c sets it in StartGame, GameCurrent reads it): saved since
+// v115 so a load brings back that game's play bar. Lives here, not in games.c, so the test
+// build (no games.c) links.
+char runningGameName[SAVED_GAME_NAME_LEN] = "";
+
 // Settings save/load macro table
 // X-macro for all tweakable simulation settings
 // Adding a new setting: add one line here, it will be saved/loaded automatically
@@ -594,6 +599,14 @@ bool SaveWorld(const char* filename) {
     // v103+: springs
     fwrite(&springTrickle, sizeof(bool), 1, f);
     fwrite(&springRate, sizeof(float), 1, f);
+    // v115+: game rules each game's start sets (a load used to keep the session's values)
+    // and which game is running (its play bar tools)
+    fwrite(&talkEnabled, sizeof(bool), 1, f);
+    fwrite(&autoGatherings, sizeof(bool), 1, f);
+    fwrite(&moodEnabled, sizeof(bool), 1, f);
+    fwrite(&jobDistanceWeight, sizeof(float), 1, f);
+    fwrite(&toiletsPlumbed, sizeof(bool), 1, f);
+    fwrite(runningGameName, 1, SAVED_GAME_NAME_LEN, f);
 
     // Simulation accumulators (static locals, saved via getters)
     float accum;
@@ -1603,6 +1616,22 @@ bool LoadWorld(const char* filename) {
         fread(&springRate, sizeof(float), 1, f);
     } else {
         springTrickle = false;   // saved with taps
+    }
+    if (version >= V115_GAME_RULES) {
+        fread(&talkEnabled, sizeof(bool), 1, f);
+        fread(&autoGatherings, sizeof(bool), 1, f);
+        fread(&moodEnabled, sizeof(bool), 1, f);
+        fread(&jobDistanceWeight, sizeof(float), 1, f);
+        fread(&toiletsPlumbed, sizeof(bool), 1, f);
+        fread(runningGameName, 1, SAVED_GAME_NAME_LEN, f);
+        runningGameName[SAVED_GAME_NAME_LEN - 1] = '\0';   // GameCurrent() picks it up
+    } else if (gameMode == GAME_MODE_SURVIVAL) {
+        // Older survival saves: survival's rules (games.c SetSurvivalRules)
+        talkEnabled = true;
+        autoGatherings = true;
+        moodEnabled = true;
+        jobDistanceWeight = 0.2f;
+        toiletsPlumbed = false;
     }
     TideAfterLoad();   // the sea list from the loaded water cells' isSea bits
 

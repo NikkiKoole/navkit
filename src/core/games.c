@@ -198,8 +198,8 @@ static void SetSurvivalRules(void) {
         }
     }
     gameMode = GAME_MODE_SURVIVAL;
-    talkEnabled = false;      // idle movers stopping to chat: dollhouse only for now
-    autoGatherings = true;    // ... but settlers do gather round a burning fire
+    talkEnabled = true;       // idle settlers stop to chat, walk together, mingle (talk.c)
+    autoGatherings = true;    // and gather round a burning fire
     hungerEnabled = true;
     energyEnabled = true;
     bodyTempEnabled = true;
@@ -714,6 +714,7 @@ static const GameDef games[] = {
 #define GAME_COUNT ((int)(sizeof(games) / sizeof(games[0])))
 
 static const GameDef* currentGame = NULL;
+extern char runningGameName[SAVED_GAME_NAME_LEN];   // saveload.c (saved since v115)
 
 int GameCount(void) { return GAME_COUNT; }
 
@@ -733,10 +734,18 @@ const char** GameNames(void) {
     return names;
 }
 
-const GameDef* GameCurrent(void) { return currentGame; }
+const GameDef* GameCurrent(void) {
+    // A load sets runningGameName (saveload.c, v115+): follow it, with that game's build "how"
+    const char* cur = currentGame ? currentGame->name : "";
+    if (strcmp(cur, runningGameName) != 0) {
+        currentGame = runningGameName[0] ? GameFind(runningGameName) : NULL;
+        if (currentGame) buildNow = currentGame->buildNow;
+    }
+    return currentGame;
+}
 
 const GameDef* GameActive(void) {
-    if (currentGame) return currentGame;
+    if (GameCurrent()) return currentGame;
     return GameFind(gameMode == GAME_MODE_SURVIVAL ? "survival" : "sandbox");
 }
 
@@ -761,6 +770,7 @@ bool StartGame(const char* name) {
     buildNow = g->buildNow;
     if (!devUI) InputMode_ExitToNormal();
     currentGame = g;
+    snprintf(runningGameName, SAVED_GAME_NAME_LEN, "%s", g->name);
     TraceLog(LOG_INFO, "Game '%s': %d movers on %dx%dx%d", g->name, moverCount, gridWidth, gridHeight, gridDepth);
     return true;
 }

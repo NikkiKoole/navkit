@@ -14753,6 +14753,38 @@ describe(construction_cancellation) {
     }
 }
 
+// Game rules each game's start sets, and which game runs: saved since v115 (a load used to
+// keep whatever the session had, so a dollhouse save loaded at startup had no talk)
+extern bool talkEnabled, autoGatherings, moodEnabled, toiletsPlumbed;
+extern char runningGameName[];
+describe(game_rules_save) {
+    it("talk, gatherings, mood, job distance, plumbing and the running game survive a load") {
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n");
+        ClearMovers();
+        ClearItems();
+        talkEnabled = true; autoGatherings = false; moodEnabled = false;
+        jobDistanceWeight = 0.7f; toiletsPlumbed = true;
+        strcpy(runningGameName, "dollhouse");
+        expect(SaveWorld("/tmp/test_game_rules_save.bin"));
+
+        talkEnabled = false; autoGatherings = true; moodEnabled = true;
+        jobDistanceWeight = 0.0f; toiletsPlumbed = false;
+        runningGameName[0] = '\0';
+        expect(LoadWorld("/tmp/test_game_rules_save.bin"));
+
+        expect(talkEnabled == true);
+        expect(autoGatherings == false);
+        expect(moodEnabled == false);
+        expect(jobDistanceWeight > 0.69f && jobDistanceWeight < 0.71f);
+        expect(toiletsPlumbed == true);
+        expect(strcmp(runningGameName, "dollhouse") == 0);
+        moodEnabled = true; autoGatherings = false; talkEnabled = false;   // test defaults back
+        jobDistanceWeight = 0.0f; toiletsPlumbed = true; runningGameName[0] = '\0';
+    }
+}
+
 describe(belt_removal_job) {
     it("a mover walks onto a marked belt and takes it down: the load drops, one plank back") {
         InitGridFromAsciiWithChunkSize(
@@ -15149,6 +15181,7 @@ int main(int argc, char* argv[]) {
     test(table_construction);
     test(workshop_linked_inputs);
     test(belt_removal_job);
+    test(game_rules_save);
     
     return summary();
 }
