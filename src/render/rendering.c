@@ -1930,6 +1930,10 @@ static void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
+        if (MoverCrouching(i)) {   // ducked down behind cover: smaller, a bit in shadow
+            moverSize *= 0.8f;
+            moverColor = MultiplyColor(moverColor, (Color){200, 200, 200, 255});
+        }
         float nod = MoverNodTime(i);   // "after you": dips one sprite pixel and back
         if (moverFaces && nod > 0.0f) sy += sinf(nod / 0.6f * 3.14159265f) * moverSize / 8.0f;
         float gp = 0.0f;               // a greeting: the same nod, in the second half

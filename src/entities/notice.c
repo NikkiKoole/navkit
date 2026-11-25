@@ -3,6 +3,8 @@
 #include "mover.h"
 #include "../core/time.h"
 #include "relations.h"
+#include "chase.h"
+#include "furniture.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include <math.h>
@@ -63,6 +65,58 @@ bool CanSeeCell(int x0, int y0, int x1, int y1, int z) {
         if ((x != x1 || y != y1) && BlocksSight(x, y, z)) return false;
     }
     return true;
+}
+
+// --- Cover: crouching behind something low ---
+bool coverEnabled = true;
+#define COVER_OVERLOOK 2.0f   // cells: this close, you look over the cover
+
+bool IsLowCover(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    CellType c = GRID(x, y, z);
+    if (c == CELL_RAILING || c == CELL_BUSH) return true;
+    if (!FURNITURE_MOVE_COST(x, y, z)) return false;   // no furniture here (cheap test first)
+    int f = GetFurnitureAt(x, y, z);
+    if (f < 0) return false;
+    switch (furniture[f].type) {
+        case FURNITURE_TABLE: case FURNITURE_DESK: case FURNITURE_SOFA: case FURNITURE_TILL:
+        case FURNITURE_BATH: case FURNITURE_FRIDGE: return true;
+        default: return false;
+    }
+}
+
+// Low cover right at the target, on the side the viewer looks from: the target's own cell is
+// a bush, or the last cell(s) the line passes before reaching it are cover
+bool CoverBetween(int x0, int y0, int x1, int y1, int z) {
+    if (GRID(x1, y1, z) == CELL_BUSH) return true;   // in a bush: hidden from every side
+    int dx = abs(x1 - x0), dy = -abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+    int x = x0, y = y0, px = x0, py = y0;
+    while (x != x1 || y != y1) {   // walk to the target, remembering the cell before it
+        int e2 = 2 * err;
+        px = x; py = y;
+        if (e2 >= dy) { err += dy; x += sx; }
+        if (e2 <= dx) { err += dx; y += sy; }
+    }
+    if (px == x1 && py == y1) return false;
+    if (IsLowCover(px, py, z)) return true;
+    if (px != x1 && py != y1)   // came in diagonally: either corner covers
+        return IsLowCover(px, y1, z) || IsLowCover(x1, py, z);
+    return false;
+}
+
+bool CanSeeMover(int viewer, int target) {
+    const Mover* a = &movers[viewer];
+    const Mover* b = &movers[target];
+    int z = (int)a->z;
+    if ((int)b->z != z) return false;
+    int ax = (int)(a->x / CELL_SIZE), ay = (int)(a->y / CELL_SIZE);
+    int bx = (int)(b->x / CELL_SIZE), by = (int)(b->y / CELL_SIZE);
+    if (!CanSeeCell(ax, ay, bx, by, z)) return false;
+    if (!coverEnabled || !MoverCrouching(target)) return true;
+    float dx = (b->x - a->x) / CELL_SIZE, dy = (b->y - a->y) / CELL_SIZE;
+    if (dx * dx + dy * dy <= COVER_OVERLOOK * COVER_OVERLOOK) return true;
+    return !CoverBetween(ax, ay, bx, by, z);
 }
 
 void ClearNotices(void) {
@@ -200,7 +254,6 @@ void NoticeMover(int i) {
     float radius = noticeRadius * CELL_SIZE;
     float radiusSq = radius * radius;
     int z = (int)m->z;
-    int mcx = (int)(m->x / CELL_SIZE), mcy = (int)(m->y / CELL_SIZE);
 
     int radCells = (int)ceilf(radius * moverGrid.invCellSize);
     int gx0 = (int)(m->x * moverGrid.invCellSize), gy0 = (int)(m->y * moverGrid.invCellSize);
@@ -218,8 +271,7 @@ void NoticeMover(int i) {
                 float dx = movers[j].x - m->x, dy = movers[j].y - m->y;
                 float dSq = dx * dx + dy * dy;
                 if (dSq > radiusSq) continue;
-                int ocx = (int)(movers[j].x / CELL_SIZE), ocy = (int)(movers[j].y / CELL_SIZE);
-                if (!CanSeeCell(mcx, mcy, ocx, ocy, z)) continue;
+                if (!CanSeeMover(i, j)) continue;
                 KeepGreeted(i, j);   // in sight (noticed or not): a greeting still holds
 
                 const NoticeEntry* old = FindEntry(n, j);

@@ -998,6 +998,62 @@ static bool PackHuntCheck(char* why, int whyLen) {
     return true;
 }
 
+// cover: hide and seek in a garden with only low cover (railing pieces, bush clumps, tables):
+// nothing to hide behind but things you can see over. Hiders crouch in their spot. Compare
+// setting cover on/off: how long hiders stay hidden, and how much of their hidden time the
+// seeker had them in plain sight (in range and line of sight, but they were behind cover).
+static long cvHiddenTicks, cvInSightTicks, cvCoveredTicks;
+
+static void SetupCover(void) {
+    cvHiddenTicks = cvInSightTicks = cvCoveredTicks = 0;
+    PhWall(5, 6, 8, 6, CELL_RAILING);   PhWall(23, 6, 26, 6, CELL_RAILING);
+    PhWall(5, 25, 8, 25, CELL_RAILING); PhWall(23, 25, 26, 25, CELL_RAILING);
+    PhWall(13, 9, 18, 9, CELL_RAILING); PhWall(13, 22, 18, 22, CELL_RAILING);
+    PhWall(9, 13, 9, 18, CELL_RAILING); PhWall(22, 13, 22, 18, CELL_RAILING);
+    static const int bushes[][2] = {{3, 15}, {3, 16}, {4, 16}, {28, 15}, {28, 16}, {27, 15},
+                                    {15, 3}, {16, 3}, {16, 4}, {15, 28}, {16, 28}, {15, 27},
+                                    {11, 11}, {20, 20}, {11, 20}, {20, 11}};
+    for (int k = 0; k < (int)(sizeof(bushes) / sizeof(bushes[0])); k++) GRID(bushes[k][0], bushes[k][1], 1) = CELL_BUSH;
+    BuildEntrances();
+    BuildGraph();
+    SpawnFurniture(6, 11, 1, FURNITURE_TABLE, MAT_OAK);  SpawnFurniture(25, 11, 1, FURNITURE_TABLE, MAT_OAK);
+    SpawnFurniture(6, 20, 1, FURNITURE_TABLE, MAT_OAK);  SpawnFurniture(25, 20, 1, FURNITURE_TABLE, MAT_OAK);
+    InvalidateLighting();
+    endlessMoverMode = true;
+    noticeEnabled = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 8;
+    SpawnMoverAt(16, 16, 1);   // mover 0: the first seeker
+    for (int i = 1; i < n; i++) SpawnMoverAt(14 + i % 5, 14 + (i / 5) * 4, 1);
+    for (int i = 0; i < moverCount; i++) ChaseSetPlayer(i, true);
+    HideSeekStart(0);
+    currentViewZ = 1;
+    AddMessage(TextFormat("Cover: hide and seek with only low cover, %d players (crouching hides: %s)", n, coverEnabled ? "on" : "off"), GREEN);
+}
+
+static void CoverTickStats(void) {
+    int s = HideSeeker();
+    if (s < 0 || HideIsCounting(s)) return;
+    for (int i = 0; i < moverCount; i++) {
+        if (!HideIsHidden(i)) continue;
+        cvHiddenTicks++;
+        float dx = (movers[i].x - movers[s].x) / CELL_SIZE, dy = (movers[i].y - movers[s].y) / CELL_SIZE;
+        if (dx * dx + dy * dy > noticeRadius * noticeRadius) continue;
+        int sx = (int)(movers[s].x / CELL_SIZE), sy = (int)(movers[s].y / CELL_SIZE);
+        if (!CanSeeCell(sx, sy, (int)(movers[i].x / CELL_SIZE), (int)(movers[i].y / CELL_SIZE), 1)) continue;
+        cvInSightTicks++;   // the seeker is in range with a clear line
+        if (!CanSeeMover(s, i)) cvCoveredTicks++;   // ... but it's crouched behind cover
+    }
+}
+
+static void CoverPrintStats(void) {
+    printf("Cover: %s; rounds: %ld, found: %ld, found after %.1f s of seeking on average\n",
+           coverEnabled ? "on" : "off", hideRounds, hideFoundCount,
+           hideFoundCount ? hideFoundSecondsSum / hideFoundCount : 0.0);
+    printf("Seeker in range with a clear line: %.1f%% of hidden time; of that, behind cover: %.0f%%\n",
+           cvHiddenTicks ? 100.0 * cvInSightTicks / cvHiddenTicks : 0.0,
+           cvInSightTicks ? 100.0 * cvCoveredTicks / cvInSightTicks : 0.0);
+}
+
 static void SetupLadders(void) {
     ResetLadderStats();
     BuildLadderDeck();
@@ -4373,6 +4429,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupFaces,    NULL, NULL, NULL, 0, 0},
     {"pack-hunt",  "4 hunters on 1 runner in an arena with pillars and railings: drive, cut off, flank (setting packTactics)",
                    NULL,        SetupPackHunt, NULL, PackHuntPrintStats, PackHuntCheck, 0, 0},
+    {"cover",      "Hide and seek with only low cover (railings, bushes, tables): hiders crouch behind it (setting cover)",
+                   NULL,        SetupCover,    CoverTickStats, CoverPrintStats, HideAndSeekCheck, 0, 0},
     {"follow-leader", "Follow the leader round the pillars, 6 players in a line (setting followTrail)",
                    NULL,        SetupFollowLeader, FollowLeaderTickStats, FollowLeaderPrintStats, NULL, 0, 0},
     {"campfire",   "A fire and a burning barrel on a lawn, 12 wanderers: gatherings the world starts by itself (autoGatherings)",

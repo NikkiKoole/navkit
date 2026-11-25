@@ -627,6 +627,8 @@ static const Setting settings[] = {
       "Walkers steer round someone they dislike (like <= -20) and wanderers don't pick a goal near them."),
     SET_BOOL("hideSmart", "Hide: smart", "Entities/Movers/Noticing", hideSmart,
       "Hide and seek: hiders pick a spot out of sight of the seeker's home, tucked in by walls, away from the others. Off: any spot in range."),
+    SET_BOOL("cover", "Cover: crouching hides", "Entities/Movers/Noticing", coverEnabled,
+      "A crouching mover (a hider in its spot) behind low cover - a railing, bush, table, desk, sofa - can't be seen from the far side, unless you're within 2 cells. In a bush: from every side. The seeker goes to look behind cover. Off: crouching hides nothing."),
     SET_BOOL("followTrail", "Follow: the trail", "Entities/Movers/Noticing", followTrail,
       "Follow the leader: each follows the route the one ahead took. Off: straight at the one ahead (cuts corners)."),
     SET_BOOL("packTactics", "Pack: tactics", "Entities/Movers/Noticing", packTactics,

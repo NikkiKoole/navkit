@@ -1131,6 +1131,59 @@ describe(pack_hunt) {
     }
 }
 
+describe(cover) {
+    it("low cover: right at the target, on the viewer's side") {
+        TagSetup();
+        GRID(10, 6, 1) = CELL_RAILING;
+        expect(IsLowCover(10, 6, 1));
+        expect(CoverBetween(5, 6, 11, 6, 1));     // behind the railing, seen from the west
+        expect(!CoverBetween(16, 6, 11, 6, 1));   // seen from the east: in the open
+        expect(!CoverBetween(5, 6, 12, 6, 1));    // a cell further: the railing isn't at it
+        expect(CoverBetween(5, 3, 11, 7, 1));     // a slanted line still comes in over it
+    }
+
+    it("a bush hides from every side; a table is cover too") {
+        TagSetup();
+        GRID(12, 6, 1) = CELL_BUSH;
+        expect(CoverBetween(5, 6, 12, 6, 1) && CoverBetween(18, 6, 12, 6, 1) && CoverBetween(12, 1, 12, 6, 1));
+        ClearFurniture();
+        SpawnFurniture(10, 3, 1, FURNITURE_TABLE, MAT_OAK);
+        expect(IsLowCover(10, 3, 1));
+        expect(CoverBetween(5, 3, 11, 3, 1));
+        SpawnFurniture(10, 9, 1, FURNITURE_CHAIR, MAT_OAK);
+        expect(!IsLowCover(10, 9, 1));            // a chair: no
+        ClearFurniture();
+    }
+
+    it("a hider crouched behind a railing isn't found; with cover off it is") {
+        for (int on = 1; on >= 0; on--) {
+            TagSetup();
+            coverEnabled = on;
+            GRID(10, 6, 1) = CELL_RAILING;
+            int s = AddMover(6, 6, 1), h = AddMover(11, 6, 1);
+            ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+            HideSeekStart(s);
+            movers[h].pathLength = 0; movers[h].pathIndex = -1;   // stays put: its spot
+            RunChase(10.5f);
+            expect(HideIsHidden(h) == (bool)on);
+            expect(MoverCrouching(h) == (bool)on);
+            expect(hideFoundCount == (on ? 0 : 1));   // (found, the only hider: a new round starts)
+        }
+        coverEnabled = true;
+    }
+
+    it("up close you look over it") {
+        TagSetup();
+        GRID(10, 6, 1) = CELL_RAILING;
+        int s = AddMover(9, 6, 1), h = AddMover(11, 6, 1);
+        ChaseSetPlayer(s, true); ChaseSetPlayer(h, true);
+        HideSeekStart(s);
+        movers[h].pathLength = 0; movers[h].pathIndex = -1;
+        RunChase(10.5f);
+        expect(hideFoundCount == 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1150,5 +1203,6 @@ int main(int argc, char* argv[]) {
     test(auto_gatherings);
     test(follow_the_leader);
     test(pack_hunt);
+    test(cover);
     return summary();
 }

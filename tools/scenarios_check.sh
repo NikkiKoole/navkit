@@ -52,6 +52,7 @@ done <<'EOF'
 14  | 0 | --scenario campfire
 27  | 0 | --scenario follow-leader
 127 | 0 | --scenario pack-hunt
+33  | 0 | --scenario cover
 38  | 0 | --scenario crafting
 0   | 0 | --scenario explosions
 0   | 0 | --scenario throwing

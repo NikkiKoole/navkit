@@ -33,6 +33,16 @@ extern int noticeEveryTicks;        // each mover looks around once per this man
 // (HasLineOfSight in mover.c is "can walk there straight": it stops at railings too.)
 bool CanSeeCell(int x0, int y0, int x1, int y1, int z);
 
+// Cover: a crouching mover (MoverCrouching in chase.h: a hider in its spot) behind low cover is
+// out of sight from the far side. Low cover: railings, bushes (in a bush: from every side),
+// tables, desks, sofas, tills, baths, fridges. It has to be right at the mover (its own cell for
+// a bush, else the cell the line comes in through); within COVER_OVERLOOK (2 cells) you look
+// over it. Setting coverEnabled (off: crouching hides nothing).
+extern bool coverEnabled;
+bool IsLowCover(int x, int y, int z);
+bool CoverBetween(int x0, int y0, int x1, int y1, int z);   // seen from cell 0, is cell 1 behind cover
+bool CanSeeMover(int viewer, int target);   // same level, in sight, not crouched behind cover
+
 void NoticeTick(void);              // after movement (uses moverGrid)
 void ClearNotices(void);
 void NoticeMover(int moverIdx);     // one mover looks around now (NoticeTick staggers these)

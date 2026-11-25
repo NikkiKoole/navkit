@@ -41,6 +41,7 @@ Entities/Movers/Walls for doorways).
 | Follow the leader | the line walks the leader's exact route (trails) | `followTrail` | `follow-leader` | 0.05 cells off the route vs 0.27 |
 | Pack hunt | 4 hunters on 1 runner: the nearest drives, one cuts it off where it's going, two flank; the runner flees from all of them (not past one), tires | `packTactics`, `packSpeed` | `pack-hunt` | catch in 9.3 s vs 15.4 s all-straight (38.5 s at equal speed) |
 | Sight | `CanSeeCell`: walls block, railings (half height) and windows don't; noticing, gatherings, hide and seek use it (walking straight stays `HasLineOfSight`) | | `pack-hunt` (railings) | |
+| Cover | a crouching mover (a hider in its spot) behind low cover is out of sight from the far side: railings, bushes (from every side), tables, desks, sofas, tills, baths, fridges; within 2 cells you look over it. Hiders pick spots behind cover, the seeker goes to look behind it; drawn smaller and darker | `cover` | `cover` | found after 8.8 s vs 6.6 s (12 players: 11.8 vs 5.5) |
 
 Game rules: `talkEnabled` on in the dollhouse only (talks cut walking throughput in the
 pathfinding scenarios); `autoGatherings` on in survival, island and dollhouse. Walks only
@@ -50,7 +51,7 @@ outdoors (`IsExposedToSky`).
 
 - **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
   chase / hide from `chase.c`, wolves as a pack (pack hunt roles), herds (walk formation), freeze
-  as a choice. Cover behind half-height blocks (crouching behind a railing) is not modelled yet. The cat first
+  as a choice. Cover (crouching behind low things) is built for hide and seek; a runner breaking sight and ducking is next. The cat first
   (dollhouse): hides, comes to the kitchen, follows its favourite, a gathering source, petting
   as an interaction.
 - **Showing what a talk is about**: topic icons from real state, a heart or cloud at the end.

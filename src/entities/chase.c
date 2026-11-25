@@ -337,6 +337,7 @@ bool HideIsHidden(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i !
 static bool FollowControls(int i);
 static bool PackControls(int i);
 bool HideControls(int i) { return (hsPhase != HS_NONE && ChaseIsPlaying(i)) || FollowControls(i) || PackControls(i); }
+bool MoverCrouching(int i) { return HideIsHidden(i); }
 bool HideIsFound(int i) { return hsPhase != HS_NONE && ChaseIsPlaying(i) && i != hsSeeker && hsState[i] == HIDER_FOUND; }
 
 static bool SeenCell(int x, int y) { return hsSeen && x >= 0 && y >= 0 && x < hsSeenW && y < hsSeenH && hsSeen[y * hsSeenW + x]; }
@@ -352,12 +353,18 @@ static bool PickHidingSpot(int i) {
         if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
         float score = 0.0f;
         if (hideSmart) {
-            if (CanSeeCell(hsHome.x, hsHome.y, cx, cy, z)) score -= 20.0f;   // seen from home: bad
-            int walls = 0;   // tucked in
+            bool seen = CanSeeCell(hsHome.x, hsHome.y, cx, cy, z);   // from home (crouched behind cover: not)
+            if (seen && coverEnabled && CoverBetween(hsHome.x, hsHome.y, cx, cy, z)) seen = false;
+            if (seen) score -= 20.0f;
+            int walls = 0, cover = 0;   // tucked in
             for (int oy = -1; oy <= 1; oy++)
-                for (int ox = -1; ox <= 1; ox++)
-                    if ((ox || oy) && !IsCellWalkableAt(z, cy + oy, cx + ox)) walls++;
-            score += walls * 1.5f;
+                for (int ox = -1; ox <= 1; ox++) {
+                    if (!(ox || oy)) continue;
+                    if (!IsCellWalkableAt(z, cy + oy, cx + ox)) walls++;
+                    if (coverEnabled && IsLowCover(cx + ox, cy + oy, z)) cover++;
+                }
+            if (coverEnabled && GRID(cx, cy, z) == CELL_BUSH) cover += 4;   // in a bush
+            score += walls * 1.5f + cover * 1.5f;
             for (int j = 0; j < moverCount; j++) {   // away from the other hiders' spots
                 if (j == i || !ChaseIsPlaying(j) || j == hsSeeker) continue;
                 float gx = (float)(movers[j].goal.x - cx), gy = (float)(movers[j].goal.y - cy);
@@ -412,7 +419,10 @@ static void SeekerLook(int s) {
             int x = sx + dx, y = sy + dy;
             if (x < 0 || y < 0 || x >= hsSeenW || y >= hsSeenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
             if (hsSeen[y * hsSeenW + x] || !IsCellWalkableAt(z, y, x)) continue;
-            if (CanSeeCell(sx, sy, x, y, z)) hsSeen[y * hsSeenW + x] = 1;
+            if (!CanSeeCell(sx, sy, x, y, z)) continue;
+            // behind low cover from here: someone could be crouching there, it has to go and look
+            if (coverEnabled && dx * dx + dy * dy > 4 && CoverBetween(sx, sy, x, y, z)) continue;
+            hsSeen[y * hsSeenW + x] = 1;
         }
 }
 
