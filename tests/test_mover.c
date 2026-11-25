@@ -20,6 +20,13 @@
 // Global flag for verbose output in tests
 static bool test_verbose = false;
 
+// Arrived: its path walked to the end, nothing to repath (with endless mode off an idle mover stays there; it
+// used to be removed, and these tests read "gone" as "arrived"). Done: arrived, or gone (dead).
+static bool Arrived(const Mover* m) {
+    return m->active && m->pathIndex < 0 && !m->needsRepath;   // path walked to its end
+}
+static bool Done(const Mover* m) { return !m->active || Arrived(m); }
+
 // Number of random path tests - use STRESS_TEST_ITERATIONS=20 for full coverage
 #ifndef STRESS_TEST_ITERATIONS
 #define STRESS_TEST_ITERATIONS 5
@@ -137,7 +144,7 @@ describe(fixed_timestep_movement) {
             "....\n"
             "....\n");
 
-        // Disable endless mode so mover deactivates at goal instead of getting new goal
+        // Disable endless mode so the mover stays at its goal instead of getting a new one
         endlessMoverMode = false;
         
         ClearMovers();
@@ -153,7 +160,7 @@ describe(fixed_timestep_movement) {
         // At 60 ticks/sec, 1 tick = ~1.67 pixels. Need ~19 ticks for 1 cell.
         RunTicks(60);  // Should be more than enough
 
-        expect(m->active == false);
+        expect(Done(m));
         
         endlessMoverMode = true;  // Restore default
     }
@@ -1017,11 +1024,11 @@ describe(chunk_boundary_paths) {
         // Run until mover reaches goal or times out
         for (int tick = 0; tick < 600; tick++) {
             Tick();
-            if (!m->active) break;  // Reached goal
+            if (Done(m)) break;  // Reached goal
         }
         
         // Mover should have reached the goal (inactive)
-        expect(m->active == false);
+        expect(Done(m));
     }
 }
 
@@ -1211,11 +1218,11 @@ describe(mover_z_level_collision) {
         // Run until mover reaches goal or times out
         for (int tick = 0; tick < 300; tick++) {
             Tick();
-            if (!m->active) break;
+            if (Done(m)) break;
         }
         
         // Mover should have reached the goal (passed through the "wall" area on z=1)
-        expect(m->active == false);
+        expect(Done(m));
     }
     
     it("should be blocked by walls on current z-level") {
@@ -1300,7 +1307,7 @@ static int RunLadderMovers(int count, int maxTicks, bool* allArrived) {
         int onLadder = 0, active = 0;
         for (int i = 0; i < count; i++) {
             const Mover* m = &movers[i];
-            if (!m->active) continue;
+            if (Done(m)) continue;
             active++;
             bool between = m->z - floorf(m->z) > 0.0001f;
             if (between && (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2) onLadder++;
@@ -1425,7 +1432,7 @@ describe(single_file_ladders) {
             int onSpot = 0, climbing = 0, active = 0;
             for (int i = 0; i < 6; i++) {
                 const Mover* m = &movers[i];
-                if (!m->active) continue;
+                if (Done(m)) continue;
                 active++;
                 float dx = m->x - (3 * CELL_SIZE + CELL_SIZE * 0.5f), dy = m->y - (2 * CELL_SIZE + CELL_SIZE * 0.5f);
                 bool between = m->z - floorf(m->z) > 0.0001f;
@@ -1451,7 +1458,7 @@ describe(single_file_ladders) {
             AddLadderMover(0, 2, 2, 1, 6, 2, 2);
             moverCount = 1;
             int climbing = 0;
-            for (int t = 0; t < 600 && movers[0].active; t++) {
+            for (int t = 0; t < 600 && !Done(&movers[0]); t++) {
                 Tick();
                 if (movers[0].z - floorf(movers[0].z) > 0.0001f) climbing++;
             }
@@ -1512,14 +1519,14 @@ describe(single_file_ladders) {
         AddLadderMover(0, 4, 2, 2, 0, 2, 1);   // down
         moverCount = 1;
         bool leftBetween = false;
-        for (int t = 0; t < 600 && movers[0].active; t++) {
+        for (int t = 0; t < 600 && !Done(&movers[0]); t++) {
             Tick();
             const Mover* m = &movers[0];
             bool between = m->z - floorf(m->z) > 0.0001f;
             bool onLadder = (int)(m->x / CELL_SIZE) == 3 && (int)(m->y / CELL_SIZE) == 2;
             if (between && !onLadder) leftBetween = true;
         }
-        expect(!movers[0].active);            // arrived
+        expect(Done(&movers[0]));            // arrived
         expect(!leftBetween);
         expect(movers[0].z == 1.0f);
     }
@@ -1589,11 +1596,11 @@ describe(mover_ladder_transitions) {
         int maxTicks = 600;
         for (int tick = 0; tick < maxTicks; tick++) {
             Tick();
-            if (!m->active) break;
+            if (Done(m)) break;
         }
 
         // Mover should have reached the goal
-        expect(m->active == false);
+        expect(Done(m));
     }
 
     it("should climb ladder when path goes through ladder cell") {
@@ -1638,11 +1645,11 @@ describe(mover_ladder_transitions) {
         // Run simulation
         for (int tick = 0; tick < 300; tick++) {
             Tick();
-            if (!m->active) break;
+            if (Done(m)) break;
         }
 
         // Mover should have reached goal
-        expect(m->active == false);
+        expect(Done(m));
     }
 
     it("should handle HPA* 3D path through Labyrinth3D") {
@@ -1733,11 +1740,11 @@ describe(mover_ladder_transitions) {
             // Run simulation - long paths across z-levels need more time
             for (int tick = 0; tick < 3000; tick++) {
                 Tick();
-                if (!m->active) break;
+                if (Done(m)) break;
             }
 
             // Mover should have reached goal
-            expect(m->active == false);
+            expect(Done(m));
         }
     }
 
@@ -1871,10 +1878,10 @@ describe(mover_ladder_transitions) {
                 // Run simulation - 10000 ticks allows traversing long labyrinth paths
                 for (int tick = 0; tick < 10000; tick++) {
                     Tick();
-                    if (!m->active) break;
+                    if (Done(m)) break;
                 }
 
-                if (!m->active) {
+                if (Done(m)) {
                     moversReachedGoal++;
                 } else {
                     // Debug: mover got stuck
@@ -1934,10 +1941,10 @@ describe(sparse_level_pathfinding) {
 
                 for (int tick = 0; tick < 5000; tick++) {
                     Tick();
-                    if (!m->active) break;
+                    if (Done(m)) break;
                 }
 
-                if (!m->active) {
+                if (Done(m)) {
                     moversReachedGoal++;
                 } else {
                     int stuckX = (int)(m->x / CELL_SIZE);
@@ -1990,10 +1997,10 @@ describe(sparse_level_pathfinding) {
 
                 for (int tick = 0; tick < 5000; tick++) {
                     Tick();
-                    if (!m->active) break;
+                    if (Done(m)) break;
                 }
 
-                if (!m->active) {
+                if (Done(m)) {
                     moversReachedGoal++;
                 } else {
                     int stuckX = (int)(m->x / CELL_SIZE);
@@ -2066,7 +2073,7 @@ describe(staggered_updates) {
         // Count how many reached their goal
         int reached = 0;
         for (int i = 0; i < moverCount; i++) {
-            if (!movers[i].active) reached++;  // Inactive means reached goal
+            if (Done(&movers[i])) reached++;  // arrived (stays at its goal)
         }
         
         // At least 90% should reach their goals
@@ -2139,7 +2146,7 @@ describe(staggered_updates) {
         // Most should complete
         int reached = 0;
         for (int i = 0; i < moverCount; i++) {
-            if (!movers[i].active) reached++;
+            if (Done(&movers[i])) reached++;
         }
         float completionRate = (float)reached / spawned;
         expect(completionRate >= 0.8f);
@@ -3007,9 +3014,9 @@ describe(z_climb_timing) {
             (float)startZ, (Point){4,1,goalZ}, CLIMB_SPEED, path, 4);
         moverCount = 1;
 
-        for (int tick = 0; tick < 600 && m->active; tick++) Tick();
+        for (int tick = 0; tick < 600 && !Done(m); tick++) Tick();
         expect(m->z == (float)goalZ);
-        expect(m->active == false);
+        expect(Done(m));
     }
 
     it("z should be fractional while traversing a ramp upward") {

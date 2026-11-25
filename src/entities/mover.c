@@ -1942,10 +1942,9 @@ void UpdateMovers(void) {
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
                     }
                 }
-            } else if (m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
-                // Only deactivate if truly idle (no job, no active needs)
-                m->active = false;
             }
+            // Endless mode off: an idle mover stays where it is (it used to be removed here, a
+            // leftover from the pathfinding demos; a mover you give orders to vanished)
             continue;
         }
 

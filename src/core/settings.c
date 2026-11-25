@@ -645,7 +645,7 @@ static const Setting settings[] = {
     SET_FLOAT("passSlow", "Pass: slow down", "Entities/Movers/Noticing", passSlow, 0.05f, 0.0f, 0.9f,
       "Speed given up while passing at full weight (0 = none).", NULL),
     SET_BOOL("endlessMode", "Endless Mode", "Entities/Movers", endlessMoverMode,
-      "Movers pick a new random goal when they arrive."),
+      "Movers pick a new random goal when they arrive. Off: an idle mover stays where it is."),
     SET_BOOL("preferDiffZ", "Prefer Diff Z", "Entities/Movers", preferDifferentZ,
       "Endless movers prefer goals on a different z-level."),
     SET_FLOAT("wanderPause", "Wander Pause (s)", "Entities/Movers", moverWanderPause, 0.1f, 0.0f, 30.0f,
