@@ -17,6 +17,9 @@ static bool test_verbose = false;
 #include "../src/entities/jobs.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/needs.h"
+#include "../src/entities/stockpiles.h"
+#include "../src/entities/workshops.h"
+#include <stdlib.h>
 #include "test_helpers.h"
 #include <string.h>
 
@@ -33,6 +36,9 @@ static void SetupTown(void) {
         }
     ClearMovers();
     ClearFurniture();
+    ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
     ClearTown();
 }
 
@@ -116,13 +122,12 @@ describe(town_lots) {
             }
         }
     }
-    it("a work lot gets work spots (desks)") {
+    it("a work lot (bakery) gets work spots (stoves)") {
         SetupTown();
         TownAddRoad(0, 10, 39, 12, 1, NULL);
         int lot = TownAddLot(LOT_WORK, 2, 13, 12, 19, 1, NULL);
         expect(lot >= 0);
-        expect(townLots[lot].beds >= 4);
-        expect(CountFurnitureType(FURNITURE_DESK) == townLots[lot].beds);
+        expect(townLots[lot].beds >= 3);
         expect(TownLotCount(LOT_WORK) == 1);
     }
     it("removing a lot clears its building and furniture") {
@@ -147,6 +152,8 @@ describe(town_lots) {
 static int SetupStreetWithHome(void) {
     SetupTown();
     ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
     ClearJobs();
     InitBalance();
     TownAddRoad(0, 10, 39, 12, 1, NULL);
@@ -189,19 +196,16 @@ describe(town_residents) {
         int pub = SpawnFurniture(30, 30, 1, FURNITURE_PLANK_BED, MAT_OAK);
         expect(TownMayUseFurniture(pub, 1));
     }
-    it("the fridge is restocked for its residents") {
+    it("a home's fridge is a stockpile for bread only") {
         int lot = SetupStreetWithHome();
-        townArrivalGH = 0.05f;
-        townMealsPerResident = 3;
-        for (int t = 0; t < 600; t++) TownTick(1.0f);
-        int food = townLots[lot].foodItem;
-        expect(food >= 0);
-        expect(items[food].active && items[food].type == ITEM_BREAD && items[food].stackCount == 3);
+        int sp = townLots[lot].stockpile;
+        expect(sp >= 0 && stockpiles[sp].active);
         const Furniture* f = &furniture[townLots[lot].fridge];
-        expect((int)(items[food].x / CELL_SIZE) == f->x && (int)(items[food].y / CELL_SIZE) == f->y);
-        items[food].stackCount = 1;                       // eaten down
-        for (int t = 0; t < 600; t++) TownTick(1.0f);
-        expect(items[townLots[lot].foodItem].stackCount == 3);
+        expect(stockpiles[sp].x == f->x && stockpiles[sp].y == f->y);
+        expect(stockpiles[sp].allowedTypes[ITEM_BREAD]);
+        expect(!stockpiles[sp].allowedTypes[ITEM_FLOUR]);
+        TownRemoveLot(lot);
+        expect(!stockpiles[sp].active);
     }
     it("removing a home makes its residents homeless") {
         int lot = SetupStreetWithHome();
@@ -213,11 +217,75 @@ describe(town_residents) {
     }
 }
 
+describe(town_bakery) {
+    it("a bakery gets stoves that bake bread forever, each with a counter within 2") {
+        SetupTown();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        expect(lot >= 0);
+        const TownLot* L = &townLots[lot];
+        int stoves = 0, counters = 0;
+        for (int i = 0; i < L->wsCount; i++) {
+            const Workshop* w = &workshops[L->ws[i]];
+            if (w->type == WORKSHOP_COUNTER) counters++;
+            if (w->type != WORKSHOP_STOVE) continue;
+            stoves++;
+            expect(w->billCount == 1 && w->bills[0].mode == BILL_DO_FOREVER);
+            expect(strcmp(stoveRecipes[w->bills[0].recipeIdx].name, "Bake Bread") == 0);
+            bool near = false;
+            for (int j = 0; j < L->wsCount; j++) {
+                const Workshop* c = &workshops[L->ws[j]];
+                if (c->type == WORKSHOP_COUNTER && abs(c->x - w->x) <= 2 && abs(c->y - w->y) <= 2) near = true;
+            }
+            expect(near);
+        }
+        expect(stoves >= 2);
+        expect(counters >= stoves - 1);
+        expect(L->beds == stoves);
+    }
+    it("flour from outside town is delivered to the bakery and topped up") {
+        SetupTown();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        townFlourDelivery = 20;
+        townArrivalGH = 24.0f;
+        for (int t = 0; t < 60; t++) TownTick(1.0f);
+        int fl = townLots[lot].supplyItem;
+        expect(fl >= 0 && items[fl].type == ITEM_FLOUR && items[fl].stackCount == 20);
+        expect((int)(items[fl].x / CELL_SIZE) == townLots[lot].supplyX);
+        items[fl].stackCount = 5;
+        for (int t = 0; t < 60; t++) TownTick(1.0f);
+        expect(items[townLots[lot].supplyItem].stackCount == 20);
+    }
+    it("removing a bakery removes its stoves and counters") {
+        SetupTown();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_WORK, 2, 13, 12, 18, 1, NULL);
+        int ws0 = townLots[lot].ws[0];
+        expect(workshops[ws0].active);
+        TownRemoveLot(lot);
+        expect(!workshops[ws0].active);
+        int active = 0;
+        for (int i = 0; i < MAX_WORKSHOPS; i++) active += workshops[i].active;
+        expect(active == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(town_roads);
     test(town_lots);
     test(town_residents);
+    test(town_bakery);
     return summary();
 }

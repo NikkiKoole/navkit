@@ -1,6 +1,6 @@
 # Town: a city builder where every citizen is a person
 
-> Status: steps 1-3 built on branch `town` (2026-11-25), step 4 (work makes the food) next. Game `town`.
+> Status: steps 1-4 built on branch `town` (2026-11-25); next: jobs + opening hours (4b), then step 5. Game `town`.
 
 You draw roads and lots; houses and workplaces appear on them at once. People move into the
 houses, sleep in their own bed, eat and drink at home, and walk to work while their workplace is
@@ -50,7 +50,7 @@ Earlier ones that apply here:
    edge, walks to the house, it is now their home (`Mover.home`, a lot id). They sleep in their
    own home's bed; the beds of other homes are not theirs. Food: each home has a tap (mains
    water) and a fridge the town restocks (a stand-in for shops, which come with City 1999's coins).
-4. **Work.** A Work lot has opening hours and a number of jobs. A citizen without a job takes
+4. **(built: the bakery) Work.** A Work lot has opening hours and a number of jobs. A citizen without a job takes
    one. While the workplace is open and no need is urgent, they go there and work at a work
    spot; otherwise free time. Rush hour should come out of this by itself.
 5. **Look and feel.** A town overview: population, homeless newcomers waiting, empty jobs,
@@ -98,6 +98,29 @@ cars branch, needs it merged first), services (water, power), bigger maps (2048 
 - Measured, 6 starter homes (12 beds), arrivals every 0.1 h: 12 residents, nobody stuck, town
   tick ~0 (whole game 0.02 ms/tick); `--day-budget` over 5 days: sleep 6.7 h, ~0.8 meals and 4.3
   drinks a day each.
+
+### Built (2026-11-25): step 4, the bakery (user: "bakery first", the grain chain later)
+
+- A Work lot is a **bakery** (play HUD "Bakery", dev Draw > City > Bakery). Stoves and counters
+  along the back wall: the existing stove recipe "Bake Bread" (1 flour -> 1 bread, needs a prep
+  surface within 2), one bill per stove, `BILL_DO_FOREVER`: it pauses by itself when no
+  stockpile has room (`suspendedNoStorage`). Work spots = stoves.
+- **Flour comes from outside town** (stand-in for a mill and farms): a stack of
+  `townFlourDelivery` (setting, 20) on the delivery spot left of the door, topped up when half
+  is gone or taken. The grain chain (farm -> quern/mill -> bakery) replaces this later.
+- **Each home's fridge is a one-cell stockpile that takes only bread.** The existing haul jobs
+  carry bread from the stoves to the homes. The bread restock of step 3 is gone: no bakery,
+  no food.
+- Nothing new in the job system: any idle mover bakes and hauls. Who works where and when
+  (jobs, opening hours) is step 4b.
+- Measured, 6 starter homes + the starter bakery (`townStarter` > 0 adds one), 12 residents,
+  5 days: every pantry full (10 bread, a full stack), flour waiting at the stoves, hunger
+  40-55% for everyone, audit 0 violations. Day budget per resident: work 5.2 h, walking with a
+  job 4.1 h, sleep 7.6 h, idle 2.2 h (was 9.6 h idle with the restock). Meals 0.2/day: a bread
+  is a big portion (1.0 nutrition).
+- Known: a baker carries the whole flour stack (20) to their stove; the delivery then puts a new
+  stack down. Flour in town stays bounded (one stack per stove + one at the spot), but it is
+  generous.
 
 ## Open questions
 

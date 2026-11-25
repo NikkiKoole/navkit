@@ -7,6 +7,8 @@
 #include "furniture.h"
 #include "mover.h"
 #include "items.h"
+#include "stockpiles.h"
+#include "workshops.h"
 #include "action_queue.h"
 #include "../simulation/balance.h"
 #include "../core/time.h"
@@ -18,7 +20,7 @@ int townRoadCount = 0;
 TownLot townLots[TOWN_MAX_LOTS];
 int townLotHighWater = 0;
 float townArrivalGH = 0.5f;
-int townMealsPerResident = 3;
+int townFlourDelivery = 20;
 int townStarter = 0;
 
 static short townFurnOwner[MAX_FURNITURE];   // TOWN_OWNER_* or a mover index (beds of homes)
@@ -296,19 +298,58 @@ static void TownFurnishHome(TownLot* L) {
     }
 }
 
-static void TownFurnishWork(TownLot* L) {
+// The home's fridge holds the household's bread: a one-cell stockpile that takes only bread
+static void TownHomePantry(TownLot* L) {
+    if (L->fridge < 0) return;
+    const Furniture* f = &furniture[L->fridge];
+    int sp = CreateStockpile(f->x, f->y, f->z, 1, 1);
+    if (sp < 0) return;
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_BREAD);
+    L->stockpile = sp;
+}
+
+static int TownRecipeIndex(WorkshopType type, const char* name) {
+    const WorkshopDef* def = &workshopDefs[type];
+    for (int r = 0; r < def->recipeCount; r++)
+        if (strcmp(def->recipes[r].name, name) == 0) return r;
+    return -1;
+}
+
+static void TownLotWorkshop(TownLot* L, int u, int v, WorkshopType type) {
+    if (L->wsCount >= TOWN_MAX_LOT_WS) return;
+    int x, y;
+    TownLocalToWorld(L, u, v, &x, &y);
+    if (GetFurnitureAt(x, y, L->z) >= 0) return;
+    int ws = CreateWorkshop(x, y, L->z, type);
+    if (ws < 0) return;
+    L->ws[L->wsCount++] = ws;
+    if (type == WORKSHOP_STOVE) {
+        int r = TownRecipeIndex(WORKSHOP_STOVE, "Bake Bread");
+        if (r >= 0) AddBill(ws, r, BILL_DO_FOREVER, 0);   // pauses by itself when no stockpile has room
+    }
+}
+
+// Bakery: stoves and counters along the back wall (Bake Bread needs a prep surface within 2),
+// the flour delivery spot left of the door, a tap and a toilet on the right
+static void TownFurnishBakery(TownLot* L) {
     int w, d;
     TownInsideSize(L, &w, &d);
-    int doorU = w / 2, spots = 0;
-    // Desks along the back wall, a chair in front of each
+    int doorU = w / 2, stoves = 0, k = 0;
     for (int u = 0; u < w; u++) {
         if (u == doorU) continue;
-        TownLotFurn(L, u, d - 1, FURNITURE_DESK, MAT_OAK);
-        if (d >= 3) TownLotFurn(L, u, d - 2, FURNITURE_CHAIR, MAT_OAK);
-        spots++;
+        bool stove = (k++ % 2) == 0;
+        if (stove && u == w - 1 && k > 1) stove = false;   // a lone stove at the end would lack a counter
+        TownLotWorkshop(L, u, d - 1, stove ? WORKSHOP_STOVE : WORKSHOP_COUNTER);
+        stoves += stove;
     }
-    L->beds = spots;
-    TownLotFurn(L, doorU - 1 >= 0 ? doorU - 1 : w - 1, 0, FURNITURE_TAP, MAT_GRANITE);
+    if (stoves > 0 && (k % 2) == 1) {   // the last one was a stove: give it a counter in front
+        int lastU = w - 1 == doorU ? w - 2 : w - 1;
+        if (d >= 3) TownLotWorkshop(L, lastU, d - 2, WORKSHOP_COUNTER);
+    }
+    L->beds = stoves;
+    int supplyU = doorU - 1 >= 0 ? doorU - 1 : doorU + 1;
+    TownLocalToWorld(L, supplyU, 0, &L->supplyX, &L->supplyY);
+    TownLotFurn(L, doorU + 1 < w ? doorU + 1 : 0, 0, FURNITURE_TAP, MAT_GRANITE);
     if (w >= 4) TownLotFurn(L, w - 1, 0, FURNITURE_TOILET, MAT_GRANITE);
 }
 
@@ -343,10 +384,10 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
     TownLot* L = &townLots[slot];
     memset(L, 0, sizeof(*L));
     *L = (TownLot){ .active = true, .kind = kind, .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .z = z, .front = best,
-                    .fridge = -1, .foodItem = -1 };
+                    .fridge = -1, .stockpile = -1, .supplyItem = -1 };
     TownStampShell(L);
-    if (kind == LOT_HOME) TownFurnishHome(L);
-    else TownFurnishWork(L);
+    if (kind == LOT_HOME) { TownFurnishHome(L); TownHomePantry(L); }
+    else TownFurnishBakery(L);
     return slot;
 }
 
@@ -361,6 +402,9 @@ void TownRemoveLot(int lot) {
         if (furniture[f].occupant >= 0) ReleaseFurniture(f, furniture[f].occupant);
         RemoveFurniture(f);
     }
+    for (int i = 0; i < L->wsCount; i++)
+        if (workshops[L->ws[i]].active) DeleteWorkshop(L->ws[i]);
+    if (L->stockpile >= 0 && stockpiles[L->stockpile].active) DeleteStockpile(L->stockpile);
     int z = L->z;
     for (int y = L->y1; y <= L->y2; y++)
         for (int x = L->x1; x <= L->x2; x++) {
@@ -495,24 +539,22 @@ static void TownArrive(void) {
     EventLog("Town: mover %d arrives, home lot %d", m, lot);
 }
 
-// Restock a home's fridge (stand-in for shops: docs/vision/town.md)
-static void TownRestock(TownLot* L) {
-    int residents = TownResidents((int)(L - townLots));
-    if (residents == 0 || L->fridge < 0 || !furniture[L->fridge].active) return;
-    const Furniture* f = &furniture[L->fridge];
-    int want = residents * townMealsPerResident;
-    if (want <= 0) return;
-    if (L->foodItem >= 0) {
-        const Item* it = &items[L->foodItem];
-        bool still = it->active && it->type == ITEM_BREAD && (int)(it->x / CELL_SIZE) == f->x
-                  && (int)(it->y / CELL_SIZE) == f->y && (int)it->z == f->z && it->state == ITEM_ON_GROUND;
-        if (still && it->stackCount * 2 > want) return;   // more than half left
-        if (still && it->reservedBy < 0) { items[L->foodItem].stackCount = want; return; }
-        if (still) return;   // someone is taking from it: next time
+// Flour from outside town (stand-in for a mill and farms: docs/vision/town.md), kept on the
+// bakery's delivery spot: topped up to townFlourDelivery once half is used
+static void TownDeliverFlour(TownLot* L) {
+    int want = townFlourDelivery;
+    if (want <= 0 || L->wsCount == 0) return;
+    if (L->supplyItem >= 0) {
+        const Item* it = &items[L->supplyItem];
+        bool still = it->active && it->type == ITEM_FLOUR && it->state == ITEM_ON_GROUND && (int)it->z == L->z
+                  && (int)(it->x / CELL_SIZE) == L->supplyX && (int)(it->y / CELL_SIZE) == L->supplyY;
+        if (still && it->stackCount * 2 > want) return;
+        if (still && it->reservedBy < 0) { items[L->supplyItem].stackCount = want; return; }
+        if (still) return;   // a baker is taking from it: next time
     }
-    int idx = SpawnItem(f->x * CELL_SIZE + CELL_SIZE * 0.5f, f->y * CELL_SIZE + CELL_SIZE * 0.5f, (float)f->z, ITEM_BREAD);
+    int idx = SpawnItem(L->supplyX * CELL_SIZE + CELL_SIZE * 0.5f, L->supplyY * CELL_SIZE + CELL_SIZE * 0.5f, (float)L->z, ITEM_FLOUR);
     if (idx >= 0) items[idx].stackCount = want;
-    L->foodItem = idx;
+    L->supplyItem = idx;
 }
 
 void TownTick(float dt) {
@@ -545,5 +587,5 @@ void TownTick(float dt) {
         TownArrive();
     }
     for (int l = 0; l < townLotHighWater; l++)
-        if (townLots[l].active && townLots[l].kind == LOT_HOME) TownRestock(&townLots[l]);
+        if (townLots[l].active && townLots[l].kind == LOT_WORK) TownDeliverFlour(&townLots[l]);
 }

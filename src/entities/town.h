@@ -5,7 +5,7 @@
 // level becomes concrete). Kept as a list, not a per-cell layer: a road query is a scan
 // over the rectangles, and straight strips convert easily to the cars branch's road network.
 //
-// A lot is a rectangle next to a road, kind Home or Work. Placing one stamps a building
+// A lot is a rectangle next to a road, kind Home or Work (a bakery, for now: step 4). Placing one stamps a building
 // from a template that fits: a front yard row on the road side, walls round the rest, the
 // door facing the road, furniture inside, a roof. Removing it clears the cells again.
 #ifndef TOWN_H
@@ -18,6 +18,7 @@
 #define TOWN_LOT_MIN 5          // a lot is at least 5x5 cells (yard row + walls + a 3x2 inside)
 #define TOWN_LOT_MAX 24
 #define TOWN_MAX_LOT_FURN 32
+#define TOWN_MAX_LOT_WS 24
 
 typedef struct { int x1, y1, x2, y2, z; } TownRoad;   // z = the walking level on it
 
@@ -32,8 +33,11 @@ typedef struct {
     int doorX, doorY;        // the front door cell
     int beds;                // homes: bed count; work: work spots (desks)
     int furn[TOWN_MAX_LOT_FURN], furnCount;   // furniture this lot's building placed
-    int fridge;              // homes: the fridge's furniture index (-1 none); food is restocked on it
-    int foodItem;            // homes: the restocked food stack (-1 none; checked before use)
+    int fridge;              // homes: the fridge's furniture index (-1 none)
+    int stockpile;           // homes: the bread stockpile on the fridge (-1 none)
+    int ws[TOWN_MAX_LOT_WS], wsCount;   // work: the bakery's stoves and counters (workshops)
+    int supplyX, supplyY;    // work: where the flour from outside town is delivered
+    int supplyItem;          // work: the delivered flour stack (-1 none; checked before use)
 } TownLot;
 
 extern TownRoad townRoads[TOWN_MAX_ROADS];
@@ -58,6 +62,10 @@ int  TownLotAt(int x, int y, int z);                             // -1 = none
 int  TownLotCount(LotKind kind);                                  // active lots of a kind
 
 // ---------------------------------------------------------------------------
+// Food (step 4): a Work lot is a bakery: stoves + counters bake bread ("Bake Bread", a bill
+// that runs until there's no room), flour arrives from outside town at its delivery spot.
+// Each home's fridge is a one-cell bread stockpile: the haul jobs carry bread home.
+//
 // Residents (step 3): a home with a free bed draws a newcomer, who arrives on a road at the
 // map edge and walks home. Each bed in a home is private: its owner's, or (unassigned) nobody's.
 // ---------------------------------------------------------------------------
@@ -66,12 +74,12 @@ int  TownLotCount(LotKind kind);                                  // active lots
 #define TOWN_OWNER_NOBODY   -2   // a home's bed with no owner yet: kept for the next newcomer
 
 extern float townArrivalGH;      // game hours between newcomers (setting)
-extern int townMealsPerResident; // restocked food on a home's fridge per resident (setting)
+extern int townFlourDelivery;    // flour kept at each bakery's delivery spot (setting; 0 = none)
 extern int townStarter;          // homes already standing when the town game starts (setting)
 
 extern void (*townSpawnMover)(int x, int y, int z);   // main.c: SpawnMoverAt
 
-void TownTick(float dt);                          // arrivals, leaving owners, restocking
+void TownTick(float dt);                          // arrivals, leaving owners, flour deliveries
 int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
 int  TownResidents(int lot);                      // movers who live there
 int  TownFreeBeds(void);                          // unowned beds in all homes

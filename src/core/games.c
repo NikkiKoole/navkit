@@ -579,6 +579,7 @@ static void StartTown(void) {
         if (i % 2 == 0) TownAddLot(LOT_HOME, x, midY - 7, x + 6, midY - 2, 1, NULL);
         else            TownAddLot(LOT_HOME, x, midY + 2, x + 6, midY + 7, 1, NULL);
     }
+    if (townStarter > 0) TownAddLot(LOT_WORK, 59, midY - 8, 70, midY - 2, 1, NULL);   // and a bakery
     BuildEntrances();
     BuildGraph();
 
@@ -685,7 +686,7 @@ static const GameTool sandboxTools[]   = { BASIC_TOOLS };
 static const GameTool townTools[] = {
     {HUD_TAB_BUILD, "Road", ACTION_DRAW_ROAD,     -1, NULL},
     {HUD_TAB_BUILD, "Home", ACTION_DRAW_LOT_HOME, -1, NULL},
-    {HUD_TAB_BUILD, "Work", ACTION_DRAW_LOT_WORK, -1, NULL},
+    {HUD_TAB_BUILD, "Bakery", ACTION_DRAW_LOT_WORK, -1, NULL},
 };
 #undef BASIC_TOOLS
 #define TOOLS(list) list, (int)(sizeof(list) / sizeof(list[0]))
@@ -703,7 +704,7 @@ static const GameDef games[] = {
                   StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  true,  TOOLS(sandboxTools)},
-    {"town",      "Town",      "Draw roads and lots: homes and workplaces appear at once, people move in",
+    {"town",      "Town",      "Draw roads, homes and bakeries: they appear at once, people move in and bake their bread",
                   StartTown,      false, true,  TOOLS(townTools)},
 };
 #undef TOOLS
