@@ -532,6 +532,41 @@ blocks nobody.
 250 cars, 10 minutes: 0 touches, 0 jumps on both layouts; grid 608 trips (648 without kerbs:
 parked time), Manhattan 746 (692: cabs no longer block a lane). 16000 cars on 2048: same cost.
 
+## Slot traffic: indicators, brake lights (2026-11-25)
+
+`SlotCarSignals(i)`: indicators ~4 slots before a turn and through the curve, while waiting for /
+doing a lane change, before pulling in (right) and out (left) at the kerb; hazards for a cab at a
+fare; brake lights when slower than last step or standing in traffic. Drawing only.
+
+## Slot traffic: pedestrians (2026-11-25)
+
+Setting `carCityPeds` (80): movers walking between random pavement spots (endless mode).
+- **Pavements**: two cells of concrete floor round every road (`CityPavements`). Walking in the
+  road costs 26x on routes only (`navPathExtra`, nav_host.h: a scenario's route-only cost per cell;
+  string pulling counts it too), except on **crossings**: across each lane's mouth just past its
+  end, where they don't touch another road's lanes. Crossings need room in front of the junction:
+  with pedestrians the junctions are set back 6 cells (4 is too compact: the crossing lay in the
+  other road's lanes and pedestrians stood in its traffic).
+- **Cars**: each step the slots a pedestrian in the road walks (now + 1.2 s along its last
+  velocity; distance to the slot's whole stretch, not its centre - slots are up to 6 cells long)
+  count as taken: cars brake for them (Gipps, as for a standing car) and a curve with someone on it
+  is not granted.
+- **Pedestrians** (`moverStepHold`, mover.h: a scenario's hold, NULL normally): on the pavement
+  about to step off, wait for a gap (no moving car there or up to 4 slots back), at most 6 s; at
+  lights, cross only while the road crossed has red; stepping off is announced and happens at the
+  next step's start (going mid-step, cars already moving there hit them). In the road they wait
+  only for a moving car (waiting for standing ones locked whole districts: cars stood for
+  pedestrians who stood for cars).
+
+Lessons: every "wait for the other" between cars and pedestrians must be one way (pedestrians in
+the road never wait for standing cars); a waiting pedestrian must not project its walk (it
+blocked the car it waited for); "in the road" is the map's floor, not distance to a slot (corner
+pavements are within 1.5 cells of tight right-turn curves).
+
+250 cars, 80 pedestrians, 10 minutes, setback 6 (trips without pedestrians, same setback):
+grid 470 (537), Manhattan 501 (532); pedestrians inside a car 85 / 56 of 96000 samples (mostly
+brushing a standing car while crossing). Setback alone costs: Manhattan 746 trips at 4, 334 at 8.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

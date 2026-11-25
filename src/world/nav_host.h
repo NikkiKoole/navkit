@@ -43,8 +43,13 @@ static inline bool NavRegionWalkableGame(void* host, int x, int y, int z) {
 }
 #define NAV_REGION_WALKABLE NavRegionWalkableGame
 
+// A scenario's extra route cost per cell on one level (cars experiment: pedestrians keep to the
+// pavements, crossing roads the short way); walking speed is not affected. NULL: none.
+extern unsigned char* navPathExtra;   // gridWidth x gridHeight, for level navPathExtraZ
+extern int navPathExtraZ;
 static inline int NavMoveCost(void* host, int x, int y, int z) {
     (void)host;
+    if (navPathExtra && z == navPathExtraZ) return GetCellMoveCost(x, y, z) + navPathExtra[y * gridWidth + x];
     return GetCellMoveCost(x, y, z);
 }
 

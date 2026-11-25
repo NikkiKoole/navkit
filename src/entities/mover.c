@@ -88,6 +88,9 @@ bool useDirectionalAvoidance = true;
 bool useTunnelYielding = true;       // single-lane rule for 1-wide passages (see MoverShouldYield)
 // Optional goal chooser for endless-mode movers (scenarios; NULL = random cell)
 bool (*moverGoalPicker)(int moverIdx, Point* goal) = NULL;
+bool (*moverStepHold)(int moverIdx, float dirX, float dirY) = NULL;
+unsigned char* navPathExtra = NULL;
+int navPathExtraZ = -1;
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
 bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
@@ -867,6 +870,14 @@ static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1, int z) {
     return false;
 }
 
+// A cell's route cost: terrain + a scenario's route-only extra (navPathExtra, nav_host.h), so
+// shortcuts don't cut across what the route avoided
+static int PathCellCost(int x, int y, int z) {
+    int c = GetCellMoveCost(x, y, z);
+    if (navPathExtra && z == navPathExtraZ && x >= 0 && y >= 0 && x < gridWidth && y < gridHeight) c += navPathExtra[y * gridWidth + x];
+    return c;
+}
+
 // Sum terrain cost along a Bresenham line (same trace as HasLineOfSight)
 static int LineCost(int x0, int y0, int x1, int y1, int z) {
     int dx = abs(x1 - x0);
@@ -877,7 +888,7 @@ static int LineCost(int x0, int y0, int x1, int y1, int z) {
     int cost = 0;
     int x = x0, y = y0;
     while (1) {
-        cost += GetCellMoveCost(x, y, z);
+        cost += PathCellCost(x, y, z);
         if (x == x1 && y == y1) break;
         int e2 = 2 * err;
         if (e2 > -dy) { err -= dy; x += sx; }
@@ -891,9 +902,9 @@ static int PathSegmentCost(Point* pathArr, int from, int to) {
     int cost = 0;
     int step = (to > from) ? 1 : -1;
     for (int i = from; i != to; i += step) {
-        cost += GetCellMoveCost(pathArr[i].x, pathArr[i].y, pathArr[i].z);
+        cost += PathCellCost(pathArr[i].x, pathArr[i].y, pathArr[i].z);
     }
-    cost += GetCellMoveCost(pathArr[to].x, pathArr[to].y, pathArr[to].z);
+    cost += PathCellCost(pathArr[to].x, pathArr[to].y, pathArr[to].z);
     return cost;
 }
 
@@ -2048,6 +2059,14 @@ void UpdateMovers(void) {
                     m->lastY = m->y;
                     continue;
                 }
+            }
+
+            // A scenario's hold (pedestrians waiting for a gap in the traffic)
+            if (moverStepHold && moverStepHold(i, dxf / dist, dyf / dist)) {
+                m->timeWithoutProgress = 0.0f;     // waiting is not being stuck
+                m->lastX = m->x;
+                m->lastY = m->y;
+                continue;
             }
 
             float invDist = 1.0f / dist;

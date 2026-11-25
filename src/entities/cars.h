@@ -127,6 +127,7 @@ extern float carCityBends;     // cars-city: share of roads with a bend
 extern float carCitySetback;   // cars-city: lanes stop this far from a junction's centre
 extern int carCityLayout;      // cars-city: 0 grid, 1 Manhattan (one-way avenues and streets, Broadway)
 extern float carCityCabs;      // cars-city: share of yellow cabs
+extern int carCityPeds;         // cars-city slot traffic: pedestrians walking the pavements (and crossing)
 extern bool carCityLaneRules;  // cars-city slot traffic: turn only from the right lane, get into it in time
 extern bool carCityGreenWave;  // cars-city: lights timed for a green wave along the avenues
 #define CAR_DEADLOCK_S 10.0f       // stopped behind a car this long counts as a deadlock

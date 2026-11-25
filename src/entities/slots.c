@@ -41,6 +41,21 @@ static int* slSlotCar = NULL;           // the car in each slot, -1 empty
 static int* slKerbCar = NULL;           // the car in the kerb spot beside each slot, -1 empty
 static unsigned char* slKerbOk = NULL;  // per slot: 1 = a kerb spot beside it, 2 = kerb strip (carved), no spot
 static long slParks = 0, slFareStops = 0, slKerbFull = 0, slPullOutWaits = 0;
+// Pedestrians (movers on the road): slot centres in buckets of SL_BUCKET cells; each step the
+// slots a mover is in or walks into within ~a second are stamped and count as taken
+#define SL_BUCKET 4
+static float *slCX = NULL, *slCY = NULL, *slCH = NULL, *slHalf = NULL;   // slot centre, heading, half length (px)
+static int* slSlotSeg = NULL;
+static int* slPedStamp = NULL;
+static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
+static bool SlInCar(int car, float x, float y, float grow);
+static double* slPedHeldAt = NULL;   // gameTime a mover was last held (waiting: no walking ahead)
+static int slPedHeldCap = 0;
+// Stepping off the kerb is announced: the pedestrian waits for the next step, which then counts
+// its path (going out in the middle of a step, cars already moving there drove into it)
+static int* slPedGoStep = NULL;
+static float *slPedDX = NULL, *slPedDY = NULL;
+static long slPedBlocks = 0, slHardStops = 0, slPedHolds = 0, slPedHitSamples = 0, slPedHits = 0;
 static int slTotal = 0, slSegCap = 0, slSlotCap = 0;
 static float slAcc = 0;               // seconds into the current step
 static int slStep = 0;
@@ -91,6 +106,7 @@ void SlotsClear(void) {
     slTouchSamples = slTouchSum = 0;
     slTouchMax = 0;
     slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
+    slPedBlocks = slHardStops = slPedHolds = slPedHitSamples = slPedHits = 0;
     slStillMax = 0;
     slRouteCursor = 0;
 }
@@ -98,6 +114,57 @@ void SlotsClear(void) {
 static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
 static float slSlotCells(void) { return SL_SLOT_CELLS * CELL_SIZE; }   // px per slot (about: slots stretch per segment)
 static float SlS(int seg, int k) { return (k + 0.5f) * rdSegs[seg].len / slSegN[seg]; }
+
+static void SlBuildBuckets(void) {
+    float B = SL_BUCKET * CELL_SIZE;
+    slBW = gridWidth / SL_BUCKET + 2;
+    slBH = gridHeight / SL_BUCKET + 2;
+    slBHead = realloc(slBHead, sizeof(int) * (size_t)(slBW * slBH + 1));
+    memset(slBHead, 0, sizeof(int) * (size_t)(slBW * slBH + 1));
+    for (int s = 0; s < rdSegCount; s++)
+        for (int k = 0; k < slSegN[s]; k++) {
+            int idx = slSeg0[s] + k;
+            RoadPointAt(s, (k + 0.5f) * rdSegs[s].len / slSegN[s], &slCX[idx], &slCY[idx], &slCH[idx]);
+            slHalf[idx] = 0.5f * rdSegs[s].len / slSegN[s];
+            slSlotSeg[idx] = s;
+            slPedStamp[idx] = -1;
+            int bx = (int)(slCX[idx] / B), by = (int)(slCY[idx] / B);
+            if (bx < 0) bx = 0;
+            if (by < 0) by = 0;
+            if (bx >= slBW) bx = slBW - 1;
+            if (by >= slBH) by = slBH - 1;
+            slBHead[by * slBW + bx + 1]++;
+        }
+    for (int b = 1; b <= slBW * slBH; b++) slBHead[b] += slBHead[b - 1];
+    int* fill = calloc((size_t)(slBW * slBH), sizeof(int));
+    for (int idx = 0; idx < slTotal; idx++) {
+        int bx = (int)(slCX[idx] / B), by = (int)(slCY[idx] / B);
+        if (bx < 0) bx = 0;
+        if (by < 0) by = 0;
+        if (bx >= slBW) bx = slBW - 1;
+        if (by >= slBH) by = slBH - 1;
+        slBList[slBHead[by * slBW + bx] + fill[by * slBW + bx]++] = idx;
+    }
+    free(fill);
+}
+// Squared distance from (x, y) to the stretch slot idx covers (a car glides along all of it)
+static float SlSlotDist2(int idx, float x, float y) {
+    float dx = x - slCX[idx], dy = y - slCY[idx];
+    float c = cosf(slCH[idx]), sn = sinf(slCH[idx]);
+    float u = dx * c + dy * sn, v = -dx * sn + dy * c;
+    if (u > slHalf[idx]) u -= slHalf[idx]; else if (u < -slHalf[idx]) u += slHalf[idx]; else u = 0;
+    return u * u + v * v;
+}
+#define SL_SPAN_REACH (3.0f * CELL_SIZE)
+// In the road (not on the pavement: the pavement has a floor) at (x, y) px on level z?
+static bool SlRoadAt(float x, float y, int z) {
+    int cx = (int)(x / CELL_SIZE), cy = (int)(y / CELL_SIZE);
+    if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || z < 0 || z >= gridDepth) return false;
+    return !HAS_FLOOR(cx, cy, z);
+}   // longest half slot: bucket searches reach this much further
+
+// Is slot idx taken: a car in it, or a pedestrian (this step)?
+static bool SlFree(int idx) { return slSlotCar[idx] < 0 && slPedStamp[idx] != slStep; }
 
 // --- Kerb spots (carSlotKerbs): beside every second slot of the right-hand lane
 static void SlKerbPoint(int lane, int k, float* x, float* y, float* h) {
@@ -209,7 +276,15 @@ void SlotsBuild(void) {
         slSlotCar = realloc(slSlotCar, sizeof(int) * slSlotCap);
         slKerbCar = realloc(slKerbCar, sizeof(int) * slSlotCap);
         slKerbOk = realloc(slKerbOk, (size_t)slSlotCap);
+        slCX = realloc(slCX, sizeof(float) * slSlotCap);
+        slCY = realloc(slCY, sizeof(float) * slSlotCap);
+        slCH = realloc(slCH, sizeof(float) * slSlotCap);
+        slHalf = realloc(slHalf, sizeof(float) * slSlotCap);
+        slSlotSeg = realloc(slSlotSeg, sizeof(int) * slSlotCap);
+        slPedStamp = realloc(slPedStamp, sizeof(int) * slSlotCap);
+        slBList = realloc(slBList, sizeof(int) * slSlotCap);
     }
+    SlBuildBuckets();
     SlBuildKerbs();
     // Shared starts: curves from one lane start together; until they part by a car width (2.6
     // cells) a car on one and a car on the other would overlap (the user saw a straight-on car
@@ -382,7 +457,7 @@ static int SlFreeAhead(int i, int want) {
             k = 0;
             seg = next;
         }
-        if (slSlotCar[SlIdx(seg, k)] >= 0) break;
+        if (!SlFree(SlIdx(seg, k))) break;
         n++;
     }
     return n;
@@ -407,6 +482,11 @@ static int SlCurveV(int conn) {           // top speed on a curve, slots per ste
 }
 // Will this curve probably be granted when we get there? (green or no light, no crossing curve
 // in use, room past it) - then drive at it at its curve speed, else brake for its stop line
+static bool SlPedOn(int seg) {   // a pedestrian on (or about to be on) segment seg
+    for (int k = 0; k < slSegN[seg]; k++) if (slPedStamp[SlIdx(seg, k)] == slStep) return true;
+    return false;
+}
+
 // Is a sibling of curve conn (one from the same lane) busy where it starts together with conn?
 static bool SlSiblingBusy(int conn) {
     const RdSeg* C = &rdSegs[conn];
@@ -415,7 +495,7 @@ static bool SlSiblingBusy(int conn) {
         int sb = N->conn[q];
         if (sb == conn || rdSegs[sb].from != C->from) continue;
         if (slConnStamp[sb] == slStep) return true;   // someone was let onto it this step
-        for (int k = 0; k < slShared[sb]; k++) if (slSlotCar[SlIdx(sb, k)] >= 0) return true;
+        for (int k = 0; k < slShared[sb]; k++) if (!SlFree(SlIdx(sb, k))) return true;
     }
     return false;
 }
@@ -426,8 +506,9 @@ static bool SlCurveLooksOpen(int conn) {
     int light = TrafficLightAt(C->node, C->from);
     if (light == 0 || light == 1) return false;
     if (SlSiblingBusy(conn)) return false;
+    if (SlPedOn(conn)) return false;
     int freeRun = 0;
-    while (freeRun < slSegN[C->to] && slSlotCar[SlIdx(C->to, freeRun)] < 0) freeRun++;
+    while (freeRun < slSegN[C->to] && SlFree(SlIdx(C->to, freeRun))) freeRun++;
     if (freeRun <= slSegCount[conn]) return false;
     for (int j = 0; j < N->nConn; j++) {
         int other = N->conn[j];
@@ -462,8 +543,8 @@ static int SlSafeSpeed(int i) {
             seg = next;
         }
         int o = slSlotCar[SlIdx(seg, k)];
-        if (o >= 0) {                                                   // a car ahead: Gipps
-            int vo = slotCars[o].stopSteps > 0 ? 0 : slotCars[o].v;
+        if (o >= 0 || slPedStamp[SlIdx(seg, k)] == slStep) {            // a car (or a pedestrian) ahead: Gipps
+            int vo = o < 0 || slotCars[o].stopSteps > 0 ? 0 : slotCars[o].v;
             int v = vmax;
             while (v > 0 && SlBrakeDist(v, D) > dist + SlBrakeDist(vo, D)) v--;
             return v < best ? v : best;
@@ -499,7 +580,7 @@ static void SlKerbMoves(void) {
             c->wantKerb = false;
             int kk = -1;
             if (rdSegs[L].kind == RD_LANE) {
-                if (k + 1 < N && slKerbOk[SlIdx(L, k + 1)] == 1 && slKerbCar[SlIdx(L, k + 1)] < 0 && slSlotCar[SlIdx(L, k + 1)] < 0) kk = k + 1;
+                if (k + 1 < N && slKerbOk[SlIdx(L, k + 1)] == 1 && slKerbCar[SlIdx(L, k + 1)] < 0 && SlFree(SlIdx(L, k + 1))) kk = k + 1;
                 else if (slKerbOk[SlIdx(L, k)] == 1 && slKerbCar[SlIdx(L, k)] < 0) kk = k;
             }
             if (kk < 0) {   // taken: a cab stands in the lane (the old way), a parker drives on
@@ -521,9 +602,9 @@ static void SlKerbMoves(void) {
         }
         if (!c->kerb || c->kerbStep == slStep || c->stopSteps > 0 || c->needRoute) continue;
         // pull out: diagonally into the lane, one slot on; passing beside lane slot k
-        if (k + 1 >= N || slSlotCar[SlIdx(L, k)] >= 0 || slSlotCar[SlIdx(L, k + 1)] >= 0) { slPullOutWaits++; continue; }
+        if (k + 1 >= N || !SlFree(SlIdx(L, k)) || !SlFree(SlIdx(L, k + 1))) { slPullOutWaits++; continue; }
         int back = 0, kk = k - 1;
-        while (kk >= 0 && slSlotCar[SlIdx(L, kk)] < 0 && back < 16) { back++; kk--; }
+        while (kk >= 0 && SlFree(SlIdx(L, kk)) && back < 16) { back++; kk--; }
         if (kk >= 0 && back < 16 && SlBrakeDist(slotCars[slSlotCar[SlIdx(L, kk)]].v, D) > back) { slPullOutWaits++; continue; }
         if (kk < 0 && back < SlBrakeDist(SL_VMAX, D)) {   // near the lane's start: nobody coming off the junction
             const RdNode* Nd = &rdNodes[rdSegs[L].from];
@@ -551,7 +632,7 @@ static int SlParallelSlot(int from, int k, int to) {   // the slot on lane `to` 
 }
 static int SlFreeRun(int seg, int k, int max) {          // free slots ahead of slot k on one lane
     int n = 0;
-    while (n < max && k + 1 + n < slSegN[seg] && slSlotCar[SlIdx(seg, k + 1 + n)] < 0) n++;
+    while (n < max && k + 1 + n < slSegN[seg] && SlFree(SlIdx(seg, k + 1 + n))) n++;
     return n;
 }
 static void SlLaneChanges(void) {
@@ -566,9 +647,9 @@ static void SlLaneChanges(void) {
             int A = c->route[c->ri], B = c->route[c->ri + 1], k = c->slot;
             int kb = SlParallelSlot(A, k, B), kt = kb + 1 < slSegN[B] ? kb + 1 : kb;
             // (and nobody right ahead in our lane: half-way, our front corner would clip it)
-            bool gap = slSlotCar[SlIdx(B, kt)] < 0 && slSlotCar[SlIdx(B, kb)] < 0 && (k + 1 >= slSegN[A] || slSlotCar[SlIdx(A, k + 1)] < 0);
+            bool gap = SlFree(SlIdx(B, kt)) && SlFree(SlIdx(B, kb)) && (k + 1 >= slSegN[A] || SlFree(SlIdx(A, k + 1)));
             int back = 0, kk = kb - 1;
-            while (gap && kk >= 0 && slSlotCar[SlIdx(B, kk)] < 0 && back < 16) { back++; kk--; }
+            while (gap && kk >= 0 && SlFree(SlIdx(B, kk)) && back < 16) { back++; kk--; }
             if (gap && kk >= 0 && back < 16 && SlBrakeDist(slotCars[slSlotCar[SlIdx(B, kk)]].v, D) > back) gap = false;
             if (!gap) {   // no gap for a while (a steady stream beside): go another way from this lane
                 if (c->v == 0 && ++c->mergeWait > 8) {
@@ -608,8 +689,8 @@ static void SlLaneChanges(void) {
         if (rdSegs[dest].edge == rdSegs[A].edge) continue;              // our trip ends on this road
         int kb = SlParallelSlot(A, k, B), kt = kb + 1;
         if (kb < 1 || kt > slSegN[B] - 2) continue;
-        if (slSlotCar[SlIdx(B, kb)] >= 0 || slSlotCar[SlIdx(B, kt)] >= 0) continue;
-        if (k + 1 < slSegN[A] && slSlotCar[SlIdx(A, k + 1)] >= 0) continue;   // right ahead in our lane: our front corner would clip it
+        if (!SlFree(SlIdx(B, kb)) || !SlFree(SlIdx(B, kt))) continue;
+        if (k + 1 < slSegN[A] && !SlFree(SlIdx(A, k + 1))) continue;   // right ahead in our lane: our front corner would clip it
         // why change: overtake a slow / standing car just ahead, or back to the right-hand lane
         int aheadA = SlFreeRun(A, k, 8), aheadB = SlFreeRun(B, kt, 8);
         bool keepRight = rdSegs[A].laneIdx == 1;
@@ -624,7 +705,7 @@ static void SlLaneChanges(void) {
         if (!overtake && !(keepRight && aheadB >= clear && aheadB >= aheadA)) continue;
         // the first car behind in lane B must be able to stop in time
         int back = 0, kk = kb - 1;
-        while (kk >= 0 && slSlotCar[SlIdx(B, kk)] < 0 && back < 16) { back++; kk--; }
+        while (kk >= 0 && SlFree(SlIdx(B, kk)) && back < 16) { back++; kk--; }
         if (kk >= 0 && back < 16) {
             const SlotCar* o = &slotCars[slSlotCar[SlIdx(B, kk)]];
             if (SlBrakeDist(o->v, D) > back) continue;
@@ -704,10 +785,11 @@ static void SlGrantCurves(void) {
         if (light == 0 || light == 1) continue;                         // red / amber
         if (slExitStamp[C->to] == slStep) continue;                       // someone else enters that lane now
         if (SlSiblingBusy(conn)) continue;                                // a car from our lane still where the curves start together
+        if (SlPedOn(conn)) continue;                                      // someone walking across the curve
         // room past the junction for us and every car already on this curve: else a car can
         // end up waiting inside the junction, blocking the crossing paths (that gridlocked)
         int freeRun = 0;
-        while (freeRun < slSegN[C->to] && slSlotCar[SlIdx(C->to, freeRun)] < 0) freeRun++;
+        while (freeRun < slSegN[C->to] && SlFree(SlIdx(C->to, freeRun))) freeRun++;
         if (freeRun <= slSegCount[conn]) { slotCars[i].noRoomSteps++; continue; }
         slotCars[i].noRoomSteps = 0;
         bool clash = false;
@@ -726,7 +808,7 @@ static void SlGrantCurves(void) {
                 const RdEdge* E = &rdEdges[N->edge[e]];
                 int in = E->b == C->node ? E->lane[0] : E->lane[1];
                 if (in < 0 || !rdSegs[in].priority) continue;
-                for (int k = slSegN[in] - 2; k < slSegN[in]; k++) if (k >= 0 && slSlotCar[SlIdx(in, k)] >= 0) gap = false;
+                for (int k = slSegN[in] - 2; k < slSegN[in]; k++) if (k >= 0 && !SlFree(SlIdx(in, k))) gap = false;
             }
             if (!gap) continue;
             slRingCount[r]++;
@@ -734,6 +816,51 @@ static void SlGrantCurves(void) {
         slGrantStep[i] = slStep;
         slConnStamp[conn] = slStep;
         slExitStamp[C->to] = slStep;
+    }
+}
+
+// Slots within 1.8 cells of the stretch a pedestrian walks this step (from where it is, along
+// its last step's velocity, 1.2 s on): a car may not be there
+static float* slPedLX = NULL;
+
+static float* slPedLY = NULL;
+static void SlStampPedestrians(void) {
+    if (moverCount == 0) return;
+    static int cap = 0;
+    if (moverCount > cap) {
+        slPedLX = realloc(slPedLX, sizeof(float) * moverCount);
+        slPedLY = realloc(slPedLY, sizeof(float) * moverCount);
+        for (int i = cap; i < moverCount; i++) slPedLX[i] = -1;
+        cap = moverCount;
+    }
+    float CS = CELL_SIZE, B = SL_BUCKET * CS, R = 1.5f * CS;   // (car half width + a pedestrian + a margin, from the slot's stretch)
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        if (!m->active) { slPedLX[i] = -1; continue; }
+        float px = m->x, py = m->y, qx = px, qy = py;
+        bool held = i < slPedHeldCap && slPedHeldAt[i] > gameTime - 0.5;
+        bool going = i < slPedHeldCap && slPedGoStep[i] == slStep;
+        if (!going && !SlRoadAt(px, py, (int)m->z)) { slPedLX[i] = px; slPedLY[i] = py; continue; }   // on the pavement: no car comes there
+        if (i < slPedHeldCap && slPedGoStep[i] == slStep) {   // steps off the kerb now: its way across
+            qx = px + slPedDX[i] * 3.0f * CS; qy = py + slPedDY[i] * 3.0f * CS;
+        } else if (slPedLX[i] >= 0 && !held) {
+            float vx = (px - slPedLX[i]) / SL_STEP, vy = (py - slPedLY[i]) / SL_STEP;
+            if (vx * vx + vy * vy < 25 * CS * CS) { qx = px + vx * 1.2f; qy = py + vy * 1.2f; }
+        }
+        slPedLX[i] = px; slPedLY[i] = py;
+        float ex = qx - px, ey = qy - py, el = ex * ex + ey * ey;
+        int bx0 = (int)((fminf(px, qx) - R - SL_SPAN_REACH) / B), bx1 = (int)((fmaxf(px, qx) + R + SL_SPAN_REACH) / B);
+        int by0 = (int)((fminf(py, qy) - R - SL_SPAN_REACH) / B), by1 = (int)((fmaxf(py, qy) + R + SL_SPAN_REACH) / B);
+        for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
+            for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
+                for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                    int idx = slBList[e];
+                    int ns = el > 0 ? 1 + (int)(sqrtf(el) / (0.5f * CS)) : 0;   // points every half cell along the walk
+                    for (int t = 0; t <= ns; t++) {
+                        float f = ns ? (float)t / ns : 0;
+                        if (SlSlotDist2(idx, px + ex * f, py + ey * f) < R * R) { if (slPedStamp[idx] != slStep) slPedBlocks++; slPedStamp[idx] = slStep; break; }
+                    }
+                }
     }
 }
 
@@ -758,6 +885,7 @@ static void SlRunStep(void) {
         for (int i = 0; i < slotCarCount; i++)
             if (slotCars[i].v == 0 && !slotCars[i].kerb) rdSegExtra[slotCars[i].route[slotCars[i].ri]] += 8.0f * CELL_SIZE;
     }
+    SlStampPedestrians();
     SlGrantCurves();
     // a car refused for want of room for 15 steps looks for another way (a few per step)
     int rer = 0;
@@ -783,6 +911,7 @@ static void SlRunStep(void) {
         int f = SlFreeAhead(i, v);
         if (v > f) v = f;
         if (v > 0 && SlRand() < (unsigned)(SL_DAWDLE * 32768)) v--;
+        if (v < c->v - SlBrakeSlots()) slHardStops++;
         slStepV[i] = v;
     }
     for (int i = 0; i < slotCarCount; i++) {
@@ -959,6 +1088,22 @@ static void CheckTouches(void) {
                        (a->lcStep == slStep || b->lcStep == slStep) ? " (changing lanes)" : "");
             }
         }
+    for (int mi = 0; mi < moverCount; mi++) {
+        if (!movers[mi].active) continue;
+        for (int i = 0; i < slotCarCount; i++) {
+            float dx = px[i] - movers[mi].x, dy = py[i] - movers[mi].y;
+            if (dx * dx + dy * dy > near * near) continue;
+            if (SlInCar(i, movers[mi].x, movers[mi].y, -2.0f)) {
+                slPedHits++;
+                static int toldP = 0;
+                if (toldP++ < 14) printf("pedestrian %d at (%.1f,%.1f) inside car %d at (%.1f,%.1f) (v %d, seg kind %d slot %d/%d, kerb %d, lc %d, ped held %.1f s ago, path %d/%d)\n", mi,
+                                        movers[mi].x / CELL_SIZE, movers[mi].y / CELL_SIZE, i, px[i] / CELL_SIZE, py[i] / CELL_SIZE, slotCars[i].v,
+                                        rdSegs[slotCars[i].route[slotCars[i].ri]].kind, slotCars[i].slot, slSegN[slotCars[i].route[slotCars[i].ri]], slotCars[i].kerb,
+                                        slotCars[i].lcStep == slStep, mi < slPedHeldCap ? gameTime - slPedHeldAt[mi] : -1.0, movers[mi].pathIndex, movers[mi].pathLength);
+            }
+        }
+    }
+    slPedHitSamples++;
     slTouchSamples++;
     slTouchSum += pairs;
     if (pairs > slTouchMax) slTouchMax = pairs;
@@ -1077,6 +1222,131 @@ int SlotCarSignals(int i) {
     return sig;
 }
 
+// Is (x, y) inside car `car`'s body (grown by `grow` px)?
+static bool SlInCar(int car, float x, float y, float grow) {
+    float cx, cy, ch, st;
+    SlotCarDrawPose(car, &cx, &cy, &ch, &st);
+    float dx = x - cx, dy = y - cy;
+    float u = dx * cosf(ch) + dy * sinf(ch), v = -dx * sinf(ch) + dy * cosf(ch);
+    return fabsf(u) < carLength * CELL_SIZE * 0.5f + grow && fabsf(v) < carWidth * CELL_SIZE * 0.5f + grow;
+}
+
+static double* slPedWaitStart = NULL;
+static int slPedWaitCap = 0;
+#define SL_PED_PATIENCE 6.0   // seconds at the kerb before a pedestrian just goes (the cars stop)
+bool SlotsPedHold(int mi, float dirX, float dirY) {
+    if (slotCarCount == 0 || slTotal == 0 || !slBHead) return false;
+    if (mi >= slPedWaitCap) {
+        int n = mi + 64;
+        slPedWaitStart = realloc(slPedWaitStart, sizeof(double) * n);
+        for (int i = slPedWaitCap; i < n; i++) slPedWaitStart[i] = -1;
+        slPedWaitCap = n;
+    }
+    if (mi >= slPedHeldCap) {
+        int n = mi + 64;
+        slPedHeldAt = realloc(slPedHeldAt, sizeof(double) * n);
+        slPedGoStep = realloc(slPedGoStep, sizeof(int) * n);
+        slPedDX = realloc(slPedDX, sizeof(float) * n);
+        slPedDY = realloc(slPedDY, sizeof(float) * n);
+        for (int i = slPedHeldCap; i < n; i++) { slPedHeldAt[i] = -1e9; slPedGoStep[i] = -1; }
+        slPedHeldCap = n;
+    }
+    const Mover* m = &movers[mi];
+    float CS = CELL_SIZE, B = SL_BUCKET * CS;
+    float qx = m->x + dirX * 0.8f * CS, qy = m->y + dirY * 0.8f * CS;
+    bool onRoad = SlRoadAt(m->x, m->y, (int)m->z), qOnRoad = SlRoadAt(qx, qy, (int)m->z), hold = false, inWay = false;
+    int wayCar = -1;
+    int bx0 = (int)((m->x - 3 * CS - SL_SPAN_REACH) / B), bx1 = (int)((m->x + 3 * CS + SL_SPAN_REACH) / B);
+    int by0 = (int)((m->y - 3 * CS - SL_SPAN_REACH) / B), by1 = (int)((m->y + 3 * CS + SL_SPAN_REACH) / B);
+    for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
+        for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
+            for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                int idx = slBList[e];
+                (void)idx;
+            }
+    for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH && !inWay; by++)
+        for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW && !inWay; bx++)
+            for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1] && !inWay; e++) {
+                int idx = slBList[e];
+                if (SlSlotDist2(idx, qx, qy) > 2.6f * 2.6f * CS * CS) continue;
+                int car = slSlotCar[idx];
+                // a car right where we step (unless we're touching it already: then walk on, out of it)
+                // (in the road: only a moving car - waiting for a standing one locked whole districts:
+                // it stood for the traffic the pedestrians held up). A car is where it is
+                // drawn and where its slot ends this step (it may be gliding in)
+                bool patient = !onRoad || slotCars[car < 0 ? 0 : car].v > 0;
+                if (car >= 0 && patient && !SlInCar(car, m->x, m->y, 0.4f * CS)) {
+                    bool atSlot = slotCars[car].v > 0 && SlSlotDist2(idx, qx, qy) < 1.5f * 1.5f * CS * CS;
+                    if (atSlot || SlInCar(car, qx, qy, 0.4f * CS)) { inWay = true; wayCar = car; }
+                }
+                if (onRoad || !qOnRoad) continue;   // the kerb wait: only when stepping off the pavement
+                // stepping off the kerb: a moving car there or coming (4 slots back) - wait
+                if (car >= 0 && slotCars[car].v > 0) hold = true;
+                int seg = slSlotSeg[idx], k = idx - slSeg0[seg];
+                for (int b = 1; b <= 4 && k - b >= 0; b++) {
+                    int o = slSlotCar[SlIdx(seg, k - b)];
+                    if (o >= 0 && slotCars[o].v > 0) hold = true;
+                }
+            }
+    if (getenv("SL_PEDDBG")) {
+        static int told = 0;
+        static unsigned char seen[4096];
+        if ((inWay || hold) && mi < 4096 && !seen[mi] && told++ < 30 && (seen[mi] = 1))
+            printf("t %.1f ped %d at (%.1f,%.1f) dir (%.2f,%.2f) onRoad %d qOnRoad %d inWay %d hold %d waited %.1f car %d\n", gameTime, mi, m->x / CS, m->y / CS, dirX, dirY,
+                   onRoad, qOnRoad, inWay, hold, slPedWaitStart[mi] < 0 ? 0.0 : gameTime - slPedWaitStart[mi], wayCar);
+        if (wayCar >= 0 && told < 30) { const SlotCar* c = &slotCars[wayCar]; printf("   car %d v %d wait %d seg %d kind %d slot %d/%d ri %d/%d needRoute %d stop %d kerb %d\n", wayCar, c->v, c->waitSteps, c->route[c->ri], rdSegs[c->route[c->ri]].kind, c->slot, slSegN[c->route[c->ri]], c->ri, c->routeLen, c->needRoute, c->stopSteps, c->kerb); }
+    }
+    if (onRoad) {
+        if (inWay) {   // a car where we'd step: wait; go on at the next step's start (announced, as below)
+            if (slPedWaitStart[mi] < 0) slPedWaitStart[mi] = gameTime;
+            slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime;
+            return true;
+        }
+        if (slPedHeldAt[mi] > gameTime - 0.1 && slPedGoStep[mi] < 0) { slPedGoStep[mi] = slStep + 1; slPedDX[mi] = dirX; slPedDY[mi] = dirY; }
+        if (slPedGoStep[mi] >= 0 && slStep < slPedGoStep[mi]) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
+        slPedWaitStart[mi] = -1;
+        return false;
+    }
+    if (!qOnRoad) { slPedGoStep[mi] = -1; slPedWaitStart[mi] = -1; return false; }   // walking the pavement
+    // at the kerb, about to step off
+    // At a junction with lights: cross the road only while its traffic has red (the walk sign);
+    // the nearest lane says which road we cross
+    {
+        int best = -1;
+        float bestD = 8.0f * 8.0f * CS * CS;
+        for (int by = by0 - 1 < 0 ? 0 : by0 - 1; by <= by1 + 1 && by < slBH; by++)
+            for (int bx = bx0 - 1 < 0 ? 0 : bx0 - 1; bx <= bx1 + 1 && bx < slBW; bx++)
+                for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
+                    int idx = slBList[e];
+                    if (rdSegs[slSlotSeg[idx]].kind != RD_LANE) continue;
+                    float dx = slCX[idx] - qx, dy = slCY[idx] - qy;
+                    if (dx * dx + dy * dy < bestD) { bestD = dx * dx + dy * dy; best = slSlotSeg[idx]; }
+                }
+        if (best >= 0) {
+            const RdEdge* E = &rdEdges[rdSegs[best].edge];
+            int nodes[2] = {E->a, E->b};
+            for (int t = 0; t < 2; t++) {
+                const RdNode* N = &rdNodes[nodes[t]];
+                float dx = N->x - qx, dy = N->y - qy;
+                if (dx * dx + dy * dy > 10.0f * 10.0f * CS * CS) continue;
+                int in = E->b == nodes[t] ? E->lane[0] : E->lane[1];
+                if (in < 0) in = E->b == nodes[t] ? E->lane[1] : E->lane[0];   // (one-way: the lights of its other end... none: -1 below)
+                int light = in >= 0 && rdSegs[in].to == nodes[t] ? TrafficLightAt(nodes[t], in) : -1;
+                if (light == 1 || light == 2) { slPedWaitStart[mi] = -1; slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }   // don't walk
+            }
+        }
+    }
+    if (inWay) hold = true;   // a car where we'd step: wait (with patience) like for a gap
+    if (hold) {
+        if (slPedWaitStart[mi] < 0) slPedWaitStart[mi] = gameTime;
+        if (gameTime - slPedWaitStart[mi] < SL_PED_PATIENCE) { slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
+        // waited long enough: steps out anyway (announced: the cars stop)
+    }
+    if (slPedGoStep[mi] < 0) { slPedGoStep[mi] = slStep + 1; slPedDX[mi] = dirX; slPedDY[mi] = dirY; }
+    if (slStep < slPedGoStep[mi]) { slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }   // until the next step starts
+    return false;
+}
+
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1) {
     const RdSeg* S = &rdSegs[slotCars[i].route[slotCars[i].ri]];
     return !(S->bx1 < x0 || S->by1 < y0 || S->bx0 > x1 || S->by0 > y1);
@@ -1093,14 +1363,17 @@ static void SlExplain(int i) {
         int ahead = -1, ri = c->ri, k = c->slot + 1;
         if (k >= slSegN[seg] && ri + 1 < c->routeLen) { ri++; k = 0; }
         if (ri < c->routeLen && k < slSegN[c->route[ri]]) ahead = slSlotCar[SlIdx(c->route[ri], k)];
-        printf(" - no curve wanted; slot ahead holds car %d (seg %d kind %d)\n", ahead, c->route[ri], rdSegs[c->route[ri]].kind);
+        printf(" - no curve wanted; slot ahead holds car %d (seg %d kind %d)%s\n", ahead, c->route[ri], rdSegs[c->route[ri]].kind,
+               ri < c->routeLen && k < slSegN[c->route[ri]] && slPedStamp[SlIdx(c->route[ri], k)] == slStep ? " - a pedestrian" : "");
+        static int depth = 0;
+        if (ahead >= 0 && ahead != i && depth < 40) { depth++; SlExplain(ahead); depth--; }   // the queue's front
         return;
     }
     const RdSeg* C = &rdSegs[conn];
     const RdNode* N = &rdNodes[C->node];
     int freeRun = 0;
-    while (freeRun < slSegN[C->to] && slSlotCar[SlIdx(C->to, freeRun)] < 0) freeRun++;
-    printf(" - wants curve %d (node %d): light %d, exit lane %d (%d slots) free run %d (on curve %d), in it:", conn, C->node, TrafficLightAt(C->node, C->from),
+    while (freeRun < slSegN[C->to] && SlFree(SlIdx(C->to, freeRun))) freeRun++;
+    printf(" - wants curve %d (node %d)%s: light %d, exit lane %d (%d slots) free run %d (on curve %d), in it:", conn, C->node, SlPedOn(conn) ? " [pedestrian on it]" : "", TrafficLightAt(C->node, C->from),
            C->to, slSegN[C->to], freeRun, slSegCount[conn]);
     for (int k = 0; k < slSegN[C->to]; k++) {
         int o = slSlotCar[SlIdx(C->to, k)];
@@ -1139,7 +1412,40 @@ void SlotsPrintStats(void) {
            rdSegCount, slotCarCount, slTotal ? 100.0 * slotCarCount / slTotal : 0.0);
     printf("Slot traffic: %d trips, mean speed now %.1f cells/s, %d moving now, %d waiting at junctions, %d waiting for a route\n",
            trips, slotCarCount ? (double)vsum / slotCarCount * SL_SLOT_CELLS / SL_STEP : 0.0, moving, waitingJunction, needRoute);
-    if (getenv("SL_TOUCH")) printf("  touches: max %d pairs at once, %ld pair-samples over %ld samples\n", slTouchMax, slTouchSum, slTouchSamples);
+    if (getenv("SL_TOUCH")) printf("  touches: max %d pairs at once, %ld pair-samples over %ld samples; pedestrians inside a car: %ld\n", slTouchMax, slTouchSum, slTouchSamples, slPedHits);
+    if (moverCount > 0) {
+        int onRoadNow = 0;
+        for (int mi = 0; mi < moverCount; mi++) {
+            if (!movers[mi].active) continue;
+            float B = SL_BUCKET * CELL_SIZE;
+            int bx = (int)(movers[mi].x / B), by = (int)(movers[mi].y / B);
+            bool on = false;
+            for (int yy = by - 1; yy <= by + 1 && !on; yy++) for (int xx = bx - 1; xx <= bx + 1 && !on; xx++) {
+                if (xx < 0 || yy < 0 || xx >= slBW || yy >= slBH) continue;
+                for (int e = slBHead[yy * slBW + xx]; e < slBHead[yy * slBW + xx + 1]; e++) {
+                    float dx = slCX[slBList[e]] - movers[mi].x, dy = slCY[slBList[e]] - movers[mi].y;
+                    if (dx * dx + dy * dy < 1.8f * 1.8f * CELL_SIZE * CELL_SIZE) { on = true; break; }
+                }
+            }
+            if (on) onRoadNow++;
+        }
+        printf("  pedestrians in the road now: %d\n", onRoadNow);
+        if (getenv("SL_PEDNODE")) {
+            const RdNode* N = &rdNodes[atoi(getenv("SL_PEDNODE"))];
+            printf("  node at (%.1f,%.1f)\n", N->x / CELL_SIZE, N->y / CELL_SIZE);
+            for (int mi = 0; mi < moverCount; mi++) {
+                float dx = movers[mi].x - N->x, dy = movers[mi].y - N->y;
+                if (dx * dx + dy * dy > 12.0f * 12.0f * CELL_SIZE * CELL_SIZE) continue;
+                const Mover* m = &movers[mi];
+                printf("   ped %d at (%.1f,%.1f) road %d held %.1f s ago, goStep %d (step %d), waitStart %.1f ago, path %d/%d goal (%d,%d) next (%d,%d) noProgress %.1f\n", mi, m->x / CELL_SIZE, m->y / CELL_SIZE,
+                       SlRoadAt(m->x, m->y, (int)m->z), mi < slPedHeldCap ? gameTime - slPedHeldAt[mi] : -1.0, mi < slPedHeldCap ? slPedGoStep[mi] : -9, slStep,
+                       mi < slPedWaitCap && slPedWaitStart[mi] >= 0 ? gameTime - slPedWaitStart[mi] : -1.0, m->pathIndex, m->pathLength, m->goal.x, m->goal.y,
+                       m->pathIndex >= 0 ? moverPaths[mi][m->pathIndex].x : -1, m->pathIndex >= 0 ? moverPaths[mi][m->pathIndex].y : -1, m->timeWithoutProgress);
+            }
+        }
+    }
+    if (moverCount > 0) printf("  pedestrians: %d; %ld slots blocked for them, %ld ticks waiting at the kerb or for a car; hard stops (any cause) %ld\n",
+                               moverCount, slPedBlocks, slPedHolds, slHardStops);
     if (getenv("SL_JUMPS")) printf("  jumps: %ld moves bigger than the top speed allows (worst %.0f px)\n", jumpCount, jumpWorst);
     if (carSlotReal)
         printf("  real cars in view: %.1f on average; tracking error mean %.2f cells, max %.2f; %ld snaps; touches max %d pairs\n",

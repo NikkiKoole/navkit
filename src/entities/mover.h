@@ -265,6 +265,7 @@ extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool useTunnelYielding;       // Wait at 1-wide passages for oncoming movers
+extern bool (*moverStepHold)(int moverIdx, float dirX, float dirY);   // true: stand still this tick (cars experiment: pedestrians at the kerb), NULL = never
 extern bool (*moverGoalPicker)(int moverIdx, Point* goal);   // endless-mode goal chooser (scenarios), NULL = random
 float MoverPatience(const struct Mover* m);   // wait tolerance in lines: Patient 2x, Impatient 0.4x
 void MoverPickNewGoal(struct Mover* m);

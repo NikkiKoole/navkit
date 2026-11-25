@@ -108,6 +108,8 @@ void ScenarioResetWorld(const char* terrain) {
     buildNow = true;         // dev setups: the build tools work instantly (I flips to order)
     SnapshotOrRestoreSettings();
     moverGoalPicker = NULL;
+    moverStepHold = NULL;
+    navPathExtra = NULL;   // (the cars city's road cost: its buffer stays allocated there)
     // Entities first (ClearMovers also drops jobs and reservations)
     ClearMovers();
     ClearAnimals();
@@ -3543,6 +3545,75 @@ static void BuildManhattan(void) {
 // Avenues: the middle row / column of a small city, every 8th in a big one
 static bool CityAvenueRow(int k, int n) { return n <= 12 ? k == n / 2 : (k % 8) == 4; }
 
+// Pavements: two cells of concrete floor round every road (all the ground the roads leave);
+// the cells, for the pedestrians' goals
+static int* cityWalk = NULL;
+static int cityWalkN = 0;
+static void CityPavements(void) {
+    int W = gridWidth, H = gridHeight;
+    unsigned char* road = calloc((size_t)(W * H), 1);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) road[y * W + x] = GRID(x, y, 1) == CELL_AIR;
+    cityWalk = realloc(cityWalk, sizeof(int) * (size_t)(W * H));
+    cityWalkN = 0;
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            if (road[y * W + x]) continue;
+            bool near = false;
+            for (int dy = -2; dy <= 2 && !near; dy++)
+                for (int dx = -2; dx <= 2 && !near; dx++) {
+                    int xx = x + dx, yy = y + dy;
+                    if (xx >= 0 && yy >= 0 && xx < W && yy < H && road[yy * W + xx]) near = true;
+                }
+            if (!near) continue;
+            GRID(x, y, 1) = CELL_AIR;
+            SetWallMaterial(x, y, 1, MAT_NONE);
+            SET_FLOOR(x, y, 1);
+            SetFloorMaterial(x, y, 1, MAT_CONCRETE);
+            cityWalk[cityWalkN++] = y * W + x;
+        }
+    // walking in the road costs 26x on routes (not in speed): along the pavement, across at the crossings
+    static unsigned char* extra = NULL;
+    extra = realloc(extra, (size_t)(W * H));
+    for (int i = 0; i < W * H; i++) extra[i] = road[i] ? 250 : 0;
+    // Crossings: across each road's mouth, just past every lane's end (where cars wait at the
+    // stop line, nobody stands): no extra cost there, so pedestrians cross at the junctions
+    for (int sgi = 0; sgi < rdSegCount; sgi++) {
+        if (rdSegs[sgi].kind != RD_LANE) continue;
+        float ex, ey, eh;
+        RoadPointAt(sgi, rdSegs[sgi].len, &ex, &ey, &eh);
+        float CS = CELL_SIZE, ch = cosf(eh), sh = sinf(eh);
+        for (float a = 1.0f; a <= 2.6f; a += 0.4f)
+            for (float l = -6.0f; l <= 6.0f; l += 0.4f) {
+                int cx = (int)((ex + (ch * a - sh * l) * CS) / CS), cy = (int)((ey + (sh * a + ch * l) * CS) / CS);
+                if (cx < 0 || cy < 0 || cx >= W || cy >= H || !road[cy * W + cx]) continue;
+                // not on another road's lanes (a crossing there would be in its traffic)
+                float px = (cx + 0.5f) * CS, py = (cy + 0.5f) * CS;
+                bool clear = true;
+                for (int o = 0; o < rdSegCount && clear; o++) {
+                    const RdSeg* O = &rdSegs[o];
+                    if (O->kind != RD_LANE || O->edge == rdSegs[sgi].edge) continue;
+                    if (px < O->bx0 - 3 * CS || px > O->bx1 + 3 * CS || py < O->by0 - 3 * CS || py > O->by1 + 3 * CS) continue;
+                    for (int q = 0; q < O->n; q++) {
+                        float dx = rdX[O->p0 + q] - px, dy = rdY[O->p0 + q] - py;
+                        if (dx * dx + dy * dy < 2.5f * 2.5f * CS * CS) { clear = false; break; }
+                    }
+                }
+                if (clear) extra[cy * W + cx] = 0;
+            }
+    }
+    navPathExtra = extra;
+    navPathExtraZ = 1;
+    free(road);
+}
+static bool CityWalkGoal(int moverIdx, Point* goal) {
+    (void)moverIdx;
+    if (cityWalkN == 0) return false;
+    int c = cityWalk[CityRand(cityWalkN)];   // (the city's own generator: runs repeat)
+    *goal = (Point){c % gridWidth, c / gridWidth, 1};
+    return true;
+}
+
 static void SetupCarsCity(void) {
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
@@ -3557,6 +3628,7 @@ static void SetupCarsCity(void) {
 
     cityRng = (unsigned int)carCitySeed;
     rdSetback = carCitySetback;
+    if (carCitySlots && carCityPeds > 0 && rdSetback < 6) rdSetback = 6;   // room for a crossing in front of each junction
     rdLaneRules = carCityLaneRules && carCitySlots;   // (steered cars: not yet - they deadlock with them)
     if (carCityLayout == 1) BuildManhattan();
     else {
@@ -3630,13 +3702,23 @@ static void SetupCarsCity(void) {
     TrafficSetupLights(carCityLights);
     if (carCityLights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
     RoadsCarve(1);
-    if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); }   // (slot traffic: kerb strips for parking)
+    if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); CityPavements(); }   // (slot traffic: kerb strips for parking, pavements)
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
 
     int placed = 0;
     if (carCitySlots) {   // the abstract slot traffic instead (slots.h)
         placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs, carCityParking ? 0.3f : 0.0f);
+        // pedestrians: wander between pavement spots (endless mode), held at the kerb by the traffic
+        endlessMoverMode = true;
+        moodEnabled = false;
+        hungerEnabled = thirstEnabled = energyEnabled = false;
+        moverGoalPicker = CityWalkGoal;
+        moverStepHold = SlotsPedHold;
+        for (int i = 0; i < carCityPeds && cityWalkN > 0; i++) {
+            int c = cityWalk[CityRand(cityWalkN)];
+            SpawnMoverAt(c % gridWidth, c / gridWidth, 1);
+        }
         currentViewZ = 1;
         AddMessage(TextFormat("Cars city, slot traffic: %d cars on %d roads", placed, rdEdgeCount), GREEN);
         return;

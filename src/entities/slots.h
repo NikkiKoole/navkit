@@ -72,6 +72,10 @@ bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its seg
 #define SL_SIG_RIGHT 2
 #define SL_SIG_BRAKE 4
 int SlotCarSignals(int i);
+// Pedestrians (movers): the slots a mover walks are taken for cars; a mover about to step off
+// the kerb waits for a gap (up to SL_PED_PATIENCE s, then just goes) and never walks into a car.
+// Install as moverStepHold (mover.h).
+bool SlotsPedHold(int moverIdx, float dirX, float dirY);
 
 // Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
 // (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;
