@@ -28,6 +28,7 @@ typedef struct {
     int ri;                  // route step (index into route)
     int slot;                // slot on route[ri]
     int v;                   // slots per step
+    int vBefore;             // ... the step before (brake lights)
     int prevRi, prevSlot;    // before the last step (drawing interpolates)
     int destSlot;            // the trip ends at this slot of the last route step
     bool needRoute;          // waits at its lane's end for a route search
@@ -66,6 +67,11 @@ bool SlotsCheck(char* why, int whyLen);   // invariants: one car per slot, trips
 // Where car i is now (drawing; interpolated within the step): false if off the network
 bool SlotCarPose(int i, float* x, float* y, float* heading);
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its segment's box overlaps (px)
+// What car i signals (drawing): SL_SIG_LEFT / SL_SIG_RIGHT indicators (both: hazards), SL_SIG_BRAKE
+#define SL_SIG_LEFT 1
+#define SL_SIG_RIGHT 2
+#define SL_SIG_BRAKE 4
+int SlotCarSignals(int i);
 
 // Real cars in view (setting carSlotReal): a slot car in the view also gets a physical car
 // (the bicycle model, real steering, smooth speed) that chases the pose its slot gives;

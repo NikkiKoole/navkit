@@ -296,6 +296,8 @@ static int TurnOf(int in, int out) {
     return d > 0.5f ? 1 : (d < -0.5f ? -1 : 0);
 }
 
+int RoadConnTurn(int conn) { return TurnOf(rdSegs[conn].from, rdSegs[conn].to); }
+
 static bool ConnectorsConflict(int s1, int s2) {
     const RdSeg* a = &rdSegs[s1];
     const RdSeg* b = &rdSegs[s2];

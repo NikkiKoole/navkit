@@ -791,6 +791,7 @@ static void SlRunStep(void) {
         c->prevRi = c->ri;
         c->prevSlot = c->slot;
         int v = slStepV[i];
+        c->vBefore = c->v;
         c->v = v;
         if (v == 0 && c->stopSteps == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
         else c->waitSteps = 0;
@@ -1043,6 +1044,39 @@ bool SlotCarPose(int i, float* x, float* y, float* heading) {
     return true;
 }
 
+// Indicators and brake lights, from what the car is about to do (its route, the kerb)
+#define SL_SIGNAL_SLOTS 4   // indicate this many slots before a turn / the kerb
+int SlotCarSignals(int i) {
+    const SlotCar* c = &slotCars[i];
+    int seg = c->route[c->ri], sig = 0;
+    // braking: slower than last step, or standing in traffic (not parked)
+    if (!c->kerb && (c->v < c->vBefore || c->v == 0)) sig |= SL_SIG_BRAKE;
+    if (c->kerb) {
+        if (c->cab && c->stopSteps > 0) return SL_SIG_LEFT | SL_SIG_RIGHT;          // a cab at a fare: hazards
+        if (c->stopSteps <= 2 && c->kerbStep != slStep) return SL_SIG_LEFT;       // about to pull out
+        if (c->kerbStep == slStep && c->kerbIn) return SL_SIG_RIGHT;              // just pulled in
+        return 0;
+    }
+    if (c->kerbStep == slStep && !c->kerbIn) return sig | SL_SIG_LEFT;            // pulling out
+    if (c->stopSteps > 0 && c->cab) return sig | SL_SIG_LEFT | SL_SIG_RIGHT;      // a cab at a fare in the lane
+    // a lane change: under way, or one the route needs next
+    if (c->lcStep == slStep) return sig | (rdSegs[seg].laneIdx == 1 ? SL_SIG_LEFT : SL_SIG_RIGHT);
+    if (rdSegs[seg].kind == RD_CONN) {                                             // on a junction curve
+        int t = RoadConnTurn(seg);
+        return sig | (t < 0 ? SL_SIG_LEFT : t > 0 ? SL_SIG_RIGHT : 0);
+    }
+    if (c->ri + 1 < c->routeLen) {
+        int next = c->route[c->ri + 1];
+        if (rdSegs[seg].parallel == next) return sig | (rdSegs[next].laneIdx == 1 ? SL_SIG_LEFT : SL_SIG_RIGHT);
+        if (rdSegs[next].kind == RD_CONN && slSegN[seg] - c->slot <= SL_SIGNAL_SLOTS) {
+            int t = RoadConnTurn(next);
+            return sig | (t < 0 ? SL_SIG_LEFT : t > 0 ? SL_SIG_RIGHT : 0);
+        }
+    }
+    if (c->parkNext && c->ri == c->routeLen - 1 && c->destSlot - c->slot <= SL_SIGNAL_SLOTS) sig |= SL_SIG_RIGHT;   // pulling in soon
+    return sig;
+}
+
 bool SlotCarVisible(int i, float x0, float y0, float x1, float y1) {
     const RdSeg* S = &rdSegs[slotCars[i].route[slotCars[i].ri]];
     return !(S->bx1 < x0 || S->by1 < y0 || S->bx0 > x1 || S->by0 > y1);
@@ -1114,6 +1148,11 @@ void SlotsPrintStats(void) {
     { int atKerb = 0; for (int i = 0; i < slotCarCount; i++) if (slotCars[i].kerb) atKerb++;
       printf("  kerb: %d cars there now; %ld parked, %ld cab fares at the kerb, %ld arrivals found the spot taken, %ld pull-out waits\n",
              atKerb, slParks, slFareStops, slKerbFull, slPullOutWaits); }
+    { int sl = 0, sr = 0, haz = 0, br = 0;
+      for (int i = 0; i < slotCarCount; i++) { int g = SlotCarSignals(i);
+          if ((g & 3) == 3) haz++; else if (g & SL_SIG_LEFT) sl++; else if (g & SL_SIG_RIGHT) sr++;
+          if (g & SL_SIG_BRAKE) br++; }
+      printf("  signals now: %d left, %d right, %d hazards, %d brake lights\n", sl, sr, haz, br); }
     printf("  lane changes: %ld to overtake, %ld back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", slOvertakes, slKeepRights, slMerges, slMergeGiveUps);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }

@@ -93,6 +93,7 @@ extern float *rdX, *rdY, *rdS;   // the points of all segments (grown as needed)
 extern float rdSegExtra[RD_MAX_SEGS];   // px added to a lane's route cost (traffic: queues)
 
 void RoadsClear(void);
+int RoadConnTurn(int conn);   // a junction curve: -1 turns left, 0 straight on, 1 right
 void RoadCarveDisc(float cellX, float cellY, float rCells, int z);   // open ground (air) in a disc
 int RoadAddNode(float cellX, float cellY);
 int RoadAddEdge(int a, int b, float bendCells);

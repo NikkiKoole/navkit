@@ -155,6 +155,14 @@ static void DrawCarSpriteAt(float x, float y, float heading, Color col) {
 }
 
 // The slot traffic: poses only for cars on screen
+// A small lamp on a car: (u, v) cells-px along / right of its heading from its centre
+static void CarLamp(float x, float y, float h, float u, float v, float size, Color col) {
+    float ch = cosf(h), sh = sinf(h);
+    Vector2 p = CarScreen(x + ch * u - sh * v, y + sh * u + ch * v);
+    float s = size * zoom;
+    DrawRectanglePro((Rectangle){p.x, p.y, s, s}, (Vector2){s * 0.5f, s * 0.5f}, h * RAD2DEG, col);
+}
+
 static void DrawSlotCars(void) {
     float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
     float x0 = -offset.x / zoom, y0 = -offset.y / zoom, x1 = (sw - offset.x) / zoom, y1 = (sh - offset.y) / zoom;
@@ -174,6 +182,18 @@ static void DrawSlotCars(void) {
             continue;
         }
         DrawCarSpriteAt(x, y, h, col);
+        // indicators (amber, blinking) and brake lights
+        int sig = SlotCarSignals(i);
+        float fu = L * 0.5f - 1.5f, ru = -L * 0.5f + 1.5f, sv = W * 0.5f - 1.5f, lamp = fmaxf(2.0f, CELL_SIZE * 0.22f);
+        if (sig & SL_SIG_BRAKE) {
+            CarLamp(x, y, h, ru, -sv + 1.0f, lamp, (Color){255, 30, 30, 255});
+            CarLamp(x, y, h, ru, sv - 1.0f, lamp, (Color){255, 30, 30, 255});
+        }
+        if ((sig & (SL_SIG_LEFT | SL_SIG_RIGHT)) && fmodf((float)GetTime(), 0.7f) < 0.4f) {
+            Color amber = {255, 170, 0, 255};
+            if (sig & SL_SIG_LEFT) { CarLamp(x, y, h, fu, -sv, lamp, amber); CarLamp(x, y, h, ru, -sv, lamp, amber); }
+            if (sig & SL_SIG_RIGHT) { CarLamp(x, y, h, fu, sv, lamp, amber); CarLamp(x, y, h, ru, sv, lamp, amber); }
+        }
     }
 }
 
