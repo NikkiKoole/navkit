@@ -4813,6 +4813,55 @@ static bool BlastingCheck(char* why, int whyLen) {
     return true;
 }
 
+// powder-fire: gunpowder and fire. A grass fire is lit 5 cells west of a single gunpowder (A);
+// 3 cells east of A lies a pile of 8 (B, one charge of twice the power); far east, past a
+// firebreak (no grass) and behind a granite wall, one more (C). The fire creeps through the
+// grass to A and B (a spark, or A's blast reaching B: whichever comes first). Check: A and B
+// went off, C is still there, the state audit is clean.
+static int powderC;
+
+static int PowderCount(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_GUNPOWDER) n += items[i].stackCount;
+    return n;
+}
+
+static void SetupPowderFire(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    for (int y = 8; y <= 24; y++)
+        for (int z = 1; z <= 3; z++) { GRID(36, y, z) = CELL_WALL; SetWallMaterial(36, y, z, MAT_GRANITE); }
+    // A firebreak: no grass in x 30..34, so the fire stops there
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 30; x <= 34; x++) SetVegetation(x, y, 0, VEG_NONE);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    SpawnItem(20.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    int b = SpawnItem(23.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    if (b >= 0) items[b].stackCount = 8;
+    powderC = SpawnItem(42.5f * CELL_SIZE, 16.5f * CELL_SIZE, 1.0f, ITEM_GUNPOWDER);
+    IgniteCell(15, 16, 0);   // the grass burns in the soil cell (z0) under the walking level
+    currentViewZ = 1;
+    AddMessage("Powder fire: a grass fire creeps toward gunpowder (1, a pile of 8, and 1 behind a wall)", ORANGE);
+}
+
+static void PowderFirePrintStats(void) {
+    printf("Powder fire: explosions %d, gunpowder left %d (want 1: the one behind the wall), fuses %d, fire cells %d\n",
+           ExplosionCount(), PowderCount(), ExplosionFuseCount(), fireActiveCells);
+}
+
+static bool PowderFireCheck(char* why, int whyLen) {
+    if (ExplosionCount() < 2) { snprintf(why, (size_t)whyLen, "only %d explosions (want the single one and the pile)", ExplosionCount()); return false; }
+    if (PowderCount() != 1 || !items[powderC].active || items[powderC].type != ITEM_GUNPOWDER) {
+        snprintf(why, (size_t)whyLen, "gunpowder left %d: want only the one behind the wall", PowderCount()); return false;
+    }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -4912,6 +4961,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupBeltWorkshop, NULL, BeltWorkshopPrintStats, BeltWorkshopCheck, 48, 24},
     {"belt-play",  "Playground: build belts yourself in the play HUD (Huisje -> Build Belt); logs, a sawmill with an empty hopper, planks + cordage, 3 movers",
                    NULL,        SetupBeltPlay, NULL, BeltWorkshopPrintStats, NULL, 48, 24},
+    {"powder-fire", "Gunpowder and fire: a grass fire creeps to a gunpowder and a pile of 8 (twice the bang); one more past a firebreak and a granite wall stays",
+                   NULL,        SetupPowderFire, NULL, PowderFirePrintStats, PowderFireCheck, 48, 32},
     {"blasting",   "Blast mining: 4 walls of a granite hill marked; 3 gunpowder ready, a hearth + quern make 2 more (saltpeter from compost, ash, water; ground with charcoal); 3 miners set, light and run",
                    NULL,        SetupBlasting, BlastingTickStats, BlastingPrintStats, BlastingCheck, 48, 32},
     {"collapse",   "Structural support: charges take the foot out of a granite pillar with an arm, a roof slab over a mover and a wooden deck with a log on it; each creaks, falls and lands as walls",

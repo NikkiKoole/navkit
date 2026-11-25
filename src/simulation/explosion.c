@@ -26,6 +26,7 @@
 #include "../entities/stockpiles.h"
 #include "../entities/containers.h"
 #include "../entities/inventory.h"
+#include "../core/sim_manager.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,8 @@
 #define MIN_SPEED        0.5f    // weaker pushes do nothing
 #define ITEM_LAND_SPEED  2.0f    // a thrown item keeps its height until it slows to this
 
+float gunpowderFireCheck = 0.25f;   // game seconds between looks for gunpowder in or by a fire
+float gunpowderSparkChance = 0.25f; // per look: gunpowder next to a fire (not in it) goes off
 float blastPower = 5.0f;   // granite (4): the drilled cell + the 6 around it; ~20 cells of soil
 float blastFuse = 5.0f;
 
@@ -99,6 +102,8 @@ typedef struct { int idx; float vx, vy; } Flying;   // cells per second; airborn
 static Flying flying[MAX_FLYING];
 static int flyingCount;
 
+static int explosionsTotal;   // since the last ClearExplosions
+
 static float knockVX[MAX_MOVERS], knockVY[MAX_MOVERS], knockDaze[MAX_MOVERS];
 static int knockedCount;   // movers with knockDaze > 0 (fast exit when none)
 
@@ -106,6 +111,7 @@ void ClearExplosions(void) {
     ClearSupport();   // pending collapses: transient like fuses
     fuseCount = 0;
     flyingCount = 0;
+    explosionsTotal = 0;
     if (knockedCount > 0) {
         memset(knockVX, 0, sizeof(knockVX));
         memset(knockVY, 0, sizeof(knockVY));
@@ -115,6 +121,7 @@ void ClearExplosions(void) {
 }
 
 int ExplosionFuseCount(void) { return fuseCount; }
+int ExplosionCount(void) { return explosionsTotal; }
 int ExplosionFlyingCount(void) { return flyingCount; }
 bool MoverKnocked(int i) { return i >= 0 && i < MAX_MOVERS && knockDaze[i] > 0.0f; }
 
@@ -233,6 +240,68 @@ static void KnockMover(int i, float power, float ox, float oy, ExplosionResult* 
     res->moversKnocked++;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Gunpowder going off: in a fire, or reached by a blast
+
+float GunpowderPower(int stackCount) {
+    float p = blastPower * cbrtf((float)(stackCount > 1 ? stackCount : 1));
+    return p > EXPLOSION_MAX_POWER ? EXPLOSION_MAX_POWER : p;
+}
+
+// The item becomes a lit charge where it is (a carried one: its carrier drops it first)
+static bool SetOffGunpowder(int i, float fuse, const char* why) {
+    Item* it = &items[i];
+    if (!it->active || it->type != ITEM_GUNPOWDER) return false;
+    if (it->state == ITEM_CARRIED) {
+        for (int m = 0; m < moverCount; m++) {
+            if (!movers[m].active || movers[m].currentJobId < 0) continue;
+            Job* job = GetJob(movers[m].currentJobId);
+            if (job && job->carryingItem == i) { CancelJob(&movers[m], m); break; }
+        }
+        if (it->state == ITEM_CARRIED) return false;   // held some other way (pockets): leave it
+    }
+    if (fuseCount >= MAX_FUSES) return false;
+    int x = (int)(it->x / CELL_SIZE), y = (int)(it->y / CELL_SIZE), z = (int)it->z;
+    float power = GunpowderPower(it->stackCount);
+    EventLog("Gunpowder %d (x%d) at (%d,%d,z%d) goes off: %s", i, it->stackCount, x, y, z, why);
+    DeleteItem(i);
+    return ExplosionLightFuse(x, y, z, power, fuse);
+}
+
+static bool FireAt(int x, int y, int z) {
+    return x >= 0 && y >= 0 && z >= 0 && x < gridWidth && y < gridHeight && z < gridDepth && HasFire(x, y, z);
+}
+
+// Every gunpowderFireCheck seconds while anything burns: gunpowder in a burning cell (or on
+// burning ground) goes off after a short fizz; next to one (the 8 around, on its level or the
+// level below) a spark sets it off by chance
+static void GunpowderFireTick(float dt) {
+    static float accum = 0.0f;
+    static unsigned rng = 12345u;
+    if (fireActiveCells <= 0) { accum = 0.0f; return; }
+    accum += dt;
+    if (accum < gunpowderFireCheck) return;
+    accum = 0.0f;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* it = &items[i];
+        if (!it->active || it->type != ITEM_GUNPOWDER) continue;
+        int x = (int)(it->x / CELL_SIZE), y = (int)(it->y / CELL_SIZE), z = (int)it->z;
+        // In: its own cell burns, or the ground it lies on (grass burns in the soil cell below)
+        bool in = FireAt(x, y, z) || (z > 0 && FireAt(x, y, z - 1) && !HAS_FLOOR(x, y, z));
+        bool near = false;
+        for (int dz = 0; dz >= -1 && !in && !near; dz--)
+            for (int dy = -1; dy <= 1 && !near; dy++)
+                for (int dx = -1; dx <= 1 && !near; dx++)
+                    if ((dx || dy || dz) && FireAt(x + dx, y + dy, z + dz)) near = true;
+        if (!in && !near) continue;
+        if (!in) {
+            rng = rng * 1664525u + 1013904223u;
+            if ((float)(rng >> 8) / 16777216.0f >= gunpowderSparkChance) continue;
+        }
+        SetOffGunpowder(i, 0.5f + (float)(i % 5) * 0.15f, in ? "in a fire" : "a spark from a fire");
+    }
+}
+
 void ExplosionKnockMover(int moverIdx, float fromX, float fromY, float power) {
     if (moverIdx < 0 || moverIdx >= moverCount || !movers[moverIdx].active) return;
     ExplosionResult unused = {0};
@@ -244,6 +313,7 @@ ExplosionResult Explode(int x, int y, int z, float power) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return res;
     if (power <= 0.0f) return res;
     if (power > EXPLOSION_MAX_POWER) power = EXPLOSION_MAX_POWER;
+    explosionsTotal++;
 
     int R = (int)ceilf(power);
     int x0 = x - R < 0 ? 0 : x - R, x1 = x + R >= gridWidth ? gridWidth - 1 : x + R;
@@ -299,6 +369,16 @@ ExplosionResult Explode(int x, int y, int z, float power) {
         }
     }
     free(h.a);
+
+    // Gunpowder the blast reaches goes off too (a moment later): stockpiles chain
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* it = &items[i];
+        if (!it->active || it->type != ITEM_GUNPOWDER) continue;
+        int ix = (int)(it->x / CELL_SIZE), iy = (int)(it->y / CELL_SIZE), iz = (int)it->z;
+        if (ix < x0 || ix > x1 || iy < y0 || iy > y1 || iz < z0 || iz > z1) continue;
+        if (best[BIDX(ix, iy, iz)] >= 1.0f && SetOffGunpowder(i, 0.15f + (float)(i % 4) * 0.05f, "reached by a blast"))
+            res.powderSetOff++;
+    }
 
     // Who gets pushed, by the power where they are now (before the ground under them goes)
     int pushN = 0, knockN = 0;
@@ -459,6 +539,7 @@ static void FlyingTick(float dt) {
 }
 
 void ExplosionsTick(float dt) {
+    GunpowderFireTick(dt);
     if (fuseCount > 0) {
         for (int f = 0; f < fuseCount; ) {
             fuses[f].t -= dt;

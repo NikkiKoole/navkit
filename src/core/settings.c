@@ -271,6 +271,8 @@ static const Setting settings[] = {
       "Power of one gunpowder charge set by blast mining (cells of reach in open air). A wall soaks its strength: granite 4, soil 2. At 5 a charge in granite takes out its cell and the 6 around it.", NULL),
     SET_FLOAT("blastFuse", "Blast fuse (s)", "World/Explosions", blastFuse, 0.1f, 1.0f, 30.0f,
       "Game seconds from lighting a blast-mining charge to the bang: the blaster's time to get clear.", NULL),
+    SET_FLOAT("gunpowderSpark", "Gunpowder spark chance", "World/Explosions", gunpowderSparkChance, 0.01f, 0.0f, 1.0f,
+      "Gunpowder in a burning cell always goes off (after a short fizz); next to a fire, this is the chance per quarter game-second that a spark sets it off. A pile of n goes off as one charge of blastPower * cbrt(n).", NULL),
     SET_BOOL("itemsDrift", "Items drift", "Simulation/Water", itemsDrift,
       "Loose things that float go with the current until they wash up: light plant matter (sticks, leaves, grass, reeds) in any water, wood (logs, planks) in water 2 deep. Carried off the map edge they are lost. Not when carried, stored or reserved for a job."),
     SET_FLOAT("waterCurrentPush", "Current push", "Simulation/Water", waterCurrentPush, 0.05f, 0.0f, 0.9f,

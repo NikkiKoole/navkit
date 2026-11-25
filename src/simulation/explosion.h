@@ -15,6 +15,12 @@
 
 extern float blastPower;   // setting blastPower: one gunpowder charge set by a blast-mining job
 extern float blastFuse;    // setting blastFuse: game seconds from lighting to the bang
+extern float gunpowderFireCheck;   // game seconds between looks for gunpowder in or by a fire
+extern float gunpowderSparkChance; // setting gunpowderSpark: chance per look that gunpowder by a fire goes off
+
+// Gunpowder goes off in a fire (after a short fizz; next to one by chance) and when a blast
+// reaches it. A pile of n is one charge of power blastPower * cbrt(n).
+float GunpowderPower(int stackCount);
 
 typedef struct {
     int cellsBroken;     // walls / windows
@@ -22,6 +28,7 @@ typedef struct {
     int itemsPushed;
     int moversKnocked;
     int cellsIgnited;
+    int powderSetOff;    // gunpowder lying in its reach, lit (goes off a moment later)
 } ExplosionResult;
 
 // Blast at cell (x, y, z). A charge inside a wall (drilled in) breaks that wall first.
@@ -30,6 +37,7 @@ ExplosionResult Explode(int x, int y, int z, float power);
 // A lit charge: explodes after `seconds` game seconds. Returns false if all fuse slots are taken.
 bool ExplosionLightFuse(int x, int y, int z, float power, float seconds);
 int ExplosionFuseCount(void);
+int ExplosionCount(void);   // explosions since the last ClearExplosions
 
 // Fuses + flying items (SimStep, after ItemsTick)
 void ExplosionsTick(float dt);

@@ -223,6 +223,68 @@ describe(blast_designation) {
     }
 }
 
+static int CountGunpowder(void) {
+    int n = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_GUNPOWDER) n++;
+    return n;
+}
+
+describe(gunpowder_fire) {
+    it("goes off a moment after a fire reaches it, and is gone") {
+        FlatWorld();
+        ClearFire();
+        Wall(14, 12, 1, MAT_OAK);
+        int gp = Spawn(12, 12, 1, ITEM_GUNPOWDER);
+        SetFireLevel(12, 12, 1, FIRE_MAX_LEVEL);
+        ExplosionsTick(0.3f);                      // the look: lit, a short fizz
+        expect(!items[gp].active);                 // (nothing spawned yet to reuse the slot)
+        expect(ExplosionFuseCount() == 1);
+        expect(GRID(14, 12, 1) == CELL_WALL);      // not yet
+        for (int i = 0; i < 90; i++) ExplosionsTick(1.0f / 60.0f);
+        expect(ExplosionFuseCount() == 0);
+        expect(GRID(14, 12, 1) == CELL_AIR);       // the bang broke the oak wall 2 cells away
+        ClearFire();
+    }
+
+    it("makes a bigger bang from a bigger pile") {
+        expect(GunpowderPower(1) == blastPower);
+        expect(GunpowderPower(8) > 1.99f * blastPower && GunpowderPower(8) < 2.01f * blastPower);
+        expect(GunpowderPower(100000) == EXPLOSION_MAX_POWER);
+    }
+
+    it("goes off next to a fire only by a spark's chance") {
+        FlatWorld();
+        ClearFire();
+        int gp = Spawn(12, 12, 1, ITEM_GUNPOWDER);
+        SetFireLevel(13, 12, 1, FIRE_MAX_LEVEL);
+        float saved = gunpowderSparkChance;
+        gunpowderSparkChance = 0.0f;
+        for (int i = 0; i < 10; i++) ExplosionsTick(0.3f);
+        expect(items[gp].active);
+        gunpowderSparkChance = 1.0f;
+        ExplosionsTick(0.3f);
+        expect(!items[gp].active);
+        gunpowderSparkChance = saved;
+        ClearFire();
+    }
+
+    it("is set off by a blast that reaches it, not by one that doesn't") {
+        FlatWorld();
+        ClearFire();
+        int nearGp = Spawn(15, 12, 1, ITEM_GUNPOWDER);   // 3 cells away
+        int farGp = Spawn(22, 22, 1, ITEM_GUNPOWDER);    // out of reach
+        ExplosionResult r = Explode(12, 12, 1, 5.0f);
+        (void)nearGp;
+        expect(r.powderSetOff == 1);
+        expect(CountGunpowder() == 1);                  // the far one (rubble may reuse the near one's slot)
+        expect(items[farGp].active && items[farGp].type == ITEM_GUNPOWDER);
+        expect(ExplosionFuseCount() == 1);              // the chained one, a moment later
+        for (int i = 0; i < 60; i++) ExplosionsTick(1.0f / 60.0f);
+        expect(ExplosionFuseCount() == 0);
+        expect(CountGunpowder() == 1);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -232,5 +294,6 @@ int main(int argc, char** argv) {
     test(explosion_movers);
     test(explosion_fuse);
     test(blast_designation);
+    test(gunpowder_fire);
     return summary();
 }

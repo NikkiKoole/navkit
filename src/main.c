@@ -1067,6 +1067,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
             printf("\nNo active mover %s (%d movers)\n", argv[i + 1], moverCount);
     }
 
+    // The simulation activity counters (water/fire/smoke/steam cells): the windowed loop checks
+    // them every 60 s; a headless run checks once at the end and prints any drift
+    if (!ValidateSimActivityCounts()) printf("Simulation activity counters drifted (see the warnings above)\n");
+
     // --events FILE: the event log (event_log.c: job lifecycle, item deletes, explosions, ...)
     // written to FILE after the run, as F8 does in the game
     for (int i = 1; i + 1 < argc; i++) {

@@ -3,7 +3,8 @@
 Status: **partial** (2026-11-25). Built: blasts break walls and floors (natural rock too: blast
 mining), throw loose items by weight, knock movers back (slice 1); structural support: what
 loses its connection to the ground creaks and falls, landing as walls (slice 2); gunpowder and
-blast mining as a job (slice 3). Not yet: animals, visuals, overhang limits, gunpowder in fire.
+blast mining as a job (slice 3); gunpowder goes off in fire and chains (slice 4). Not yet:
+animals, visuals, overhang limits.
 
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
@@ -116,11 +117,26 @@ Scenario `blasting` (in scenarios-check), tests in test_explosion "blast_designa
 Found while building: a blaster picked up the whole stockpile stack of 3 gunpowder and setting the
 charge deleted all three; one blast job at a time held the stack. Both fixed by splitting one off.
 
-Not done: gunpowder near fire doesn't go off; blasters don't warn others (only themselves get
+Not done (slice 3): blasters don't warn others (only themselves get
 clear); no charge item with its own fuse length; no sprite of its own (gravel / dirt sprites).
 
-Next: animals knocked too, a fuse sprite and a flash / debris particles, gunpowder in fire,
-maybe span limits per material for built things.
+## Built: gunpowder and fire (slice 4, 2026-11-25)
+
+Scenario `powder-fire` (in scenarios-check), tests in test_explosion "gunpowder_fire".
+
+- Every `gunpowderFireCheck` (0.25 s) while anything burns (`fireActiveCells > 0`): gunpowder in
+  a burning cell, or lying on burning ground (grass burns in the soil cell below), goes off
+  after a short fizz (0.5-1.1 s); next to a fire (the 8 around on its level or the level below)
+  a spark sets it off with chance `gunpowderSpark` (0.25) per look. Lying, stored, in a
+  container, or carried for a job (the carrier's job is cancelled, it drops it, it goes off).
+- A blast sets off gunpowder where at least 1 power reaches (0.15-0.3 s later): stockpiles chain.
+- A pile of n goes off as one charge of `blastPower * cbrt(n)` (8 = twice the power, capped).
+- `ExplosionCount()`; the console `explode` reports how much gunpowder it set off.
+- Headless runs now check the simulation activity counters at the end (as the windowed loop does
+  every 60 s): found `docs/bugs/smoke-activity-counter-drift.md` (smoke.c, not explosions).
+
+Next: animals knocked too, a fuse sprite and a flash / debris particles, movers keeping away
+from a lit charge or a burning powder store, maybe span limits per material for built things.
 
 ## What exists to build on
 

@@ -611,8 +611,8 @@ static void RunExplode(const CmdValue* v) {
     int x, y, z;
     if (!ExplodeTarget(v + 1, &x, &y, &z)) return;
     ExplosionResult r = Explode(x, y, z, v[0].f);
-    Say(ORANGE, "Boom at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires",
-        x, y, z, v[0].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited);
+    Say(ORANGE, "Boom at %d,%d,%d (power %.0f): %d walls, %d floors, %d items, %d movers knocked, %d fires, %d gunpowder set off",
+        x, y, z, v[0].f, r.cellsBroken, r.floorsBroken, r.itemsPushed, r.moversKnocked, r.cellsIgnited, r.powderSetOff);
 }
 static void RunCharge(const CmdValue* v) {
     int x, y, z;

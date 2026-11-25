@@ -21,6 +21,8 @@ reset of the startup map) inside the window.
 Not reproduced yet. Headless runs of survival, dollhouse, sandbox and the mood scenario
 show no drift. Unknown which buttons were used in the GUI session.
 
+2026-11-25 (later): headless runs now run the check once at the end (main.c), permanently.
+
 2026-11-25: headless never ran the check (`ValidateSimActivityCounts` is only called from the
 windowed loop, every 60 s), so the earlier headless runs could not have shown it. With the
 check called every 600 ticks in the headless loop (a temporary change), still no drift in:
