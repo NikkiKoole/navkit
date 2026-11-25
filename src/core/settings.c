@@ -29,6 +29,7 @@
 #include "../simulation/tide.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
+#include "../entities/action_queue.h"
 #include "../entities/relations.h"
 #include "../entities/chase.h"
 #include <strings.h>
@@ -465,6 +466,10 @@ static const Setting settings[] = {
       "Minimum speed multiplier when starving."),
     SET_BALANCE("sleepMetabolism", "Sleep Metabolism", "Mover Balance/Multipliers", sleepMetabolismMult, 0.05f, 0.0f, 1.0f,
       "Hunger and thirst drain multiplier while resting (0.5: a meal and a drink last the night)."),
+
+    // --- Mover balance: meals (sit-then-eat, the action queue) ---
+    SET_BOOL("sitToEat", "Sit to eat", "Mover Balance", sitToEat,
+      "At its food, a mover with a free hand and a free chair, sofa or desk within 10 cells takes one portion there and eats sitting (the action queue). Off: eats standing where the food lies."),
 
     // --- Mover balance: sleep rhythm ---
     SET_BOOL("sleepRhythm", "Day Rhythm", "Mover Balance/Sleep Rhythm", sleepRhythmEnabled,

@@ -1,6 +1,6 @@
 # Action queue and need index: player control and needs at scale
 
-> Status: plan (2026-11-25), step 1 started. Decided with the user after the toolbar talk:
+> Status: step 1 done, step 2 started: the queue + sit-then-eat built (2026-11-25). Decided with the user after the toolbar talk:
 > City 1999 and Dollhouse need a way for the player to tell one person what to do, and the
 > design for that (the action queue, `../dollhouse-domestic-life.md` "Future Systems") was never
 > built. This doc checks it against the code of today and against thousands of agents.
@@ -105,6 +105,14 @@ measurement that needs it.
 2. **Action queue + freetime on it** (executor + migration; jobs untouched). First new behaviour:
    sit-then-eat `[pick up food, walk to a chair (optional), sit (optional), eat]`. Interrupt and
    resume inside freetime come with it. Save: the queue is saved (Mover migration).
+   **Built 2026-11-25 (first part):** `src/entities/action_queue.c/.h`: per mover a queue of up
+   to 8 steps (walk to an item / furniture / cell, pick up one unit, sit, eat, wait), optional
+   steps skipped, a failing required step ends it; freetime runs it in `FREETIME_QUEUE` (not
+   idle: no jobs, no talk); saved (v112, after the mover paths). Sit-then-eat: at its food, a
+   mover with a free hand and a free seat (CAP_SEATING) within 10 cells takes one unit there
+   (`[pick up, walk to seat (opt), sit (opt), eat]`), setting `sitToEat`. In the dollhouse
+   every meal of a day was eaten at the chair. Tests: `tests/test_action_queue.c`. Not yet:
+   the other 23 freetime states moved onto it (one at a time), interrupt-resume.
 3. **Player commands into the queue**: act on a hovered or selected thing (hover + key or the
    inspector; no right mouse button needed), Shift appends; the queue shown in the character
    panel.

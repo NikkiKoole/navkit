@@ -70,7 +70,7 @@ Implementation:
 3. More starting food (10+ each) to bridge until first harvest
 4. Consider: auto-designate berry harvest when movers are hungry? (future)
 
-### Phase 3c: Freetime Action Queue — sit-then-eat (~1 session)
+### Phase 3c: Freetime Action Queue — sit-then-eat (~1 session) — built 2026-11-25 (`architecture/action-queue-and-need-index.md`)
 
 The first Sims behavior: movers actively seek a chair before eating. Currently eating is "walk to food, eat standing wherever." With the queue: pick up food → walk to nearby chair (optional) → sit → eat. Graceful skip if no chair.
 

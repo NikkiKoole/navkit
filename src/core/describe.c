@@ -1,5 +1,6 @@
 // describe.c - Entity descriptions as toned text lines (see describe.h)
 #include "describe.h"
+#include "../entities/action_queue.h"
 #include "../entities/containers.h"
 #include "../entities/inventory.h"
 #include "../game_state.h"
@@ -139,6 +140,8 @@ static void DescribeMoverNeeds(const Mover* m, DescLines* d) {
             DescAdd(d, DESC_INFO, "  Going back for its %s", ItemName(items[m->needTarget].type));
         else if (m->freetimeState == FREETIME_EATING)
             DescAdd(d, DESC_GOOD, "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
+        else if (m->freetimeState == FREETIME_QUEUE && QueueStepName((int)(m - movers)))
+            DescAdd(d, DESC_GOOD, "  %s", QueueStepName((int)(m - movers)));   // action queue step
     }
 
     // Thirst

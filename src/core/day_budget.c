@@ -51,7 +51,8 @@ static DayBucket BucketOf(const Mover* m, bool moving) {
         case FREETIME_RESTING:               return DB_SLEEP;
         case FREETIME_EATING:
         case FREETIME_FORAGING:
-        case FREETIME_SCROUNGING:            return DB_EAT;
+        case FREETIME_SCROUNGING:
+        case FREETIME_QUEUE:                 return DB_EAT;   // its one user so far: sit-then-eat
         case FREETIME_DRINKING:
         case FREETIME_DRINKING_NATURAL:
         case FREETIME_DRINKING_TAP:          return DB_DRINK;

@@ -1,4 +1,5 @@
 // core/saveload.c - Save and Load functions
+#include "../entities/action_queue.h"
 #include "../game_state.h"
 
 // Forward declarations
@@ -503,6 +504,7 @@ bool SaveWorld(const char* filename) {
     for (int i = 0; i < moverCount; i++) {
         fwrite(moverPaths[i], sizeof(Point), MAX_MOVER_PATH, f);
     }
+    fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1325,6 +1327,10 @@ bool LoadWorld(const char* filename) {
             movers[i].bladder = 1.0f;
         }
     }
+
+    // Action queues (v112+), after the mover block; older saves: all empty
+    QueueResetAll();
+    if (version >= V112_ACTION_QUEUE) fread(moverQueues, sizeof(MoverQueue), moverCount, f);
 
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);

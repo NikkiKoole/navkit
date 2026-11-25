@@ -1,6 +1,7 @@
 // Save file inspector - compiled with the game binary
 // Usage: ./bin/path --inspect [filename] [options]
 
+#include "../entities/action_queue.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1710,6 +1711,9 @@ int InspectSaveFile(int argc, char** argv) {
             insp_movers[i].traits[1] = TRAIT_NONE;
         }
     }
+
+    // Action queues (v112+): not shown yet, skipped
+    if (version >= V112_ACTION_QUEUE) fseek(f, (long)sizeof(MoverQueue) * insp_moverCount, SEEK_CUR);
 
     // Animals
     fread(&insp_animalCount, 4, 1, f);

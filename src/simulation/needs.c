@@ -11,6 +11,7 @@
 //   FREETIME_RESTING → (energy >= wake threshold) → FREETIME_NONE
 
 #include "needs.h"
+#include "../entities/action_queue.h"
 #include "balance.h"
 #include "mood.h"
 #include "../entities/mover.h"
@@ -964,6 +965,57 @@ static void FinishScrounging(Mover* m, int moverIdx, int bin) {
 // there is work, it keeps working (and doesn't fetch the bag between two logs)
 #define FETCH_OWN_AFTER_IDLE_GH 0.15f
 
+// Eat one unit of item ti where it is: hunger, mood (food, table, hot meal), leftovers, trash
+void MoverEatItem(Mover* m, int moverIdx, int ti) {
+    // Consume food: restore hunger, delete item
+    float nutrition = ItemNutrition(items[ti].type);
+    float need = 1.0f - m->hunger;   // what fit: a big portion leaves the rest
+    m->hunger += nutrition;
+    if (m->hunger > 1.0f) m->hunger = 1.0f;
+    EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
+    // Mood: food quality moodlet
+    ItemType foodType = items[ti].type;
+    if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
+    else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
+    if (items[ti].condition >= CONDITION_STALE) AddMoodlet(m, MOODLET_ATE_STALE_FOOD);
+
+    // Mood: ate at table vs without table. A table counts with a chair next
+    // to it (a dining set) in the room where the mover eats. Movers eat where
+    // the food lies, so the room is the test for now; once they carry food to
+    // a seat (sit-then-eat), it can become "sat at that table".
+    {
+        int cx = (int)(m->x / CELL_SIZE);
+        int cy = (int)(m->y / CELL_SIZE);
+        int cz = (int)m->z;
+        uint16_t rid = GetRoomAt(cx, cy, cz);
+        DetectedRoom* room = GetRoom(rid);
+        if (room && room->diningSetCount > 0) {
+            AddMoodlet(m, MOODLET_ATE_AT_TABLE);
+        } else {
+            AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
+        }
+    }
+
+    // Mood: hot meal (check before consuming)
+    if (items[ti].temperature >= 40.0f) {
+        AddMoodlet(m, MOODLET_HOT_MEAL);
+    }
+
+    // Consume one from stack, or delete if last. The rest of the stack is
+    // free again: without the release every meal from a stack left it reserved
+    // and a busy colony starved next to a full stockpile.
+    if (items[ti].stackCount > 1) {
+        items[ti].stackCount--;
+        ReleaseItemReservation(ti);
+    } else {
+        DeleteItem(ti);
+    }
+
+    TakeLeftover(m, moverIdx, foodType);
+    LeaveLeftovers(m, moverIdx, foodType, need);
+    GetRidOfTrash(m, moverIdx);
+}
+
 static void ProcessFreetimeState(Mover* m, int moverIdx);
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     // Cancel food-seeking if hunger disabled
@@ -1151,7 +1203,9 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             float pickupR = CELL_SIZE * 0.75f;
 
             if ((int)m->z == (int)items[ti].z && distSq < pickupR * pickupR) {
-                // Arrived — start eating
+                // Arrived: with a free hand and a free seat nearby, take it there and sit down
+                // to eat (action_queue.c); otherwise eat here, standing
+                if (QueueSitThenEat(moverIdx, ti)) break;
                 m->freetimeState = FREETIME_EATING;
                 m->needProgress = 0.0f;
                 // Clear path so mover stops
@@ -1174,6 +1228,10 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             }
             break;
         }
+
+        case FREETIME_QUEUE:
+            QueueTick(moverIdx);   // action_queue.c: the current step
+            break;
 
         case FREETIME_SEEKING_FORAGE: {
             int pi = m->needTarget;
@@ -1237,53 +1295,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
 
             m->needProgress += gameDeltaTime;
             if (m->needProgress >= GameHoursToGameSeconds(balance.eatingDurationGH)) {
-                // Consume food: restore hunger, delete item
-                float nutrition = ItemNutrition(items[ti].type);
-                float need = 1.0f - m->hunger;   // what fit: a big portion leaves the rest
-                m->hunger += nutrition;
-                if (m->hunger > 1.0f) m->hunger = 1.0f;
-                EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
-                // Mood: food quality moodlet
-                ItemType foodType = items[ti].type;
-                if (IsGoodFood(foodType)) AddMoodlet(m, MOODLET_ATE_GOOD_FOOD);
-                else if (IsRawFood(foodType)) AddMoodlet(m, MOODLET_ATE_RAW_FOOD);
-                if (items[ti].condition >= CONDITION_STALE) AddMoodlet(m, MOODLET_ATE_STALE_FOOD);
-
-                // Mood: ate at table vs without table. A table counts with a chair next
-                // to it (a dining set) in the room where the mover eats. Movers eat where
-                // the food lies, so the room is the test for now; once they carry food to
-                // a seat (sit-then-eat), it can become "sat at that table".
-                {
-                    int cx = (int)(m->x / CELL_SIZE);
-                    int cy = (int)(m->y / CELL_SIZE);
-                    int cz = (int)m->z;
-                    uint16_t rid = GetRoomAt(cx, cy, cz);
-                    DetectedRoom* room = GetRoom(rid);
-                    if (room && room->diningSetCount > 0) {
-                        AddMoodlet(m, MOODLET_ATE_AT_TABLE);
-                    } else {
-                        AddMoodlet(m, MOODLET_ATE_WITHOUT_TABLE);
-                    }
-                }
-
-                // Mood: hot meal (check before consuming)
-                if (items[ti].temperature >= 40.0f) {
-                    AddMoodlet(m, MOODLET_HOT_MEAL);
-                }
-
-                // Consume one from stack, or delete if last. The rest of the stack is
-                // free again: without the release every meal from a stack left it reserved
-                // and a busy colony starved next to a full stockpile.
-                if (items[ti].stackCount > 1) {
-                    items[ti].stackCount--;
-                    ReleaseItemReservation(ti);
-                } else {
-                    DeleteItem(ti);
-                }
-
-                TakeLeftover(m, moverIdx, foodType);
-                LeaveLeftovers(m, moverIdx, foodType, need);
-                GetRidOfTrash(m, moverIdx);
+                MoverEatItem(m, moverIdx, ti);
             }
             break;
         }

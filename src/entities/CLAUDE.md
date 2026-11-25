@@ -81,6 +81,15 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 - `InvalidatePathsThroughCell` checks the straight segments between path points too:
   string-pulled paths skip the cells in between.
 
+## Action Queue (`action_queue.c`)
+
+- A mover's list of small steps (walk to, pick up, sit, eat, wait); freetime runs it in
+  `FREETIME_QUEUE` (counts as busy: no jobs, no talk). Optional steps are skipped when they
+  can't happen; a failing required step ends the queue (`QueueEnd` releases the seat and
+  reserved items). Saved after the mover paths (v112). First user: sit-then-eat
+  (`QueueSitThenEat`, setting `sitToEat`). Plan and what's next (more freetime states onto it,
+  player commands): `docs/todo/architecture/action-queue-and-need-index.md`.
+
 ## Mover Needs & Death
 
 - **Starvation**: `mover.starvationTimer` tracks game-seconds at hunger==0, resets when hunger > 0
