@@ -15,6 +15,7 @@
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/vapour.h"
 #include "../src/simulation/fire.h"
+#include "../src/simulation/rooms.h"
 #include "test_helpers.h"
 #include <math.h>
 
@@ -504,6 +505,67 @@ describe(fuel_vapour) {
     }
 }
 
+// A closed room x 6..15, y 6..13 on level 1 (walls of m, a roof of planks), a window east if asked
+static void GasBox(MaterialType m, bool window) {
+    for (int y = 6; y <= 13; y++)
+        for (int x = 6; x <= 15; x++) {
+            if (x == 6 || x == 15 || y == 6 || y == 13) Wall(x, y, 1, m);
+            SET_FLOOR(x, y, 2); SetFloorMaterial(x, y, 2, MAT_OAK);
+        }
+    if (window) { GRID(15, 9, 1) = CELL_WINDOW; SetWallMaterial(15, 9, 1, MAT_GLASS); }
+    InvalidateRooms();
+    UpdateRooms();
+}
+
+describe(vapour_rooms) {
+    it("blows the window out of a closed room full of burning vapour, not the brick") {
+        FlatWorld();
+        ClearVapour();
+        GasBox(MAT_BRICK, true);
+        expect(GetRoomAt(10, 10, 1) != ROOM_NONE);
+        for (int y = 7; y <= 12; y++) for (int x = 7; x <= 14; x++) AddVapour(x, y, 1, 4);
+        int m = AddMover(17, 9, 1);   // outside the window
+        VapourIgnite(8, 8, 1);
+        RunVapour(2.0f);
+        expect(VapourVentCount() >= 1);
+        expect(GRID(15, 9, 1) != CELL_WINDOW);
+        expect(MoverKnocked(m));
+        int brick = 0;
+        for (int y = 6; y <= 13; y++) for (int x = 6; x <= 15; x++) if (GRID(x, y, 1) == CELL_WALL && GetWallMaterial(x, y, 1) == MAT_BRICK) brick++;
+        expect(brick == 31);   // 32 edge cells less the window
+    }
+
+    it("holds when there's little vapour, and outdoors nothing builds up") {
+        FlatWorld();
+        ClearVapour();
+        GasBox(MAT_BRICK, true);
+        for (int x = 7; x <= 9; x++) AddVapour(x, 8, 1, 1);
+        VapourIgnite(8, 8, 1);
+        RunVapour(2.0f);
+        expect(VapourVentCount() == 0);
+        expect(GRID(15, 9, 1) == CELL_WINDOW);
+        FlatWorld();
+        ClearVapour();
+        for (int y = 7; y <= 12; y++) for (int x = 7; x <= 14; x++) AddVapour(x, y, 1, 4);
+        GRID(15, 9, 1) = CELL_WINDOW; SetWallMaterial(15, 9, 1, MAT_GLASS);
+        InvalidateRooms();
+        UpdateRooms();
+        VapourIgnite(8, 8, 1);
+        RunVapour(2.0f);
+        expect(VapourVentCount() == 0);
+    }
+
+    it("tears a weak wall out when the pressure beats its strength") {
+        FlatWorld();
+        ClearVapour();
+        GasBox(MAT_DIRT, false);   // no window, no door: the weakest is the dirt (2)
+        for (int y = 7; y <= 12; y++) for (int x = 7; x <= 14; x++) AddVapour(x, y, 1, 7);
+        VapourIgnite(8, 8, 1);
+        RunVapour(2.0f);
+        expect(VapourVentCount() >= 1);
+    }
+}
+
 int main(int argc, char** argv) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -519,5 +581,6 @@ int main(int argc, char** argv) {
     test(explosion_crater);
     test(blast_kinds);
     test(fuel_vapour);
+    test(vapour_rooms);
     return summary();
 }

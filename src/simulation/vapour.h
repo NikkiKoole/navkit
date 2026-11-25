@@ -8,8 +8,11 @@
 // every connected cell with vapour in it, a few cells per tenth of a second (not one instant
 // disc). Each cell that burns: its vapour is gone, burnable things in and under it catch fire,
 // it heats up, leaves a little smoke and pushes whoever is in it away from where the fire
-// started. In the open that's a flash fire rolling over the ground; closed rooms (pressure,
-// windows blowing out) come next.
+// started. In the open that's a flash fire rolling over the ground. In a closed room (rooms.c,
+// not outdoors) the burnt vapour per room cell is a pressure: while it beats the weakest bit of
+// the room's edge near the fire (a window 1, a door 1.5, a wall its blast strength: wood 2.5,
+// brick 3, stone 4) that bit blows out with a jet of flame (explosion.c ExplosionVent) and the
+// pressure drops; it also leaks away by vapourVentLeak per second.
 //
 // Sparse layer like steam (memory only where vapour has been); the cells with vapour are also
 // kept in a list, so a tick costs the cloud, not the map. Not saved yet: after a load there is
@@ -60,5 +63,7 @@ int VapourBurnedCells(void);    // cells burned since the last ClearVapour
 int VapourLeakCount(void);
 bool VapourActive(void);        // any vapour or flame at all (cheap)
 int VapourSparkCount(void);     // sparks waiting
+int VapourVentCount(void);      // room edges blown out since the last ClearVapour
+extern float vapourVentLeak;    // setting vapourVentLeak: per second, the share of a room's pressure that leaks away
 
 #endif

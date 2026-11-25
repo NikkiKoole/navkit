@@ -69,6 +69,12 @@ void ExplosionKnockMover(int moverIdx, float fromX, float fromY, float power);
 // Strength of the wall at (x, y, z) in power units, -1 = unbreakable (bedrock, trees), 0 = open
 float ExplosionCellStrength(int x, int y, int z);
 
+// Pressure in a closed room (burning vapour, vapour.c) blowing out one cell of its edge: what it
+// takes (window 1, door 1.5, walls their blast strength; -1 never), and the blow-out itself:
+// the cell breaks (its drops fly out along dx, dy), a jet of flame comes out a few cells
+float ExplosionVentStrength(int x, int y, int z);
+void ExplosionVent(int x, int y, int z, float dx, float dy, float power);
+
 int ExplosionFlyingCount(void);
 void ClearExplosions(void);
 

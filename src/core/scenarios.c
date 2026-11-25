@@ -5342,6 +5342,79 @@ static bool FlashFireCheck(char* why, int whyLen) {
     return true;
 }
 
+// gasroom: fuel vapour in a closed room. A brick house (8 x 6 inside, a roof of planks over it)
+// with a window in its east wall and a door in its south wall; fumes leak inside for 6 s, a
+// spark at 9 s. The flame runs through the room and the pressure blows the window out with a jet
+// of flame; a mover outside the window is knocked over. Brick (3) holds. An oak shed next door,
+// no window, filled thick (8 s of twice the leak), a spark at 11 s: its door blows out, knocking
+// over the mover outside it. Check: the window and the shed's door gone, the brick walls
+// standing, both movers knocked, audit clean.
+static int gasMover[2];
+static bool gasKnocked[2];
+
+static void GasHouse(int x0, int y0, MaterialType wall, bool window) {
+    for (int y = y0; y <= y0 + 7; y++)
+        for (int x = x0; x <= x0 + 9; x++) {
+            bool edge = x == x0 || x == x0 + 9 || y == y0 || y == y0 + 7;
+            if (edge) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, wall); }
+            SET_FLOOR(x, y, 2); SetFloorMaterial(x, y, 2, MAT_OAK);   // the roof
+        }
+    if (window) { GRID(x0 + 9, y0 + 3, 1) = CELL_WINDOW; SetWallMaterial(x0 + 9, y0 + 3, 1, MAT_GLASS); }
+    GRID(x0 + 4, y0 + 7, 1) = CELL_DOOR; SetWallMaterial(x0 + 4, y0 + 7, 1, MAT_OAK);
+}
+
+static void SetupGasRoom(void) {
+    hungerEnabled = thirstEnabled = energyEnabled = false;
+    endlessMoverMode = false;
+    fireEnabled = true;
+    vapourEnabled = true;
+    supportEnabled = false;   // the roofs are loose planks laid over the walls
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) SetVegetation(x, y, 0, VEG_NONE);
+    GasHouse(8, 10, MAT_BRICK, true);
+    GasHouse(26, 10, MAT_OAK, false);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    InvalidateRooms();
+    for (int k = 0; k < 2; k++) { gasKnocked[k] = false; gasMover[k] = moverCount; SpawnMoverAt(k == 0 ? 19 : 30, k == 0 ? 13 : 19, 1); }
+    VapourLeak(10, 12, 1, 20.0f, 6.0f);
+    VapourSpark(15, 15, 1, 9.0f);
+    VapourLeak(28, 12, 1, 40.0f, 8.0f);   // the shed fills up thick
+    VapourSpark(33, 15, 1, 11.0f);
+    currentViewZ = 1;
+    AddMessage("Gas room: fumes leak inside a brick house with a window and a closed oak shed; sparks at 9 s and 11 s", ORANGE);
+}
+
+static void GasRoomTickStats(void) {
+    for (int k = 0; k < 2; k++) if (MoverKnocked(gasMover[k])) gasKnocked[k] = true;
+}
+
+static int GasWallsStanding(int x0, int y0, MaterialType m) {
+    int n = 0;
+    for (int y = y0; y <= y0 + 7; y++)
+        for (int x = x0; x <= x0 + 9; x++)
+            if (GRID(x, y, 1) == CELL_WALL && GetWallMaterial(x, y, 1) == m) n++;
+    return n;
+}
+
+static void GasRoomPrintStats(void) {
+    printf("Gas room: vents %d, burned %d, brick walls %d (of 30), oak walls %d (of 31), window %s, doors %s/%s, movers knocked %d %d\n",
+           VapourVentCount(), VapourBurnedCells(), GasWallsStanding(8, 10, MAT_BRICK), GasWallsStanding(26, 10, MAT_OAK),
+           GRID(17, 13, 1) == CELL_WINDOW ? "whole" : "gone", GRID(12, 17, 1) == CELL_DOOR ? "whole" : "gone",
+           GRID(30, 17, 1) == CELL_DOOR ? "whole" : "gone", gasKnocked[0], gasKnocked[1]);
+}
+
+static bool GasRoomCheck(char* why, int whyLen) {
+    if (GRID(17, 13, 1) == CELL_WINDOW) { snprintf(why, (size_t)whyLen, "the brick house's window held"); return false; }
+    if (GasWallsStanding(8, 10, MAT_BRICK) < 30) { snprintf(why, (size_t)whyLen, "a brick wall blew out"); return false; }
+    if (GRID(30, 17, 1) == CELL_DOOR) { snprintf(why, (size_t)whyLen, "the shed's door held"); return false; }
+    if (!gasKnocked[0] || !gasKnocked[1]) { snprintf(why, (size_t)whyLen, "a mover outside a blown-out opening wasn't knocked over"); return false; }
+    int v = RunStateAudit(false);
+    if (v != 0) { RunStateAudit(true); snprintf(why, (size_t)whyLen, "state audit: %d violations", v); return false; }
+    return true;
+}
+
 static const Scenario scenarios[] = {
     {"ladders",    "Ground + deck joined by one ladder, 16 wandering movers: watch the queue",
                    NULL,        SetupLadders,  LadderTickStats, LadderPrintStats, LadderCheck, 0, 0},
@@ -5457,6 +5530,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupLandslide, NULL, LandslidePrintStats, LandslideCheck, 48, 32},
     {"flashfire",  "Fuel vapour: petrol fumes leak by a pit, run into it and spread over the ground; a spark at the cloud's edge at 10 s and the flame runs through the whole cloud and into the pit (a flash fire), pushing the movers in it",
                    NULL,        SetupFlashFire, FlashFireTickStats, FlashFirePrintStats, FlashFireCheck, 48, 32},
+    {"gasroom",    "Fuel vapour in closed rooms: fumes leak inside a brick house with a window and an oak shed; lit, the pressure blows the house's window and the shed's door out with jets of flame, knocking over the movers outside (brick holds)",
+                   NULL,        SetupGasRoom, GasRoomTickStats, GasRoomPrintStats, GasRoomCheck, 48, 32},
     {"explosions", "Two lit charges: one in a field (items fly by weight, a mover knocked back, one sheltered behind granite, a fence breaks), one drilled into a granite hill (blast mining)",
                    NULL,        SetupExplosions, ExplosionsTickStats, ExplosionsPrintStats, ExplosionsCheck, 48, 32},
     {"throwing",   "Four movers throw a stone at a goal again and again: open ground, far with a wall behind, over a wall, uphill onto a block",

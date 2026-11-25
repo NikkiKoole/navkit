@@ -603,6 +603,64 @@ ExplosionResult ExplodeKind(int x, int y, int z, float power, BlastKind kind) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// A vent: pressure in a closed room blows out one cell of its edge (a window, a door, a weak
+// wall) outward along (dx, dy); a jet of flame comes out of the hole
+
+// What it takes to blow a cell of a room's edge out (pressure units: burnt vapour per room cell);
+// -1 = never. Windows go first, then doors, then walls by their material
+float ExplosionVentStrength(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return -1.0f;
+    CellType c = GRID(x, y, z);
+    if (c == CELL_WINDOW) return 1.0f;
+    if (c == CELL_DOOR) return 1.5f;
+    if (c == CELL_WALL) return MaterialStrength(GetWallMaterial(x, y, z));
+    return -1.0f;
+}
+
+void ExplosionVent(int x, int y, int z, float dx, float dy, float power) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return;
+    ExplosionResult res = {0};
+    float d = sqrtf(dx * dx + dy * dy);
+    if (d < 0.01f) return;
+    dx /= d; dy /= d;
+    float ox = x + 0.5f - dx, oy = y + 0.5f - dy;   // from inside the room
+    int mat = GetWallMaterial(x, y, z);
+    FxChunks(x, y, z, mat, ox * CELL_SIZE, oy * CELL_SIZE, 6, 140.0f + 30.0f * power);
+    FxDust((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, mat, 2, CELL_SIZE * 0.4f);
+    int before = itemHighWaterMark;
+    CompleteMineDesignation(x, y, z);
+    // What it broke into flies out with the blast
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* it = &items[i];
+        if (!it->active || it->containedIn >= 0 || it->state != ITEM_ON_GROUND) continue;
+        if ((int)(it->x / CELL_SIZE) != x || (int)(it->y / CELL_SIZE) != y || (int)it->z != z) continue;
+        if (i < before && it->reservedBy >= 0) continue;
+        PushItem(i, power + 1.0f, it->z, ox, oy, &res);
+    }
+    // The jet: flame out of the hole, a few cells, setting things alight and knocking people over
+    int len = 2 + (int)(power * 0.7f);
+    if (len > 6) len = 6;
+    for (int t = 1; t <= len; t++) {
+        int jx = (int)floorf(x + 0.5f + dx * t), jy = (int)floorf(y + 0.5f + dy * t);
+        if (jx < 0 || jy < 0 || jx >= gridWidth || jy >= gridHeight || CellIsSolid(GRID(jx, jy, z))) break;
+        FxFlame((jx + 0.5f) * CELL_SIZE, (jy + 0.5f) * CELL_SIZE, z, 7.0f - (float)t);
+        if (GetFuelAt(jx, jy, z) > 0 && !HasFire(jx, jy, z)) IgniteCell(jx, jy, z);
+        if (z > 0 && GetFuelAt(jx, jy, z - 1) > 0 && !HasFire(jx, jy, z - 1)) IgniteCell(jx, jy, z - 1);
+        VapourIgnite(jx, jy, z);
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (!m->active || MoverKnocked(i)) continue;
+            if ((int)(m->x / CELL_SIZE) == jx && (int)(m->y / CELL_SIZE) == jy && (int)m->z == z)
+                KnockMover(i, power + 1.0f - 0.3f * (float)t, ox, oy, &res);
+        }
+    }
+    RebuildStockpileFreeSlotCounts();
+    float shake = 1.5f + power * 0.4f;
+    TriggerScreenShake(shake > 6.0f ? 6.0f : shake, 0.3f);
+    EventLog("Vent at (%d,%d,z%d) power %.1f: blew out, %d items thrown, %d movers knocked", x, y, z, power, res.itemsPushed, res.moversKnocked);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Flying items, fuses
 
 static bool ItemCellOpen(int x, int y, int z) {

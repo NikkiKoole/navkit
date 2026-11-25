@@ -279,6 +279,8 @@ static const Setting settings[] = {
       "Game seconds between vapour moves (sinking one level, spreading one cell). Shorter = it runs and pools faster.", NULL),
     SET_FLOAT("vapourThin", "Vapour: thinning", "World/Explosions", vapourThinChance, 0.01f, 0.0f, 1.0f,
       "Per move, the chance a cell at the thin edge of a cloud (level 1) clears into the air. Higher = clouds shrink faster.", NULL),
+    SET_FLOAT("vapourVentLeak", "Vapour: room pressure leak (/s)", "World/Explosions", vapourVentLeak, 0.1f, 0.0f, 20.0f,
+      "Share of a closed room's pressure (burning vapour) that leaks away per game second. Lower = rooms hold it and blow out windows, doors and walls more easily.", NULL),
     SET_FLOAT("blastPower", "Blast charge power", "World/Explosions", blastPower, 0.1f, 1.0f, 12.0f,
       "Power of one gunpowder charge set by blast mining (cells of reach in open air). A wall soaks its strength: granite 4, soil 2. At 5 a charge in granite takes out its cell and the 6 around it.", NULL),
     SET_FLOAT("blastFuse", "Blast fuse (s)", "World/Explosions", blastFuse, 0.1f, 1.0f, 30.0f,

@@ -260,7 +260,7 @@ weapons; knockback and daze carry it; a "lethal blasts in survival" setting is t
 if wanted later).
 
 Order: 1. blast presets (built, below), 2. vapour grid + burn front, open-air flash fire only (built, below),
-3. enclosure (room pressure, windows/doors blowing out, flame jets), 4. sources: firedamp in
+3. enclosure (room pressure, windows/doors blowing out, flame jets; built, below), 4. sources: firedamp in
 mines, dusty mills (Town), a petrol barrel (City 1999).
 
 ### Built: blast kinds (2026-11-25)
@@ -299,6 +299,25 @@ ticks in SimStep after the explosions), settings `vapour`, `vapourStep` (0.2 s),
 - Next: enclosure (room pressure, windows and doors blowing out, flame jets through openings),
   sources (a petrol barrel item, firedamp, dusty mills), movers smelling it and keeping fires away,
   saving it.
+
+### Built: closed rooms blow out (2026-11-25)
+
+In `vapour.c` (pressure) and `explosion.c` (`ExplosionVent`), setting `vapourVentLeak` (1.5/s).
+
+- Each cell that burns inside a closed room (`rooms.c`, not outdoors) adds its vapour level /
+  the room's cell count to that room's pressure; it leaks away at `vapourVentLeak` per second.
+- While the pressure beats the weakest cell of the room's edge near the fire (window 1, door
+  1.5, walls their blast strength: wood 2.5, brick 3, stone 4), that cell blows out (at most 4
+  per room) and the pressure drops by 40 %: `ExplosionVent` breaks it (mined: drops), throws
+  its pieces out (a door flies), and a jet of flame comes out of the hole 2-6 cells (fire,
+  vapour outside lit, movers in it knocked over). Rooms are found again after a vent (ids
+  change), so that room's record only leaks away after that.
+- Rooms are per level (`rooms.c`): floors and roofs don't blow (yet).
+- Scenario `gasroom` (in scenarios-check): a brick house with a window, 6 s of leak, lit at 9 s:
+  the window blows out, the mover outside knocked over, the brick holds; an oak shed with no
+  window filled thick, lit at 11 s: its door blows out and flies, the mover outside knocked over.
+  Tests `vapour_rooms` in `test_explosion`.
+- Not done: roofs lifting, backdraft, rooms connected by an open door sharing the pressure.
 
 ### Other ideas from the brainstorm (not planned yet)
 

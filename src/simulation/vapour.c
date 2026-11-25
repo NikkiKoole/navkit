@@ -4,6 +4,7 @@
 #include "smoke.h"
 #include "temperature.h"
 #include "explosion.h"
+#include "rooms.h"
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../entities/mover.h"
@@ -43,6 +44,16 @@ static float fireX, fireY;         // where it was lit (cells): the push points 
 static uint32_t moverFire[MAX_MOVERS];
 static uint32_t vrng = 0x2545F491u;
 
+// Pressure: burning vapour in a closed room (not outdoors) pushes on its edge. Per room: the
+// vapour burnt per room cell lately (it leaks away), and where it burnt (the edge near the fire
+// goes first)
+typedef struct { uint16_t room; float p; int x0, y0, x1, y1, z; int vents; } RoomBurn;
+#define MAX_ROOM_BURNS 32
+static RoomBurn roomBurns[MAX_ROOM_BURNS];
+static int roomBurnCount;
+static int ventsTotal;
+float vapourVentLeak = 1.5f;   // per game second, the share of a room's pressure that leaks away
+
 static uint32_t VRand(void) { vrng ^= vrng << 13; vrng ^= vrng >> 17; vrng ^= vrng << 5; return vrng; }
 static float VRand01(void) { return (float)(VRand() & 0xFFFFu) / 65535.0f; }
 
@@ -80,7 +91,8 @@ void AddVapour(int x, int y, int z, int amount) {
 
 void ClearVapour(void) {
     SparseLayerClear(&vapourLayer);
-    cellCount = frontCount = leakCount = sparkCount = 0;
+    cellCount = frontCount = leakCount = sparkCount = roomBurnCount = 0;
+    ventsTotal = 0;
     stepAcc = igniteAcc = 0.0f;
     burnedTotal = 0;
 }
@@ -132,6 +144,71 @@ int VapourBurnedCells(void) { return burnedTotal; }
 int VapourLeakCount(void) { return leakCount; }
 bool VapourActive(void) { return cellCount > 0 || frontCount > 0; }
 int VapourSparkCount(void) { return sparkCount; }
+int VapourVentCount(void) { return ventsTotal; }
+
+// A cell of vapour burnt at (x, y, z): pressure in its room, if it's a closed one
+static void RoomBurnt(int x, int y, int z, int lvl) {
+    uint16_t rid = GetRoomAt(x, y, z);
+    if (rid == ROOM_NONE) return;
+    DetectedRoom* r = GetRoom(rid);
+    if (!r || r->outdoors || r->cellCount <= 0) return;
+    RoomBurn* b = NULL;
+    for (int i = 0; i < roomBurnCount; i++) if (roomBurns[i].room == rid && roomBurns[i].z == z) { b = &roomBurns[i]; break; }
+    if (!b) {
+        if (roomBurnCount >= MAX_ROOM_BURNS) return;
+        b = &roomBurns[roomBurnCount++];
+        *b = (RoomBurn){ rid, 0.0f, x, y, x, y, z, 0 };
+    }
+    b->p += (float)lvl / (float)r->cellCount;
+    if (x < b->x0) b->x0 = x; if (x > b->x1) b->x1 = x;
+    if (y < b->y0) b->y0 = y; if (y > b->y1) b->y1 = y;
+}
+
+// The weakest cell of the room's edge near where it burnt that the pressure can blow out
+static bool WeakestEdge(const RoomBurn* b, int* ox, int* oy, float* os, int* odx, int* ody) {
+    static const int d4[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+    const int M = 8;
+    float best = 1e9f;
+    unsigned bestH = 0;
+    bool found = false;
+    for (int y = b->y0 - M; y <= b->y1 + M; y++)
+        for (int x = b->x0 - M; x <= b->x1 + M; x++) {
+            if (!VInBounds(x, y, b->z) || GetRoomAt(x, y, b->z) != b->room) continue;
+            for (int k = 0; k < 4; k++) {
+                int nx = x + d4[k][0], ny = y + d4[k][1];
+                float s = ExplosionVentStrength(nx, ny, b->z);
+                if (s <= 0.0f) continue;
+                unsigned h = (unsigned)(nx * 73856093u) ^ (unsigned)(ny * 19349663u);
+                h ^= h >> 13;
+                if (s < best || (s == best && h < bestH)) {
+                    best = s; bestH = h; *ox = nx; *oy = ny; *odx = d4[k][0]; *ody = d4[k][1]; found = true;
+                }
+            }
+        }
+    *os = best;
+    return found;
+}
+
+static void PressureTick(float dt) {
+    for (int i = 0; i < roomBurnCount; ) {
+        RoomBurn* b = &roomBurns[i];
+        // Blow out the weakest bit of the edge while the pressure beats it (a few at most)
+        int x, y, dx, dy;
+        float s;
+        while (b->room != ROOM_NONE && b->vents < 4 && b->p > 0.0f && WeakestEdge(b, &x, &y, &s, &dx, &dy) && b->p >= s) {
+            ExplosionVent(x, y, b->z, (float)dx, (float)dy, b->p);
+            b->vents++;
+            ventsTotal++;
+            b->p *= 0.6f;   // out through the hole
+        }
+        // Rooms are found again after an edge broke (ids change): new burning there starts a new
+        // record; this one only leaks away
+        if (b->vents > 0) b->room = ROOM_NONE;
+        b->p -= b->p * vapourVentLeak * dt;
+        if (b->p < 0.05f && frontCount == 0) roomBurns[i] = roomBurns[--roomBurnCount];
+        else i++;
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Moving: sink, spread level, thin out at the edges
@@ -229,6 +306,7 @@ static void FrontTick(float dt) {
         int smoke = 1 + lvl / 3;
         if (GetSmokeLevel(x, y, z) < smoke) SetSmokeLevel(x, y, z, smoke);
         FxFlame((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, z, (float)lvl);
+        RoomBurnt(x, y, z, lvl);
         if (burnedN < MAX_BURNED_TICK) { burned[burnedN] = (VCell){ x, y, z }; burnedLevel[burnedN++] = lvl; }
     }
     if (burnedN == 0) return;
@@ -268,6 +346,7 @@ void VapourTick(float dt) {
         sparks[i] = sparks[--sparkCount];
     }
     if (frontCount > 0) FrontTick(dt);
+    if (roomBurnCount > 0) PressureTick(dt);
     if (cellCount == 0) return;
     stepAcc += dt;
     if (stepAcc >= vapourStepInterval) { stepAcc -= vapourStepInterval; Step(); }
