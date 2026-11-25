@@ -64,6 +64,12 @@ static int ghostHead[RD_MAX_SEGS], ghostNext[MAX_CARS];   // cars changing out o
 // The cars on each segment sorted by s (built each tick): the car ahead is the next one,
 // not a scan of the whole segment (that was k^2 per lane in dense traffic)
 static int segFirst[RD_MAX_SEGS], segCnt[RD_MAX_SEGS], sortedCars[MAX_CARS], carSlot[MAX_CARS];
+// The cars on each segment sorted by s (built each tick): the car ahead is the next one,
+// not a scan of the whole segment (that was k^2 per lane in dense traffic)
+static int segFirst[RD_MAX_SEGS], segCnt[RD_MAX_SEGS], sortedCars[MAX_CARS], carSlot[MAX_CARS];
+// The cars on each segment sorted by s (built each tick): the car ahead is the next one,
+// not a scan of the whole segment (that was k^2 per lane in dense traffic)
+static int segFirst[RD_MAX_SEGS], segCnt[RD_MAX_SEGS], sortedCars[MAX_CARS], carSlot[MAX_CARS];
 static float trTime = 0;
 // Route searches (the expensive call): per caller, total and the most in one tick
 static long trRoutes[4];
@@ -368,12 +374,16 @@ static long dbgEnterAsk = 0, dbgRingFull = 0;
 static short ringLanes[RD_MAX_NODES], ringCars[RD_MAX_NODES];   // per roundabout centre, counted each tick
 
 static void CountRings(void) {
-    memset(ringLanes, 0, sizeof(RdSegId) * (size_t)rdNodeCount);
-    memset(ringCars, 0, sizeof(RdSegId) * (size_t)rdNodeCount);
-    for (int i = 0; i < RoadLaneCount(); i++) {
-        const RdSeg* S = &rdSegs[RoadLaneAt(i)];
-        if (S->priority && rdNodes[S->to].ringOf >= 0) ringLanes[rdNodes[S->to].ringOf]++;
+    static int countedFor = -1;   // the ring lanes don't change: count them once per network
+    if (countedFor != rdSegCount) {
+        memset(ringLanes, 0, sizeof(RdSegId) * (size_t)rdNodeCount);
+        for (int i = 0; i < RoadLaneCount(); i++) {
+            const RdSeg* S = &rdSegs[RoadLaneAt(i)];
+            if (S->priority && rdNodes[S->to].ringOf >= 0) ringLanes[rdNodes[S->to].ringOf]++;
+        }
+        countedFor = rdSegCount;
     }
+    memset(ringCars, 0, sizeof(RdSegId) * (size_t)rdNodeCount);
     for (int i = 0; i < carCount; i++) {
         const Car* c = &cars[i];
         if (!c->active || !c->onRoad) continue;
@@ -539,7 +549,7 @@ static float ProjectOnWide(int seg, float s0, float x, float y) {
 static float ProjectOn(int seg, float s0, float x, float y) {
     const RdSeg* sg = &rdSegs[seg];
     int c0 = (int)(s0 / 8.0f);
-    int a = c0 - 3 < 0 ? 0 : c0 - 3, b = c0 + 6 > sg->n - 2 ? sg->n - 2 : c0 + 6;
+    int a = c0 - 2 < 0 ? 0 : c0 - 2, b = c0 + 3 > sg->n - 2 ? sg->n - 2 : c0 + 3;
     float best = 1e30f, bs = s0;
     for (int i = a; i <= b; i++) {
         int k = sg->p0 + i;
