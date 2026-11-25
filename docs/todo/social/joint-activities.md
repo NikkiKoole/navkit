@@ -200,6 +200,20 @@ this). Saving them later needs the per-kind state saved; not worth it yet.
 5. The first steps-run one: a meal together (`ACT_WAIT_FOR_GROUP`), replacing table talk's
    peeking.
 
+## Seen in the game (2026-11-26)
+
+The user watched `playtime`: "it wasn't very clear yet, but that is ok". From the outside a
+game looks like people walking a bit faster; only hovering tells what is going on. Ideas, to try
+together in the game rather than guess:
+- a small mark over "it" / the seeker (and the hiders' crouch a bit stronger);
+- a speech-bubble icon when someone proposes a game ("Tag?") and when one joins;
+- players who aren't running stay near the game (they wander off now and look unrelated);
+- the start: everyone turns to the one who proposed it, a moment before they scatter.
+
+The social need: user, "a good start, we will have to tune this when more relevant". Its
+numbers (24 h alone to empty, 1 h with a friend to full, the moodlet thresholds) are first
+guesses; tune them when a game leans on it, not before.
+
 ## Decisions (user, 2026-11-25)
 
 - **Only free movers start or join by themselves.** A mover on a job isn't asked; it doesn't

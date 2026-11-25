@@ -55,7 +55,11 @@ outdoors (`IsExposedToSky`).
 
 ## Next
 
-- **Joint activities** (`joint-activities.md`, spec): talks and games as one kind of thing (a table row per kind, one lifecycle, one busy state, several games at once), then games that start by themselves. Next up.
+- **Joint activities** (`joint-activities.md`, partial): the games are activities (several at
+  once), movers start games and join them by themselves, a social need exists (off). Next there:
+  make games **readable on screen** (user, `playtime`: "wasn't very clear yet"), effects of
+  playing (mood, liking), lonely movers going out to find company (then the social need on),
+  talks and walks onto `activity.c`, a meal together.
 - **Animals on these blocks**: real paths (levels, doors), perception through noticing, flee /
   chase / hide from `chase.c`, wolves as a pack (pack hunt roles), herds (walk formation), freeze
   as a choice. Cover and a runner lying low are built; a lone wolf losing its prey would test the search alone. The cat first
