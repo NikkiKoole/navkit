@@ -653,6 +653,8 @@ static void CarveDisc(float cx, float cy, float r, int z) {
         }
 }
 
+void RoadCarveDisc(float cx, float cy, float r, int z) { CarveDisc(cx, cy, r, z); }
+
 // Half the carved width of a road (cells): 3 per lane, + half a cell (slanted roads are
 // carved in whole cells); a one-way road is centred on its lanes
 static float RoadHalfWidth(const RdEdge* e) {

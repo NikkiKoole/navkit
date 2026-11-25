@@ -14,6 +14,7 @@ float carSlotCells = 3.0f;
 bool carSlotReal = false;
 bool carSlotPhysical = true;
 bool carSlotLaneChange = true;
+bool carSlotKerbs = true;
 static float SL_REAL_PULL = 2.0f, SL_REAL_ACCEL = 1.5f;   // (tuning: env SL_PULL / SL_ACCEL)
 
 typedef struct { float x, y, h, v, steer; bool on; } SlReal;
@@ -37,6 +38,9 @@ static unsigned char* slShared = NULL;   // junction curve: its first slots this
                                          // (one from the same lane) that two cars there would touch
 static unsigned short* slSegN = NULL;   // slots on each segment (0: not used, e.g. bays)
 static int* slSlotCar = NULL;           // the car in each slot, -1 empty
+static int* slKerbCar = NULL;           // the car in the kerb spot beside each slot, -1 empty
+static unsigned char* slKerbOk = NULL;  // per slot: 1 = a kerb spot beside it, 2 = kerb strip (carved), no spot
+static long slParks = 0, slFareStops = 0, slKerbFull = 0, slPullOutWaits = 0;
 static int slTotal = 0, slSegCap = 0, slSlotCap = 0;
 static float slAcc = 0;               // seconds into the current step
 static int slStep = 0;
@@ -86,6 +90,7 @@ void SlotsClear(void) {
     slRoutes = slRouteFails = slReroutes = slOvertakes = slKeepRights = slMerges = slMergeGiveUps = 0;
     slTouchSamples = slTouchSum = 0;
     slTouchMax = 0;
+    slParks = slFareStops = slKerbFull = slPullOutWaits = 0;
     slStillMax = 0;
     slRouteCursor = 0;
 }
@@ -93,6 +98,89 @@ void SlotsClear(void) {
 static int SlIdx(int seg, int k) { return slSeg0[seg] + k; }
 static float slSlotCells(void) { return SL_SLOT_CELLS * CELL_SIZE; }   // px per slot (about: slots stretch per segment)
 static float SlS(int seg, int k) { return (k + 0.5f) * rdSegs[seg].len / slSegN[seg]; }
+
+// --- Kerb spots (carSlotKerbs): beside every second slot of the right-hand lane
+static void SlKerbPoint(int lane, int k, float* x, float* y, float* h) {
+    RoadPointAt(lane, SlS(lane, k), x, y, h);
+    *x -= sinf(*h) * RD_BAY_OFF * CELL_SIZE;   // right of travel (as the bays)
+    *y += cosf(*h) * RD_BAY_OFF * CELL_SIZE;
+}
+static void SlBuildKerbs(void) {
+    memset(slKerbOk, 0, (size_t)slTotal);
+    if (!carSlotKerbs) return;
+    // every lane / curve point in buckets of 4 cells: a spot must be 3.2 cells from all but its own lane
+    float B = 4.0f * CELL_SIZE, lim = 3.2f * CELL_SIZE;
+    int bw = 1, bh = 1;
+    for (int s = 0; s < rdSegCount; s++) {
+        if (rdSegs[s].kind != RD_LANE && rdSegs[s].kind != RD_CONN) continue;
+        int x = (int)(rdSegs[s].bx1 / B) + 2, y = (int)(rdSegs[s].by1 / B) + 2;
+        if (x > bw) bw = x;
+        if (y > bh) bh = y;
+    }
+    int* head = calloc((size_t)(bw * bh + 1), sizeof(int));
+    int np = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        static int* pts = NULL; static int ptsCap = 0;
+        if (pass == 1) {
+            for (int b = 1; b <= bw * bh; b++) head[b] += head[b - 1];
+            if (np > ptsCap) { ptsCap = np; pts = realloc(pts, sizeof(int) * ptsCap); }
+        }
+        int* fill = pass == 1 ? calloc((size_t)(bw * bh), sizeof(int)) : NULL;
+        for (int s = 0; s < rdSegCount; s++) {
+            if (rdSegs[s].kind != RD_LANE && rdSegs[s].kind != RD_CONN) continue;
+            for (int p = 0; p < rdSegs[s].n; p++) {
+                int q = rdSegs[s].p0 + p;
+                int bx = (int)(rdX[q] / B), by = (int)(rdY[q] / B);
+                if (bx < 0 || by < 0 || bx >= bw || by >= bh) continue;
+                if (pass == 0) { head[by * bw + bx + 1]++; np++; }
+                else pts[head[by * bw + bx] + fill[by * bw + bx]++] = q;
+            }
+        }
+        if (pass == 1) {
+            free(fill);
+            // the segment of each point: points are stored per segment in order
+            static int* ptSeg = NULL; static int ptSegCap = 0;
+            int total = 0;
+            for (int s = 0; s < rdSegCount; s++) if (rdSegs[s].p0 + rdSegs[s].n > total) total = rdSegs[s].p0 + rdSegs[s].n;
+            if (total > ptSegCap) { ptSegCap = total; ptSeg = realloc(ptSeg, sizeof(int) * ptSegCap); }
+            for (int s = 0; s < rdSegCount; s++) for (int p = 0; p < rdSegs[s].n; p++) ptSeg[rdSegs[s].p0 + p] = s;
+            for (int L = 0; L < rdSegCount; L++) {
+                const RdSeg* S = &rdSegs[L];
+                if (S->kind != RD_LANE || S->laneIdx != 0 || S->priority || rdEdges[S->edge].arc) continue;
+                for (int k = 2; k <= slSegN[L] - 3; k++) {
+                    float x, y, h;
+                    SlKerbPoint(L, k, &x, &y, &h);
+                    int bx = (int)(x / B), by = (int)(y / B);
+                    bool clear = true;
+                    for (int yy = by - 1; yy <= by + 1 && clear; yy++)
+                        for (int xx = bx - 1; xx <= bx + 1 && clear; xx++) {
+                            if (xx < 0 || yy < 0 || xx >= bw || yy >= bh) continue;
+                            for (int e = head[yy * bw + xx]; e < head[yy * bw + xx + 1] && clear; e++) {
+                                int q = pts[e];
+                                if (ptSeg[q] == L) continue;
+                                float dx = rdX[q] - x, dy = rdY[q] - y;
+                                if (dx * dx + dy * dy < lim * lim) clear = false;
+                            }
+                        }
+                    if (clear) slKerbOk[SlIdx(L, k)] = (k % 2 == 0) ? 1 : 2;
+                }
+            }
+        }
+    }
+    free(head);
+}
+
+void SlotsCarveKerbs(int z) {
+    for (int L = 0; L < rdSegCount; L++) {
+        if (rdSegs[L].kind != RD_LANE) continue;
+        for (int k = 0; k < slSegN[L]; k++) {
+            if (!slKerbOk[SlIdx(L, k)]) continue;
+            float x, y, h;
+            SlKerbPoint(L, k, &x, &y, &h);
+            RoadCarveDisc(x / CELL_SIZE, y / CELL_SIZE, 2.0f, z);
+        }
+    }
+}
 
 void SlotsBuild(void) {
     if (rdSegCount > slSegCap) {
@@ -116,7 +204,13 @@ void SlotsBuild(void) {
         slTotal += n;
         slConnStamp[s] = slExitStamp[s] = -1;
     }
-    if (slTotal > slSlotCap) { slSlotCap = slTotal; slSlotCar = realloc(slSlotCar, sizeof(int) * slSlotCap); }
+    if (slTotal > slSlotCap) {
+        slSlotCap = slTotal;
+        slSlotCar = realloc(slSlotCar, sizeof(int) * slSlotCap);
+        slKerbCar = realloc(slKerbCar, sizeof(int) * slSlotCap);
+        slKerbOk = realloc(slKerbOk, (size_t)slSlotCap);
+    }
+    SlBuildKerbs();
     // Shared starts: curves from one lane start together; until they part by a car width (2.6
     // cells) a car on one and a car on the other would overlap (the user saw a straight-on car
     // drive through one turning right ahead of it)
@@ -145,7 +239,7 @@ void SlotsBuild(void) {
         }
         slShared[s] = (unsigned char)shared;
     }
-    for (int i = 0; i < slTotal; i++) slSlotCar[i] = -1;
+    for (int i = 0; i < slTotal; i++) slSlotCar[i] = slKerbCar[i] = -1;
     if (rdNodeCount > 0) {
         slRingLanes = realloc(slRingLanes, sizeof(short) * rdNodeCount);
         slRingCount = realloc(slRingCount, sizeof(short) * rdNodeCount);
@@ -157,7 +251,7 @@ void SlotsBuild(void) {
     }
 }
 
-int SlotsSpawn(int count, unsigned int seed, float cabShare) {
+int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
     slRng = seed ? seed : 1;
     if (count > slCarCap) {
         slCarCap = count;
@@ -176,6 +270,27 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare) {
     slQHead = slQLen = 0;
     slotCarCount = 0;
     int lanes = RoadLaneCount();
+    // some parked at the kerb first (they leave over the first minute)
+    int parked = (int)(count * (1.0f - cabShare) * parkShare);
+    for (int tries = 0; tries < parked * 20 && slotCarCount < parked && lanes > 0; tries++) {
+        int lane = RoadLaneAt((int)((SlRand() * 32768u + SlRand()) % (unsigned)lanes));
+        int k = (int)(SlRand() % slSegN[lane]);
+        int idx = SlIdx(lane, k);
+        if (slKerbOk[idx] != 1 || slKerbCar[idx] >= 0) continue;
+        SlotCar* c = &slotCars[slotCarCount];
+        memset(c, 0, offsetof(SlotCar, route));
+        c->route[0] = (unsigned short)lane;
+        c->routeLen = 1;
+        c->slot = c->prevSlot = k;
+        c->destSlot = slSegN[lane] - 1;
+        c->needRoute = true;
+        c->kerb = true;
+        c->stopSteps = 1 + (int)(SlRand() % 60);
+        c->lcStep = c->kerbStep = -1;
+        slKerbCar[idx] = slotCarCount;
+        slGrantStep[slotCarCount] = -1;
+        slotCarCount++;
+    }
     for (int tries = 0; tries < count * 20 && slotCarCount < count && lanes > 0; tries++) {
         int lane = RoadLaneAt((int)((SlRand() * 32768u + SlRand()) % (unsigned)lanes));
         int k = (int)(SlRand() % slSegN[lane]);
@@ -190,7 +305,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare) {
         c->destSlot = slSegN[lane] - 1;
         c->needRoute = true;   // plans when it gets to the lane's end (searches spread over steps)
         c->cab = SlRand() < (unsigned)(cabShare * 32768);
-        c->lcStep = -1;
+        c->lcStep = c->kerbStep = -1;
         slSlotCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
         SlQueueRoute(slotCarCount);
@@ -226,8 +341,16 @@ static bool SlNewTrip(int i) {
     for (int tries = 0; tries < 6; tries++) {
         int dl = RoadLaneAt((int)((SlRand() * 32768u + SlRand()) % (unsigned)lanes));
         int ds = (int)(SlRand() % slSegN[dl]);
+        // a cab's fare / a car that will park: stop beside a kerb spot (just before it)
+        c->parkNext = false;
+        if (carSlotKerbs && (c->cab || (carCityParking && SlRand() < (unsigned)(0.4f * 32768)))) {
+            for (int t = 0; t < 4; t++) {
+                int k = 2 + 2 * (int)(SlRand() % (slSegN[dl] / 2 + 1));
+                if (k < slSegN[dl] && slKerbOk[SlIdx(dl, k)] == 1) { ds = k - 1; c->parkNext = true; break; }
+            }
+        }
         int n;
-        if (dl == cur && ds > c->slot) { r[0] = (unsigned short)cur; n = 1; }
+        if (dl == cur && ds > c->slot + 1) { r[0] = (unsigned short)cur; n = 1; }
         else {
             slRoutes++;
             n = RoadRoute(cur, dl, r, SL_MAX_ROUTE - 8);
@@ -364,6 +487,63 @@ static void SlGhost(int idx, int car) {
     if (slGhostN < 64) { slGhostIdx[slGhostN] = idx; slGhostCar[slGhostN] = car; slGhostN++; }
 }
 
+static int slKGhostIdx[64], slKGhostCar[64], slKGhostN = 0;   // kerb spots held during a pull-out
+
+// --- Kerb moves: pull in at the end of a trip, pull out when the next trip is planned
+static void SlKerbMoves(void) {
+    int D = SlBrakeSlots();
+    for (int i = 0; i < slotCarCount; i++) {
+        SlotCar* c = &slotCars[i];
+        int L = c->route[c->ri], k = c->slot, N = slSegN[L];
+        if (c->wantKerb) {
+            c->wantKerb = false;
+            int kk = -1;
+            if (rdSegs[L].kind == RD_LANE) {
+                if (k + 1 < N && slKerbOk[SlIdx(L, k + 1)] == 1 && slKerbCar[SlIdx(L, k + 1)] < 0 && slSlotCar[SlIdx(L, k + 1)] < 0) kk = k + 1;
+                else if (slKerbOk[SlIdx(L, k)] == 1 && slKerbCar[SlIdx(L, k)] < 0) kk = k;
+            }
+            if (kk < 0) {   // taken: a cab stands in the lane (the old way), a parker drives on
+                slKerbFull++;
+                if (c->cab) c->stopSteps = 3 + (int)(SlRand() % 6);
+                else SlQueueRoute(i);
+                continue;
+            }
+            SlGhost(SlIdx(L, k), i);                        // half in the lane during the step
+            if (kk == k + 1) SlGhost(SlIdx(L, k + 1), i);   // (our front passes there)
+            slKerbCar[SlIdx(L, kk)] = i;
+            c->kerb = true; c->kerbIn = true; c->kerbStep = slStep; c->kerbFrom = k;
+            c->prevRi = c->ri;
+            c->slot = c->prevSlot = kk;
+            c->v = 0;
+            c->stopSteps = c->cab ? 3 + (int)(SlRand() % 6) : 20 + (int)(SlRand() % 70);
+            if (c->cab) slFareStops++; else slParks++;
+            continue;
+        }
+        if (!c->kerb || c->kerbStep == slStep || c->stopSteps > 0 || c->needRoute) continue;
+        // pull out: diagonally into the lane, one slot on; passing beside lane slot k
+        if (k + 1 >= N || slSlotCar[SlIdx(L, k)] >= 0 || slSlotCar[SlIdx(L, k + 1)] >= 0) { slPullOutWaits++; continue; }
+        int back = 0, kk = k - 1;
+        while (kk >= 0 && slSlotCar[SlIdx(L, kk)] < 0 && back < 16) { back++; kk--; }
+        if (kk >= 0 && back < 16 && SlBrakeDist(slotCars[slSlotCar[SlIdx(L, kk)]].v, D) > back) { slPullOutWaits++; continue; }
+        if (kk < 0 && back < SlBrakeDist(SL_VMAX, D)) {   // near the lane's start: nobody coming off the junction
+            const RdNode* Nd = &rdNodes[rdSegs[L].from];
+            bool coming = false;
+            for (int q = 0; q < Nd->nConn && !coming; q++)
+                if (rdSegs[Nd->conn[q]].to == L && (slSegCount[Nd->conn[q]] > 0 || slConnStamp[Nd->conn[q]] == slStep)) coming = true;
+            if (coming) { slPullOutWaits++; continue; }
+        }
+        SlGhost(SlIdx(L, k), i);
+        slSlotCar[SlIdx(L, k + 1)] = i;
+        if (slKGhostN < 64) { slKGhostIdx[slKGhostN] = SlIdx(L, k); slKGhostCar[slKGhostN] = i; slKGhostN++; }   // (the spot stays ours this step)
+        else slKerbCar[SlIdx(L, k)] = -1;
+        c->kerb = false; c->kerbIn = false; c->kerbStep = slStep; c->kerbFrom = k;
+        c->prevRi = c->ri;
+        c->slot = c->prevSlot = k + 1;
+        c->v = 1;
+        c->lcCool = 3;
+    }
+}
+
 // --- Lane changes (two-lane roads): a diagonal move, one slot forward into the lane beside
 static int SlParallelSlot(int from, int k, int to) {   // the slot on lane `to` beside slot k of `from`
     int kk = (int)((k + 0.5f) * slSegN[to] / slSegN[from]);
@@ -378,6 +558,7 @@ static void SlLaneChanges(void) {
     int D = SlBrakeSlots(), changes = 0;
     for (int i = 0; i < slotCarCount && changes < 40; i++) {   // (each change plans a route: at most 40 a step)
         SlotCar* c = &slotCars[i];
+        if (c->kerb || c->kerbStep == slStep) continue;
         // A lane change the route needs (into the lane its turn is allowed from): as soon as the
         // slots beside allow it, and carry on with the route from there
         if (c->stopSteps == 0 && c->ri + 1 < c->routeLen && rdSegs[c->route[c->ri]].kind == RD_LANE &&
@@ -471,7 +652,7 @@ static void SlLaneChanges(void) {
 static int SlWantsCurve(int i) {
     const SlotCar* c = &slotCars[i];
     int seg = c->route[c->ri];
-    if (rdSegs[seg].kind != RD_LANE || c->ri + 1 >= c->routeLen) return -1;
+    if (c->kerb || rdSegs[seg].kind != RD_LANE || c->ri + 1 >= c->routeLen) return -1;
     // only when we can get there this step (a grant we can't use blocks crossing traffic)
     int vNext = c->v + 1 > SL_VMAX ? SL_VMAX : c->v + 1;
     if (c->slot + vNext < slSegN[seg]) return -1;
@@ -563,6 +744,7 @@ static void SlRunStep(void) {
     if (slRingCount) memset(slRingCount, 0, sizeof(short) * rdNodeCount);
     for (int i = 0; i < slotCarCount; i++) {
         const SlotCar* c = &slotCars[i];
+        if (c->kerb) continue;
         int seg = c->route[c->ri];
         slSegCount[seg]++;
         const RdSeg* S = &rdSegs[seg];
@@ -574,7 +756,7 @@ static void SlRunStep(void) {
     if (slStep % 5 == 0) {
         for (int s = 0; s < rdSegCount; s++) rdSegExtra[s] = 0;
         for (int i = 0; i < slotCarCount; i++)
-            if (slotCars[i].v == 0) rdSegExtra[slotCars[i].route[slotCars[i].ri]] += 8.0f * CELL_SIZE;
+            if (slotCars[i].v == 0 && !slotCars[i].kerb) rdSegExtra[slotCars[i].route[slotCars[i].ri]] += 8.0f * CELL_SIZE;
     }
     SlGrantCurves();
     // a car refused for want of room for 15 steps looks for another way (a few per step)
@@ -587,10 +769,13 @@ static void SlRunStep(void) {
             slotCars[i].noRoomSteps = 0;
             rer++;
         }
+    SlKerbMoves();
     if (carSlotLaneChange) SlLaneChanges();
     // speeds (all from the same occupancy), then moves
     for (int i = 0; i < slotCarCount; i++) {
         SlotCar* c = &slotCars[i];
+        if (c->kerb) { if (c->stopSteps > 0 && --c->stopSteps == 0) SlQueueRoute(i); slStepV[i] = -1; continue; }   // at the kerb
+        if (c->kerbStep == slStep) { slStepV[i] = -1; continue; }   // pulled out this step (moved already)
         if (c->stopSteps > 0) { c->stopSteps--; slStepV[i] = 0; if (c->stopSteps == 0) SlQueueRoute(i); continue; }   // a cab at a fare
         if (c->lcStep == slStep) { slStepV[i] = -1; continue; }   // changed lanes this step (it keeps its speed)
         int v = c->v + 1 > SL_VMAX ? SL_VMAX : c->v + 1;
@@ -622,12 +807,15 @@ static void SlRunStep(void) {
             c->trips++;
             c->needRoute = true;
             c->destSlot = slSegN[c->route[c->ri]] - 1;
-            if (c->cab) c->stopSteps = 3 + (int)(SlRand() % 6);   // a fare: stand a few steps, then a new trip
+            if (c->parkNext) { c->parkNext = false; c->wantKerb = true; }   // pulls in next step
+            else if (c->cab) c->stopSteps = 3 + (int)(SlRand() % 6);   // a fare: stand a few steps, then a new trip
             else SlQueueRoute(i);
         }
     }
     for (int g = 0; g < slGhostN; g++) if (slSlotCar[slGhostIdx[g]] == slGhostCar[g]) slSlotCar[slGhostIdx[g]] = -1;
     slGhostN = 0;
+    for (int g = 0; g < slKGhostN; g++) if (slKerbCar[slKGhostIdx[g]] == slKGhostCar[g]) slKerbCar[slKGhostIdx[g]] = -1;
+    slKGhostN = 0;
 }
 
 // Real cars in view: chase the slot pose (speed: the slot's + a pull toward it; steering:
@@ -648,7 +836,7 @@ static void SlRealTick(float dt) {
         float tx, ty, th;
         SlotCarPose(i, &tx, &ty, &th);
         float vT = slotCars[i].v * SL_SLOT_CELLS * CS / SL_STEP;
-        if (slotCars[i].stopSteps > 0) vT = 0;
+        if (slotCars[i].stopSteps > 0 || slotCars[i].kerb) vT = 0;
         if (!R->on) { R->x = tx; R->y = ty; R->h = th; R->v = vT; R->steer = 0; R->on = true; n++; continue; }
         n++;
         float dx = tx - R->x, dy = ty - R->y, err = sqrtf(dx * dx + dy * dy);
@@ -823,6 +1011,20 @@ bool SlotCarPose(int i, float* x, float* y, float* heading) {
         *heading = ah + lr * atan2f(side, slSlotCells());
         return true;
     }
+    if (c->kerbStep == slStep || c->kerb) {   // at the kerb, or pulling in / out this step
+        float OFF = RD_BAY_OFF * CELL_SIZE;
+        float s0 = c->kerbStep == slStep ? SlS(seg, c->kerbFrom) : sCur;
+        float o0 = c->kerb ? OFF : 0, o1 = c->kerb ? OFF : 0;
+        if (c->kerbStep == slStep) { o0 = c->kerbIn ? 0 : OFF; o1 = c->kerbIn ? OFF : 0; }
+        float w = f * f * (3 - 2 * f);
+        float s = s0 + (sCur - s0) * f, off = o0 + (o1 - o0) * w, h;
+        RoadPointAt(seg, s, x, y, &h);
+        *x -= sinf(h) * off;
+        *y += cosf(h) * off;
+        float ds = sCur - s0 > 1 ? sCur - s0 : slSlotCells();
+        *heading = h + atan2f((o1 - o0) * 6 * f * (1 - f), ds);
+        return true;
+    }
     if (c->prevRi == c->ri && c->prevSlot == c->slot) { RoadPointAt(seg, sCur, x, y, heading); return true; }
     // from the old slot to the new one along the route
     int pr = c->prevRi;
@@ -909,16 +1111,19 @@ void SlotsPrintStats(void) {
         printf("  real cars in view: %.1f on average; tracking error mean %.2f cells, max %.2f; %ld snaps; touches max %d pairs\n",
                slRealTicks ? (double)slRealSum / slRealTicks : 0.0, slRealErrN ? slRealErrSum / slRealErrN / CELL_SIZE : 0.0,
                slRealErrMax / CELL_SIZE, slRealSnaps, slRealTouchMax);
+    { int atKerb = 0; for (int i = 0; i < slotCarCount; i++) if (slotCars[i].kerb) atKerb++;
+      printf("  kerb: %d cars there now; %ld parked, %ld cab fares at the kerb, %ld arrivals found the spot taken, %ld pull-out waits\n",
+             atKerb, slParks, slFareStops, slKerbFull, slPullOutWaits); }
     printf("  lane changes: %ld to overtake, %ld back to the right-hand lane, %ld into the lane a turn needs (%ld gave up: another way)\n", slOvertakes, slKeepRights, slMerges, slMergeGiveUps);
     printf("  longest standstill %.0f s; route searches %ld (%ld found nothing), %ld re-routes round full exits\n", slStillMax * SL_STEP, slRoutes, slRouteFails, slReroutes);
 }
 
 bool SlotsCheck(char* why, int whyLen) {
     int occupied = 0;
-    for (int s = 0; s < slTotal; s++) if (slSlotCar[s] >= 0) occupied++;
+    for (int s = 0; s < slTotal; s++) { if (slSlotCar[s] >= 0) occupied++; if (slKerbCar[s] >= 0) occupied++; }
     for (int i = 0; i < slotCarCount; i++) {
         const SlotCar* c = &slotCars[i];
-        if (slSlotCar[SlIdx(c->route[c->ri], c->slot)] != i) {
+        if ((c->kerb ? slKerbCar : slSlotCar)[SlIdx(c->route[c->ri], c->slot)] != i) {
             snprintf(why, (size_t)whyLen, "slots: car %d is not in its slot", i);
             return false;
         }

@@ -3630,13 +3630,13 @@ static void SetupCarsCity(void) {
     TrafficSetupLights(carCityLights);
     if (carCityLights && carCityGreenWave) TrafficGreenWave(carMaxSpeed * 0.8f);
     RoadsCarve(1);
+    if (carCitySlots) { SlotsBuild(); SlotsCarveKerbs(1); }   // (slot traffic: kerb strips for parking)
     BuildEntrances(); BuildGraph();
     InvalidateLighting();
 
     int placed = 0;
     if (carCitySlots) {   // the abstract slot traffic instead (slots.h)
-        SlotsBuild();
-        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs);
+        placed = SlotsSpawn(carCityCount, (unsigned int)carCitySeed, carCityCabs, carCityParking ? 0.3f : 0.0f);
         currentViewZ = 1;
         AddMessage(TextFormat("Cars city, slot traffic: %d cars on %d roads", placed, rdEdgeCount), GREEN);
         return;

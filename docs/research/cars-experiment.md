@@ -514,6 +514,24 @@ lane). `SL_TOUCH=1` now counts drawn cars that overlap (every half second). Thre
 1200 samples (a curve passing an exit lane's first slot at a junction with an awkward angle -
 compact junctions; left as is), 0 jumps, all checks pass.
 
+## Slot traffic: kerb spots for cabs and parking (2026-11-25)
+
+Setting `carSlotKerbs` (on). Every second slot of a right-hand lane gets a spot beside it at
+the kerb (RD_BAY_OFF = 2.5 cells right), if it is 3.2+ cells from every other lane and curve
+(bucket grid; so none near junctions) and not in the lane's first 2 / last 2 slots. The strip
+is carved (`SlotsCarveKerbs`). A parked car is in `slKerbCar`, not in the lane's slots, so it
+blocks nobody.
+- Trips of cabs (always) and of 40% of the others (City Parking) end on the slot before a
+  spot; arriving, the car pulls in diagonally (its lane slot and the one ahead held for the
+  step, as a lane change) - spot taken: a cab stands in the lane as before, a parker drives on.
+- Cabs stand 3-8 s, parked cars 20-90 s; then the next trip is planned and the car pulls out
+  diagonally to the slot ahead when that slot and the one beside are free and the first car
+  behind can brake in the gap (near the lane's start: nobody on a curve coming into it).
+- 30% of the non-cabs start parked (leaving over the first minute).
+
+250 cars, 10 minutes: 0 touches, 0 jumps on both layouts; grid 608 trips (648 without kerbs:
+parked time), Manhattan 746 (692: cabs no longer block a lane). 16000 cars on 2048: same cost.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.

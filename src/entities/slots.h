@@ -38,7 +38,13 @@ typedef struct {
     int lcCool;              // steps before it may change lanes again
     int mergeWait;           // steps waiting to get into the lane a turn needs
     bool cab;                // a yellow cab: stands a few steps at each fare
-    int stopSteps;           // cab: steps left at a fare
+    int stopSteps;           // cab: steps left at a fare; parked: steps left parked
+    bool kerb;               // standing in the kerb slot beside slot `slot` of its lane (not in the lane)
+    bool wantKerb;           // arrived: pulls in to the kerb this step if it can
+    bool parkNext;           // this trip ends at a kerb spot (a cab's fare / parking)
+    int kerbStep;            // the step it pulled in or out (drawing: a sideways drift), -1 none
+    bool kerbIn;             // ... in (true) or out
+    int kerbFrom;            // ... from this slot
     int trips;
     int routeLen;
     unsigned short route[SL_MAX_ROUTE];   // RdSegId
@@ -51,7 +57,9 @@ extern float carSlotCells;               // cells per slot (setting): smaller = 
 int SlotsVmax(void);
 void SlotsClear(void);
 void SlotsBuild(void);                    // cut the network into slots (after RoadsBuild)
-int SlotsSpawn(int count, unsigned int seed, float cabShare);   // cars on random free lane slots (a share of them cabs); returns how many
+void SlotsCarveKerbs(int z);              // carve the kerb strips (after SlotsBuild)
+// cars on random free lane slots (a share of them cabs), a share of the others parked at the kerb; returns how many
+int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare);
 void SlotsTick(float dt);
 void SlotsPrintStats(void);
 bool SlotsCheck(char* why, int whyLen);   // invariants: one car per slot, trips happen
@@ -66,6 +74,11 @@ bool SlotCarVisible(int i, float x0, float y0, float x1, float y1);   // its seg
 extern bool carSlotReal;
 extern bool carSlotPhysical;   // braking over several steps, curve speeds (needed for carSlotReal)
 extern bool carSlotLaneChange; // overtaking / keeping right on two-lane roads
+// Kerb spots (setting carSlotKerbs): every second slot along the right-hand lane (not near
+// junctions or other roads) has a spot beside it at the kerb, RD_BAY_OFF cells to the right.
+// Cabs stop there for their fares and cars park there, out of the lane: pulling in and out
+// are diagonal moves like lane changes; pulling out waits for a gap the car behind can brake for.
+extern bool carSlotKerbs;
 void SlotsSetView(float x0, float y0, float x1, float y1);   // px
 bool SlotCarDrawPose(int i, float* x, float* y, float* heading, float* steer);   // the real car's if it has one
 
