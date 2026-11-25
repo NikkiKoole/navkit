@@ -1,6 +1,6 @@
 # Transport Layer — Unified Abstraction for Vehicles & Multi-Leg Pathfinding
 
-> Status: spec
+> Status: partial (2026-11-25 check: many rows in the table below are built, elevators (layer 4) too; trains/elevators/queues live in their own docs)
 
 Shared foundation for all systems where movers (or items) use infrastructure instead of walking directly: elevators, trains, ferries, drawbridges, stairs, doors, hoists, pack animals.
 

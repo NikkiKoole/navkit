@@ -1,6 +1,6 @@
 # Social Navigation
 
-> Status: spec
+> Status: partial (2026-11-25: ladder queues in `service-points-and-queues.md`; yielding + lane preference in `../social/noticing.md`; left: congestion-aware door cost, personal space by relation)
 
 Crowd behavior and social movement features.
 

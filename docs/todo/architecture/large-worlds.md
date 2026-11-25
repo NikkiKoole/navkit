@@ -43,7 +43,7 @@ Cost grows with area. **Not measured at 512 yet.**
 
 ## Improvements, in order
 
-1. **Per-chunk edge storage** — `docs/todo/pathfinding/per-chunk-edge-storage.md`.
+1. **Per-chunk edge storage** — `docs/done/pathfinding/per-chunk-edge-storage.md` (done).
    A terrain change only rebuilds the touched chunks' edges, so its cost no longer depends
    on map size.
 2. **Size layers to the real map** — allocate at load/generation time instead of static

@@ -1,6 +1,6 @@
 # Fire Ignition + Material Fuel Rules
 
-> Status: spec
+> Status: done (6bbc9709, 2026-02-07: floor fuel in `GetFuelAt`, trunks burn, fire placed on any fuel)
 
 ## Goal
 Make fire behavior match player intuition:

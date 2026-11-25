@@ -1,6 +1,6 @@
 # Village Next Steps — Bridge from Survival to Settlement
 
-> Status: spec
+> Status: partial (2026-11-25 check: steps 1-3 done; elevators built (`elevators.c`); furniture largely done (`furniture.h`); left: step 5 occupations, softening ideas)
 
 > What can we build *now* toward the endgame village vision, given what already exists? Ordered by dependency chain and effort-to-impact ratio.
 

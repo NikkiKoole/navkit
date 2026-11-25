@@ -42,7 +42,7 @@ gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
   field fades it fast, a stone wall shelters what's behind it.
 - Local and bounded (radius from power), so it fits the chunked / large-world work.
 - Many cells break at once: mark chunks dirty and update pathfinding **once per blast**,
-  not per cell (`pathfinding/per-chunk-edge-storage.md`: one mining update can cost 67 ms at 512).
+  not per cell (`../../done/pathfinding/per-chunk-edge-storage.md`: one mining update can cost 67 ms at 512).
 
 ### 2. Loose things get pushed
 

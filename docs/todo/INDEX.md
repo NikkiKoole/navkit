@@ -3,10 +3,11 @@
 > One-line summaries of everything in `docs/todo/`, grouped by status, plus `docs/research/`.
 > Start with **Recently active**: what is being worked on now. Each session keeps its own line
 > there up to date when it finishes something (newest first; drop lines older than ~2 weeks into
-> their section below). Last tidied 2026-11-23.
+> their section below). Last tidied 2026-11-25 (stale docs checked against the code).
 
 ## Recently active
 
+- **2026-11-25 Docs tidy** (this file): stale todo docs checked against the code. Moved to done: fire-ignition-materials, astar-priority-queue, per-chunk-edge-storage, bugs/worldgen-floating-trees. Status spec -> partial: village-next-steps, transport-layer, capability-based-tasks, 11-stockpile-filter, social-navigation; Partial/Specs summaries refreshed (trains, water, island, mood, elevators, belts); dollhouse-domestic-life + ensemble-stations listed. Unverified, left open: bugs/mover-on-flooded-ramp.md (likely fixed by `WadeTowardDryCell`), transient-state-save.md (likely fixed)
 - **2026-11-25 Explosions (idea)** (`world/explosions.md`): investigation, no code. Blast as a one-off event (spread through open cells, walls soak power by strength), loose items pushed by power/weight (like item drift), mover knockback, structural support (column rule, built walls only). Open questions for the user at the bottom
 - **2026-11-25 Action queue + need index** (`architecture/action-queue-and-need-index.md`): plan for player control (commands into a person's queue; autonomy as a dial per game) checked against thousands of agents. Measured: freetime searches scan every item (1.6 ms avg, 83 ms worst tick with ~940 movers over a game day). Step 1 done as two targeted fixes (berry search gate + bush claims; a starving sleeper's wake check): freetime 1.80 -> 0.11 ms avg, slow ticks 6943 -> 57, behaviour unchanged. Step 2 started: the action queue (`src/entities/action_queue.c`, save v112) with sit-then-eat (dollhouse meals at the chair; setting `sitToEat`); step 3 started: **E** on a selected mover = eat that / sit there / go there, Shift+E appends
 - **2026-11-25 Social: noticing, steering, talks, relations, games** (`social/noticing.md`, table "Built" at its top): faces (built in code from front faces), noticing, polite passing, talks and gatherings (also round fires / barrels / cooking by themselves, game rule `autoGatherings`), doorway manners, relations (saved v111), friends and foes, glances and greetings, walks and group outings, table talk (with navkit-3a's sit-then-eat), spot choice, mingling; games tag, hide and seek, follow the leader (`chase.c`). Each with a scenario, a setting row and tests (`test_notice`). Next: animals on the chase/flee blocks, the cat, topic icons
@@ -50,51 +51,52 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 ## Implemented (moved to done/)
 
 - ~~`12-biome-presets.md`~~ → `docs/done/`
-- ~~`feature-03-doors-shelter.md`~~ → `docs/done/` (superseded)
-- ~~`feature-04-tools-knapping.md`~~ → `docs/done/` (superseded)
-- ~~`primitives-missing.md`~~ → `docs/done/gameplay/`
-- ~~`water-dependent-crafting.md`~~ → `docs/done/gameplay/`
-- ~~`jobs-roadmap.md`~~ → `docs/done/jobs/`
+- ~~`feature-03-doors-shelter.md`~~, ~~`feature-04-tools-knapping.md`~~ → `docs/done/` (superseded)
+- ~~`primitives-missing.md`~~, ~~`water-dependent-crafting.md`~~ (mud mixer) → `docs/done/gameplay/`
+- ~~`jobs-roadmap.md`~~ → `docs/done/jobs/` (farming/hunting implemented)
 - ~~`platform-cell.md`~~ → `docs/done/pathfinding/`
+- ~~`environmental/fire-ignition-materials.md`~~ → `docs/done/environmental/` (6bbc9709: wood burns, floors burn, whole trunks)
+- ~~`pathfinding/astar-priority-queue-and-extraction.md`~~ → `docs/done/pathfinding/` (heap A*, pathfinder extracted to `nav/`)
+- ~~`pathfinding/per-chunk-edge-storage.md`~~ → `docs/done/pathfinding/` (1 wall at 512: 19.4 -> 5.1 ms)
+- ~~`bugs/worldgen-floating-trees.md`~~ → `docs/done/bugs/` (ec8a32f6)
 
 ## Partial (code exists, more to build)
 
-- `world/tide.md` — Tide (parked): sea rises and falls twice a day, mud flats fall dry, surf as real water on flats and beach, island game option `islandTide`. Next: food on the flats, dikes, tide on by default
-- `mood-moodlets-personality.md` — Mood system foundation shipped (mood.h/c, 5 traits, squared-curve, 31 tests). 8 phases: wire into game, hook needs triggers, weather/light/dirt/food/activity/room moodlets, more traits
-- `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer
-- `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel
-- `world/island.md` — Finite island grown from a seed (drainage, rivers, cover, loose items); terrain, scenario and game `island`; next: measure a lived-in island
+- `world/tide.md` — Tide (parked): sea rises and falls twice a day, mud flats fall dry, surf as real water on flats and beach, island game option `islandTide`. Next: food on the flats, dikes, tide on by default, save the wave/surf settings
+- `mood-moodlets-personality.md` — Mood on in every game (`moodEnabled` defaults on; the doc's "default false" is stale), traits incl. Patient/Impatient/Tidy/Slob; left: more moodlets (snow, diet variety, company/alone), skills-related traits. Doc partly out of date against code
+- `dollhouse-domestic-life.md` — Dollhouse vertical slice: 2 movers, kitchen, bathroom, domestic routines; phases 1-3 done, 4-5 next
+- `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer (names + mood done, skills not started)
+- `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel (small next: shake next to `TriggerLightningFlash()`)
+- `world/island.md` — Finite island grown from a seed (drainage, rivers, cover, loose items); terrain, scenario and game `island`; lived-in island measured (11-23); open: 128 islands mostly cut off, seed 4 at `rampDensity 1`
 - `world/water-ideas.md` — Parked ideas: spring size by catchment + soaking, sea current, showcases (hot spring, volcano, waterfall mist), rafts (piers, rafts as vehicles), flecks redesign
-- `world/water.md` — Water simulation: settled water rests, map edge as outlet (v101), edge-fed rivers, wading out; open: trickling springs + soaking, fair update order
-- `world/trains.md` — Horizontal multi-stop transport: track, stations, mover boarding, auto-decision (phases 1–4 done, phase 5 partial)
+- `world/water.md` — Water simulation: settled water rests, map edge as outlet (v101), edge-fed rivers, wading out, fair update order, trickling springs (v103); open: soaking sink, `--inspect` says deep water is walkable, flaky connectivity test
+- `world/trains.md` — Track, stations, boarding, coloured lines, transfers, subway, freight/cargo (v97), settings saved (v99). Its "what trains don't do yet" list is stale (lines + freight exist); not buildable by players yet (dev Draw track only)
+- `world/elevators.md` — Passenger elevator as a pathfinder link, waiting line, built from blueprints, play HUD tool, saved (v100); left: shaft sprite, freight elevator
+- `world/conveyors.md` — Belts: items + crates, lifts and chutes, built from blueprints, play HUD tool, saved (v98), feeds a workshop hopper; next: power for lifts, train cargo
+- `social/noticing.md` — Agents notice each other: people side built (steering, talks, gatherings, relations, walks, games); animals and the cat next
+- `gameplay/survival-toilet.md` — Levels 0-2 + 3a built (bush, pit latrine, toilet, bucket flush); next: cesspit + drain pipes, supply pipes (shared with dreamengine's plumbing model)
+- `gameplay/more-tiles-design.md` — Mostly done (hearth + mud mixer shipped); only clay pit and flat stone remain
+- `pathfinding/service-points-and-queues.md` — Wait-your-turn system: steps 1, 2, 4 done (ladder lines, queue shape, expected wait as route cost); left: station waiting lists as service points, saved state
+- `pathfinding/one-way-and-doors.md` — One-way ladders and doors (v110); left: build options to set the direction (console only now)
+- `pathfinding/social-navigation.md` — Crowd behaviour: ladder queues and yielding/lane preference built (in the two docs above + noticing); left: congestion-aware door cost, personal space by relation
+- `pathfinding/transport-layer.md` — Unified abstraction for vehicles, queues & multi-leg pathfinding; many rows of its table built, elevators too; rest lives in trains/elevators/queues docs
+- `village-next-steps.md` — Bridge from survival to settlement: steps 1-3 done, elevators and furniture built; left: occupations (step 5), softening ideas
+- `11-stockpile-filter-redesign.md` — Hierarchical filter UI: phases 0-1 done (categories, two-level navigation); left: presets, curing axis, material filters
+- `schedule-system.md` — Soft day rhythm done (lying in while dark, early night when idle, sleep metabolism); clock-driven blocks not built (see the user's "soft, not rigid" call)
+- `architecture/capability-based-tasks.md` — Tasks resolve by nearby capabilities: capabilityGrid, 16 bits, CAP_HEAT with levels built
 
 ## Specs (ready to build)
 
-- `village-next-steps.md` — Bridge from survival to settlement: room quality, mood, distance weighting, elevators, occupations, furniture (6-step build order)
 - `09-onboarding-and-progression.md` — Starting scenarios, progressive need unlocks, difficulty tuning
-- `11-stockpile-filter-redesign.md` — Hierarchical filter UI for growing item count
-- `schedule-system.md` — Clock-driven daily routines (work/meal/leisure/sleep blocks) layered on existing job system; soft day rhythm (lying in while dark, early night when idle, sleep metabolism) done
-- `transient-state-save.md` — Known save/load gaps (designation progress lost, etc.)
+- `transient-state-save.md` — Known save/load gaps. The main one (designation progress lost on load) looks fixed by the load order (`ClearMovers()` runs before designations are read); confirm with one save/load check, then close
 - `jobs/instant-reassignment.md` — Assign next job immediately on completion instead of waiting for AssignJobs()
-- `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (6k lines, ~85 functions)
+- `jobs/jobs-c-refactor.md` — Concrete modularization plan for jobs.c (doc says 6k lines; now ~8.5k)
 - `environmental/fire-improvements.md` — Ground fire spread + fire pit tool requirement (deferred from shelter)
-- `environmental/fire-ignition-materials.md` — Fix: wood walls won't ignite, floors don't burn, tree trunks only top segment
-- `gameplay/survival-toilet.md` (levels 0-2 built) — Bush -> pit latrine -> dry toilet -> bucket flush + cesspit -> piped flush toilet by gravity; levels 0-2 need no new systems, pipes shared with dreamengine's plumbing model
-- `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains
-- ~~`gameplay/water-dependent-crafting.md`~~ — moved to done/ (mud mixer implemented)
+- `gameplay/water-placement-tools.md` — Player actions to place/remove water sources, springs, pumps, drains (sandbox placement exists; player tools missing)
 - `gameplay/seasoning-curing.md` — Material states (green/seasoned/rotten wood) changing over time
-- `gameplay/more-tiles-design.md` — Next small tiles: hearth, clay pit, mud mixer
-- `world/elevators.md` — (partial: passenger car as a pathfinder link built, scenario `elevator`) Moving platforms with state, capacity, queuing
-- `world/conveyors.md` — Conveyor belts: spike done (scenarios `belt`, `belt-lift`: items + crates, lifts and chutes, stockpile pick-up/drop-off); brainstorm and open design questions
-- `pathfinding/per-chunk-edge-storage.md` — Incremental HPA* updates touch all edges (67 ms per mining update on 512x512 hills); store edges per chunk
-- `pathfinding/service-points-and-queues.md` — (steps 1, 2, 4 done; left: station waiting lists as service points, saved state) General wait-your-turn system (ladders, train doors, elevators, ...): explicit first-come-first-served lines, emergent follow-the-one-ahead queue shape, measured expected wait as route cost
-- `pathfinding/astar-priority-queue-and-extraction.md` — `RunAStar()` linear-scans instead of using the existing heap (~32s/path at 256×256, measured); plus what it'd take to lift the pathfinder into another project
-- `pathfinding/transport-layer.md` — Unified abstraction for vehicles, queues & multi-leg pathfinding (CapacityNode pattern)
-- `pathfinding/social-navigation.md` — Queuing and crowd behavior (prerequisite for elevators/trains)
-- `social/noticing.md` — Agents notice each other (partial): people side built (steering, talks, gatherings, relations, walks, games); animals and the cat next
-- `pathfinding/unified-spatial-queries.md` — Consolidate duplicated "find nearest" patterns
-- `architecture/capability-based-tasks.md` — Tasks resolve based on nearby capabilities, not building gates
-- `architecture/decoupled-simulation-plan.md` — Decouple pathfinding/sim from rendering for multiple views
+- `pathfinding/unified-spatial-queries.md` — Consolidate duplicated "find nearest" patterns; the hotspots it lists now use caches, only the unified API is left (optional)
+- `ensemble-stations.md` — Movers sit at seats and play music together, each seat a sequencer track; no code yet
+- `architecture/decoupled-simulation-plan.md` — Decouple pathfinding/sim from rendering for multiple views. Outdated: refers to a `demo.c` that no longer exists; SimStep (`src/core/sim_step.c`) covers part of it
 
 ## Ideas & Vision
 
@@ -109,8 +111,6 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `mover-control-and-work-radius.md` — Constrain mover movement (leash radius, distance weighting, draft mode)
 - `world/more-tiles.md` — Tier progression inventory (Survival → Farming → Industrial → Urban)
 - `items/future-ideas.md` — Containers, tool durability, scattered brainstorm
-- ~~`jobs/jobs-roadmap.md`~~ — moved to done/ (farming/hunting all implemented)
-- `gameplay/more-tiles-design.md` — Mostly done (hearth+mud mixer shipped), only clay pit remains
 - `pathfinding/future-ideas.md` — Flow fields, formations, territory costs
 - `gameplay/flow-simulation.md` — Vector fields to bias water/smoke/fire spread deterministically
 - `architecture/large-worlds.md` — What bigger maps cost (memory, graph updates, sims), improvements in order, estimates for 1024 and 2048
@@ -121,10 +121,9 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 
 ## Research & Reference
 
-- `00-priority-order.md` — Master priority list for survival mode feature roadmap (historical: Feb 2026)
+- `00-priority-order.md` — Master priority list for survival mode feature roadmap (historical: Feb 2026; lists finished work as open, like `../MASTER-TODO.md`, `../BACKLOG.md`, `../blind-spots-and-fresh-todos.md`)
 - `gameplay/workshops-master.md` — Living doc tracking workshop additions, source-sink-feedback principles
 - `gameplay/balance-and-rate-tuning.md` — Guide for tuning interconnected rate-based systems
-- ~~`gameplay/primitives-missing.md`~~ — moved to done/ (all primitive items implemented)
 - `ui/pie-menu.md` — Radial context menu research (Fitts's Law, mark-ahead); parked
 - `ui/find-palette.md` — Find palette (dev/cheat layer: browse tree + right-click context) and the data tidying that feeds it and the player toolbar: command table with argument specs, tool options as arguments, Draw/Work merged, verb tables, keys as data
 - `ui/icon-list.md` — Icons to replace text buttons (themes + per-button list)
@@ -132,12 +131,12 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `architecture/performance-dod-audit-jobs.md` — Jobs.c deep-dive: O(workshops×bills×items) and fixes
 - `architecture/rendering-optimization-candidates.md` — Rendering pipeline analysis (no active bottleneck yet)
 - `architecture/simd-optimization-candidates.md` — SIMD opportunities if scale increases
-- `sounds/sound-and-mind-research.md` — Index of 5 focused research tracks
-- `sounds/sound-and-mind-design.md` — Design pillars: meaningful, minimal, local, visible
-- `sounds/sound-and-mind-speech-comm.md` — Agent-to-agent communication with token palette
-- `sounds/sound-and-mind-birdsong-sex.md` — Evolving song for mate choice
-- `sounds/sound-concept-generator.md` — Tool to prevent concept gaps when adding items/jobs
-- `sounds/sound-needs-emotions-groundwork.md` — Minimal needs + derived emotions for communication
+- `../vision/sounds/sound-and-mind-research.md` — Index of 5 focused research tracks
+- `../vision/sounds/sound-and-mind-design.md` — Design pillars: meaningful, minimal, local, visible
+- `../vision/sounds/sound-and-mind-speech-comm.md` — Agent-to-agent communication with token palette
+- `../vision/sounds/sound-and-mind-birdsong-sex.md` — Evolving song for mate choice
+- `../vision/sounds/sound-concept-generator.md` — Tool to prevent concept gaps when adding items/jobs
+- `../vision/sounds/sound-needs-emotions-groundwork.md` — Minimal needs + derived emotions for communication
 
 ## Research findings (`docs/research/`)
 
@@ -161,11 +160,6 @@ Measured findings and broad research; not plans by themselves.
 - `discussions with ai/wate into resurce.md` — Biology loop: needs + infrastructure + composting
 - `discussions with ai/grand colony.md` — Scaling from 1 person to city: shadow labor, tech eras
 - `discussions with ai/notdfworkshops.md` — CDDA-style freeform construction, tools as entities
-
-## Superseded (moved to done/)
-
-- ~~`feature-03-doors-shelter.md`~~ → `docs/done/`
-- ~~`feature-04-tools-knapping.md`~~ → `docs/done/`
 
 ---
 

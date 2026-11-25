@@ -1,6 +1,6 @@
 # Stockpile Filter Redesign
 
-> Status: spec
+> Status: partial (phases 0-1 done in 8982b3ac: `FILTER_CAT_*` categories, two-level navigation; left: presets, curing axis, more material filters)
 
 > **Status**: Design / brainstorm
 > **Why**: Filter list is 30+ flat entries and growing. Containers, curing states, more materials incoming. Keyboard keys running out. UI becoming a wall of text.

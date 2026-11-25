@@ -1,6 +1,6 @@
 # Unified Spatial Queries Layer
 
-> Status: spec
+> Status: spec (2026-11-25: the hotspots below, full grid scans for gather/plant/chop, now use caches in jobs.c; only the unified API is left, optional)
 
 Unified interface for "find nearest X", k-nearest neighbors, range queries.
 
