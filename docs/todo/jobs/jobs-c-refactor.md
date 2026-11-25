@@ -3,7 +3,7 @@
 > Status: spec
 
 **Date:** 2026-02-21
-**File:** `src/entities/jobs.c` — 6,044 lines, ~85 functions
+**File:** `src/entities/jobs.c` — 6,044 lines, ~85 functions when this was written (8,549 lines on 2026-11-25: the line counts and "drops to" estimates below are from then; redo them before starting)
 
 ## Current Structure
 

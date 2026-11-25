@@ -1,6 +1,6 @@
  # Plan: Decoupled Simulation + Multiple Views Architecture
 
-**Status**: Planning document (not yet implementing)
+**Status**: Outdated (checked 2026-11-25). Written for a `src/demo.c` that no longer exists. Part of the goal (simulation runs without rendering) is done another way: `SimStep()` in `src/core/sim_step.c` runs the same tick for the GUI and `--headless`. Rewrite against the current code before using it as a plan.
 
 **Related future work**: Z-layers support (separate plan, will be built in src/demo first)
 
@@ -8,7 +8,7 @@
 
 ## Goal
 
-> Status: spec
+> Status: outdated (see the Status line at the top)
 
 Decouple the pathfinding simulation from rendering so that:
 - The simulation runs as a "headless backend" in grid-cell coordinates

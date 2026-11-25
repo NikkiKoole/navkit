@@ -2,22 +2,22 @@
 
 > Status: partial
 
-> Foundation shipped: mood.h/mood.c, moodlet array on Mover, 5 traits, squared-curve continuous mood, speed multiplier, 31 tests passing. This doc tracks remaining moodlet triggers and integration work.
+> Foundation shipped and on in every game (`moodEnabled` true since save v90): mood.h/mood.c, moodlet array on Mover, 9 rolled traits (+ Scavenger, set by a game or scenario), squared-curve continuous mood, speed multiplier, 31 tests passing. This doc tracks remaining moodlet triggers and integration work.
 
 ---
 
-## What exists (save version TBD)
+## What exists (mood saved since v90)
 
 - `float mood` on Mover (-1.0 to 1.0), smoothed rolling average
 - `Moodlet moodlets[8]` — type, value, remainingTime
 - `uint8_t traits[2]` — TraitType personality traits
 - Continuous inputs: hunger, thirst, energy, bodyTemp feed mood via squared curve
-- 5 traits: Hardy, Picky Eater, Outdoorsy, Glutton, Stoic
+- Traits (`src/simulation/mood.h`): Hardy, Picky Eater, Outdoorsy, Glutton, Stoic; added later by other work: Patient / Impatient (how long they wait in lines), Tidy / Slob (trash: walk to a bin or drop it), Scavenger (not rolled; City 1999)
 - Speed multiplier: 0.7x (miserable) to 1.2x (happy)
 - `MoodTick()` called per frame, `AddMoodlet()` at event transition points
 - Trait multiplier table modifies moodlet intensity per-mover
 - Tests: test_mood.c (31 tests, 50 assertions)
-- `moodEnabled` global toggle (default false, not yet wired into game)
+- `moodEnabled` global toggle (on by default; every game's start sets it)
 
 ## TODO: Wire into game
 
@@ -107,12 +107,12 @@ would fire for everyone every night. Or limit it to indoors.
 - [ ] **Company** (+0.5, 2h) — other movers within N cells while resting/eating (spatial grid query)
 - [ ] **Alone** (-0.5, 2h) — no other mover within N cells for extended time
 
-### Phase 8: Room quality moodlets (needs room detection system)
+### Phase 8: Room quality moodlets — superseded by Phase 3b (Nice/Ugly room built there)
 
 Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 
-- [ ] **Nice room** (+1, 4h) — spent time in room with quality > threshold
-- [ ] **Ugly room** (-1, 4h) — spent time in low-quality room
+- [x] **Nice room** (+1, 4h) — built in Phase 3b
+- [x] **Ugly room** (-1, 4h) — built in Phase 3b
 - [x] **Ate at table** (+2, 6h) — ate in a room with a dining set: FURNITURE_TABLE with a chair on a side cell (2026-11-22). Room-based because movers eat where the food lies; with sit-then-eat (dollhouse Phase 3c) it can become "sat at that table"
 - [x] **Ate without table** (-3, 6h) — ate standing/outdoors/no table
 
@@ -123,7 +123,7 @@ Depends on `village-next-steps.md` Step 1 (room detection + quality scoring).
 - [ ] **Social** — amplified Company/Alone moodlets
 - [ ] **Loner** — reversed Company/Alone (likes being alone, dislikes crowds)
 - [ ] **Neat** — amplified Filthy Surroundings penalty, bonus from clean rooms
-- [ ] **Slob** — ignores dirt entirely
+- [ ] **Slob** — ignores dirt entirely. Name taken: the code's `TRAIT_SLOB` is about trash (drops it where they stand); a dirt trait needs another name or should extend that one
 
 ---
 

@@ -70,12 +70,23 @@ What's already in the codebase (`src/entities/trains.h`, `src/entities/trains.c`
 - **Entry/exit station selection**: FindNearestStation() for both mover position and goal
 - Uses the simple heuristic from transport-layer.md, not full pathfinder cost comparison (deferred to Layer 3)
 
+### Built since (2026-11-22/23)
+- **Coloured lines**: lines are derived from the track network (`RebuildTrackLines`), each its own
+  colour; loops run once round, shuttles out and back (ee4782a1, scenario `metro`)
+- **Changes of line**: trip choice searches a transit graph, any number of changes (5a23128e,
+  bf33445d; scenarios `transfer`, `transit-chain`; setting `useTrainTransfers`)
+- **Subway**: trips to stations on other levels, walking between levels costed by the pathfinder;
+  changes across levels (bc7d1256, 9f06d279; scenarios `subway`, `subway-deep`). The "same-z only"
+  limit of phase 4 is gone
+- **Freight**: cargo stockpiles at stops, haulers leave loads there, trains carry them (99716593,
+  save v97, scenario `cargo`); lines rebuilt after a load (bcee8466); train settings saved (v99)
+
 ### What trains don't do yet
-- No multiple independent train lines (all trains share all tracks)
-- No loop tracks (bounce only)
+- Players can't build them: track, stations and trains only through the dev Draw tool (instant);
+  no recipes, blueprints or play HUD tool
 - No timetables / service hours
-- No freight/item transport
-- No full pathfinder cost comparison (heuristic works well enough)
+- No full pathfinder cost comparison (transit-graph heuristic works well enough)
+- No cart capacity UI
 
 ### Test Coverage
 58+ tests in `tests/test_trains.c` covering: station detection, waiting set FIFO, train stopping/resuming, ShouldUseTrain heuristic, boarding/exiting, capacity limits, mover transport state machine, haul integration, cancel job cleanup, platform/track destruction, multi-cell platforms, queue positions, track connections.
@@ -380,18 +391,18 @@ Currently moveCost is uniform (10/14) in the pathfinder. Speed modifiers (mud, f
 ### Phase 4: Pathfinder Decision — DONE (heuristic)
 - [x] ShouldUseTrain() distance-threshold heuristic (far enough + stations near both ends)
 - [x] Movers automatically choose train when beneficial (auto-triggers in mover.c)
-- [x] Same-z-only constraint (cross-z goals skip train)
+- [x] Same-z-only constraint (cross-z goals skip train) — lifted since by the subway work
 - [ ] Full pathfinder cost comparison with ride time estimation (deferred — heuristic works well)
 - [ ] Dynamic cost edges based on cart position (Layer 3 optimization)
 
-### Phase 5: Polish — PARTIAL
-- [ ] Multiple train lines (all trains share all tracks currently)
-- [ ] Loop tracks (bounce only)
+### Phase 5: Polish — PARTIAL (left: cart capacity UI, timetables, player building)
+- [x] Multiple train lines (coloured lines derived from the track, ee4782a1)
+- [x] Loop tracks (a loop line runs once round)
 - [x] Multiple carts per line (multi-car trains with trailing cars)
 - [ ] Cart capacity UI
 - [x] Station queue visualization (StationGetQueuePosition)
 - [ ] Timetables / service hours (requires schedule system)
-- [ ] Freight mode (item transport without movers)
+- [x] Freight mode (cargo stockpiles at stops, 99716593)
 
 ---
 

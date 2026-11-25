@@ -40,7 +40,7 @@ typedef enum {
     FURNITURE_FIRE_BARREL, // city: a burning oil drum, stand next to it (heat 1; no fuel yet)
     // dreamengine's buildings (names match its NKP_FURN_*)
     FURNITURE_SINK,        // washing (bathroom, kitchen)
-    FURNITURE_DOUBLE_BED,  // a bed: one sleeper for now
+    FURNITURE_DOUBLE_BED,  // a bed for two sleepers (FurnitureDef.sleepers = 2)
     FURNITURE_FRIDGE,      // cold storage
     FURNITURE_DESK,        // flat surface + seating spot in front
     FURNITURE_SHELF,       // display (books, goods)
