@@ -193,6 +193,20 @@ describe(player_commands) {
         expect(movers[0].hunger > 0.6f);
         expect(items[food].active && items[food].stackCount == 2 && items[food].reservedBy == -1);
     }
+    it("food lying at the far edge of its cell: still in reach when it arrives from the other side") {
+        // Bug: walking stops as soon as the mover is in the item's cell; with the item 4 px
+        // into the cell from the west and the mover coming from the east it stood ~0.85
+        // cells away, the pick-up wanted 0.75: the command failed (needs: seek timed out)
+        Setup(openFloor);
+        movers[0].hunger = 0.6f;
+        items[food].x = 3 * CELL_SIZE + 4.0f;
+        movers[0].x = 12.5f * CELL_SIZE;
+        char said[128];
+        expect(QueueCommandAt(0, 3, 2, 0, false, said, sizeof(said)));
+        expect(RunQueue(20000));
+        expect(movers[0].hunger > 0.6f);
+        expect(items[food].active && items[food].stackCount == 2);
+    }
     it("a seat: walks there, sits a while, then the seat is free again") {
         Setup(openFloor);
         movers[0].hunger = 1.0f;

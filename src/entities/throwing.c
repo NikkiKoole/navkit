@@ -614,11 +614,7 @@ bool ThrowPickUp(int moverIdx, int itemIdx) {
     Mover* m = &movers[moverIdx];
     Item* it = &items[itemIdx];
     if (!it->active || (it->state != ITEM_ON_GROUND && it->state != ITEM_IN_STOCKPILE)) return false;
-    // Close, or in its cell (a mover arriving stops anywhere in the goal cell, the item may lie in a corner)
-    const float pickR = CELL_SIZE * 0.75f;
-    float dx = m->x - it->x, dy = m->y - it->y;
-    bool sameCell = (int)(m->x / CELL_SIZE) == (int)(it->x / CELL_SIZE) && (int)(m->y / CELL_SIZE) == (int)(it->y / CELL_SIZE);
-    if ((int)m->z != (int)it->z || (!sameCell && dx * dx + dy * dy >= pickR * pickR)) return false;
+    if (!MoverCanReach(m, it->x, it->y, (int)it->z)) return false;
     if (it->state == ITEM_IN_STOCKPILE) RemoveItemFromStockpileSlot(it->x, it->y, (int)it->z);
     it->state = ITEM_CARRIED;
     MoverMakeHandsFor(moverIdx, itemIdx);

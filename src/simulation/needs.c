@@ -1217,12 +1217,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             }
 
             // Check if arrived at food
-            float dx = m->x - items[ti].x;
-            float dy = m->y - items[ti].y;
-            float distSq = dx * dx + dy * dy;
-            float pickupR = CELL_SIZE * 0.75f;
-
-            if ((int)m->z == (int)items[ti].z && distSq < pickupR * pickupR) {
+            if (MoverCanReach(m, items[ti].x, items[ti].y, (int)items[ti].z)) {
                 // Arrived: with a free hand and a free seat nearby, take it there and sit down
                 // to eat (action_queue.c); otherwise eat here, standing
                 if (QueueSitThenEat(moverIdx, ti)) break;
@@ -1509,12 +1504,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             }
 
             // Check if arrived
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx * dx + dy * dy;
-            float pickupR = CELL_SIZE * 0.75f;
-
-            if ((int)m->z == targetZ && distSq < pickupR * pickupR) {
+            if (MoverCanReach(m, targetX, targetY, targetZ)) {
                 // Arrived — start drinking
                 m->freetimeState = FREETIME_DRINKING;
                 m->needProgress = 0.0f;
@@ -1580,9 +1570,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
                 GetRidOfTrash(m, moverIdx);
                 break;
             }
-            float dx = m->x - items[bin].x, dy = m->y - items[bin].y;
-            float reach = CELL_SIZE * 0.75f;
-            if ((int)m->z == (int)items[bin].z && dx * dx + dy * dy < reach * reach) {
+            if (MoverCanReach(m, items[bin].x, items[bin].y, (int)items[bin].z)) {
                 LetGoOfTrash(m, moverIdx, bin);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
@@ -1608,11 +1596,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
                 m->needTarget = -1;
                 break;
             }
-            float dx = m->x - items[it].x, dy = m->y - items[it].y;
-            float reach = CELL_SIZE * 0.75f;
-            bool sameCell = (int)(m->x / CELL_SIZE) == (int)(items[it].x / CELL_SIZE) &&
-                            (int)(m->y / CELL_SIZE) == (int)(items[it].y / CELL_SIZE);
-            if ((int)m->z == (int)items[it].z && (sameCell || dx * dx + dy * dy < reach * reach)) {
+            if (MoverCanReach(m, items[it].x, items[it].y, (int)items[it].z)) {
                 MoverForgetSetAside(moverIdx, it);   // off the list (reservation freed)...
                 if (MoverHold(moverIdx, it)) EventLog("Mover %d picked its %s up again", moverIdx, ItemName(items[it].type));
                 m->freetimeState = FREETIME_NONE;    // ...and held again, or left for anyone

@@ -134,8 +134,7 @@ static bool QAtCell(const Mover* m, int x, int y, int z) {
 }
 
 static bool QItemWithinReach(const Mover* m, int i) {
-    float dx = m->x - items[i].x, dy = m->y - items[i].y, r = CELL_SIZE * 0.75f;
-    return (int)m->z == (int)items[i].z && dx * dx + dy * dy < r * r;
+    return MoverCanReach(m, items[i].x, items[i].y, (int)items[i].z);
 }
 
 static void QStopWalking(Mover* m) {

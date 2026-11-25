@@ -13,6 +13,7 @@
 #include "../src/simulation/mood.h"
 #include "../src/entities/containers.h"
 #include "../src/entities/furniture.h"
+#include "../src/entities/action_queue.h"
 #include "../src/entities/inventory.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/balance.h"
@@ -932,6 +933,39 @@ static bool WalkToFarFood(float testDayLength, int* seekStarts) {
 }
 
 describe(seek_keeps_its_goal) {
+    it("food at the far edge of its cell is in reach when the mover comes from the other side") {
+        // Bug (play-hungry, berries 4 px into their cell): the walk ends once the mover is in
+        // the food's cell, here ~0.85 cells from it; eating wanted 0.75: it stood there until
+        // the seek timed out
+        InitTestGridFromAscii(
+            "................\n"
+            "................\n"
+            "................\n");
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers(); ClearItems(); ClearStockpiles(); ClearJobs(); ClearPlants(); ClearFurniture();
+        InitBalance();
+        hungerEnabled = true; energyEnabled = false; bodyTempEnabled = false;
+        thirstEnabled = false; bladderEnabled = false;
+        sitToEat = false;
+        dayLength = 60.0f;
+        currentTick = 1;
+        SpawnItem(3 * CELL_SIZE + 4.0f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BERRIES);
+        InitMover(&movers[0], 12.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, (Point){12, 1, 0}, MOVER_SPEED);
+        moverCount = 1;
+        movers[0].hunger = 0.25f;
+        int seeks = 0, prev = FREETIME_NONE;
+        bool ate = false;
+        for (int t = 0; t < 3000 && !ate; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (movers[0].freetimeState == FREETIME_SEEKING_FOOD && prev != FREETIME_SEEKING_FOOD) seeks++;
+            ate = movers[0].freetimeState == FREETIME_EATING;
+            prev = movers[0].freetimeState;
+        }
+        sitToEat = true;
+        expect(ate);
+        expect(seeks == 1);   // the first walk reached it (no time-out and second try)
+    }
+
     it("a mover walking to a need keeps its goal when no path is found (not sent wandering)") {
         InitTestGridFromAscii(
             "..........\n"

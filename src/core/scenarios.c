@@ -760,8 +760,8 @@ static void SetupPlayHungry(void) {
     endlessMoverMode = true;
     noticeEnabled = true;
     CreateStockpile(2, 2, 1, 4, 4);
-    for (int i = 0; i < 16; i++) {   // (cell centres: docs/bugs/food-off-centre-out-of-reach.md)
-        int idx = SpawnItem((2 + i % 4 + 0.5f) * CELL_SIZE, (2 + i / 4 + 0.5f) * CELL_SIZE, 1, ITEM_DRIED_BERRIES);
+    for (int i = 0; i < 16; i++) {   // 4 px into the cell: guards food reach (MoverCanReach)
+        int idx = SpawnItem((2 + i % 4) * CELL_SIZE + 4, (2 + i / 4) * CELL_SIZE + 4, 1, ITEM_DRIED_BERRIES);
         if (idx >= 0) items[idx].stackCount = 20;
     }
     int n = scenarioMovers > 0 ? scenarioMovers : 8;
@@ -795,7 +795,8 @@ static void PlayHungryPrintStats(void) {
 static bool PlayHungryCheck(char* why, int whyLen) {
     if (playLeftCount == 0) { snprintf(why, (size_t)whyLen, "nobody left the game to eat"); return false; }
     if (phMeals == 0) { snprintf(why, (size_t)whyLen, "nobody ate"); return false; }
-    if (phLowestHunger <= 0.0f) { snprintf(why, (size_t)whyLen, "someone starved while playing"); return false; }
+    // 0.1: food out of reach (a mover standing by it until the seek timed out) gave 0.05
+    if (phLowestHunger <= 0.1f) { snprintf(why, (size_t)whyLen, "someone went hungry while playing (%.2f)", phLowestHunger); return false; }
     return true;
 }
 

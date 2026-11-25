@@ -87,6 +87,13 @@ float MoverYieldWaitTime(int i) { return MoverYieldingFor(i) >= 0 ? moverYieldTi
 float MoverNodTime(int i) { return (i >= 0 && i < moverCount) ? moverNodTimer[i] : 0.0f; }
 float MoverThanksTime(int i) { return (i >= 0 && i < moverCount) ? moverThanksTimer[i] : 0.0f; }
 int MoverYieldingFor(int i) { return (i >= 0 && i < moverCount && moverYielding[i]) ? moverYieldFor[i] : -1; }
+
+bool MoverCanReach(const Mover* m, float x, float y, int z) {
+    if ((int)m->z != z) return false;
+    if ((int)(m->x / CELL_SIZE) == (int)(x / CELL_SIZE) && (int)(m->y / CELL_SIZE) == (int)(y / CELL_SIZE)) return true;
+    float dx = m->x - x, dy = m->y - y;
+    return dx * dx + dy * dy < MOVER_REACH * MOVER_REACH;
+}
 int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;

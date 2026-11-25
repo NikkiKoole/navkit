@@ -269,6 +269,13 @@ extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 extern bool yieldLetPass;            // waiting at a narrow entrance: keep waiting until the one it let out has got past
 int MoverYieldingFor(int moverIdx);  // who it is waiting for at a narrow entrance, -1 if not waiting
+// Close enough to pick up / eat / drink / use something lying at (x, y) on level z: within
+// MOVER_REACH, or anywhere in its cell. Walking ends as soon as the mover is in the goal cell, so
+// a thing near one edge can be ~0.9 cells from a mover that came in from the other side; a
+// radius alone left it standing there until its seek timed out. Jobs instead step closer
+// (TryFinalApproach in jobs.c).
+#define MOVER_REACH (CELL_SIZE * 0.75f)
+bool MoverCanReach(const Mover* m, float x, float y, int z);
 float MoverYieldWaitTime(int moverIdx);   // seconds it has waited there so far (0 = not waiting)
 float MoverNodTime(int moverIdx);         // > 0: nodding "after you" at the one it let through
 float MoverThanksTime(int moverIdx);      // > 0: was just let through, smiles back
