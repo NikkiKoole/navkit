@@ -497,6 +497,23 @@ past its deadline put a car "into" a bay curve while it stood in the lane. Still
 steered sim: merges at a stop line beside a queue, cars holding a junction while queued behind
 a merging car - work to do.
 
+## Slot traffic: no more overlapping cars (2026-11-25)
+
+The user saw a straight-on car drive through a car turning right ahead of it (both from one
+lane). `SL_TOUCH=1` now counts drawn cars that overlap (every half second). Three causes, fixed:
+1. **Curves from one lane start together** but have their own slots: a car may enter a curve
+   only when the shared start of its sibling curves (slots within 2.6 cells of a sibling,
+   worked out once) is empty and nobody was let onto a sibling this step; such a junction
+   counts as not passable for braking.
+2. **A lane change clipped the car right ahead in the old lane** (half-way the changer is half a
+   slot on): changes need that slot free (overtaking with one free slot, like pulling out).
+3. **The car behind drove into the slot being vacated** while the changer was still drawn half
+   in it: the old slot stays the changer's until the step's moves are done.
+
+8 runs (2 layouts x 4 seeds, 250 cars, 10 minutes): 0 touches in 7, one run 1 pair in 3 of
+1200 samples (a curve passing an exit lane's first slot at a junction with an awkward angle -
+compact junctions; left as is), 0 jumps, all checks pass.
+
 ## Open questions / next steps
 
 - **Streets 3 wide for 2x2 cars** (or the car narrower than 2 cells)? Design call.
