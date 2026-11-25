@@ -145,10 +145,10 @@ static bool FxVisible(int z) { return z <= currentViewZ + 1 && z >= currentViewZ
 void DrawEffects(void) {
     if (fxCount == 0 || !FxInit()) return;
     float inner[3], outer[3];
-    // Discs: flashes under the rest, then dust, fireballs, smoke over them, the shockwave on top
+    // Discs: flashes under the rest, then dust, fireballs, and the smoke over them
     BeginShaderMode(fxShader);
-    for (int pass = 0; pass < 5; pass++) {
-        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : pass == 2 ? FX_BLAST : pass == 3 ? FX_SMOKE : FX_RING;
+    for (int pass = 0; pass < 4; pass++) {
+        FxKind want = pass == 0 ? FX_FLASH : pass == 1 ? FX_DUST : pass == 2 ? FX_BLAST : FX_SMOKE;
         for (int i = 0; i < fxCount; i++) {
             const Fx* f = &fx[i];
             if (f->kind != want || f->age < 0.0f || !FxVisible(f->z)) continue;
@@ -166,12 +166,6 @@ void DrawEffects(void) {
                 Col3(outer, f->r + 22, f->g + 22, f->b + 22);
                 DrawDisc(f->x, f->y, f->radius * (1.0f + 1.4f * t), dens, 0.55f, 0.5f, 0.3f, 0.6f, inner, outer, f->seed,
                          (DiscShape){ 0.25f, 0.0f, f->age });
-            } else if (f->kind == FX_RING) {
-                // Out to the reach in its life, fast first; a thin pale band, thinning
-                float grow = 1.0f - (1.0f - t) * (1.0f - t);
-                Col3(inner, 255, 245, 200);
-                DrawDisc(f->x, f->y, f->radius * (0.25f + 0.75f * grow), 0.85f * (1.0f - t), 0.0f, 0.15f, 0.15f, 1.0f, inner, inner, f->seed,
-                         (DiscShape){ 0.06f, 0.07f, f->age });
             } else if (f->kind == FX_FLASH) {
                 Col3(inner, 255, 255, 235);
                 DrawDisc(f->x, f->y, f->radius, 0.6f * (1.0f - t), 1.0f, 0.3f, 0.2f, 1.0f, inner, inner, f->seed,

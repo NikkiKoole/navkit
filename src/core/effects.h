@@ -18,7 +18,6 @@ typedef enum {
     FX_CHUNK,    // a bit of the broken wall flying in an arc
     FX_SPARK,    // a bright pixel (fuses, gunpowder by a fire)
     FX_SMOKE,    // a blast's smoke: shows as the fireball dies, rises, swells, thins out late
-    FX_RING,     // a blast's shockwave: a thin ring racing out to its reach
 } FxKind;
 
 typedef struct {

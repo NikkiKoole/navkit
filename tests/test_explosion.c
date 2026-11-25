@@ -298,9 +298,6 @@ describe(blast_effects) {
             if (fx[i].kind == FX_DUST) dust++;
         }
         expect(blasts >= 4);                       // a lumpy cluster, not one disc
-        int rings = 0;
-        for (int i = 0; i < fxCount; i++) if (fx[i].kind == FX_RING) rings++;
-        expect(rings == 1);                        // the shockwave
         expect(chunks > 0);
         expect(dust > 0);
         int smoke = 0;

@@ -152,8 +152,9 @@ Procedural, no sprites (user's call: dithering and circles changing colour). `sr
 - After a short web look at how others do it (user: "not this perfect disc"): the fireball is a
   cluster of 4-9 lumps (a big one in the middle, smaller ones off centre, each with its own size,
   start and length); every disc's outline bulges by smooth noise around it; the dither noise
-  drifts with age (boils); a thin shockwave ring races out to the real reach in 0.18 s; a big
-  blast (power 6+: 2 frames, 8+: 4) holds the picture (hit stop, windowed loop only).
+  drifts with age (boils); a big blast (power 6+: 2 frames, 8+: 4) holds the picture (hit stop,
+  windowed loop only). A shockwave ring out to the real reach was tried and dropped (user: "a bit
+  much"; the crater and the thrown things already show the reach; the shader's `ring` band stays).
   Sources: PixelJoint (lumpy circle, fast then slow, smoke from the lumps), Quirkbit's stylised
   explosions (noise clipping, rotating noise), Vlambeer's screenshake talk (hit stop), NVIDIA's
   "Bigger bang with fewer sprites" (shockwave). Not done: one shared density buffer for smoke

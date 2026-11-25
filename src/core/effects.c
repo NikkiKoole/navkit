@@ -91,9 +91,6 @@ void FxBlast(float wx, float wy, int z, float power) {
         l->age = i == 0 ? 0.0f : -FxRandRange(0.0f, 0.07f);
     }
     if (!f) return;
-    // The shockwave: a thin ring out to the blast's real reach
-    Fx* ring = NewFx(FX_RING);
-    if (ring) { ring->x = wx; ring->y = wy; ring->z = z; ring->radius = power * CELL_SIZE; ring->life = 0.18f; }
     // Hit stop: a big bang freezes the picture for a moment
     int stop = power >= 8.0f ? 4 : power >= 6.0f ? 2 : 0;
     if (stop > hitStopFrames) hitStopFrames = stop;
