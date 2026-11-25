@@ -66,14 +66,24 @@ static long slTripsDone = 0, slCarSteps = 0, slStandSteps = 0, slSlotsDriven = 0
 // why a car on the road stands this step (stats): its curve refused (by reason), the lane's end
 // before a lane change, a car ahead, a pedestrian, dawdling at the start, something else
 enum { SW_LIGHT, SW_ENTERING, SW_SIBLING, SW_PEDCURVE, SW_NOROOM, SW_CLASH, SW_BIGGER, SW_RINGFULL, SW_RINGGAP, SW_RINGEXIT,
-       SW_LANECHANGE, SW_CAR, SW_PED, SW_DAWDLE, SW_STOPLINE, SW_OTHER, SW_COUNT };
+       SW_LANECHANGE, SW_CAR, SW_PED, SW_PEDJAY, SW_DAWDLE, SW_STOPLINE, SW_OTHER, SW_COUNT };
 static const char* swName[SW_COUNT] = {"red light", "another car entering that lane", "a car from our lane on the curves",
     "pedestrian on the curve", "no room past the junction", "crossing curve in use", "bigger road's traffic", "ring full",
-    "no gap in the ring", "no room at the ring exit", "lane end before a lane change", "car ahead", "pedestrian ahead",
+    "no gap in the ring", "no room at the ring exit", "lane end before a lane change", "car ahead", "pedestrian ahead on a crossing", "pedestrian ahead off the crossings",
     "dawdled at the start", "stop line (curve not asked yet)", "other"};
 static long slStandWhy[SW_COUNT];
+static long slZebraTurns;   // (stats, below)
 static unsigned char* slGrantNo = NULL;   // car: why its curve was refused this step (SW_*)
-static unsigned char* slWhy = NULL;       // car: why it stands this step   // speeds raised by anticipation; moving cars that came to a stand
+static unsigned char* slWhy = NULL;       // car: why it stands this step
+// Taking turns at a zebra: a car that has stood a few steps for the people crossing gets to go -
+// those still at the kerb let it pass (a steady stream of walkers held cars for minutes; the
+// ones already on the crossing walk on)
+bool carSlotZebraTurns = true;   // (TEST: off = walkers at the kerb only wait for a car that can't stop)
+#define SL_ZEBRA_TURN 3          // steps a car stands for walkers before they let it go
+#define SL_ZEBRA_REACH 7.0f      // ... any such car this near (cells) where we step off: a crossing's width
+#define SL_ZEBRA_GO 5            // ... and it has the crossing this many steps (it creeps over at 1 slot/step:
+                                 // "can stop" - the next walker stepped out in front of it again)
+static int* slZebraUntil = NULL;          // car: walkers at a zebra let it go first until this step   // speeds raised by anticipation; moving cars that came to a stand
 bool carSlotAnticipate = true;
 static int *slBHead = NULL, *slBList = NULL, slBW = 0, slBH = 0;
 static bool SlInCar(int car, float x, float y, float grow);
@@ -177,6 +187,7 @@ void SlotsClear(void) {
     slTripT = slTripFree = slTripLen = 0;
     slTripsDone = slCarSteps = slStandSteps = slSlotsDriven = 0;
     memset(slStandWhy, 0, sizeof(slStandWhy));
+    slZebraTurns = 0;
     slDrives = slDrivesDone = slDriveFails = 0;
     slDriveSpeed = 2.0f;
     slChoseDrive = slChoseWalk = 0;
@@ -470,6 +481,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         slGrantStep = realloc(slGrantStep, sizeof(int) * slScratchCap);
         slGrantNo = realloc(slGrantNo, (size_t)slScratchCap);
         slWhy = realloc(slWhy, (size_t)slScratchCap);
+        slZebraUntil = realloc(slZebraUntil, sizeof(int) * slScratchCap);
         slReqCars = realloc(slReqCars, sizeof(int) * slScratchCap);
         slRouteQ = realloc(slRouteQ, sizeof(int) * slScratchCap);
     }
@@ -498,6 +510,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         if (carSlotTempers) { unsigned r = SlRand() % 100; c->temper = r < 20 ? SL_SPEEDER : (r < 40 ? SL_SLOW : SL_NORMAL); }
         slKerbCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
+        slZebraUntil[slotCarCount] = -1;
         slotCarCount++;
     }
     for (int tries = 0; tries < count * 20 && slotCarCount < count && lanes > 0; tries++) {
@@ -522,6 +535,7 @@ int SlotsSpawn(int count, unsigned int seed, float cabShare, float parkShare) {
         c->owner = -1;
         slSlotCar[idx] = slotCarCount;
         slGrantStep[slotCarCount] = -1;
+        slZebraUntil[slotCarCount] = -1;
         SlQueueRoute(slotCarCount);
         slotCarCount++;
     }
@@ -1231,7 +1245,10 @@ static void SlRunStep(void) {
             if (slAntLead[i] >= 0) slWhy[i] = SW_CAR;
             else if (atEnd && rdSegs[seg].parallel == c->route[c->ri + 1]) slWhy[i] = SW_LANECHANGE;
             else if (atEnd && rdSegs[c->route[c->ri + 1]].kind == RD_CONN) slWhy[i] = SlWantsCurve(i) >= 0 ? slGrantNo[i] : SW_STOPLINE;
-            else if (slPedStamp[SlIdx(seg, c->slot + 1 < slSegN[seg] ? c->slot + 1 : c->slot)] == slStep) slWhy[i] = SW_PED;
+            else if (slPedStamp[SlIdx(seg, c->slot + 1 < slSegN[seg] ? c->slot + 1 : c->slot)] == slStep) {
+                int pi = SlIdx(seg, c->slot + 1 < slSegN[seg] ? c->slot + 1 : c->slot);
+                slWhy[i] = SlCrossingPx(slCX[pi], slCY[pi]) ? SW_PED : SW_PEDJAY;
+            }
             else slWhy[i] = SW_OTHER;
         } else if (v == 1 && dawdle && SlDawdleStops(c)) slWhy[i] = SW_DAWDLE;
         if (v > 0 && dawdle && (v > 1 || SlDawdleStops(c))) v--;
@@ -1277,6 +1294,22 @@ static void SlRunStep(void) {
         if (c->v > 0 && v == 0) slStops++;   // (stop-and-go: how often a moving car comes to a stand)
         c->v = v;
         if (!c->needRoute && !c->kerb && c->stopSteps == 0) { slCarSteps++; if (v == 0) { slStandSteps++; slStandWhy[slWhy[i]]++; } slSlotsDriven += v; }
+        if (v == 0 && c->stopSteps == 0 && c->waitSteps + 1 >= SL_ZEBRA_TURN && (slWhy[i] == SW_PED || slWhy[i] == SW_PEDCURVE))
+            slZebraUntil[i] = slStep + SL_ZEBRA_GO;   // stood its turn for walkers at a zebra: now it goes
+        if (v == 0 && slWhy[i] == SW_PED && c->waitSteps >= 8 && getenv("SL_ZEBRADBG")) {   // (diagnostic: who holds a car at a crossing this long)
+            static int told = 0;
+            if (told++ < 12) {
+                float x, y, h, st; SlotCarDrawPose(i, &x, &y, &h, &st);
+                printf("step %d car %d at (%.1f,%.1f) stood %d steps; walkers within 5 cells:\n", slStep, i, x / CELL_SIZE, y / CELL_SIZE, c->waitSteps);
+                for (int mi = 0; mi < moverCount; mi++) {
+                    const Mover* m = &movers[mi];
+                    float dx = m->x - x, dy = m->y - y;
+                    if (!m->active || dx * dx + dy * dy > 25 * CELL_SIZE * CELL_SIZE) continue;
+                    printf("   mover %d at (%.1f,%.1f) road %d crossing %d held %.1fs ago goStep %d\n", mi, m->x / CELL_SIZE, m->y / CELL_SIZE,
+                           SlRoadAt(m->x, m->y, (int)m->z), SlCrossingPx(m->x, m->y), mi < slPedHeldCap ? gameTime - slPedHeldAt[mi] : -1.0, mi < slPedHeldCap ? slPedGoStep[mi] : -9);
+                }
+            }
+        }
         if (v == 0 && c->stopSteps == 0) { c->waitSteps++; if (c->waitSteps > slStillMax) slStillMax = c->waitSteps; }
         else c->waitSteps = 0;
         if (v > 0) {
@@ -1743,6 +1776,9 @@ static bool SlInCar(int car, float x, float y, float grow) {
 
 static double* slPedWaitStart = NULL;
 static int slPedWaitCap = 0;
+static bool SlWaitsForWalkers(int car) {
+    return carSlotZebraTurns && !slotCars[car].kerb && slZebraUntil[car] >= slStep;
+}
 #define SL_PED_PATIENCE 6.0   // seconds at a crossing's kerb (a car that couldn't stop) before just going
 #define SL_PED_PATIENCE_JAY 25.0   // seconds waiting for a gap off the crossings before just going
 bool SlotsPedHold(int mi, float dirX, float dirY) {
@@ -1770,14 +1806,9 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
     bool deep = SlRoadAt(m->x + dirX * 2.5f * CS, m->y + dirY * 2.5f * CS, (int)m->z);   // (stepping off: the road goes on ahead)
     int Dk = SlBrakeSlots();
     int wayCar = -1;
+    bool turn = false;   // holding back for a car that has waited its turn at the zebra
     int bx0 = (int)((m->x - 3 * CS - SL_SPAN_REACH) / B), bx1 = (int)((m->x + 3 * CS + SL_SPAN_REACH) / B);
     int by0 = (int)((m->y - 3 * CS - SL_SPAN_REACH) / B), by1 = (int)((m->y + 3 * CS + SL_SPAN_REACH) / B);
-    for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH; by++)
-        for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW; bx++)
-            for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1]; e++) {
-                int idx = slBList[e];
-                (void)idx;
-            }
     for (int by = by0 < 0 ? 0 : by0; by <= by1 && by < slBH && !inWay; by++)
         for (int bx = bx0 < 0 ? 0 : bx0; bx <= bx1 && bx < slBW && !inWay; bx++)
             for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1] && !inWay; e++) {
@@ -1805,6 +1836,21 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
                     if (!zebra || SlBrakeDist(slotCars[o].v, Dk) >= b) hold = true;
                 }
             }
+    // at a zebra's kerb: a car anywhere on this crossing that has waited its turn for the walkers
+    // goes first (not only one in the lane in front of us: people from the far kerb walked into
+    // the near lane's waiting car's way)
+    if (zebra && !onRoad && qOnRoad && deep && carSlotZebraTurns) {
+        float R = SL_ZEBRA_REACH * CS;
+        int cx0 = (int)((qx - R) / B), cx1 = (int)((qx + R) / B), cy0 = (int)((qy - R) / B), cy1 = (int)((qy + R) / B);
+        for (int by = cy0 < 0 ? 0 : cy0; by <= cy1 && by < slBH && !turn; by++)
+            for (int bx = cx0 < 0 ? 0 : cx0; bx <= cx1 && bx < slBW && !turn; bx++)
+                for (int e = slBHead[by * slBW + bx]; e < slBHead[by * slBW + bx + 1] && !turn; e++) {
+                    int idx = slBList[e], car = slSlotCar[idx];
+                    if (car < 0 || fabsf(slCZ[idx] - m->z) > 0.6f || !SlWaitsForWalkers(car)) continue;
+                    if (SlSlotDist2(idx, qx, qy) > R * R) continue;
+                    hold = true; turn = true;
+                }
+    }
     if (getenv("SL_PEDDBG")) {
         static int told = 0;
         static unsigned char seen[4096];
@@ -1858,9 +1904,11 @@ bool SlotsPedHold(int mi, float dirX, float dirY) {
         }
     }
     if (inWay) hold = true;   // a car where we'd step: wait (with patience) like for a gap
+    if (turn && slPedHeldAt[mi] < gameTime - 0.1) slZebraTurns++;
     if (hold) {
         if (slPedWaitStart[mi] < 0) slPedWaitStart[mi] = gameTime;
-        if (gameTime - slPedWaitStart[mi] < (zebra ? SL_PED_PATIENCE : SL_PED_PATIENCE_JAY)) { slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
+        if (turn || gameTime - slPedWaitStart[mi] < (zebra ? SL_PED_PATIENCE : SL_PED_PATIENCE_JAY)) {   // (a car having its turn: no patience - it lasts a few steps)
+            slPedGoStep[mi] = -1; slPedHolds++; slPedHeldAt[mi] = gameTime; return true; }
         // waited long enough: steps out anyway (announced: the cars stop)
     }
     if (slPedGoStep[mi] < 0) {
@@ -2067,6 +2115,7 @@ void SlotsPrintStats(void) {
                slTripFree > 0 ? slTripT / slTripFree : 0.0, cells / hours, slotCarCount ? cells / hours / slotCarCount : 0.0,
                100.0 * slStandSteps / slCarSteps, slTotal ? 100.0 * slCarSteps / slStep / slTotal : 0.0);
     }
+    if (slZebraTurns > 0) printf("  zebra: %ld times someone at the kerb let a waiting car go first\n", slZebraTurns);
     if (slStandSteps > 0) {
         printf("  standing (%% of the standing time):");
         for (int w = 0; w < SW_COUNT; w++) if (slStandWhy[w] * 200 >= slStandSteps) printf(" %s %.0f%%,", swName[w], 100.0 * slStandWhy[w] / slStandSteps);
