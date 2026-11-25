@@ -65,6 +65,9 @@ long tableTalkTicks = 0;
 #define WALK_AFTER_TALK    0.5f     // a talk between two who like each other ends: chance they walk on together
 #define WALK_NEXT_LEG      8.0f     // seconds left on arrival: the leader picks the next spot
 #define WALK_MAX           6        // a group outing: the leader and up to five others
+#define WALK_LOOK_PERIOD   2.6f     // seconds: walking and talking, the head goes ahead / to the others
+#define WALK_LOOK_SPEAK    0.9f     // of which the speaker looks at someone
+#define WALK_LOOK_LISTEN   0.45f    // of which a listener glances at the speaker
 
 static float RandRange(float lo, float hi) {
     return lo + (hi - lo) * (GetRandomValue(0, 10000) / 10000.0f);
@@ -161,10 +164,18 @@ bool TalkLookAt(int i, float* x, float* y) {
     }
     int t = MoverTalk(i);
     if (t < 0 || talks[t].focus == i) return false;   // the performer faces its audience (front)
-    if (talks[t].kind == TALK_WALK) {   // walking: the speaker looks at the other, else ahead
+    if (talks[t].kind == TALK_WALK) {   // walking: mostly ahead, now and then a look at the other(s)
         const Talk* tk = &talks[t];
         if (tk->count < 2) return false;
-        if (MoverIsSpeaking(i)) {   // the speaker looks at the nearest of the others
+        // a 2.6 s rhythm per mover (offset by index so they don't turn in step): the speaker looks
+        // over for 0.9 s of it, a listener glances at the speaker for 0.45 s
+        float ph = fmodf(tk->age + (float)i * 0.731f, WALK_LOOK_PERIOD);
+        bool speaking = MoverIsSpeaking(i);
+        if (!speaking && ph < WALK_LOOK_LISTEN) {
+            int sp = tk->members[tk->speaker];
+            if (sp != i) { *x = movers[sp].x; *y = movers[sp].y; return true; }
+        }
+        if (speaking && ph < WALK_LOOK_SPEAK) {   // the speaker looks at the nearest of the others
             int other = -1;
             float best = 1e18f;
             for (int k = 0; k < tk->count; k++) {
