@@ -24,7 +24,7 @@
 typedef struct { int x1, y1, x2, y2, z; } TownRoad;   // z = the walking level on it
 
 // Saved as a number: append only. LOT_WORK is the bakery.
-typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_KIND_COUNT } LotKind;
+typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_GRANARY, LOT_KIND_COUNT } LotKind;
 #define TownIsWorkplace(k) ((k) == LOT_WORK || (k) == LOT_MILL)   // has jobs, opening hours
 typedef enum { SIDE_N, SIDE_E, SIDE_S, SIDE_W } TownSide;
 
@@ -66,6 +66,10 @@ int  TownLotAt(int x, int y, int z);                             // -1 = none
 int  TownLotCount(LotKind kind);                                  // active lots of a kind
 
 // ---------------------------------------------------------------------------
+// A Granary lot is storage for the winter: its whole floor stores wheat and flour (they keep;
+// bread spoils in ~5 days), ranked between the farm's barn and the mill's granary, so a surplus
+// harvest moves in and flows on to the mill as it frees space.
+//
 // The grain chain (step 6): farm -> mill -> bakery -> pantries, all carried by the haul jobs.
 // A Farm lot is a wheat field (the farming designations) with a seed store; a Mill has querns
 // (Grind Wheat) and a granary. A bakery or mill that has run out imports a batch from outside
@@ -102,7 +106,8 @@ bool TownMakesWheat(void);                        // a town farm has harvested
 extern int townImported[];                        // emergency imports per item type (not saved)
 extern int townWasted[];                          // rotten food thrown out per item type (not saved)
 // One line for headless runs and the console: people, homes, jobs, stocks, imports
-void TownSummary(char* buf, int len);                          // arrivals, leaving owners, flour deliveries
+void TownSummary(char* buf, int len);
+int  TownStoreCapacity(void);                     // wheat + flour the town's stores can hold                          // arrivals, leaving owners, flour deliveries
 int  TownHomeOf(int moverIdx);                    // lot index, -1 = no home
 int  TownResidents(int lot);                      // movers who live there
 int  TownFreeBeds(void);                          // unowned beds in all homes

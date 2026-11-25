@@ -582,7 +582,10 @@ static void StartTown(void) {
     if (townStarter > 0) {   // and the grain chain at the east end: bakery, mill, farm
         TownAddLot(LOT_WORK, 59, midY - 8, 70, midY - 2, 1, NULL);
         TownAddLot(LOT_MILL, 59, midY + 2, 65, midY + 7, 1, NULL);    // 2 querns
-        TownAddLot(LOT_FARM, 74, midY - 8, 81, midY - 2, 1, NULL);    // barn row + 48 wheat cells for 12 people
+        // A farm big enough for a winter stock (12 people eat ~32 wheat a day; winter is 7 days
+        // without a harvest) and a granary to keep it in: barn row + 99 wheat cells, granary 15x6
+        TownAddLot(LOT_FARM, 74, midY - 10, 85, midY - 2, 1, NULL);
+        TownAddLot(LOT_GRANARY, 74, midY + 2, 88, midY + 7, 1, NULL);
     }
     BuildEntrances();
     BuildGraph();
@@ -708,6 +711,7 @@ static const GameTool townTools[] = {
     {HUD_TAB_BUILD, "Home", ACTION_DRAW_LOT_HOME, -1, NULL},
     {HUD_TAB_BUILD, "Bakery", ACTION_DRAW_LOT_WORK, -1, NULL},
     {HUD_TAB_BUILD, "Mill",   ACTION_DRAW_LOT_MILL, -1, NULL},
+    {HUD_TAB_BUILD, "Granary", ACTION_DRAW_LOT_GRANARY, -1, NULL},
     {HUD_TAB_NATURE, "Farm",  ACTION_DRAW_LOT_FARM, -1, NULL},
 };
 #undef BASIC_TOOLS

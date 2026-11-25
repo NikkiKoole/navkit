@@ -1410,6 +1410,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_DRAW_LOT_GRANARY,
+        .hints = { "L-drag a granary lot along a road", "R-drag remove lots" },
+        .name = "GRANARY",
+        .barDisplayText = "Granary",
+        .barKey = 'g',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
 
 };
 

@@ -247,6 +247,40 @@ now grinds what there is), and winter has no harvest at all (840 wheat imported)
 bigger farm, granaries big enough for 7 days (~170 wheat for 12 people), food that keeps
 (bread spoils in 5 days; flour and wheat don't), or winter imports as a cost once there's money.
 
+### Winter: a granary (2026-11-25, user: "lets just make a big enough storage")
+
+- **Granary** lot (play HUD "Granary", dev Draw > City > Granary): its floor either side of the
+  aisle stores wheat and flour (they keep; bread spoils in ~5 days), priority 5: between the
+  farm's barn (4) and the mill's granary / bakery's flour store (7). No jobs. `Town:` line shows
+  what the stores hold (`TownStoreCapacity`).
+- Storage only helps with a surplus to store: the starter farm grew from 48 to 99 wheat cells
+  (12x9) and got a 15x6 granary (stores hold 550 grain in all).
+- **Two farming bugs that emptied the fields after winter** (both in shared farming code, so
+  survival gets them too):
+  - Wheat was planted in winter and killed by the season, seed and all.
+  - Worse: every harvest's seed was replanted at once, so by the end of autumn all seed was in
+    the ground, and the first day of winter killed it all (`killed by season` x96): spring had
+    no seed. `CropWorthPlantingNow` (farming.c): plant only if the crop grows this season and,
+    when the next season kills it, there is time to ripen first at this season's pace (wheat
+    stops ~4 days before winter). Used by `WorkGiver_PlantCrop`.
+- **Seed grain** (`TownKeepSeed`): a harvest gives back one seed, so a field that ever lost seed
+  never got its planted area back. Each farm keeps a seed per field cell waiting to be planted,
+  setting stored wheat aside as seed (counted in the `Town:` line).
+- **42 days measured** (12 people, starter street):
+
+  | day | hunger | wheat in town | wheat imported | harvests |
+  |---|---|---|---|---|
+  | 14 | 11 Full, 1 Hungry | 290 | 380 (start-up) | 147 |
+  | 21 (winter starts) | 6 Full, 5 Peckish, 1 Hungry | 98 (+78 kept as seed) | 380 | 188 |
+  | 28 (spring 2 starts) | 4 Full, 7 Peckish, 1 Hungry | 20 | 820 | 188 |
+  | 35 | 8 Full, 3 Peckish, 1 Hungry | 194 | 1080 | 252 |
+  | 42 | 8 Full, 2 Peckish, 2 Hungry | 304 | 1080 | 336 |
+
+  Autumn and year two's summer need no wheat from outside; winter still does (440): the
+  99-cell farm doesn't grow enough surplus to fill the granary (550 room, 98 + seed in it at
+  winter). Levers: a bigger farm (the player can draw one), two farms. Also slowly falling:
+  fertility (wheat takes 20 a harvest; 128 -> 88 after a year: growth 0.63x -> 0.5x).
+
 ### Save (v113)
 
 After the relations: the road rectangles, then per lot its geometry and the owners of its

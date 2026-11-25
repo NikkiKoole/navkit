@@ -6137,6 +6137,8 @@ int WorkGiver_PlantCrop(int moverIdx) {
     for (int i = 0; i < farmCacheNeedsPlantCount; i++) {
         int x = farmCacheNeedsPlant[i].x, y = farmCacheNeedsPlant[i].y, z = farmCacheNeedsPlant[i].z;
         const FarmCell* fc = &FARM(x, y, z);
+        // Not when the season would kill it before it ripens: the seed would be lost
+        if (!CropWorthPlantingNow((CropType)fc->desiredCropType)) continue;
         float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
         float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
         float dx = tileX - m->x;

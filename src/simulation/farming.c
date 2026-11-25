@@ -95,6 +95,16 @@ CropType CropTypeForSeed(int seedType) {
 // Growth modifiers (pure functions, no side effects)
 // =============================================================================
 
+bool CropWorthPlantingNow(CropType crop) {
+    int season = (int)GetCurrentSeason();
+    float mod = CropSeasonModifier(crop, season);
+    if (mod <= 0.0f) return false;
+    if (CropSeasonModifier(crop, (season + 1) % 4) > 0.0f) return true;   // it can carry on next season
+    int dayInSeason = daysPerSeason > 0 ? GetYearDay() % daysPerSeason : 0;
+    float hoursLeft = (float)(daysPerSeason - dayInSeason) * 24.0f - timeOfDay;
+    return hoursLeft >= CropGrowthTimeGH(crop) / mod;
+}
+
 float CropGrowthTimeGH(CropType crop) {
     switch (crop) {
         case CROP_WHEAT:   return WHEAT_GROWTH_GH;

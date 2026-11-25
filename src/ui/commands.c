@@ -191,15 +191,15 @@ static void RunTown(const CmdValue* v) {
         }
         return;
     }
-    if (n < 5) { Say(RED, "usage: town road|home|bakery|mill|farm|remove x1 y1 x2 y2, or town list"); return; }
+    if (n < 5) { Say(RED, "usage: town road|home|bakery|mill|farm|granary|remove x1 y1 x2 y2, or town list"); return; }
     const char* why = NULL;
     if (strcasecmp(what, "road") == 0) {
         if (TownAddRoad(x1, y1, x2, y2, z, &why) < 0) Say(RED, "No road: %s", why);
         else Say(GREEN, "Road %d,%d-%d,%d", x1, y1, x2, y2);
     } else if (strcasecmp(what, "home") == 0 || strcasecmp(what, "work") == 0 || strcasecmp(what, "bakery") == 0
-               || strcasecmp(what, "mill") == 0 || strcasecmp(what, "farm") == 0) {
+               || strcasecmp(what, "mill") == 0 || strcasecmp(what, "farm") == 0 || strcasecmp(what, "granary") == 0) {
         LotKind k = strcasecmp(what, "home") == 0 ? LOT_HOME : strcasecmp(what, "mill") == 0 ? LOT_MILL
-                  : strcasecmp(what, "farm") == 0 ? LOT_FARM : LOT_WORK;
+                  : strcasecmp(what, "farm") == 0 ? LOT_FARM : strcasecmp(what, "granary") == 0 ? LOT_GRANARY : LOT_WORK;
         int lot = TownAddLot(k, x1, y1, x2, y2, z, &why);
         if (lot < 0) Say(RED, "No %s lot: %s", what, why);
         else Say(GREEN, "%s lot %d: %d %s", TownLotKindName(k), lot, townLots[lot].beds, k == LOT_HOME ? "beds" : "jobs");
@@ -207,7 +207,7 @@ static void RunTown(const CmdValue* v) {
         int lots = TownRemoveLotsIn(x1, y1, x2, y2, z), roads = TownRemoveRoadsIn(x1, y1, x2, y2, z);
         Say(ORANGE, "Removed %d lots, %d roads", lots, roads);
     } else {
-        Say(RED, "town: road, home, bakery, mill, farm, remove or list");
+        Say(RED, "town: road, home, bakery, mill, farm, granary, remove or list");
         return;
     }
     BuildEntrances();
@@ -705,7 +705,7 @@ static const CommandDef commandTable[] = {
     { "rain", "Simulation/Water", "Start or stop rain (coverage in %)",
       1, { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainChoices, .choiceCount = 4, .lo = 1, .hi = 100 } },
       RunRain, NULL },
-    { "town", "World/Town", "Town roads and lots at the viewed level: town road|home|bakery|mill|farm|remove x1 y1 x2 y2, town list",
+    { "town", "World/Town", "Town roads and lots at the viewed level: town road|home|bakery|mill|farm|granary|remove x1 y1 x2 y2, town list",
       1, { { .name = "what x1 y1 x2 y2", .type = CARG_TEXT, .optional = true } }, RunTown, NULL },
     { "reveal", "World", "Lift the fog of war: every cell explored (dev cheat; survival/island)",
       0, { { 0 } }, RunReveal, NULL },

@@ -370,6 +370,27 @@ describe(town_grain) {
         expect(clean);
         expect(!stockpiles[store].active);
     }
+    it("a granary's floor stores wheat and flour, ranked between barn and mill, no jobs") {
+        SetupTown();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_GRANARY, 2, 13, 10, 18, 1, NULL);   // inside 7x3 (yard row + walls), aisle in the middle
+        expect(lot >= 0);
+        const TownLot* L = &townLots[lot];
+        expect(L->storeCount == 2);
+        int cells = 0;
+        for (int i = 0; i < L->storeCount; i++) {
+            const Stockpile* sp = &stockpiles[L->stores[i]];
+            expect(sp->allowedTypes[ITEM_WHEAT] && sp->allowedTypes[ITEM_FLOUR] && !sp->allowedTypes[ITEM_BREAD]);
+            expect(sp->priority == 5);
+            cells += sp->width * sp->height;
+        }
+        expect(cells == 6 * 3);   // 7 wide minus the aisle, 3 deep
+        expect(L->beds == 0 && !TownIsWorkplace(L->kind));
+        expect(TownStoreCapacity() == cells * MAX_STACK_SIZE);
+        int sp0 = L->stores[0];
+        TownRemoveLot(lot);
+        expect(!stockpiles[sp0].active);
+    }
     it("a town farm's harvest is noted; harvests elsewhere are not") {
         SetupTown();
         TownAddRoad(0, 10, 39, 12, 1, NULL);

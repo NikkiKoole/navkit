@@ -1026,6 +1026,44 @@ describe(farming) {
     }
 
     // =========================================================================
+    // 25b. No planting in a season the crop can't grow in (wheat in winter): the seed would
+    // sprout and be killed by the season (a town lost all its seed over one winter)
+    // =========================================================================
+    it("no planting job for wheat in winter, one in spring") {
+        SetupFarmGrid();
+        RebuildIdleMoverList();
+        FARM_MUT(5, 5, 1).tilled = 1;
+        FARM_MUT(5, 5, 1).fertility = 128;
+        FARM_MUT(5, 5, 1).desiredCropType = CROP_WHEAT;
+        farmActiveCells = 1;
+        int seed = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WHEAT_SEEDS);
+        expect(seed >= 0);
+        Mover* m = &movers[0];
+        InitMover(m, 3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1.0f, (Point){3, 3, 1}, 100.0f);
+        moverCount = 1;
+        m->capabilities.canPlant = true;
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+        dayNumber = daysPerSeason * 3 + 1;   // winter
+        RebuildFarmWorkCache();
+        expect(WorkGiver_PlantCrop(0) < 0);
+        dayNumber = 1;                       // spring
+        RebuildFarmWorkCache();
+        expect(WorkGiver_PlantCrop(0) >= 0);
+    }
+    it("wheat is not planted at the end of autumn, when winter would kill it before it ripens") {
+        timeOfDay = 8.0f;
+        dayNumber = daysPerSeason * 2 + 1;            // first day of autumn: time to ripen
+        expect(CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 3;                // last day of autumn
+        expect(!CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 1;                // last day of spring: summer follows, fine
+        expect(CropWorthPlantingNow(CROP_WHEAT));
+        dayNumber = daysPerSeason * 3 + 1;            // winter
+        expect(!CropWorthPlantingNow(CROP_WHEAT));
+    }
+
+    // =========================================================================
     // 26. No water job when no water items available
     // =========================================================================
     it("no water job when no water items") {

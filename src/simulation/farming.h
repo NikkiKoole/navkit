@@ -119,5 +119,9 @@ float CropWeedModifier(uint8_t weedLevel);
 
 // Growth time for a crop type (game-hours)
 float CropGrowthTimeGH(CropType crop);
+// Worth planting now: the crop grows this season, and if the next season kills it, there is
+// time left to ripen first (at this season's pace). A crop the season kills takes its seed
+// with it: a town that replanted every harvest lost all its seed at the start of winter.
+bool CropWorthPlantingNow(CropType crop);
 
 #endif // FARMING_H
