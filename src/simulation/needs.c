@@ -220,6 +220,7 @@ static bool RipeBushAt(void* user, int x, int y, int z) {
 
 // Plant index of the nearest ripe bush the mover can walk to, -1 if none
 static int FindForageBush(const Mover* m, int moverIdx) {
+    if (freeRipeBushes <= 0) return -1;   // nothing to find anywhere: skip the flood (also for sleepers)
     Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     ForageCtx ctx = {moverIdx};
     Point found = from;
@@ -231,8 +232,7 @@ static int FindForageBush(const Mover* m, int moverIdx) {
 }
 
 static bool StartForaging(Mover* m, int moverIdx) {
-    if (freeRipeBushes <= 0) return false;   // nothing to find anywhere: skip the flood
-    int pi = FindForageBush(m, moverIdx);
+    int pi = FindForageBush(m, moverIdx);   // -1 at once when no ripe bush is free
     if (pi < 0) return false;
     EventLog("Mover %d SEEKING_FORAGE bush=%d at (%d,%d,%d)", moverIdx, pi, plants[pi].x, plants[pi].y, plants[pi].z);
     m->freetimeState = FREETIME_SEEKING_FORAGE;

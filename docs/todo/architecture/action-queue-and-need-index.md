@@ -63,7 +63,22 @@ commit (behaviour identical: 26984 arrivals both):
 | Freetime ticks over 5 ms | 6943 | 1202 |
 | whole run | 184 s | 122 s |
 
-Left: FreetimeStates (the ongoing states) 0.44 ms avg, 40 ms worst tick.
+Then the ongoing states (timed per state): nearly all of it was **resting**: a starving
+sleeper checks every cooldown whether there is food to wake for, and that check called the
+berry flood directly (past the new gate). The gate now sits in the berry search itself:
+resting 21 s -> 0.2 s over the run. Same run after both fixes:
+
+| | start | now |
+|---|---|---|
+| Freetime avg | 1.80 ms | **0.11 ms** |
+| Freetime ticks over 5 ms | 6943 | **57** |
+| arrivals | 26984 | 26984 |
+
+What is left in freetime is deciding (no need active) at ~0.06 ms. The plain item scans
+(FindNearestEdibleOnGround / InStockpile, bins) never showed in this run; they are the next
+thing to index when a run with many items shows them (a city block with full bins and
+shops). So the "need index" of step 1 became two targeted fixes; a general index waits for a
+measurement that needs it.
 
 ## What that means for the design
 
