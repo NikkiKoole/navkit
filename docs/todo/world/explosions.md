@@ -38,6 +38,25 @@ Next, when picked up again (user's choice between):
 Older open items: animals knocked by blasts, movers keeping away from lit charges, saving
 vapour, sprites for gunpowder / saltpeter / a charge, the ideas list below.
 
+## Decisions (user, 2026-11-25/26)
+
+- Movers: knockback and daze only, no harm. No injuries and no grenades for now: the games are
+  about building and living, so explosions are accidents, not weapons. If real danger is
+  wanted later, the cheap step is a "lethal blasts in survival" setting (`KillMover` at the
+  centre of a big blast), not a health system.
+- Walls and natural rock both break: blast mining wanted. Gunpowder from saltpeter + charcoal;
+  a charge takes ~7 cells of granite.
+- Collapse: falling mass lands as walls; whoever is under is pushed aside + dazed; a short
+  warning before the fall.
+- Gunpowder goes off near fire.
+- Effects are procedural: dithered circles changing colour, no sprites; fading = fewer pixels.
+  Not a perfect disc (lumpy, boiling). No shockwave ring ("a bit much"). Blasts make real
+  smoke that rises (the smoke sim), and smoke and steam draw as dithered clouds too.
+- Gas: one heavier-than-air vapour first, firedamp (lighter than air) as the second kind.
+  Flour dust is a room property (a dusty room a spark sets off), not a gas.
+
+Still open: which games get explosions; rare event or regular mining tool.
+
 Earlier mentions: boiler explosions (`discussions with ai/steampower.md`), saltpeter for
 gunpowder (`discussions with ai/wate into resurce.md`), firedamp gas
 (`../vision/far future /gates-and-processors.md`), "no cave-ins" (`../vision/entropy-and-simulation/water-system-differences-with-df.md` §9).
@@ -492,12 +511,3 @@ otherwise mining on the island turns into constant cave-ins.
 
 Touches busy shared files (`items.c`, `designations.c`, `grid.c`, `mover.c`): keep the bulk in
 `explosion.c` with small hooks.
-
-## Decisions (user, 2026-11-25)
-
-- Movers: knockback only for now (no harm).
-- Walls and natural rock both break: blast mining wanted.
-- Collapse: falling mass lands as walls; whoever is under is pushed aside + dazed; a short
-  warning before the fall.
-
-Still open: which games get it; rare event or regular mining tool.
