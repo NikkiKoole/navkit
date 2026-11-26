@@ -243,6 +243,15 @@ open, the Work tool dOors marks them to open or close. Visits (`visit.c`): knock
 grant, stay, leave. Scenarios `galerij`, `visiting`, `doorsmoke`, `doorlock`. Plans:
 `docs/todo/architecture/ownership-and-access.md`, `docs/todo/world/infrastructure.md`.
 
+Levers, pressure plates and links: `src/world/mechanisms.c` (saved v125). A source (lever, plate)
+writes a number to each linked target when it changes: on = 1, off = 0, a link can invert. A linked
+door switches open / locked (user) and waits for its doorway to clear before locking; a pipe valve
+opens / shuts. `MechRead` gives what a target is (a door told to lock may still be open). Built as
+furniture recipes, selected with a click (`SEL_MECHANISM`), linked by clicking doors and valves in
+the inspector's Link mode; a worker pulls a lever by order (`JOBTYPE_PULL_LEVER`). Console `mech`,
+setting `linksOverlay`, scenarios `leverflood`, `plategate`, `tests/test_links.c`. The far-future
+processor ("card-asm") builds on this signal model: `docs/vision/far future /gates-and-processors.md`.
+
 ## Selection and the inspector panel
 
 Left-click in normal mode selects a mover, animal, workshop, stockpile or blueprint (`src/core/selection.c`);

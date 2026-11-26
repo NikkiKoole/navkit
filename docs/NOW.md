@@ -43,7 +43,8 @@ explosions (`todo/world/explosions.md`, paused), throwing (`todo/gameplay/throwi
 water and tide (`todo/world/water.md`, `todo/world/tide.md` parked), belts and trains
 (`todo/world/conveyors.md`, `todo/world/trains.md`), big worlds (`todo/architecture/chunked-world-plan.md`),
 infrastructure: doors, locks, mechanisms, pipes (`todo/world/infrastructure.md`: doors open / closed / locked
-and the door chore built, visiting built, levers next), ownership and access: who may enter, use, take
+and the door chore built, visiting built, levers / pressure plates / links built (save v125, built and
+linked in play, the user's tiles), pipes laid by movers; next: gates), ownership and access: who may enter, use, take
 what, where (`todo/architecture/ownership-and-access.md`: core + households built; Town's beds and City 1999's
 shops to move onto it). Behaviours we hope to see emerge: `vision/hoped-for-behaviours.md`.
 
