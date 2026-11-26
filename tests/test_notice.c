@@ -1704,7 +1704,11 @@ describe(doors_and_drifts) {
             movers[b].goal = (Point){1, 4, 1};
             WalkToward(a, 20, 4);
             WalkToward(b, 1, 4);
-            for (int t = 0; t < 8 * TICK_RATE; t++) {   // until both are through (then they'd wander off)
+            // Until both are through. After that they would wander, and in this test world the doorway
+            // is the only wander destination there is (the ground is constructed wall, not natural:
+            // without ramps air over built wall is a "wall top", IsValidDestination), so both would
+            // walk into the doorway and stand there: looks like a deadlock, isn't one
+            for (int t = 0; t < 8 * TICK_RATE; t++) {
                 if ((int)(movers[a].x / CELL_SIZE) >= 19 && (int)(movers[b].x / CELL_SIZE) <= 2) break;
                 gameDeltaTime = TICK_DT;
                 Look();                                // notice the one coming (polite passing)
