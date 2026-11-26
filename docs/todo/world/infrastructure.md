@@ -132,7 +132,8 @@ each link with its target's state, "waiting to lock") and buttons Pull (by order
 (`SUBMODE_LINKING_MECHANISM`): click a door or valve to link it, again to unlink; the target under
 the mouse is outlined (green link, red unlink); ESC or L ends it. The selected / linking
 mechanism's links are always drawn.
-**Not yet:** sprites (user may draw: lever off / on, plate up / pressed), a separate floodgate
+Drawn with the user's tiles (`lever-off` / `lever-on`, `plate-up` / `plate-pressed`), lit like the ground.
+**Not yet:** a separate floodgate
 look, an actuator cooldown (doors relock locally and cheaply; revisit if plates flicker in
 crowds), play-HUD (Huisje) buttons for lever and plate.
 
