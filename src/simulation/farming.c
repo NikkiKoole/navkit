@@ -1,4 +1,5 @@
 #include "farming.h"
+#include "moisture.h"
 #include "../core/sim_manager.h"
 #include "../core/event_log.h"
 #include "../world/grid.h"
@@ -152,6 +153,34 @@ float CropWetnessModifier(int wetness) {
     }
 }
 
+// Wheat: normal to moist ground. Lentils: cope with dry ground, hate wet feet. Flax: likes it
+// moist, takes soaked ground. (Normal ground is MOISTURE_BASELINE 100, wet 180, soaked 230.)
+static const CropWater cropWater[CROP_TYPE_COUNT] = {
+    [CROP_NONE]    = {  0, 255,  0, 256 },
+    [CROP_WHEAT]   = { 90, 200, 30, 240 },
+    [CROP_LENTILS] = { 60, 170, 15, 230 },
+    [CROP_FLAX]    = {120, 235, 45, 256 },
+};
+
+const CropWater* CropWaterFor(CropType crop) {
+    return (crop > CROP_NONE && crop < CROP_TYPE_COUNT) ? &cropWater[crop] : &cropWater[CROP_NONE];
+}
+
+float CropMoistureModifier(CropType crop, int moisture) {
+    const CropWater* w = CropWaterFor(crop);
+    int off = moisture < w->idealLow ? w->idealLow - moisture : moisture > w->idealHigh ? moisture - w->idealHigh : 0;
+    float f = 1.0f - 0.7f * (float)off / 60.0f;   // 60 points outside the range: 0.3x
+    return f < 0.1f ? 0.1f : f;
+}
+
+const char* CropMoistureVerdict(CropType crop, int moisture) {
+    if (crop <= CROP_NONE || crop >= CROP_TYPE_COUNT) return NULL;
+    const CropWater* w = CropWaterFor(crop);
+    if (moisture < w->idealLow) return moisture < w->drought ? "far too dry" : "too dry";
+    if (moisture > w->idealHigh) return moisture >= w->flood ? "waterlogged" : "too wet";
+    return "good";
+}
+
 float CropFertilityModifier(uint8_t fertility) {
     return 0.25f + 0.75f * ((float)fertility / 255.0f);
 }
@@ -216,7 +245,29 @@ void FarmTick(float dt) {
                     fc->growthStage = CROP_STAGE_BARE;
                     fc->growthProgress = 0;
                     fc->frostDamaged = 0;
+                    fc->stress = 0;
                     continue;
+                }
+
+                // Soil moisture (the soil is the cell below the farm cell): too dry or too wet
+                // for long kills the crop, otherwise it slows growth outside the crop's range
+                int moisture = z > 0 ? SoilMoistureAt(x, y, z - 1) : MOISTURE_BASELINE;
+                const CropWater* cw = CropWaterFor((CropType)fc->cropType);
+                if (moisture < cw->drought || moisture >= cw->flood) {
+                    int st = fc->stress + 2;
+                    if (st >= CROP_STRESS_DEATH) {
+                        EventLog("Crop %d at (%d,%d,z%d) %s", fc->cropType, x, y, z,
+                                 moisture < cw->drought ? "wilted (drought)" : "rotted (waterlogged)");
+                        fc->cropType = CROP_NONE;
+                        fc->growthStage = CROP_STAGE_BARE;
+                        fc->growthProgress = 0;
+                        fc->frostDamaged = 0;
+                        fc->stress = 0;
+                        continue;
+                    }
+                    fc->stress = (uint8_t)st;
+                } else if (fc->stress > 0) {
+                    fc->stress--;
                 }
 
                 float tempMod = CropTemperatureModifier(GetTemperature(x, y, z));
@@ -226,8 +277,7 @@ void FarmTick(float dt) {
                     fc->frostDamaged = 1;
                 }
 
-                int wetness = GET_CELL_WETNESS(x, y, z);
-                float wetMod = CropWetnessModifier(wetness);
+                float wetMod = CropMoistureModifier((CropType)fc->cropType, moisture);
                 float fertMod = CropFertilityModifier(fc->fertility);
                 float weedMod = CropWeedModifier(fc->weedLevel);
 

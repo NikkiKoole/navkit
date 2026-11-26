@@ -3455,6 +3455,7 @@ JobRunResult RunJob_PlantCrop(Job* job, void* moverPtr, float dt) {
                 fc->growthStage = CROP_STAGE_SPROUTED;  // Start at sprouted
                 fc->growthProgress = 0;
                 fc->frostDamaged = 0;
+                fc->stress = 0;
                 DeleteItem(itemIdx);
                 job->carryingItem = -1;
                 EventLog("Planted crop %d at (%d,%d,z%d)", crop, tx, ty, tz);
@@ -3540,6 +3541,7 @@ JobRunResult RunJob_HarvestCrop(Job* job, void* moverPtr, float dt) {
             fc->growthStage = CROP_STAGE_BARE;
             fc->growthProgress = 0;
             fc->frostDamaged = 0;
+            fc->stress = 0;
 
             EventLog("Harvested crop %d at (%d,%d,z%d) yield=%d frost=%d", crop, tx, ty, tz, yieldCount, frost);
             TownNoteHarvest(tx, ty, tz);   // a town farm's first harvest ends the wheat import
@@ -6038,7 +6040,10 @@ void RebuildFarmWorkCache(void) {
                 if (fc->fertility < FERTILITY_LOW && farmCacheLowFertilityCount < MAX_FARM_CACHE) {
                     farmCacheLowFertility[farmCacheLowFertilityCount++] = (FarmCacheEntry){x, y, z};
                 }
-                if (z > 0 && GET_CELL_WETNESS(x, y, z - 1) == 0 && farmCacheDryCount < MAX_FARM_CACHE) {
+                // Water a crop (growing or queued) whose soil is below its ideal moisture
+                CropType wantsWater = fc->cropType != CROP_NONE ? (CropType)fc->cropType : (CropType)fc->desiredCropType;
+                if (z > 0 && wantsWater != CROP_NONE && farmCacheDryCount < MAX_FARM_CACHE &&
+                    SoilMoistureAt(x, y, z - 1) < CropWaterFor(wantsWater)->idealLow) {
                     farmCacheDry[farmCacheDryCount++] = (FarmCacheEntry){x, y, z};
                 }
             }

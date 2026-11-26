@@ -1069,7 +1069,7 @@ void TownTick(float dt) {
         if (L->kind == LOT_FARM && townIrrigation)
             for (int y = L->y1; y <= L->y2; y++)
                 for (int x = L->x1; x <= L->x2; x++)
-                    if (FARM(x, y, L->z).tilled) SoilWetAtLeast(x, y, L->z, WATER_POUR_MOISTURE);
+                    if (FARM(x, y, L->z).tilled && L->z > 0) SoilWetAtLeast(x, y, L->z - 1, WATER_POUR_MOISTURE);   // the soil below the farm cell
     }
     for (int l = 0; l < townLotHighWater; l++) {
         if (!townLots[l].active) continue;

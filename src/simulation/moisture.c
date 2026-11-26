@@ -211,6 +211,12 @@ void SoilMoistureInitNow(void) {
 void SoilMoistureMarkLoaded(void) { moistureWorld = gridGeneration; }
 bool SoilMoistureReady(void) { return moistureWorld == gridGeneration; }
 
+int SoilMoistureAt(int x, int y, int z) {
+    if (!soilMoistureEnabled) return MOISTURE_BASELINE;
+    EnsureMoistureWorld();
+    return MOISTURE(x, y, z);
+}
+
 bool SoilTooDryToGrow(int x, int y, int z) {
     if (!soilMoistureEnabled || !IsSoilSurface(x, y, z)) return false;   // buried soil holds no moisture
     EnsureMoistureWorld();

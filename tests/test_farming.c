@@ -49,6 +49,14 @@ static void SetupFarmGrid(void) {
     }
 }
 
+// A cell queued for wheat whose soil (z 0, below the farm cell at z 1) holds this moisture:
+// watering is for crops whose soil is below their ideal (moisture.h, farming.c cropWater)
+static void SoilForWheat(int x, int y, int m) {
+    (void)SoilMoistureAt(x, y, 0);   // a new world sets its moisture up first
+    FARM_MUT(x, y, 1).desiredCropType = CROP_WHEAT;
+    SetSoilMoisture(x, y, 0, m);
+}
+
 describe(farming) {
     // =========================================================================
     // 1. Till different soil types -> correct initial fertility
@@ -339,7 +347,7 @@ describe(farming) {
 
         // Set ideal temperature (15°C) and wetness (2=wet)
         TEMPERATURE(5, 5, 1).offset = (int16_t)(15 - GetAmbientTemperature(1));
-        SET_CELL_WETNESS(5, 5, 1, 2);
+        SetSoilMoisture(5, 5, 0, 150);   // moist soil below the farm cell (wheat: ideal)
 
         // Summer day
         dayNumber = daysPerSeason + 1;  // Summer
@@ -922,7 +930,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry soil at z-1
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         // Spawn water item on ground near mover
         int waterIdx = SpawnItem(4.5f * CELL_SIZE, 4.5f * CELL_SIZE, 1, ITEM_WATER);
@@ -956,9 +964,10 @@ describe(farming) {
         }
         expect(r == JOBRUN_DONE);
 
-        // The soil cell at z-1 is watered: moisture at least the pour amount, which reads "wet"
+        // The soil cell at z-1 is watered: moisture at least the pour amount: moist, not mud
         expect(MOISTURE(5, 5, 0) >= WATER_POUR_MOISTURE);
-        expect(GET_CELL_WETNESS(5, 5, 0) == 2);
+        expect(GET_CELL_WETNESS(5, 5, 0) == 1);
+        expect(!IsMuddy(5, 5, 0));
 
         // Water item should be consumed
         expect(!items[waterIdx].active);
@@ -974,7 +983,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
         expect(waterIdx >= 0);
@@ -1010,7 +1019,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 2);  // Already wet
+        SoilForWheat(5, 5, 200);  // Already wet
 
         int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
         expect(waterIdx >= 0);
@@ -1076,7 +1085,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);  // Dry
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         // No water items spawned
 
@@ -1102,7 +1111,7 @@ describe(farming) {
 
         // Cell is NOT tilled
         farmActiveCells = 0;
-        SET_CELL_WETNESS(5, 5, 0, 0);
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
         expect(waterIdx >= 0);
@@ -1130,7 +1139,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
         expect(waterIdx >= 0);
@@ -1163,7 +1172,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         // Two water items
         int w1 = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
@@ -1209,8 +1218,8 @@ describe(farming) {
         FARM_MUT(12, 12, 1).tilled = 1;
         FARM_MUT(12, 12, 1).fertility = 128;
         farmActiveCells = 2;
-        SET_CELL_WETNESS(3, 3, 0, 0);
-        SET_CELL_WETNESS(12, 12, 0, 0);
+        SoilForWheat(3, 3, 40);   // wheat queued, soil dry for it
+        SoilForWheat(12, 12, 40);   // wheat queued, soil dry for it
 
         // Two water items near each mover
         int w1 = SpawnItem(2.5f * CELL_SIZE, 2.5f * CELL_SIZE, 1, ITEM_WATER);
@@ -1258,7 +1267,7 @@ describe(farming) {
         FARM_MUT(5, 5, 1).tilled = 1;
         FARM_MUT(5, 5, 1).fertility = 128;
         farmActiveCells = 1;
-        SET_CELL_WETNESS(5, 5, 0, 0);
+        SoilForWheat(5, 5, 40);   // wheat queued, soil dry for it
 
         // Water item in stockpile state
         int waterIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 1, ITEM_WATER);
@@ -1279,10 +1288,72 @@ describe(farming) {
     }
 }
 
+// =============================================================================
+// Soil moisture per crop (farming.c cropWater, docs/todo/world/soil-moisture.md step 5)
+// =============================================================================
+
+// A sprouted crop on the farm cell (5, 5, 1); its soil (5, 5, 0) held at m for `hours`
+static void GrowOnSoil(CropType crop, int m, float hours) {
+    SetupFarmGrid();
+    FARM_MUT(5, 5, 1).tilled = 1;
+    FARM_MUT(5, 5, 1).fertility = 200;
+    FARM_MUT(5, 5, 1).cropType = (uint8_t)crop;
+    FARM_MUT(5, 5, 1).desiredCropType = (uint8_t)crop;
+    FARM_MUT(5, 5, 1).growthStage = CROP_STAGE_SPROUTED;
+    farmActiveCells = 1;
+    dayNumber = 1;   // spring: all three grow
+    float tick = GameHoursToGameSeconds(FARM_TICK_INTERVAL);
+    for (int i = 0; i < (int)(hours / FARM_TICK_INTERVAL); i++) {
+        SetSoilMoisture(5, 5, 0, m);
+        FarmTick(tick + 0.01f);
+    }
+}
+
+describe(crop_moisture) {
+    it("grows each crop fastest inside its own moisture range") {
+        expect(CropMoistureModifier(CROP_WHEAT, MOISTURE_BASELINE) == 1.0f);
+        expect(CropMoistureModifier(CROP_WHEAT, 20) < 0.5f);
+        expect(CropMoistureModifier(CROP_LENTILS, 60) == 1.0f);     // lentils cope with dry ground
+        expect(CropMoistureModifier(CROP_WHEAT, 60) < 1.0f);
+        expect(CropMoistureModifier(CROP_FLAX, 230) == 1.0f);       // flax likes it moist
+        expect(CropMoistureModifier(CROP_LENTILS, 230) < 0.5f);
+        expect(strcmp(CropMoistureVerdict(CROP_WHEAT, 20), "far too dry") == 0);
+        expect(strcmp(CropMoistureVerdict(CROP_WHEAT, 150), "good") == 0);
+        expect(strcmp(CropMoistureVerdict(CROP_LENTILS, 240), "waterlogged") == 0);
+    }
+
+    it("wilts wheat on parched soil, lentils survive it") {
+        GrowOnSoil(CROP_WHEAT, 10, 48.0f);
+        expect(GetFarmCell(5, 5, 1)->cropType == CROP_NONE);
+        expect(GetFarmCell(5, 5, 1)->desiredCropType == CROP_WHEAT);   // replanted later
+        GrowOnSoil(CROP_LENTILS, 20, 48.0f);
+        expect(GetFarmCell(5, 5, 1)->cropType == CROP_LENTILS);
+    }
+
+    it("rots lentils on soaked soil, flax takes it") {
+        GrowOnSoil(CROP_LENTILS, 245, 48.0f);
+        expect(GetFarmCell(5, 5, 1)->cropType == CROP_NONE);
+        GrowOnSoil(CROP_FLAX, 245, 48.0f);
+        expect(GetFarmCell(5, 5, 1)->cropType == CROP_FLAX);
+        expect(GetFarmCell(5, 5, 1)->stress == 0);
+    }
+
+    it("lets stress fade again on good soil") {
+        GrowOnSoil(CROP_WHEAT, 10, 12.0f);          // half a day of drought
+        int stressed = GetFarmCell(5, 5, 1)->stress;
+        expect(stressed >= CROP_STRESS_SHOWS);
+        expect(GetFarmCell(5, 5, 1)->cropType == CROP_WHEAT);
+        float tick = GameHoursToGameSeconds(FARM_TICK_INTERVAL);
+        for (int i = 0; i < 24; i++) { SetSoilMoisture(5, 5, 0, 150); FarmTick(tick + 0.01f); }   // watered
+        expect(GetFarmCell(5, 5, 1)->stress < stressed);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
 
     test(farming);
+    test(crop_moisture);
 
     return summary();
 }

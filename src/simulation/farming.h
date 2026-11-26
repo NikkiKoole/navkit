@@ -33,8 +33,10 @@ typedef struct {
     uint8_t cropType;        // what's currently growing (CropType, CROP_NONE = nothing)
     uint8_t growthStage;     // CropStage (0-4)
     uint8_t growthProgress;  // 0-255, stage-up at 255
-    uint8_t frostDamaged;    // 1 = frost reduced yield by 50%
+    uint8_t frostDamaged : 1; // 1 = frost reduced yield by 50%
+    uint8_t stress : 7;       // 0-127: too dry or too wet for a while (CROP_STRESS_DEATH: the crop dies)
 } FarmCell;
+_Static_assert(sizeof(FarmCell) == 8, "FarmCell is saved as 8 raw bytes (stress lives in frostDamaged's spare bits: old saves read 0)");
 
 // Farm grid (parallel to main grid, zero-initialized = no farm data)
 // Sparse (grid.h SparseLayer): memory only in chunks that hold farm state. FARM(x, y, z) is
@@ -68,7 +70,7 @@ extern int farmActiveCells;  // count of tilled cells (for sim tick skipping)
 
 // Watering
 #define WATER_CROP_WORK_TIME 0.3f   // Game-hours to pour water
-#define WATER_POUR_MOISTURE  200    // Watering wets the soil to at least this (moisture.h: "wet" = ideal 1.0x growth)
+#define WATER_POUR_MOISTURE  160    // Watering wets the soil to at least this: moist, inside every crop's range, below mud (180)
 
 // Growth times (game-hours per full growth cycle at 1.0x rate)
 #define WHEAT_GROWTH_GH     72.0f
@@ -113,7 +115,18 @@ CropType CropTypeForSeed(int seedType); // Takes ItemType
 // Growth modifier functions (pure, no side effects)
 float CropSeasonModifier(CropType crop, int season);
 float CropTemperatureModifier(float tempC);
-float CropWetnessModifier(int wetness);
+float CropWetnessModifier(int wetness);   // (the old 0-3 buckets; growth uses CropMoistureModifier)
+
+// Soil moisture per crop (moisture.h values 0-255): full growth inside its ideal range, slower
+// outside it; below `drought` or at/above `flood` the crop builds up stress (+2 a farm tick,
+// -1 when fine) and dies at CROP_STRESS_DEATH: ~a day of drought (wilted) or waterlogging (rotted)
+typedef struct { int idealLow, idealHigh, drought, flood; } CropWater;
+#define CROP_STRESS_DEATH 96
+#define CROP_STRESS_SHOWS 16     // from here the crop looks and reads stressed
+const CropWater* CropWaterFor(CropType crop);
+float CropMoistureModifier(CropType crop, int moisture);
+// What the soil is like for this crop: "too dry" / "good" / "too wet" (NULL for no crop)
+const char* CropMoistureVerdict(CropType crop, int moisture);
 float CropFertilityModifier(uint8_t fertility);
 float CropWeedModifier(uint8_t weedLevel);
 

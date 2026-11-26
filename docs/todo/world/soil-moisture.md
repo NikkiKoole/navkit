@@ -1,6 +1,6 @@
 # Soil moisture: water soaks into the ground, plants and sun take it out
 
-Research 2026-11-26. Status: partial. Steps 1-4 built (measuring scenario, evaporation per surface, the moisture layer, grass reacts), rain falls as water under drifting clouds; next: crops (step 5), a rain shadow behind hills. Pairs with "Soaking" in `water-ideas.md`
+Research 2026-11-26. Status: partial. Steps 1-4 built (measuring scenario, evaporation per surface, the moisture layer, grass reacts), rain falls as water under drifting clouds, crops follow the moisture (step 5); next: a rain shadow behind hills. Pairs with "Soaking" in `water-ideas.md`
 and the open "soaking sink" in `water.md`.
 
 The user's ask: water on grass / open ground disappears too fast. Let the top soil absorb it,
@@ -148,7 +148,7 @@ makes watering, irrigation ditches and drainage real jobs.
 2. ~~Evaporation per surface and depth (2)~~ done 2026-11-26, see "Step 2 built".
 3. ~~Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5)~~ done 2026-11-26, see "Step 3 built".
 4. ~~Grass reacts to moisture (6, grass part)~~ done 2026-11-26, see "Step 4 built".
-5. Crops: curve, health, wilting/rot; watering job adds moisture (6, crops part).
+5. ~~Crops: curve, health, wilting/rot; watering job adds moisture (6, crops part)~~ done 2026-11-26, see "Step 5 built".
 
 ## Step 2 built (2026-11-26): evaporation per surface, any depth
 
@@ -335,4 +335,45 @@ Island seed 1, weather on starting with heavy rain (then 4 days of rain), lowlan
 
 Below about 2 per day under a core most rain soaks in where it falls; above, the spots that stay
 under a cloud fill up and run off.
+
+## Step 5 built (2026-11-26): crops follow the moisture
+
+- **A moisture range per crop** (`cropWater` in `farming.c`, soil moisture 0-255 below the farm
+  cell): full growth inside it, 60 points outside it 0.3x, at least 0.1x (`CropMoistureModifier`,
+  replacing the four wetness buckets in growth).
+
+  | crop | ideal | wilts below | rots at |
+  |---|---|---|---|
+  | wheat | 90-200 (normal to moist) | 30 | 240 |
+  | lentils | 60-170 (copes with dry) | 15 | 230 |
+  | flax | 120-235 (likes it moist) | 45 | never |
+
+- **Stress** (`FarmCell.stress`, 7 bits in the frost flag's byte: old saves read 0, no version
+  bump): +2 a farm tick (0.5 GH) below "wilts" or at "rots", -1 otherwise; at 96 (~a day of steady
+  drought or waterlogging) the crop dies (event log "wilted" / "rotted"), the plot keeps its queued
+  crop and is replanted. Planting and harvest reset it.
+- **Fixed on the way**: growth read wetness on the farm cell itself (the air above the soil), which
+  was always "dry" (0.3x): watering, which wets the soil, never helped. Town irrigation wrote the air
+  cell too (so only Town got 1.0x); it now wets the soil.
+- **Watering** is ordered for a planted or queued crop whose soil is below its ideal (before: any
+  tilled plot whose soil read "dry", with or without a crop). Watering and Town irrigation wet the
+  soil to 160 (moist: inside every crop's range, below mud at 180). At 200 the irrigated Town fields
+  were mud, the farmhands walked them at 60% and harvested less (77 instead of 88 in 7 days).
+- Town (`--set townArrivalGH 0.1 --set townStarter 6 --game town`, 7 days): 88 -> 96 harvests,
+  wheat imported 200 -> 200, flour imported 40 -> 80.
+- **What you see**: a stressed crop turns toward withered brown; the plot's describe lines say
+  "Soil for wheat: too dry / good / too wet / far too dry / waterlogged" and "Wilting (40%)" or
+  "Rotting (40%)".
+
+Scenario `crops` (wheat, lentils, flax on beds held at parched 15, dry 50, normal 100, moist 160,
+soaked 240; 20 C, spring), after 96 GH, average stage (1 sprouted .. 4 ripe) / dead of 16:
+
+```
+           wheat     lentils   flax
+parched    - / 16    2 / 0     - / 16
+dry        2 / 0     3 / 0     1 / 0
+normal     2 / 0     4 / 0     2 / 0
+moist      2 / 0     4 / 0     3 / 0
+soaked     - / 16    - / 16    3 / 0
+```
 

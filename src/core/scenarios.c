@@ -4915,6 +4915,75 @@ static void CloudsPrintStats(void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// crops: wheat, lentils and flax on soil held at parched, dry, normal, moist and soaked (test beds:
+// the scenario holds each bed's moisture every tick), steady 20 C in spring. How far each grows,
+// how many die (wilted or rotted) and the stress: the crop moisture ranges (farming.c cropWater).
+#define CROPS_ROWS 5
+#define CROPS_COLS 3
+#define CROPS_IN 4
+static const int cropsMoisture[CROPS_ROWS] = { 15, 50, 100, 160, 240 };
+static const char* cropsRowNames[CROPS_ROWS] = { "parched", "dry", "normal", "moist", "soaked" };
+static const CropType cropsCrop[CROPS_COLS] = { CROP_WHEAT, CROP_LENTILS, CROP_FLAX };
+static int cropsX0[CROPS_COLS], cropsY0[CROPS_ROWS];
+
+static void SetupCrops(void) {
+    soilMoistureEnabled = true;
+    weatherEnabled = false;
+    seasonalAmplitude = 0;
+    diurnalAmplitude = 0;
+    SetAmbientSurfaceTemp(20);
+    dayNumber = 1;                         // spring: all three grow
+    SoilMoistureInitNow();
+    for (int c = 0; c < CROPS_COLS; c++) cropsX0[c] = 2 + c * (CROPS_IN + 2);
+    for (int r = 0; r < CROPS_ROWS; r++) cropsY0[r] = 2 + r * (CROPS_IN + 2);
+    for (int r = 0; r < CROPS_ROWS; r++)
+        for (int c = 0; c < CROPS_COLS; c++)
+            for (int y = cropsY0[r]; y < cropsY0[r] + CROPS_IN; y++)
+                for (int x = cropsX0[c]; x < cropsX0[c] + CROPS_IN; x++) {
+                    SetVegetation(x, y, 0, VEG_NONE);
+                    FarmCell* fc = &FARM_MUT(x, y, 1);
+                    fc->tilled = 1;
+                    fc->fertility = 200;
+                    fc->weedLevel = 0;
+                    fc->desiredCropType = (uint8_t)cropsCrop[c];
+                    fc->cropType = (uint8_t)cropsCrop[c];
+                    fc->growthStage = CROP_STAGE_SPROUTED;
+                    farmActiveCells++;
+                }
+}
+
+static void CropsLiveTick(void) {   // hold each bed's moisture
+    for (int r = 0; r < CROPS_ROWS; r++)
+        for (int c = 0; c < CROPS_COLS; c++)
+            for (int y = cropsY0[r]; y < cropsY0[r] + CROPS_IN; y++)
+                for (int x = cropsX0[c]; x < cropsX0[c] + CROPS_IN; x++)
+                    if (MOISTURE(x, y, 0) != cropsMoisture[r]) SetSoilMoisture(x, y, 0, cropsMoisture[r]);
+}
+
+static void CropsPrintStats(void) {
+    printf("\nCrops after %.0f game hours (steady 20 C, spring). Per bed of %d: average stage (1 sprouted .. 4 ripe) / dead / stress %%\n",
+           (float)gameTime / GameHoursToGameSeconds(1.0f), CROPS_IN * CROPS_IN);
+    printf("%-14s", "soil");
+    for (int c = 0; c < CROPS_COLS; c++) printf(" %18s", c == 0 ? "wheat" : c == 1 ? "lentils" : "flax");
+    printf("\n");
+    for (int r = 0; r < CROPS_ROWS; r++) {
+        printf("%-8s %4d%%", cropsRowNames[r], cropsMoisture[r] * 100 / MOISTURE_FULL);
+        for (int c = 0; c < CROPS_COLS; c++) {
+            int stages = 0, alive = 0, dead = 0, stress = 0;
+            for (int y = cropsY0[r]; y < cropsY0[r] + CROPS_IN; y++)
+                for (int x = cropsX0[c]; x < cropsX0[c] + CROPS_IN; x++) {
+                    const FarmCell* fc = &FARM(x, y, 1);
+                    if (fc->cropType == CROP_NONE) { dead++; continue; }
+                    alive++; stages += fc->growthStage; stress += fc->stress;
+                }
+            printf("      %4.1f / %2d / %3d", alive ? (float)stages / alive : 0.0f, dead,
+                   alive ? stress * 100 / (alive * CROP_STRESS_DEATH) : 0);
+        }
+        printf("\n");
+    }
+}
+
 #define DRIFT_SPOTS 60
 static int driftItem[DRIFT_SPOTS * 2], driftCount = 0;
 static ItemType driftType[DRIFT_SPOTS * 2];
@@ -6780,6 +6849,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDrought, DroughtTickStats, DroughtPrintStats, NULL, 32, 32, DroughtLiveTick},
     {"clouds",     "A grass field under steady rain with the cloud map on: showers drift across with the wind and leave wet trails (cloudRain, cloudSize, cloudSpeed; soil-moisture.md)",
                    NULL,        SetupClouds, CloudsTickStats, CloudsPrintStats, NULL, 92, 64},
+    {"crops",      "Wheat, lentils and flax on soil held parched, dry, normal, moist and soaked (test beds), 20 C in spring: growth, deaths, stress (crop moisture ranges, soil-moisture.md step 5)",
+                   NULL,        SetupCrops, NULL, CropsPrintStats, NULL, 32, 32, CropsLiveTick},
     {"rainfall",   "The soak basins without water: a day of steady rain, then dry weather: what soaks in, what stands, how it dries (rainWater, soil-moisture.md)",
                    NULL,        SetupRainfall, SoakTickStats, SoakPrintStats, NULL, 48, 20, SoakLiveTick},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",

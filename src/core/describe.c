@@ -588,6 +588,17 @@ static void DescribeCellFarm(int x, int y, int z, DescLines* out) {
         const char* sname = (fc->growthStage <= CROP_STAGE_RIPE) ? stageNames[fc->growthStage] : "?";
         DescAdd(out, DESC_NORMAL, "Crop: %s (%s)", cname, sname);
         if (fc->frostDamaged) DescAdd(out, DESC_NORMAL, "Frost damaged!");
+        if (z > 0) {
+            int m = SoilMoistureAt(x, y, z - 1);
+            const char* v = CropMoistureVerdict((CropType)fc->cropType, m);
+            if (v) DescAdd(out, strcmp(v, "good") == 0 ? DESC_GOOD : DESC_WARN, "Soil for %s: %s", cname, v);
+        }
+        if (fc->stress >= CROP_STRESS_SHOWS) {
+            const CropWater* cw = CropWaterFor((CropType)fc->cropType);
+            int m = z > 0 ? SoilMoistureAt(x, y, z - 1) : MOISTURE_BASELINE;
+            DescAdd(out, DESC_BAD, "%s (%d%%)", m >= cw->flood ? "Rotting" : "Wilting",
+                    fc->stress * 100 / CROP_STRESS_DEATH);
+        }
     } else if (fc->desiredCropType != CROP_NONE) {
         DescAdd(out, DESC_NORMAL, "Queued: %s",
                 (fc->desiredCropType < CROP_TYPE_COUNT) ? cropNames[fc->desiredCropType] : "?");

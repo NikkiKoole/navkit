@@ -63,6 +63,8 @@ void SoilMoistureMarkLoaded(void);
 bool SoilMoistureReady(void);
 // Below normal: grass doesn't grow back (groundwear.c)
 bool SoilTooDryToGrow(int x, int y, int z);
+// Moisture of the soil at (x, y, z) (sets a new world up first); MOISTURE_BASELINE if moisture is off
+int SoilMoistureAt(int x, int y, int z);
 float GetMoistureSweepAccum(void);
 void SetMoistureSweepAccum(float v);
 

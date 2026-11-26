@@ -744,6 +744,14 @@ static void DrawCellGrid(void) {
                         case CROP_FLAX:    cropTint = (Color){140, 180, 220, 200}; break;
                         default: break;
                     }
+                    // Too dry or too wet for a while (stress): toward withered brown
+                    if (fc->stress >= CROP_STRESS_SHOWS) {
+                        float t = (float)fc->stress / (float)CROP_STRESS_DEATH;
+                        if (t > 1.0f) t = 1.0f;
+                        cropTint.r = (unsigned char)(cropTint.r + (150 - cropTint.r) * t);
+                        cropTint.g = (unsigned char)(cropTint.g + (110 - cropTint.g) * t);
+                        cropTint.b = (unsigned char)(cropTint.b + (60 - cropTint.b) * t);
+                    }
                     // Frost damage: white-ish tint overlay
                     if (fc->frostDamaged) {
                         cropTint.r = (cropTint.r + 255) / 2;
