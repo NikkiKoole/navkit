@@ -37,6 +37,7 @@
 #include "../world/designations.h"
 #include "../core/time.h"
 #include "../entities/town.h"
+#include "../world/pipes.h"
 #include <math.h>
 #include <limits.h>
 
@@ -416,10 +417,14 @@ int toiletDryDirtPerUse = 15; // setting toiletDryDirt: a toilet nobody could fl
 bool toiletsPlumbed = true;   // setting toiletsPlumbed: the world has mains water (city, dollhouse)
 
 static bool FlushToilet(int fi) {
-    // A world with mains water: every toilet has its own cistern supply (until pipeGrid says
-    // which ones are connected)
-    if (toiletsPlumbed) return true;
     const Furniture* f = &furniture[fi];
+    // A world with drain pipes (pipes.h, the drain spike): the flush must go somewhere. A toilet
+    // whose drain doesn't reach an outlet can't flush (and uses no water). No drains in the
+    // world: as before (the rules below stand in).
+    if (PipeDrainCellCount() > 0 && !PipeFixtureOnDrain(f->x, f->y, f->z)) return false;
+    // A world with mains water: every toilet has its own cistern supply (until supply pipes
+    // say which ones are connected)
+    if (toiletsPlumbed) return true;
     if (HasNearbyCapability(f->x, f->y, f->z, CAP_WATER_SOURCE, TOILET_FLUSH_REACH)) return true;
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active || items[i].type != ITEM_WATER || items[i].reservedBy != -1) continue;

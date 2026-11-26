@@ -55,6 +55,25 @@ grid route cell by cell (`AnimalRouteStep`, 13x13 box) with only the hard wall c
 grazers still walk straight at grass through walls (older, separate). Test: `test_doors`
 "animals_and_doors".
 
+**Step 4, the drain spike (2026-11-26, user: "experiment with that drain spike"):** the pipe
+byte as a grid layer, `pipeGrid` (`src/world/pipes.c/.h`; bits equal to dreamengine's
+`NKP_PIPE_*`), plus `pipeConnGrid` for the network pass's answer. Pipes take no cell: walking,
+rooms, the pathfinder don't see them. The pass (drains only for now) runs lazily after a
+change: from every outlet (END + drain) over drain cells, the 4 neighbours on a level, up a
+STACK of wall drains, never down (a drain doesn't run uphill to its outlet); a shut valve passes
+nothing on. A fixture is on the drain by its own floor drain or a wall drain next to it. The
+toilet gate (`FlushToilet`, needs.c): in a world with any drain, a toilet whose drain doesn't
+reach an outlet can't flush (a dry toilet: floor dirt, no water used); no drains anywhere = the
+old rules. Drawn with the user's sprites in two layers (clay `pipe-*`, then `rail-*` in drain
+brown when connected; outlet a dark dot, valve a green / red square); hidden under a
+constructed floor unless setting `pipeOverlay`. Console `pipe drain x1 y1 x2 y2` (an L of floor
+drain), `pipe outlet|valve x y`, `pipe remove`, `pipe clear`. Scenario `drain` (in
+scenarios-check): before the outlet 4 uses all dry, after it 6 all flushed. `tests/test_pipes.c`.
+**Not in the spike:** saving (a save bump), pipe items and laying by movers (blueprints, the belt
+line tool), wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
+rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
+pipe cells, so it never sweeps the map.
+
 **Still open in step 1:** a small path cost for a closed door. Not `NAV_ENTER_EXTRA` (it must stay
 0 off ladder cells: graph edges only add it at entrances) and not the cell move cost (that is also
 walking speed, and a door's state changes without telling the pathfinder): it needs a path-only

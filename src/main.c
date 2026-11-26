@@ -1905,6 +1905,7 @@ int main(int argc, char** argv) {
             DrawGatherZones();
         }
         DrawStockpileTiles();
+        DrawPipes();          // under workshops and furniture (pipes.h, drain spike)
         DrawWorkshops();
         DrawFurniture();
         DrawLinkingModeHighlights();  // Highlight workshop and stockpile during linking

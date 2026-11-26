@@ -874,6 +874,8 @@ static const Setting settings[] = {
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
       "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
+    SET_BOOL("pipeOverlay", "Pipe overlay", "Rendering & Debug", pipeOverlay,
+      "Draw pipes under constructed floors too (pipes on bare ground always show)."),
     SET_BOOL("effects", "Blast & dust effects", "Rendering & Debug", effectsEnabled,
       "Dithered fireballs, flashes, dust, flying chunks and fuse sparks (core/effects.c, drawn by render/effects_draw.c). Off: none are made."),
     SET_BOOL("shaderEffects", "Shader Effects", "Rendering & Debug/Lighting", shaderEffects,

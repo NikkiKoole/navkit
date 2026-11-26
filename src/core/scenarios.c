@@ -40,6 +40,7 @@
 #include "../entities/places.h"
 #include "../entities/visit.h"
 #include "describe.h"
+#include "../world/pipes.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -872,6 +873,62 @@ static bool DoorLockCheck(char* why, int whyLen) {
     if (dlNorthBefore == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door before it was locked"); return false; }
     if (dlSouthLocked == 0) { snprintf(why, (size_t)whyLen, "nobody went round through the south door"); return false; }
     if (dlNorthAfter == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door after it was unlocked"); return false; }
+    return true;
+}
+
+// drain: the drain spike (src/world/pipes.c, docs/todo/world/infrastructure.md step 4). One
+// person with a bladder, a toilet on mains water, and a floor drain from the toilet east and
+// south that ends nowhere: every use is a dry toilet (floor dirt). At drainOutletAt the far end
+// becomes an outlet: the drain fills in (drawn dark inside) and the toilet flushes clean.
+#define DRAIN_TOILET_X 8
+#define DRAIN_TOILET_Y 8
+#define DRAIN_END_X 20
+#define DRAIN_END_Y 14
+static const int drainOutletAt = 1200, drainNeedEvery = 300;
+static int drainTicks, drainDryBefore, drainCleanBefore, drainDryAfter, drainCleanAfter, drainPrevState, drainPrevDirt;
+
+static void SetupDrain(void) {
+    drainTicks = drainDryBefore = drainCleanBefore = drainDryAfter = drainCleanAfter = 0;
+    drainPrevState = FREETIME_NONE;
+    hungerEnabled = thirstEnabled = energyEnabled = bodyTempEnabled = false;
+    bladderEnabled = true;
+    toiletsPlumbed = true;   // mains water: whether it flushes is up to the drain
+    endlessMoverMode = false;
+    ClearPipes();
+    SpawnFurniture(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1, FURNITURE_TOILET, MAT_GRANITE);
+    LayFloorDrain(DRAIN_TOILET_X, DRAIN_TOILET_Y, DRAIN_END_X, DRAIN_END_Y, 1);
+    SpawnMoverAt(4, 4, 1);
+    movers[moverCount - 1].bladder = 0.05f;
+    drainPrevDirt = GetFloorDirt(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1);
+    currentViewZ = 1;
+    AddMessage("Drain spike: the toilet's drain ends nowhere until tick 1200 (console pipe outlet 20 14)", GREEN);
+}
+
+static void DrainTickStats(void) {
+    drainTicks++;
+    if (drainTicks == drainOutletAt) SetPipe(DRAIN_END_X, DRAIN_END_Y, 1, GetPipe(DRAIN_END_X, DRAIN_END_Y, 1) | PIPE_END);
+    Mover* m = &movers[0];
+    if (drainTicks % drainNeedEvery == 0 && m->freetimeState == FREETIME_NONE) m->bladder = 0.05f;
+    int dirt = GetFloorDirt(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1);
+    if (drainPrevState == FREETIME_USING_TOILET && m->freetimeState != FREETIME_USING_TOILET) {
+        bool dry = dirt > drainPrevDirt;
+        if (drainTicks < drainOutletAt) { if (dry) drainDryBefore++; else drainCleanBefore++; }
+        else { if (dry) drainDryAfter++; else drainCleanAfter++; }
+    }
+    drainPrevState = m->freetimeState;
+    drainPrevDirt = dirt;
+}
+
+static void DrainPrintStats(void) {
+    printf("Toilet uses before the outlet: %d dry, %d flushed; after: %d dry, %d flushed; "
+           "toilet on a drain now: %s\n", drainDryBefore, drainCleanBefore, drainDryAfter, drainCleanAfter,
+           PipeFixtureOnDrain(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1) ? "yes" : "no");
+}
+
+static bool DrainCheck(char* why, int whyLen) {
+    if (drainTicks < drainOutletAt + 2 * drainNeedEvery) { snprintf(why, (size_t)whyLen, "run at least %d ticks", drainOutletAt + 2 * drainNeedEvery); return false; }
+    if (drainDryBefore == 0 || drainCleanBefore > 0) { snprintf(why, (size_t)whyLen, "before the outlet every use should be dry (%d dry, %d flushed)", drainDryBefore, drainCleanBefore); return false; }
+    if (drainCleanAfter == 0 || drainDryAfter > 0) { snprintf(why, (size_t)whyLen, "after the outlet every use should flush (%d dry, %d flushed)", drainDryAfter, drainCleanAfter); return false; }
     return true;
 }
 
@@ -5992,6 +6049,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},
     {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",
                    NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
+    {"drain",      "Drain spike: a toilet whose floor drain ends nowhere is a dry toilet (floor dirt); at tick 1200 the drain's end becomes an outlet and it flushes clean (console pipe, setting pipeOverlay)",
+                   NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",

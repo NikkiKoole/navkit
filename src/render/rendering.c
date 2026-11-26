@@ -26,6 +26,7 @@
 #include "../entities/throwing.h"
 #include "../entities/elevators.h"
 #include "../simulation/balance.h"
+#include "../world/pipes.h"
 #include <math.h>
 
 #define MAX_VISIBLE_DEPTH    9
@@ -2934,6 +2935,61 @@ static void DrawStockpileItems(void) {
             }
         }
     }
+}
+
+// Pipes (pipes.h, the drain spike): your pipe-* tiles in two layers. The pipe's walls in clay,
+// then the same shape's rail-* (which fills the pipe exactly) as what's inside: drain water
+// when that drain reaches an outlet, nothing when it doesn't. A pipe joins its N/E/S/W drain
+// neighbours like a railing. On bare ground pipes show; under a constructed floor only with
+// the pipeOverlay setting. An outlet gets a dark dot, a valve a square (green open, red shut).
+static int PipeSpriteFor(int mask, bool inner) {
+    static const int pipeSprites[16] = {   // bit 1 N, 2 E, 4 S, 8 W
+        [0]  = SPRITE_pipe_ew,   [1]  = SPRITE_pipe_ns,   [2]  = SPRITE_pipe_ew,   [3]  = SPRITE_pipe_ne,
+        [4]  = SPRITE_pipe_ns,   [5]  = SPRITE_pipe_ns,   [6]  = SPRITE_pipe_es,   [7]  = SPRITE_pipe_nes,
+        [8]  = SPRITE_pipe_ew,   [9]  = SPRITE_pipe_nw,   [10] = SPRITE_pipe_ew,   [11] = SPRITE_pipe_new,
+        [12] = SPRITE_pipe_sw,   [13] = SPRITE_pipe_nsw,  [14] = SPRITE_pipe_esw,  [15] = SPRITE_pipe_nesw,
+    };
+    static const int railSprites[16] = {
+        [0]  = SPRITE_rail_ew,   [1]  = SPRITE_rail_ns,   [2]  = SPRITE_rail_ew,   [3]  = SPRITE_rail_ne,
+        [4]  = SPRITE_rail_ns,   [5]  = SPRITE_rail_ns,   [6]  = SPRITE_rail_es,   [7]  = SPRITE_rail_nes,
+        [8]  = SPRITE_rail_ew,   [9]  = SPRITE_rail_nw,   [10] = SPRITE_rail_ew,   [11] = SPRITE_rail_new,
+        [12] = SPRITE_rail_sw,   [13] = SPRITE_rail_nsw,  [14] = SPRITE_rail_esw,  [15] = SPRITE_rail_nesw,
+    };
+    return inner ? railSprites[mask & 15] : pipeSprites[mask & 15];
+}
+
+static void DrawPipes(void) {
+    if (PipeDrainCellCount() == 0) return;
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    if (z < 0 || z >= gridDepth) return;
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
+    int x0 = (int)floorf(-offset.x / size) - 1, y0 = (int)floorf(-offset.y / size) - 1;
+    int x1 = x0 + (int)(GetScreenWidth() / size) + 3, y1 = y0 + (int)(GetScreenHeight() / size) + 3;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > gridWidth) x1 = gridWidth;
+    if (y1 > gridHeight) y1 = gridHeight;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            uint8_t b = PIPE(x, y, z);
+            if (!(b & PIPE_DRAIN)) continue;
+            if (HAS_FLOOR(x, y, z) && !pipeOverlay) continue;   // laid in a floor: hidden
+            int mask = ((GetPipe(x, y - 1, z) & PIPE_DRAIN) ? 1 : 0) | ((GetPipe(x + 1, y, z) & PIPE_DRAIN) ? 2 : 0)
+                     | ((GetPipe(x, y + 1, z) & PIPE_DRAIN) ? 4 : 0) | ((GetPipe(x - 1, y, z) & PIPE_DRAIN) ? 8 : 0);
+            Color light = GetLightColor(x, y, z, skyColor);
+            Rectangle dest = { offset.x + x * size, offset.y + y * size, size, size };
+            FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, false)), dest, MultiplyColor((Color){ 176, 112, 78, 255 }, light));
+            if (PipeDrainConnected(x, y, z))
+                FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 92, 78, 46, 255 }, light));
+            float cx = dest.x + size * 0.5f, cy = dest.y + size * 0.5f;
+            if (b & PIPE_END) DrawCircleV((Vector2){ cx, cy }, size * 0.22f, (Color){ 30, 24, 18, 230 });
+            if (b & PIPE_VALVE) {
+                Color vc = (b & PIPE_VALVE_CLOSED) ? (Color){ 200, 50, 40, 255 } : (Color){ 60, 170, 70, 255 };
+                float h = size * 0.16f;
+                DrawRectangleRec((Rectangle){ cx - h, cy - h, 2 * h, 2 * h }, vc);
+            }
+        }
 }
 
 static void DrawFurniture(void) {

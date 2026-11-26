@@ -105,6 +105,7 @@ test_cross_z_SRC     := tests/test_cross_z.c
 test_workshop_deconstruction_SRC := tests/test_workshop_deconstruction.c
 test_tool_quality_SRC := tests/test_tool_quality.c
 test_doors_SRC       := tests/test_doors.c
+test_pipes_SRC       := tests/test_pipes.c
 test_butchering_SRC  := tests/test_butchering.c
 test_hunting_SRC     := tests/test_hunting.c
 test_spoilage_SRC    := tests/test_spoilage.c
@@ -421,6 +422,11 @@ test_doors: $(TEST_UNITY_OBJ)
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_doors_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_doors -q || echo test_doors >> $(TEST_FAILURES)
 
+test_pipes: $(TEST_UNITY_OBJ)
+	@echo "Running pipe (drain spike) tests..."
+	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_pipes_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_pipes -q || echo test_pipes >> $(TEST_FAILURES)
+
 test_butchering: $(TEST_UNITY_OBJ)
 	@echo "Running butchering tests..."
 	@$(CC) $(TCFLAGS) -o $(BINDIR)/$@ $(test_butchering_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
@@ -570,7 +576,7 @@ TEST_FAILURES := $(BINDIR)/test_failures.txt
 test_reset_failures:
 	@mkdir -p $(BINDIR) && rm -f $(TEST_FAILURES)
 
-test: test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_inventory test_commands test_find test_action_queue test_money test_places test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town
+test: test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_inventory test_commands test_find test_action_queue test_money test_places test_sleep test_furniture test_balance test_soundsystem test_daw_file test_cross_z test_workshop_deconstruction test_tool_quality test_doors test_pipes test_butchering test_hunting test_spoilage test_fog test_farming test_clothing test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town
 	@if [ -s $(TEST_FAILURES) ]; then echo; echo "FAILED test suites (crash or failed expect):"; sed "s/^/  /" $(TEST_FAILURES); exit 1; fi; echo; echo "All test suites passed."
 
 # Full stress tests - mover tests use 20 iterations
@@ -842,4 +848,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test_inventory test_commands test_find test_action_queue test_money test_places test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update bench_places scenarios-check windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_pipes test_inventory test_commands test_find test_action_queue test_money test_places test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update bench_places scenarios-check windows

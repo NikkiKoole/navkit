@@ -2,6 +2,7 @@
 #include "cell_defs.h"
 #include "material.h"
 #include "pathfinding.h"
+#include "pipes.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
 #include "../core/event_log.h"
@@ -129,6 +130,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     CLEAR_GRID_LAYER(unexploredGrid, 0);  // Default: all explored (sandbox)
     SparseLayerClear(&oneWayLayer);
     ClearPlaces();          // a new world has no owners or places (places.h)
+    ClearPipes();           // ... and no pipes (pipes.h)
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {

@@ -43,6 +43,7 @@
 #include <time.h>
 #include <stdio.h>
 #include "../entities/town.h"
+#include "../world/pipes.h"
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
@@ -393,6 +394,41 @@ static void RunDoor(const CmdValue* v) {
     if (c <= 1) SetDoorOpen(x, y, currentViewZ, c == 0);
     else SetDoorLocked(x, y, currentViewZ, c == 2);
     Say(GREEN, "Door at %d,%d: %s", x, y, (const char*[]){ "open", "closed", "locked", "unlocked" }[c]);
+}
+
+// ---- pipe: the drain spike (pipes.h), on the viewed level ----
+static const char* const pipeChoices[] = { "drain", "outlet", "valve", "remove", "clear" };
+static void RunPipe(const CmdValue* v) {
+    int z = currentViewZ, c = v[0].choice;
+    if (c == 4) { ClearPipes(); Say(GREEN, "All pipes removed"); return; }
+    int x1, y1;
+    if (v[1].given && v[2].given) { x1 = v[1].i; y1 = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x1 = (int)g.x; y1 = (int)g.y; }
+    int x2 = v[3].given ? v[3].i : x1, y2 = v[4].given ? v[4].i : y1;
+    if (x1 < 0 || y1 < 0 || x1 >= gridWidth || y1 >= gridHeight) { Say(YELLOW, "%d,%d is off the map", x1, y1); return; }
+    if (c == 0) {
+        int n = LayFloorDrain(x1, y1, x2, y2, z);
+        Say(GREEN, "Drain laid: %d new cells, %d,%d to %d,%d (level %d)", n, x1, y1, x2, y2, z);
+    } else if (c == 1 || c == 2) {
+        uint8_t b = GetPipe(x1, y1, z);
+        if (!(b & PIPE_DRAIN)) { Say(YELLOW, "No drain at %d,%d (level %d)", x1, y1, z); return; }
+        if (c == 1) { SetPipe(x1, y1, z, b ^ PIPE_END); Say(GREEN, "%d,%d: %s", x1, y1, (b & PIPE_END) ? "no outlet" : "outlet"); }
+        else {
+            uint8_t nb = (b & PIPE_VALVE) ? (uint8_t)(b ^ PIPE_VALVE_CLOSED) : (uint8_t)(b | PIPE_VALVE | PIPE_VALVE_CLOSED);
+            SetPipe(x1, y1, z, nb);
+            Say(GREEN, "Valve at %d,%d: %s", x1, y1, (nb & PIPE_VALVE_CLOSED) ? "shut" : "open");
+        }
+    } else {
+        int n = 0, sx = x2 >= x1 ? 1 : -1, sy = y2 >= y1 ? 1 : -1;
+        for (int y = y1;; y += sy) {
+            for (int x = x1;; x += sx) {
+                if (GetPipe(x, y, z)) { SetPipe(x, y, z, 0); n++; }
+                if (x == x2) break;
+            }
+            if (y == y2) break;
+        }
+        Say(GREEN, "Removed %d pipe cells", n);
+    }
 }
 
 // ---- time: speed, daylength ----
@@ -768,6 +804,13 @@ static const CommandDef commandTable[] = {
       3, { ARG_CHOICE("state", doorChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunDoor, NULL },
+    { "pipe", "World/Pipes", "Drain spike: pipe drain x1 y1 x2 y2 (an L of floor drain), outlet x y (a drain end flows out there), valve x y (open / shut), remove x1 y1 [x2 y2], clear. On the viewed level; no x y = the mouse",
+      5, { ARG_CHOICE("what", pipeChoices),
+           { .name = "x1", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y1", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "x2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
+      RunPipe, NULL },
     { "rain", "Simulation/Water", "Start or stop rain (coverage in %)",
       1, { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainChoices, .choiceCount = 4, .lo = 1, .hi = 100 } },
       RunRain, NULL },

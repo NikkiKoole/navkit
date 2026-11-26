@@ -35,6 +35,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/rooms.h"
 #include "../entities/furniture.h"
+#include "pipes.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,6 +153,8 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(roomGrid, 0),
     LAYER_DEF(furnitureMoveCostGrid, 0),
     LAYER_DEF(capabilityGrid, 0),
+    LAYER_DEF(pipeGrid, 0),
+    LAYER_DEF(pipeConnGrid, 0),
 };
 #define GRID_LAYER_COUNT ((int)(sizeof(gridLayerDefs) / sizeof(gridLayerDefs[0])))
 
