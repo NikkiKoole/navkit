@@ -4,6 +4,7 @@
 #include "../core/time.h"
 #include "../simulation/water.h"
 #include "../simulation/moisture.h"
+#include "../world/field_gen.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -576,6 +577,10 @@ static const Setting settings[] = {
       "Size threshold for tiny pocket fill (cells).", NULL),
     SET_BOOL("skipBuildings", "Skip Buildings", "World/Terrain/HillsWater", hillsSkipBuildings,
       "Skip placing ruined buildings during terrain generation."),
+    SET_CHOICE("fieldRelief", "Field relief", "World/Field", fieldRelief, fieldReliefNames, FIELD_RELIEF_COUNT,
+      "The field game's ground: flat, or gentle (a few levels, ramps between). Used when the field starts. Not saved.", NULL),
+    SET_CHOICE("fieldWater", "Field water", "World/Field", fieldWater, fieldWaterNames, FIELD_WATER_COUNT,
+      "The field game's water: none, ponds (a few puddles and small ponds) or a stream (a spring in the west, off the east edge). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("biome", "Biome", "World/Terrain/Biome", selectedBiome, biomeNames, BIOME_COUNT,
       "Biome preset for HillsSoilsWater; picking one loads its river and lake counts.", ApplyBiomePreset),
 

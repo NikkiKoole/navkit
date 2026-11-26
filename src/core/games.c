@@ -1,5 +1,6 @@
 // games.c - The games this engine hosts (see games.h)
 #include "../entities/talk.h"
+#include "../world/field_gen.h"
 #include "../world/support.h"
 #include "../entities/relations.h"
 #include "../entities/town.h"
@@ -663,6 +664,29 @@ static void StartSandbox(void) {
     offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
 }
 
+// Field: a 64x64 starting map with some nature in it (field_gen.c): soils, mixed grass, trees,
+// rocks, ground moisture; relief flat or gentle, water none / ponds / a stream (settings
+// fieldRelief, fieldWater). Sandbox rules: every tool, nobody dies.
+static void StartField(void) {
+    StartSandbox();
+    ScenarioResetWorldSized(NULL, 64, 64);
+    GenerateField();
+    SyncMaterialsToTerrain();
+    RebuildSimActivityCounts();
+    InvalidateLighting();
+    BuildEntrances();
+    BuildGraph();
+    int highest = 0;   // view from the highest ground: levels above the view draw as solid black
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            for (int z = gridDepth - 1; z > highest; z--)
+                if (GRID(x, y, z) == CELL_WALL && IsWallNatural(x, y, z)) { highest = z; break; }
+    currentViewZ = highest + 1;
+    dayLength = 360.0f;   // a 6-minute day like the other games (on 60 s the stream evaporated faster than its spring ran)
+    offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
+    offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
+}
+
 // ---------------------------------------------------------------------------
 // Play HUD toolsets (dev UI off). A tool with an `available` rule only shows
 // once the world has what it needs (progressive unlocks).
@@ -747,6 +771,8 @@ static const GameDef games[] = {
                   StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  true,  TOOLS(sandboxTools)},
+    {"field",     "Field",     "A 64x64 field with soils, mixed grass, trees, ground moisture; flat or gentle, ponds or a stream (settings fieldRelief, fieldWater): sandbox rules",
+                  StartField,     true,  true,  TOOLS(sandboxTools)},
     {"town",      "Town",      "Draw roads, homes and bakeries: they appear at once, people move in and bake their bread",
                   StartTown,      false, true,  TOOLS(townTools)},
 };

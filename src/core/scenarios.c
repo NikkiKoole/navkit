@@ -30,6 +30,7 @@
 #include "../simulation/explosion.h"
 #include "../simulation/vapour.h"
 #include "../simulation/moisture.h"
+#include "../world/field_gen.h"
 #include "../world/support.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
@@ -4984,6 +4985,68 @@ static void CropsPrintStats(void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// field: the field game's map (field_gen.c) as a scenario, for checks: settings fieldRelief and
+// fieldWater pick the kind. Prints the soils, plants, trees, water and walkable areas; the check
+// fails if any walkable area is cut off from the rest.
+static int fieldGenParts, fieldGenLargest, fieldGenTotal;   // walkable areas as generated
+
+static void SetupFieldScenario(void) {
+    dayLength = 360.0f;   // as the field game (restored by the next scenario)
+    GenerateField();
+    SyncMaterialsToTerrain();
+    RebuildSimActivityCounts();
+    InvalidateLighting();
+    BuildEntrances();
+    BuildGraph();
+    fieldGenParts = FieldWalkableComponents(&fieldGenLargest, &fieldGenTotal);
+}
+
+static void FieldPrintStats(void) {
+    int soils[5] = {0}, veg[6] = {0}, trees = 0, rocks = 0, ramps = 0;
+    static const MaterialType soilMats[5] = { MAT_DIRT, MAT_CLAY, MAT_SAND, MAT_GRAVEL, MAT_PEAT };
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            for (int z = gridDepth - 1; z >= 0; z--) {
+                CellType c = GRID(x, y, z);
+                if (c == CELL_TREE_LEAVES || c == CELL_TREE_BRANCH) continue;   // look past the canopy
+                if (c == CELL_TREE_TRUNK) { trees++; break; }
+                if (CellIsRamp(c)) { ramps++; break; }
+                if (!CellIsSolid(c)) continue;
+                for (int k = 0; k < 5; k++) if (GetWallMaterial(x, y, z) == soilMats[k]) soils[k]++;
+                VegetationType v = GetVegetation(x, y, z);
+                veg[v == VEG_REEDS ? 5 : v >= VEG_GRASS_TALLER ? 4 : v >= VEG_GRASS_TALL ? 3 : v >= VEG_GRASS ? 2 : v >= VEG_GRASS_SHORT ? 1 : 0]++;
+                break;
+            }
+    for (int i = 0; i < itemHighWaterMark; i++) if (items[i].active && items[i].type == ITEM_ROCK) rocks++;
+    long waterUnits = 0;
+    int deep = 0, wet = 0;
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                int l = WATER(x, y, z).level;
+                waterUnits += l;
+                if (l > 0) wet++;
+                if (l >= WATER_BLOCKS_MOVEMENT) deep++;
+            }
+    int largest, total, cutOff = FieldWalkableComponents(&largest, &total);
+    printf("\nField (%s, %s): soil loam %d, clay %d, sand %d, gravel %d, peat %d; ground bare %d, short %d, grass %d, tall %d, taller %d, reeds %d;"
+           " trees %d, rocks %d, ramps %d, water %ld units in %d cells (%d too deep to wade); ground %d cells, %d cut off\n",
+           fieldReliefNames[fieldRelief], fieldWaterNames[fieldWater], soils[0], soils[1], soils[2], soils[3], soils[4],
+           veg[0], veg[1], veg[2], veg[3], veg[4], veg[5], trees, rocks, ramps, waterUnits, wet, deep, total, cutOff);
+}
+
+// The map as generated is one walkable piece (later the stream can pool too deep to wade and cut
+// a few cells off: a stream crossed at its fords, not a generator fault)
+static bool FieldCheck(char* why, int whyLen) {
+    if (fieldGenLargest < fieldGenTotal) {
+        snprintf(why, (size_t)whyLen, "as generated: %d of %d ground cells cut off (or one-way)",
+                 fieldGenTotal - fieldGenLargest, fieldGenTotal);
+        return false;
+    }
+    return true;
+}
+
 #define DRIFT_SPOTS 60
 static int driftItem[DRIFT_SPOTS * 2], driftCount = 0;
 static ItemType driftType[DRIFT_SPOTS * 2];
@@ -6851,6 +6914,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupClouds, CloudsTickStats, CloudsPrintStats, NULL, 92, 64},
     {"crops",      "Wheat, lentils and flax on soil held parched, dry, normal, moist and soaked (test beds), 20 C in spring: growth, deaths, stress (crop moisture ranges, soil-moisture.md step 5)",
                    NULL,        SetupCrops, NULL, CropsPrintStats, NULL, 32, 32, CropsLiveTick},
+    {"field",      "The field game's map (soils, mixed grass, trees, ground moisture), kind from settings fieldRelief and fieldWater; checks nothing is cut off as generated",
+                   NULL,        SetupFieldScenario, NULL, FieldPrintStats, FieldCheck, 64, 64},
     {"rainfall",   "The soak basins without water: a day of steady rain, then dry weather: what soaks in, what stands, how it dries (rainWater, soil-moisture.md)",
                    NULL,        SetupRainfall, SoakTickStats, SoakPrintStats, NULL, 48, 20, SoakLiveTick},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",

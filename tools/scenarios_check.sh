@@ -124,6 +124,11 @@ done <<'EOF'
 # town: 6 starter homes (2 beds each), newcomers every 0.1 h walk in from the west edge; with the
 # grain chain (farm, mill, bakery) people spend long stretches tilling: 35 -> 23 arrivals
 18  | 0 | --set townArrivalGH 0.1 --set townStarter 6 --game town
+# field (field_gen.c): no movers; the check: the map as generated is one walkable piece
+0   | 0 | --set fieldRelief 1 --set fieldWater 2 --scenario field
+0   | 0 | --set fieldRelief 0 --set fieldWater 1 --scenario field
+0   | 0 | --set fieldRelief 1 --set fieldWater 0 --scenario field
+0   | 0 | --game field
 EOF
 
 echo

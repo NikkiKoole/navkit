@@ -171,7 +171,9 @@ Ring buffer (4096 entries), game-time timestamped. Records job lifecycle, item d
 The games the player can start live in one table in `src/core/games.c` (`GameDef`: name,
 label, description, `start()`, whether the dev overlay opens). Today: **survival**, **island**
 (survival rules on a 256 island from `src/world/island_gen.c`, 3 settlers ashore by a river
-mouth), **dollhouse**, **sandbox**. Started from the play HUD, the dev UI "Games" list, console `game <name>`, or
+mouth), **dollhouse**, **sandbox**, **field** (sandbox rules on a 64x64 map with soils, mixed
+grass, trees, ground moisture, flat or gentle, ponds or a stream: `src/world/field_gen.c`,
+`docs/todo/world/field.md`). Started from the play HUD, the dev UI "Games" list, console `game <name>`, or
 `--game <name>` (also `--headless --game <name> --ticks N`; `--game list` shows them).
 
 - A game's `start()` builds its world and sets **every** rule toggle it relies on
