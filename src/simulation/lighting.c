@@ -118,9 +118,9 @@ static void InvalidateLightSourceAt(int x, int y, int z, int intensity) {
     InvalidateLightingAt(x, y, z);
 }
 
-// Windows are solid but transmit light
+// Windows and open doors are solid but transmit light
 static inline bool CellBlocksLight(CellType c) {
-    return CellIsSolid(c) && c != CELL_WINDOW;
+    return CellIsSolid(c) && c != CELL_WINDOW && c != CELL_DOOR_OPEN;
 }
 
 // --------------------------------------------------------------------------

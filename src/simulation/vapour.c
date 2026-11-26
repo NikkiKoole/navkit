@@ -62,7 +62,9 @@ static inline bool VInBounds(int x, int y, int z) {
     return x >= 0 && y >= 0 && z >= 0 && x < gridWidth && y < gridHeight && z < gridDepth;
 }
 static inline bool CanHold(int x, int y, int z) {
-    return VInBounds(x, y, z) && !CellIsSolid(GRID(x, y, z));
+    if (!VInBounds(x, y, z)) return false;
+    CellType c = GRID(x, y, z);
+    return !CellIsSolid(c) || c == CELL_DOOR_OPEN;   // fumes drift through an open door
 }
 
 int GetVapourLevel(int x, int y, int z) {

@@ -99,7 +99,7 @@ static bool CutawayJoins(CellType c) {
     return IsCutawayWall(c) || c == CELL_WINDOW;
 }
 
-// A door is solid, so no light reaches its own cell: under a roof it would draw black. It takes
+// A closed door is solid, so no light reaches its own cell: under a roof it would draw black. It takes
 // the light of the brightest open cell beside it (the room it leads into).
 static Color DoorLightColor(int x, int y, int z, Color skyColor) {
     Color best = GetLightColor(x, y, z, skyColor);
@@ -389,22 +389,25 @@ static int RailingSpriteAt(int x, int y, int z) {
 static bool DoorWallAt(int x, int y, int z) {
     if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
     CellType c = GRID(x, y, z);
-    return CellBlocksMovement(c) || c == CELL_DOOR;
+    return CellBlocksMovement(c) || CellIsDoor(c);
 }
 
 static int DoorSpriteAt(int x, int y, int z) {
+    bool open = GRID(x, y, z) == CELL_DOOR_OPEN;
+    int spriteNS = open ? SPRITE_door_open_ns : SPRITE_door_ns;
+    int spriteEW = open ? SPRITE_door_open_ew : SPRITE_door_ew;
     bool we = DoorWallAt(x - 1, y, z) && DoorWallAt(x + 1, y, z);
     bool ns = DoorWallAt(x, y - 1, z) && DoorWallAt(x, y + 1, z);
-    if (ns && !we) return SPRITE_door_ns;
-    if (we && !ns) return SPRITE_door_ew;
-    if (DoorWallAt(x, y - 1, z) || DoorWallAt(x, y + 1, z)) return SPRITE_door_ns;
-    if (DoorWallAt(x - 1, y, z) || DoorWallAt(x + 1, y, z)) return SPRITE_door_ew;
-    return SPRITE_door;
+    if (ns && !we) return spriteNS;
+    if (we && !ns) return spriteEW;
+    if (DoorWallAt(x, y - 1, z) || DoorWallAt(x, y + 1, z)) return spriteNS;
+    if (DoorWallAt(x - 1, y, z) || DoorWallAt(x + 1, y, z)) return spriteEW;
+    return open ? SPRITE_door_open_ns : SPRITE_door;
 }
 
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_PLATFORM) return SPRITE_dark_shade;
-    if (cell == CELL_DOOR) return DoorSpriteAt(x, y, z);
+    if (CellIsDoor(cell)) return DoorSpriteAt(x, y, z);
     if (cell == CELL_RAILING) return RailingSpriteAt(x, y, z);   // never a material's wall sprite
     if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
@@ -547,7 +550,7 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                         Rectangle src = SpriteGetRect(sprite);
                         Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
                         Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
-                        if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || cellAtDepth == CELL_DOOR || cellAtDepth == CELL_WINDOW) {
+                        if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || CellIsDoor(cellAtDepth) || cellAtDepth == CELL_WINDOW) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                         }
                         if (CellIsRamp(cellAtDepth)) {
@@ -759,9 +762,9 @@ static void DrawCellGrid(void) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             int sprite = GetWallSpriteAt(x, y, z, cell);
             Rectangle src = SpriteGetRect(sprite);
-            Color lightTint = cell == CELL_DOOR ? DoorLightColor(x, y, z, skyColor) : GetLightColor(x, y, z, skyColor);
+            Color lightTint = CellIsDoor(cell) ? DoorLightColor(x, y, z, skyColor) : GetLightColor(x, y, z, skyColor);
             Color tint = lightTint;
-            if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
+            if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || CellIsDoor(cell) || cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
             if (cell == CELL_RAILING) tint = MultiplyColor(tint, RailingTint(GetWallMaterial(x, y, z)));
@@ -3306,7 +3309,7 @@ static void DrawOneWayLadders(void) {
             if (IsLadderCell(ct) && (ow == ONEWAY_UP || ow == ONEWAY_DOWN)) {
                 fx = 0.0f; fy = ow == ONEWAY_UP ? -1.0f : 1.0f;
                 c = ow == ONEWAY_UP ? (Color){120, 230, 120, 220} : (Color){240, 170, 80, 220};
-            } else if (ct == CELL_DOOR && ow >= ONEWAY_N && ow <= ONEWAY_W) {
+            } else if (CellIsDoor(ct) && ow >= ONEWAY_N && ow <= ONEWAY_W) {
                 static const float ax[4] = {0, 1, 0, -1}, ay[4] = {-1, 0, 1, 0};
                 fx = ax[ow - ONEWAY_N]; fy = ay[ow - ONEWAY_N];
                 c = (Color){130, 200, 255, 230};
@@ -3778,7 +3781,7 @@ static void DrawFrontView(void) {
                     // Solid cell (wall, dirt, tree, etc)
                     int sprite = GetWallSpriteAt(x, worldY, z, cell);
                     Color tint = baseTint;
-                    if ((cell == CELL_WALL && !IsWallNatural(x, worldY, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
+                    if ((cell == CELL_WALL && !IsWallNatural(x, worldY, z)) || CellIsDoor(cell) || cell == CELL_WINDOW) {
                         tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, worldY, z)));
                     }
                     FastSprite(atlas, SpriteGetRect(sprite), dest, tint);

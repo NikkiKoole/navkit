@@ -76,7 +76,7 @@ void InitSpriteOverrides(void) {
 
 int GetSpriteForCellMat(CellType cell, MaterialType mat) {
     // Ramps and doors always use their own sprite (tinted by material color)
-    if (CellIsRamp(cell) || cell == CELL_DOOR) return CellSprite(cell);
+    if (CellIsRamp(cell) || CellIsDoor(cell)) return CellSprite(cell);
 
     int sprite = spriteOverrides[cell][mat];
     if (sprite) return sprite;

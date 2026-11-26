@@ -58,6 +58,7 @@ typedef enum {
     CELL_WINDOW,       // Window - wall that transmits light
     CELL_ELEVATOR,     // Elevator shaft - one cell per level; a car carries movers between levels (elevators.c)
     CELL_RAILING,      // Railing/balustrade - blocks walking only: light, sight, air and water pass; not solid
+    CELL_DOOR_OPEN,    // Open door - walkable, lets water/smoke/light/heat through, solid for support (CellIsDoor)
     CELL_TYPE_COUNT
 } CellType;
 
@@ -66,7 +67,7 @@ static inline const char* CellTypeName(int type) {
         "WALL", "AIR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH",
         "RAMP_N", "RAMP_E", "RAMP_S", "RAMP_W",
         "SAPLING", "TREE_TRUNK", "TREE_BRANCH", "TREE_ROOT", "TREE_FELLED", "TREE_LEAVES",
-        "BUSH", "TRACK", "PLATFORM", "DOOR", "WINDOW", "ELEVATOR", "RAILING"
+        "BUSH", "TRACK", "PLATFORM", "DOOR", "WINDOW", "ELEVATOR", "RAILING", "DOOR_OPEN"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == CELL_TYPE_COUNT,
                    "CellTypeName out of sync with CellType enum");
@@ -326,6 +327,11 @@ int SetLadderOneWay(int x, int y, int z, OneWay dir);
 // One-way door: ONEWAY_N/E/S/W = the direction you may pass through, ONEWAY_NONE = both
 // ways. False if (x, y, z) is not a door or dir is UP/DOWN. Tells the pathfinder.
 bool SetDoorOneWay(int x, int y, int z, OneWay dir);
+// Open or close a door (CELL_DOOR closed <-> CELL_DOOR_OPEN). Walking is the same either way, so
+// the pathfinder is not told; the sims (water, smoke, steam, heat) and lighting around it are
+// woken. False if (x, y, z) is not a door; true (nothing to do) if it already is that way.
+bool SetDoorOpen(int x, int y, int z, bool open);
+extern float doorOpenSeconds;   // how long a mover stops at a closed door to open it (setting)
 
 // Row sweep over a sparse layer in plain x order: FOR_X_IN_SPARSE_ROW(layer, T, x, p, y, z) { ... }
 // visits only x whose chunk has a block, with T* p pointing at the cell (writable). Runs in

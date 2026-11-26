@@ -74,6 +74,7 @@ int repathFallbackCount = 0;
 static int repathCursor = 0;
 // Seconds each mover has been waiting at a narrow passage (not saved; reset by ClearMovers)
 static float moverYieldTime[MAX_MOVERS];
+static float moverDoorTime[MAX_MOVERS];    // opening a closed door just ahead (sim s, doorOpenSeconds)
 static Point moverYieldCell[MAX_MOVERS];   // where the current wait started
 // Waiting at a narrow passage this tick: others' avoidance ignores it, or a crowd waiting at
 // the far end walls off the very mover it waits for (no hard bodies: walk through them)
@@ -602,6 +603,12 @@ float MoverPatience(const Mover* m) {
 }
 
 static void AssignNewMoverGoal(Mover* m);
+
+// Moving into another cell on the same level: not into or out of a one-way door the wrong way
+static inline bool MoverDoorStepOk(int fromX, int fromY, int toX, int toY, int z) {
+    if (fromX == toX && fromY == toY) return true;
+    return CanStepThroughDoors(fromX, fromY, toX, toY, z);
+}
 static void MaybeTakeTrain(int i);
 // Seconds this mover needs to walk one cell on plain ground right now: its speed
 // at the current day length, slowed by what it carries (same factor as movement)
@@ -1188,6 +1195,7 @@ void ClearMovers(void) {
     LaddersClear();
     for (int i = 0; i < MAX_MOVERS; i++) ElevatorForgetMover(i);
     memset(moverYieldTime, 0, sizeof(moverYieldTime));
+    memset(moverDoorTime, 0, sizeof(moverDoorTime));
     memset(moverYielding, 0, sizeof(moverYielding));
     // Drop carried items on the ground at mover's position
     for (int i = 0; i < moverCount; i++) {
@@ -2110,6 +2118,27 @@ void UpdateMovers(void) {
             } else {
                 m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
             }
+            // A closed door just ahead: stop, open it (a short operate step) and walk on. The door
+            // stays open behind it until someone closes it (infrastructure.md: doors don't close
+            // by themselves), so smoke, cold and water get through.
+            if (target.z == currentZ && dist > 0.001f) {
+                float look = CELL_SIZE * 0.6f / dist;
+                int ax = (int)((m->x + dxf * look) / CELL_SIZE);
+                int ay = (int)((m->y + dyf * look) / CELL_SIZE);
+                if (ax >= 0 && ay >= 0 && ax < gridWidth && ay < gridHeight &&
+                    (ax != currentX || ay != currentY) && GRID(ax, ay, currentZ) == CELL_DOOR) {
+                    moverDoorTime[i] += dt;
+                    if (moverDoorTime[i] < doorOpenSeconds) {
+                        m->timeWithoutProgress = 0.0f;     // opening a door is not being stuck
+                        m->lastX = m->x;
+                        m->lastY = m->y;
+                        continue;
+                    }
+                    SetDoorOpen(ax, ay, currentZ, true);
+                }
+                moverDoorTime[i] = 0.0f;
+            }
+
             // In a ladder line behind someone: line up behind the one ahead
             float followVx = 0.0f, followVy = 0.0f;
             bool lineFollow = useSingleFileLadders && LadderFollowLine(i, effectiveSpeed, &followVx, &followVy);
@@ -2242,8 +2271,11 @@ void UpdateMovers(void) {
                 int newCellX = (int)(newX / CELL_SIZE);
                 int newCellY = (int)(newY / CELL_SIZE);
                 
-                // Check walkability - for z transitions, also accept ladder/ramp cells
-                bool canMove = IsCellWalkableAt(mz, newCellY, newCellX);
+                // Check walkability - for z transitions, also accept ladder/ramp cells. A one-way
+                // door is a wall from its wrong side (a push in a crowd can't nudge anyone back
+                // over the threshold either)
+                bool canMove = IsCellWalkableAt(mz, newCellY, newCellX) &&
+                               MoverDoorStepOk(currentX, currentY, newCellX, newCellY, mz);
                 
                 if (!canMove && targetIsZTransition) {
                     // Moving toward a z-transition cell - check if movement should be allowed
@@ -2342,8 +2374,10 @@ void UpdateMovers(void) {
                     // Wall or out of bounds - try sliding
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
                     int yOnlyCellX = (int)(m->x / CELL_SIZE);
-                    bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, newCellX);
-                    bool yOnlyOk = IsCellWalkableAt(mz, newCellY, yOnlyCellX);
+                    bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, newCellX) &&
+                                   MoverDoorStepOk(currentX, currentY, newCellX, xOnlyCellY, mz);
+                    bool yOnlyOk = IsCellWalkableAt(mz, newCellY, yOnlyCellX) &&
+                                   MoverDoorStepOk(currentX, currentY, yOnlyCellX, newCellY, mz);
                     
                     if (xOnlyOk && yOnlyOk) {
                         if (fabsf(vx) > fabsf(vy)) {

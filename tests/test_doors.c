@@ -260,6 +260,49 @@ describe(door_blueprint_placement) {
 }
 
 // =============================================================================
+// Door states: open / closed
+// =============================================================================
+
+describe(door_states) {
+    it("an open door lets fluids and heat through but stays solid and walkable") {
+        expect(CellIsDoor(CELL_DOOR_OPEN));
+        expect(CellBlocksFluids(CELL_DOOR_OPEN) == 0);
+        expect(CellBlocksMovement(CELL_DOOR_OPEN) == 0);
+        expect(CellIsSolid(CELL_DOOR_OPEN) != 0);   // the wall above it keeps its support
+        expect(CellInsulationTier(CELL_DOOR_OPEN) == INSULATION_TIER_AIR);
+        InitTestGrid(8, 8);
+        GRID(3, 3, 0) = CELL_WALL;
+        GRID(3, 3, 1) = CELL_DOOR_OPEN;
+        expect(IsCellWalkableAt(1, 3, 3) == true);
+    }
+
+    it("SetDoorOpen opens and closes a door, and only a door") {
+        InitTestGrid(8, 8);
+        GRID(3, 3, 1) = CELL_DOOR;
+        expect(SetDoorOpen(3, 3, 1, true));
+        expect(GRID(3, 3, 1) == CELL_DOOR_OPEN);
+        expect(SetDoorOpen(3, 3, 1, true));          // already open: nothing to do
+        expect(GRID(3, 3, 1) == CELL_DOOR_OPEN);
+        expect(SetDoorOpen(3, 3, 1, false));
+        expect(GRID(3, 3, 1) == CELL_DOOR);
+        GRID(4, 3, 1) = CELL_WALL;
+        expect(!SetDoorOpen(4, 3, 1, true));
+        expect(GRID(4, 3, 1) == CELL_WALL);
+        expect(!SetDoorOpen(-1, 3, 1, true));
+    }
+
+    it("a one-way door keeps its direction when opened") {
+        InitTestGrid(8, 8);
+        GRID(3, 3, 1) = CELL_DOOR;
+        expect(SetDoorOneWay(3, 3, 1, ONEWAY_E));
+        SetDoorOpen(3, 3, 1, true);
+        int dx = 0, dy = 0;
+        expect(OneWayDoorDir(3, 3, 1, &dx, &dy));
+        expect(dx == 1 && dy == 0);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -273,6 +316,7 @@ int main(int argc, char* argv[]) {
     test(primitive_construction_recipes);
     test(workshop_ground_fire);
     test(door_blueprint_placement);
+    test(door_states);
 
     return summary();
 }

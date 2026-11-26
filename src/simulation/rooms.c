@@ -126,11 +126,11 @@ static int FloodFill(int sx, int sy, int z, bool *touchedEdge) {
             }
 
             // Walls/windows stop the flood entirely (not added to room)
-            if (CellBlocksMovement(cell) && cell != CELL_DOOR) continue;
+            if (CellBlocksMovement(cell) && !CellIsDoor(cell)) continue;
 
             // Doors: boundary — don't expand through, don't add to cell buffer.
             // Door cells get assigned to rooms in a post-pass.
-            if (cell == CELL_DOOR) {
+            if (CellIsDoor(cell)) {
                 continue;
             }
 
@@ -345,7 +345,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
             if (ncell == CELL_WINDOW) {
                 windowPositions++;
             }
-            if (CellBlocksMovement(ncell) && ncell != CELL_DOOR && ncell != CELL_RAILING) {
+            if (CellBlocksMovement(ncell) && !CellIsDoor(ncell) && ncell != CELL_RAILING) {
                 totalWallNeighbors++;
                 if (!IsWallNatural(nx, ny, z)) {
                     constructedWallNeighbors++;
@@ -415,7 +415,7 @@ static void RecomputeRooms(void) {
 
                 // Skip walls/windows/doors — walls and windows aren't rooms,
                 // doors are assigned in a post-pass
-                if (CellBlocksMovement(cell) || cell == CELL_DOOR) {
+                if (CellBlocksMovement(cell) || CellIsDoor(cell)) {
                     visited[y][x] = true;
                     continue;
                 }
@@ -455,7 +455,7 @@ static void RecomputeRooms(void) {
         // adjacent room
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (GRID(x, y, z) != CELL_DOOR) continue;
+                if (!CellIsDoor(GRID(x, y, z))) continue;
                 if (ROOM(x, y, z) != ROOM_NONE) continue;
                 uint16_t sides[4];
                 int nSides = 0;
@@ -483,7 +483,7 @@ static void RecomputeRooms(void) {
         }
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (GRID(x, y, z) != CELL_DOOR) continue;
+                if (!CellIsDoor(GRID(x, y, z))) continue;
                 if (ROOM(x, y, z) != ROOM_NONE) continue;
 
                 // Find first adjacent room

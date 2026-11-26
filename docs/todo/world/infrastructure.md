@@ -1,10 +1,32 @@
 # Infrastructure: doors, locks, mechanisms, pipes (and what else is like them)
 
-> Status: plan (2026-11-26). No code yet beyond what "What exists" lists. Joins three older
+> Status: step 1 half done (2026-11-26): doors open and closed. Locked and the "close door" chore
+> are next (see "Where we are"). Otherwise a plan. Joins three older
 > plans into one: keys (`../pathfinding/one-way-and-doors.md` "Parked: keys"), mechanisms layer 1
 > (`../../vision/far future /mechanisms-and-signals.md`) and the pipe layer
 > (`../gameplay/survival-toilet.md` "The pipe layer"). Those stay as the detail; this is the
 > shared model and the order to build in.
+
+## Where we are
+
+**Step 1, doors open / closed (2026-11-26):** an open door is its own cell type, `CELL_DOOR_OPEN`
+(solid, so the wall above keeps its support; lets water, smoke, steam, vapour, light and heat
+through: insulation tier air). `CellIsDoor(c)` is true for both; every door check uses it, so rooms,
+one-way doors, explosions and drawing treat open and closed alike. `SetDoorOpen(x, y, z, open)` in
+`grid.c` flips it and wakes the sims and lighting at the cell; walking is the same either way, so
+the pathfinder is not told. A mover whose next cell is a closed door stops for `doorOpenSeconds`
+(setting, 0.5 s) and opens it (`mover.c`, before the move); the door stays open. Drawn with
+`door-open-ns` / `door-open-ew` (named after the walls it hangs between). Console `door open|close
+[x y]`, describe line "Open: smoke, water and cold get through". Scenario `doorsmoke` (in
+scenarios-check): three people walk out of a smoke-filled room, no smoke out before the door
+opens, smoke follows after, the door stays open. Tests: `test_doors` "door_states".
+Side fix: movement now treats a one-way door as a wall from its wrong side (a push in a crowd
+nudged someone back over the threshold in `door-oneway`).
+
+**Next in step 1:** the "close door" chore (a designation, an idle mover walks over and shuts it);
+locked-for-everyone (impassable: a local rebuild like placing a wall); a small path cost for a
+closed door (`NAV_ENTER_EXTRA`); the cold-snap and locked-door scenarios. Animals don't open doors
+yet (they walk through closed ones).
 
 ## Why one plan
 

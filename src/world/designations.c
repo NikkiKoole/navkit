@@ -2292,7 +2292,7 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
             int nx = x + dx4[d], ny = y + dy4[d];
             if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
                 CellType nc = GRID(nx, ny, z);
-                if (CellBlocksMovement(nc) || nc == CELL_DOOR) {
+                if (CellBlocksMovement(nc) || CellIsDoor(nc)) {
                     hasWallNeighbor = true;
                     break;
                 }

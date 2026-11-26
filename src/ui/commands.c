@@ -367,7 +367,7 @@ static void RunOneWay(const CmdValue* v) {
     static const OneWay dirs[] = { ONEWAY_UP, ONEWAY_DOWN, ONEWAY_NONE, ONEWAY_N, ONEWAY_E, ONEWAY_S, ONEWAY_W };
     OneWay dir = dirs[v[0].choice];
     if (x >= 0 && y >= 0 && x < gridWidth && y < gridHeight && currentViewZ >= 0 && currentViewZ < gridDepth &&
-        GRID(x, y, currentViewZ) == CELL_DOOR) {
+        CellIsDoor(GRID(x, y, currentViewZ))) {
         if (SetDoorOneWay(x, y, currentViewZ, dir)) Say(GREEN, "Door at %d,%d: %s", x, y, oneWayChoices[v[0].choice]);
         else Say(YELLOW, "Doors take n, e, s, w or both");
         return;
@@ -377,6 +377,17 @@ static void RunOneWay(const CmdValue* v) {
     if (n == 0) n = SetLadderOneWay(x, y, currentViewZ - 1, dir);
     if (n == 0) { Say(YELLOW, "No ladder or door at %d,%d (level %d)", x, y, currentViewZ); return; }
     Say(GREEN, "Ladder at %d,%d: %s (%d pieces)", x, y, oneWayChoices[v[0].choice], n);
+}
+
+static const char* const doorChoices[] = { "open", "close" };
+// Open or close the door at the mouse (or x y) on the viewed level
+static void RunDoor(const CmdValue* v) {
+    int x, y;
+    if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
+    bool open = v[0].choice == 0;
+    if (!SetDoorOpen(x, y, currentViewZ, open)) { Say(YELLOW, "No door at %d,%d (level %d)", x, y, currentViewZ); return; }
+    Say(GREEN, "Door at %d,%d: %s", x, y, open ? "open" : "closed");
 }
 
 // ---- time: speed, daylength ----
@@ -740,6 +751,10 @@ static const CommandDef commandTable[] = {
       3, { ARG_CHOICE("dir", oneWayChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunOneWay, NULL },
+    { "door", "World/Doors", "Open or close the door at the mouse or x y (on the viewed level)",
+      3, { ARG_CHOICE("state", doorChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
+      RunDoor, NULL },
     { "rain", "Simulation/Water", "Start or stop rain (coverage in %)",
       1, { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainChoices, .choiceCount = 4, .lo = 1, .hi = 100 } },
       RunRain, NULL },

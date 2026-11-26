@@ -807,6 +807,8 @@ static const Setting settings[] = {
       "Routes see ladder queues as extra cost."),
     SET_FLOAT("ladderClimbSpeed", "Ladder Climb Speed", "Entities/Movers/Walls", ladderClimbSpeed, 0.01f, 0.1f, 1.0f,
       "Climbing speed vs walking (0.5 = twice as slow).", NULL),
+    SET_FLOAT("doorOpenSeconds", "Door Open Time (s)", "Entities/Movers/Walls", doorOpenSeconds, 0.05f, 0.0f, 5.0f,
+      "How long a mover stops at a closed door to open it. The door then stays open until someone closes it.", NULL),
 
     // --- Animals ---
     SET_BOOL("animalRespawn", "Respawn", "Entities/Animals", animalRespawnEnabled,

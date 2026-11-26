@@ -62,6 +62,7 @@ extern CellDef cellDefs[];
 #define CellIsShaft(c)          CellHasFlag(c, CF_SHAFT)
 #define CellBlocksFluids(c)     CellHasFlag(c, CF_BLOCKS_FLUIDS)
 #define CellIsSolid(c)          CellHasFlag(c, CF_SOLID)
+#define CellIsDoor(c)           ((c) == CELL_DOOR || (c) == CELL_DOOR_OPEN)   // closed or open
 
 // Field accessors
 #define CellName(c)             (cellDefs[c].name)
@@ -116,7 +117,7 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     if (CellIsRamp(cellHere)) return true;
     
     // Doors are walkable (solid for support, but passable)
-    if (cellHere == CELL_DOOR) return true;
+    if (CellIsDoor(cellHere)) return true;
     
     // Can't walk inside solid blocks (dirt, walls, etc.)
     if (CellIsSolid(cellHere)) return false;
@@ -313,7 +314,7 @@ static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, 
 // Out-of-bounds / not a one-way door: false.
 static inline bool OneWayDoorDir(int x, int y, int z, int* dx, int* dy) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
-    if (GRID(x, y, z) != CELL_DOOR) return false;
+    if (!CellIsDoor(GRID(x, y, z))) return false;
     switch (ONE_WAY(x, y, z)) {
         case ONEWAY_N: *dx = 0;  *dy = -1; return true;
         case ONEWAY_E: *dx = 1;  *dy = 0;  return true;

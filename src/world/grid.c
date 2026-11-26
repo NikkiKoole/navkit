@@ -6,6 +6,10 @@
 #include "../simulation/fire.h"
 #include "../core/event_log.h"
 #include "../simulation/rooms.h"
+#include "../simulation/smoke.h"
+#include "../simulation/steam.h"
+#include "../simulation/temperature.h"
+#include "../simulation/lighting.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -247,7 +251,7 @@ void RecalculateLadderColumn(int x, int y) {
 static void ClearStaleOneWay(int x, int y) {
     if (!SparseLayerHasBlock(&oneWayLayer, x, y)) return;
     for (int z = 0; z < gridDepth; z++)
-        if (ONE_WAY(x, y, z) != ONEWAY_NONE && !IsLadderCell(GRID(x, y, z)) && GRID(x, y, z) != CELL_DOOR)
+        if (ONE_WAY(x, y, z) != ONEWAY_NONE && !IsLadderCell(GRID(x, y, z)) && !CellIsDoor(GRID(x, y, z)))
             ONE_WAY_MUT(x, y, z) = ONEWAY_NONE;
 }
 
@@ -267,11 +271,30 @@ int SetLadderOneWay(int x, int y, int z, OneWay dir) {
 
 bool SetDoorOneWay(int x, int y, int z, OneWay dir) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
-    if (GRID(x, y, z) != CELL_DOOR || dir == ONEWAY_UP || dir == ONEWAY_DOWN) return false;
+    if (!CellIsDoor(GRID(x, y, z)) || dir == ONEWAY_UP || dir == ONEWAY_DOWN) return false;
     if (ONE_WAY(x, y, z) != (uint8_t)dir) {
         ONE_WAY_MUT(x, y, z) = (uint8_t)dir;
         MarkChunkDirty(x, y, z);
     }
+    return true;
+}
+
+float doorOpenSeconds = 0.5f;
+
+bool SetDoorOpen(int x, int y, int z, bool open) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    CellType c = GRID(x, y, z);
+    if (!CellIsDoor(c)) return false;
+    CellType want = open ? CELL_DOOR_OPEN : CELL_DOOR;
+    if (c == want) return true;
+    GRID(x, y, z) = want;
+    // Air, water and heat on both sides can now meet (or are cut off): wake them
+    DestabilizeWater(x, y, z);
+    DestabilizeSmoke(x, y, z);
+    DestabilizeSteam(x, y, z);
+    DestabilizeTemperature(x, y, z);
+    InvalidateLightingAt(x, y, z);
+    EventLog("Door %d,%d,%d %s", x, y, z, open ? "opened" : "closed");
     return true;
 }
 

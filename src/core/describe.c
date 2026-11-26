@@ -640,7 +640,9 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
     }
     if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_UP) DescAdd(out, DESC_INFO, "One-way: up only");
     if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_DOWN) DescAdd(out, DESC_INFO, "One-way: down only");
-    if (ct == CELL_DOOR && ONE_WAY(x, y, z) >= ONEWAY_N && ONE_WAY(x, y, z) <= ONEWAY_W) {
+    if (ct == CELL_DOOR) DescAdd(out, DESC_INFO, "Closed: keeps out smoke, water and cold");
+    if (ct == CELL_DOOR_OPEN) DescAdd(out, DESC_WARN, "Open: smoke, water and cold get through");
+    if (CellIsDoor(ct) && ONE_WAY(x, y, z) >= ONEWAY_N && ONE_WAY(x, y, z) <= ONEWAY_W) {
         static const char* const ways[] = { "north", "east", "south", "west" };
         DescAdd(out, DESC_INFO, "One-way: pass %s only", ways[ONE_WAY(x, y, z) - ONEWAY_N]);
     }

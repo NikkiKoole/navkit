@@ -615,7 +615,7 @@ float ExplosionVentStrength(int x, int y, int z) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return -1.0f;
     CellType c = GRID(x, y, z);
     if (c == CELL_WINDOW) return 1.0f;
-    if (c == CELL_DOOR) return 1.5f;
+    if (CellIsDoor(c)) return 1.5f;
     if (c == CELL_WALL) return MaterialStrength(GetWallMaterial(x, y, z));
     return -1.0f;
 }
