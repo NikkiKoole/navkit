@@ -2971,6 +2971,12 @@ static bool PipeDrainOrPlanned(int x, int y, int z) {
     return (GetPipe(x, y, z) & PIPE_DRAIN) || PipeBlueprintAt(x, y, z);
 }
 
+// A water pipe joins its water-pipe neighbours (drains and water pipes are separate networks)
+static int PipeSupplyMask(int x, int y, int z) {
+    return ((GetPipe(x, y - 1, z) & PIPE_SUPPLY) ? 1 : 0) | ((GetPipe(x + 1, y, z) & PIPE_SUPPLY) ? 2 : 0)
+         | ((GetPipe(x, y + 1, z) & PIPE_SUPPLY) ? 4 : 0) | ((GetPipe(x - 1, y, z) & PIPE_SUPPLY) ? 8 : 0);
+}
+
 static int PipeDrainMask(int x, int y, int z) {
     return (PipeDrainOrPlanned(x, y - 1, z) ? 1 : 0) | (PipeDrainOrPlanned(x + 1, y, z) ? 2 : 0)
          | (PipeDrainOrPlanned(x, y + 1, z) ? 4 : 0) | (PipeDrainOrPlanned(x - 1, y, z) ? 8 : 0);
@@ -3041,7 +3047,7 @@ static void DrawMechanisms(void) {
 }
 
 static void DrawPipes(void) {
-    if (PipeDrainCellCount() == 0) return;
+    if (PipeCellCount() == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     if (z < 0 || z >= gridDepth) return;
@@ -3055,14 +3061,17 @@ static void DrawPipes(void) {
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++) {
             uint8_t b = PIPE(x, y, z);
-            if (!(b & PIPE_DRAIN)) continue;
+            if (!(b & (PIPE_DRAIN | PIPE_SUPPLY))) continue;
             if (HAS_FLOOR(x, y, z) && !pipeOverlay) continue;   // laid in a floor: hidden
-            int mask = PipeDrainMask(x, y, z);
+            bool drain = (b & PIPE_DRAIN) != 0;   // a cell with both draws as its drain
+            int mask = drain ? PipeDrainMask(x, y, z) : PipeSupplyMask(x, y, z);
             Color light = GetLightColor(x, y, z, skyColor);
             Rectangle dest = { offset.x + x * size, offset.y + y * size, size, size };
             FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, false)), dest, MultiplyColor((Color){ 176, 112, 78, 255 }, light));
-            if (PipeDrainConnected(x, y, z))
+            if (drain && PipeDrainConnected(x, y, z))
                 FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 96, 128, 132, 255 }, light));   // murky drain water
+            if (!drain && (PIPE_CONN(x, y, z) & PIPE_CONN_SUPPLY))   // a water pipe with a way through: clean water
+                FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 80, 150, 220, 255 }, light));
             float cx = dest.x + size * 0.5f, cy = dest.y + size * 0.5f;
             if (b & PIPE_END) DrawCircleV((Vector2){ cx, cy }, size * 0.22f, (Color){ 30, 24, 18, 230 });
             if (b & PIPE_VALVE) {

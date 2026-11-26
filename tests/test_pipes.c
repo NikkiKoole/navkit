@@ -155,6 +155,38 @@ describe(drain_network) {
     }
 }
 
+describe(water_pipes) {
+    it("water pipe openings: a network's other ends; a shut valve splits it; drains are no openings") {
+        SetupGround();
+        expect(PipeOpeningCount() == 0);
+        LayFloorSupply(2, 2, 10, 2, 1);
+        SetPipe(2, 2, 1, GetPipe(2, 2, 1) | PIPE_END);
+        SetPipe(10, 2, 1, GetPipe(10, 2, 1) | PIPE_END);
+        LayFloorDrain(2, 6, 6, 6, 1);
+        SetPipe(6, 6, 1, GetPipe(6, 6, 1) | PIPE_END);        // a drain outlet: not a water opening
+        expect(PipeOpeningCount() == 2);
+        expect(PipeIsOpening(2, 2, 1) && PipeIsOpening(10, 2, 1) && !PipeIsOpening(6, 6, 1) && !PipeIsOpening(5, 2, 1));
+        int ox[4], oy[4], oz[4];
+        expect(PipeOtherOpenings(2, 2, 1, ox, oy, oz, 4) == 1);
+        expect(ox[0] == 10 && oy[0] == 2);
+        expect(PIPE_CONN(5, 2, 1) & PIPE_CONN_SUPPLY);
+        SetPipe(6, 2, 1, GetPipe(6, 2, 1) | PIPE_VALVE | PIPE_VALVE_CLOSED);
+        expect(PipeOtherOpenings(2, 2, 1, ox, oy, oz, 4) == 0);
+        expect(!(PIPE_CONN(5, 2, 1) & PIPE_CONN_SUPPLY));
+    }
+
+    it("a stack joins water pipes across levels") {
+        SetupGround();
+        SetPipe(3, 3, 1, PIPE_FLOOR_SUPPLY | PIPE_END);
+        SetPipe(4, 3, 1, PIPE_WALL_SUPPLY | PIPE_STACK);
+        SetPipe(4, 3, 0, PIPE_WALL_SUPPLY | PIPE_STACK);
+        SetPipe(5, 3, 0, PIPE_FLOOR_SUPPLY | PIPE_END);
+        int ox[4], oy[4], oz[4];
+        expect(PipeOtherOpenings(3, 3, 1, ox, oy, oz, 4) == 1);
+        expect(ox[0] == 5 && oz[0] == 0);
+    }
+}
+
 describe(drain_blueprints) {
     it("a drain blueprint goes on walkable ground without a drain; built, it is a floor drain") {
         SetupGround();
@@ -244,6 +276,7 @@ int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(drain_network);
+    test(water_pipes);
     test(drain_blueprints);
     test(drain_toilet);
     return summary();

@@ -15,12 +15,20 @@ static PipeCell* pipeCells = NULL;
 static int pipeCellCount = 0, pipeCellCap = 0;
 static int drainCells = 0;
 static bool pipesDirty = false;
+// Water network (supply): component per pipe cell (index into pipeCells), openings with theirs
+static int* pipeComp = NULL;
+static int pipeCompCap = 0;
+typedef struct { int16_t x, y, z; int comp; } PipeOpening;
+static PipeOpening* pipeOpenings = NULL;
+static int pipeOpeningCount = 0, pipeOpeningCap = 0;
+static void PipeNetworkPass(void);
 
 void ClearPipes(void) {
     if (pipeGrid) CLEAR_GRID_LAYER(pipeGrid, 0);
     if (pipeConnGrid) CLEAR_GRID_LAYER(pipeConnGrid, 0);
     pipeCellCount = 0;
     drainCells = 0;
+    pipeOpeningCount = 0;
     memset(pipePulses, 0, sizeof(pipePulses));
     pipesDirty = false;
 }
@@ -49,6 +57,7 @@ static void PipeListRemove(int x, int y, int z) {
 void PipesAfterLoad(void) {
     pipeCellCount = 0;
     drainCells = 0;
+    pipeOpeningCount = 0;
     memset(pipePulses, 0, sizeof(pipePulses));
     for (int z = 0; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
@@ -72,7 +81,105 @@ void SetPipe(int x, int y, int z, uint8_t bits) {
     pipesDirty = true;
 }
 
+int PipeCellCount(void) { return pipeCellCount; }
 int PipeDrainCellCount(void) { return drainCells; }
+
+static int PipeListIndexOf(int x, int y, int z);
+
+// The water (supply) network pass: label the connected supply pipes (4 neighbours on a level,
+// STACK wall pipes up and down), a shut valve is reached but passes nothing on (a network of
+// its own beyond it). Openings = supply ENDs; cells of a network with 2+ openings are
+// PIPE_CONN_SUPPLY (water can go through).
+static void PipeWaterPass(void) {
+    pipeOpeningCount = 0;
+    if (pipeCompCap < pipeCellCount) {
+        pipeCompCap = pipeCellCount + 256;
+        pipeComp = (int*)realloc(pipeComp, (size_t)pipeCompCap * sizeof(int));
+    }
+    for (int i = 0; i < pipeCellCount; i++) pipeComp[i] = -1;
+    int* queue = (int*)malloc((size_t)(pipeCellCount > 0 ? pipeCellCount : 1) * sizeof(int));
+    static const int dx[4] = {0, 1, 0, -1}, dy[4] = {-1, 0, 1, 0};
+    int comps = 0;
+    for (int s = 0; s < pipeCellCount; s++) {
+        PipeCell c0 = pipeCells[s];
+        if (!(PIPE(c0.x, c0.y, c0.z) & PIPE_SUPPLY) || pipeComp[s] >= 0) continue;
+        int head = 0, tail = 0, comp = comps++;
+        pipeComp[s] = comp;
+        queue[tail++] = s;
+        while (head < tail) {
+            PipeCell c = pipeCells[queue[head++]];
+            uint8_t b = PIPE(c.x, c.y, c.z);
+            if (b & PIPE_VALVE_CLOSED) continue;
+            for (int d = 0; d < 6; d++) {
+                int nx = c.x, ny = c.y, nz = c.z;
+                if (d < 4) { nx += dx[d]; ny += dy[d]; }
+                else {
+                    if (!((b & PIPE_STACK) && (b & PIPE_WALL_SUPPLY))) continue;
+                    nz += d == 4 ? 1 : -1;
+                }
+                uint8_t nb = GetPipe(nx, ny, nz);
+                if (!(nb & PIPE_SUPPLY)) continue;
+                if (d >= 4 && !((nb & PIPE_STACK) && (nb & PIPE_WALL_SUPPLY))) continue;
+                if (nb & PIPE_VALVE_CLOSED) continue;   // a shut valve: not entered from here
+                int ni = PipeListIndexOf(nx, ny, nz);
+                if (ni < 0 || pipeComp[ni] >= 0) continue;
+                pipeComp[ni] = comp;
+                queue[tail++] = ni;
+            }
+        }
+    }
+    free(queue);
+    int* openingsPer = (int*)calloc((size_t)(comps > 0 ? comps : 1), sizeof(int));
+    for (int i = 0; i < pipeCellCount; i++) {
+        PipeCell c = pipeCells[i];
+        uint8_t b = PIPE(c.x, c.y, c.z);
+        if (!(b & PIPE_SUPPLY) || !(b & PIPE_END) || pipeComp[i] < 0) continue;
+        if (pipeOpeningCount == pipeOpeningCap) {
+            pipeOpeningCap = pipeOpeningCap ? pipeOpeningCap * 2 : 32;
+            pipeOpenings = (PipeOpening*)realloc(pipeOpenings, (size_t)pipeOpeningCap * sizeof(PipeOpening));
+        }
+        pipeOpenings[pipeOpeningCount++] = (PipeOpening){ c.x, c.y, c.z, pipeComp[i] };
+        openingsPer[pipeComp[i]]++;
+        PIPE_CONN(c.x, c.y, c.z) |= PIPE_CONN_OPENING;
+    }
+    for (int i = 0; i < pipeCellCount; i++)
+        if (pipeComp[i] >= 0 && openingsPer[pipeComp[i]] >= 2)
+            PIPE_CONN(pipeCells[i].x, pipeCells[i].y, pipeCells[i].z) |= PIPE_CONN_SUPPLY;
+    free(openingsPer);
+    // A network changed (a valve opened, a pipe laid): water resting at the openings looks again
+    for (int i = 0; i < pipeOpeningCount; i++) DestabilizeWater(pipeOpenings[i].x, pipeOpenings[i].y, pipeOpenings[i].z);
+}
+
+static int PipeListIndexOf(int x, int y, int z) {
+    for (int i = 0; i < pipeCellCount; i++)
+        if (pipeCells[i].x == x && pipeCells[i].y == y && pipeCells[i].z == z) return i;
+    return -1;
+}
+
+int PipeOpeningCount(void) {
+    if (pipesDirty) PipeNetworkPass();
+    return pipeOpeningCount;
+}
+
+bool PipeIsOpening(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return false;
+    if (pipesDirty) PipeNetworkPass();
+    return (PIPE_CONN(x, y, z) & PIPE_CONN_OPENING) != 0;
+}
+
+int PipeOtherOpenings(int x, int y, int z, int* ox, int* oy, int* oz, int max) {
+    if (!PipeIsOpening(x, y, z)) return 0;
+    int comp = -1;
+    for (int i = 0; i < pipeOpeningCount; i++)
+        if (pipeOpenings[i].x == x && pipeOpenings[i].y == y && pipeOpenings[i].z == z) { comp = pipeOpenings[i].comp; break; }
+    int n = 0;
+    for (int i = 0; i < pipeOpeningCount && n < max; i++) {
+        const PipeOpening* o = &pipeOpenings[i];
+        if (o->comp != comp || (o->x == x && o->y == y && o->z == z)) continue;
+        ox[n] = o->x; oy[n] = o->y; oz[n] = o->z; n++;
+    }
+    return n;
+}
 
 // The drain network pass: from every outlet (END + a drain bit) outward over drain cells.
 // Same level: the 4 neighbours with a drain bit. A wall drain with STACK runs on to the STACK
@@ -113,6 +220,7 @@ static void PipeNetworkPass(void) {
         }
     }
     free(queue);
+    PipeWaterPass();
 }
 
 bool PipeDrainConnected(int x, int y, int z) {
@@ -131,11 +239,11 @@ bool PipeFixtureOnDrain(int x, int y, int z) {
     return false;
 }
 
-static int LayDrainCell(int x, int y, int z) {
+static int LayPipeCell(int x, int y, int z, uint8_t bit) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return 0;
     uint8_t b = PIPE(x, y, z);
-    if (b & PIPE_FLOOR_DRAIN) return 0;
-    SetPipe(x, y, z, b | PIPE_FLOOR_DRAIN);
+    if (b & bit) return 0;
+    SetPipe(x, y, z, b | bit);
     return 1;
 }
 
@@ -200,16 +308,19 @@ void PipeFlushPulse(int x, int y, int z) {
     free(queue);
 }
 
-int LayFloorDrain(int x1, int y1, int x2, int y2, int z) {
+static int LayFloorPipe(int x1, int y1, int x2, int y2, int z, uint8_t bit) {
     int n = 0;
     int sx = x2 >= x1 ? 1 : -1, sy = y2 >= y1 ? 1 : -1;
     for (int x = x1;; x += sx) {
-        n += LayDrainCell(x, y1, z);
+        n += LayPipeCell(x, y1, z, bit);
         if (x == x2) break;
     }
     for (int y = y1;; y += sy) {
-        n += LayDrainCell(x2, y, z);
+        n += LayPipeCell(x2, y, z, bit);
         if (y == y2) break;
     }
     return n;
 }
+
+int LayFloorDrain(int x1, int y1, int x2, int y2, int z) { return LayFloorPipe(x1, y1, x2, y2, z, PIPE_FLOOR_DRAIN); }
+int LayFloorSupply(int x1, int y1, int x2, int y2, int z) { return LayFloorPipe(x1, y1, x2, y2, z, PIPE_FLOOR_SUPPLY); }

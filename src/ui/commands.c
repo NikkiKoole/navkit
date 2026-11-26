@@ -459,7 +459,7 @@ static void RunMech(const CmdValue* v) {
 }
 
 // ---- pipe: the drain spike (pipes.h), on the viewed level ----
-static const char* const pipeChoices[] = { "drain", "outlet", "valve", "remove", "clear" };
+static const char* const pipeChoices[] = { "drain", "outlet", "valve", "remove", "clear", "supply" };
 static void RunPipe(const CmdValue* v) {
     int z = currentViewZ, c = v[0].choice;
     if (c == 4) { ClearPipes(); Say(GREEN, "All pipes removed"); return; }
@@ -468,13 +468,13 @@ static void RunPipe(const CmdValue* v) {
     else { Vector2 g = ScreenToGrid(GetMousePosition()); x1 = (int)g.x; y1 = (int)g.y; }
     int x2 = v[3].given ? v[3].i : x1, y2 = v[4].given ? v[4].i : y1;
     if (x1 < 0 || y1 < 0 || x1 >= gridWidth || y1 >= gridHeight) { Say(YELLOW, "%d,%d is off the map", x1, y1); return; }
-    if (c == 0) {
-        int n = LayFloorDrain(x1, y1, x2, y2, z);
-        Say(GREEN, "Drain laid: %d new cells, %d,%d to %d,%d (level %d)", n, x1, y1, x2, y2, z);
+    if (c == 0 || c == 5) {
+        int n = c == 0 ? LayFloorDrain(x1, y1, x2, y2, z) : LayFloorSupply(x1, y1, x2, y2, z);
+        Say(GREEN, "%s laid: %d new cells, %d,%d to %d,%d (level %d)", c == 0 ? "Drain" : "Water pipe", n, x1, y1, x2, y2, z);
     } else if (c == 1 || c == 2) {
         uint8_t b = GetPipe(x1, y1, z);
-        if (!(b & PIPE_DRAIN)) { Say(YELLOW, "No drain at %d,%d (level %d)", x1, y1, z); return; }
-        if (c == 1) { SetPipe(x1, y1, z, b ^ PIPE_END); Say(GREEN, "%d,%d: %s", x1, y1, (b & PIPE_END) ? "no outlet" : "outlet"); }
+        if (!(b & (PIPE_DRAIN | PIPE_SUPPLY))) { Say(YELLOW, "No pipe at %d,%d (level %d)", x1, y1, z); return; }
+        if (c == 1) { SetPipe(x1, y1, z, b ^ PIPE_END); Say(GREEN, "%d,%d: %s", x1, y1, (b & PIPE_END) ? "no opening" : ((b & PIPE_DRAIN) ? "outlet" : "opening (water gets in and out here)")); }
         else {
             uint8_t nb = (b & PIPE_VALVE) ? (uint8_t)(b ^ PIPE_VALVE_CLOSED) : (uint8_t)(b | PIPE_VALVE | PIPE_VALVE_CLOSED);
             SetPipe(x1, y1, z, nb);
@@ -866,7 +866,7 @@ static const CommandDef commandTable[] = {
       3, { ARG_CHOICE("state", doorChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunDoor, NULL },
-    { "pipe", "World/Pipes", "Drain spike: pipe drain x1 y1 x2 y2 (an L of floor drain), outlet x y (a drain end flows out there), valve x y (open / shut), remove x1 y1 [x2 y2], clear. On the viewed level; no x y = the mouse",
+    { "pipe", "World/Pipes", "Pipes: pipe drain|supply x1 y1 x2 y2 (an L of floor drain / water pipe), outlet x y (a pipe end: a drain's outlet, a water pipe's opening where real water gets in and out), valve x y (open / shut), remove x1 y1 [x2 y2], clear. On the viewed level; no x y = the mouse",
       5, { ARG_CHOICE("what", pipeChoices),
            { .name = "x1", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y1", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },

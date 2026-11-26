@@ -9,6 +9,7 @@
 #include "tide.h"
 #include "weather.h"
 #include "moisture.h"
+#include "../world/pipes.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -548,6 +549,64 @@ static int TryFall(int x, int y, int z) {
     return flow;
 }
 
+// ---- Water pipes (pipes.h; agreed with the soil-moisture session, 2026-11-26) ----
+// A pipe opening (a water pipe's END) joins its cell to the other openings of its network, DF
+// style: water falls into a pipe to a LOWER opening (pressurised like TryFall when that one is
+// full), spreads through it to an opening on the same level, and pressure searches pass through
+// it. No pipes in the world: one int compare per cell update.
+#define WATER_PIPE_MAX_OPENINGS 16
+
+// Phase 1b: water in a pipe opening falls or spreads through the pipe, 1 unit per update
+static bool TryPipe(int x, int y, int z) {
+    if (PipeOpeningCount() == 0 || !PipeIsOpening(x, y, z)) return false;
+    WaterCell* src = &WATER_MUT(x, y, z);
+    if (src->level == 0) return false;
+    int ox[WATER_PIPE_MAX_OPENINGS], oy[WATER_PIPE_MAX_OPENINGS], oz[WATER_PIPE_MAX_OPENINGS];
+    int n = PipeOtherOpenings(x, y, z, ox, oy, oz, WATER_PIPE_MAX_OPENINGS);
+    // The best place to go: the lowest opening below with room; else (all below full) the
+    // lowest below gets pressure; else an opening on this level with 2+ less water
+    int best = -1, lowFull = -1;
+    for (int i = 0; i < n; i++) {
+        if (!CanHoldWater(ox[i], oy[i], oz[i])) continue;
+        const WaterCell* d = &WATER(ox[i], oy[i], oz[i]);
+        if (oz[i] < z) {
+            if (d->level < WATER_MAX_LEVEL) { if (best < 0 || oz[i] < oz[best] || oz[best] == z) best = i; }
+            else if (lowFull < 0 || oz[i] < oz[lowFull]) lowFull = i;
+        } else if (oz[i] == z && d->level + 1 < src->level && (best < 0 || (oz[best] == z && d->level < WATER(ox[best], oy[best], oz[best]).level))) {
+            best = i;
+        }
+    }
+    if (best < 0) {
+        if (lowFull >= 0) {   // falls onto full water: pressure from this height (as TryFall)
+            WaterCell* dst = &WATER_MUT(ox[lowFull], oy[lowFull], oz[lowFull]);
+            if (!dst->hasPressure || dst->pressureSourceZ < z) {
+                dst->hasPressure = true;
+                dst->pressureDirty = 1;
+                dst->pressureSourceZ = z;
+                DestabilizeWater(ox[lowFull], oy[lowFull], oz[lowFull]);
+            }
+        }
+        return false;
+    }
+    WaterCell* dst = &WATER_MUT(ox[best], oy[best], oz[best]);
+    bool dstWasActive = dst->level > 0;
+    src->level -= 1;
+    dst->level += 1;
+    WaterDepthChanged(x, y, z, src->level + 1, src->level);
+    WaterDepthChanged(ox[best], oy[best], oz[best], dst->level - 1, dst->level);
+    if (src->level == 0) waterActiveCells--;
+    if (!dstWasActive) waterActiveCells++;
+    if (oz[best] < z && dst->level == WATER_MAX_LEVEL) {   // fell onto full water: pressure
+        dst->hasPressure = true;
+        dst->pressureSourceZ = z;
+    }
+    src->pressureDirty = 1;
+    dst->pressureDirty = 1;
+    DestabilizeWater(x, y, z);
+    DestabilizeWater(ox[best], oy[best], oz[best]);
+    return true;
+}
+
 // A one-level step (giver at level+1, receiver at level) is only worth a move when the unit can
 // keep going: the receiver has a lower neighbour (not counting the giver), or water at the giver
 // has been flowing that way (momentum, from the flow layer). So a slope of terraces
@@ -690,11 +749,13 @@ static bool TryPressure(int x, int y, int z) {
     
     WATER_PRESSURE_VISITED(x, y, z) = currentPressureGen;
     
-    // Add initial neighbors to queue
-    for (int i = 0; i < 6; i++) {
-        int nx = x + dx[i];
-        int ny = y + dy[i];
-        int nz = z + dz[i];
+    // Add initial neighbors to queue (6 cells, then a pipe opening's other openings)
+    int pox[WATER_PIPE_MAX_OPENINGS], poy[WATER_PIPE_MAX_OPENINGS], poz[WATER_PIPE_MAX_OPENINGS];
+    int pn = (PipeOpeningCount() > 0) ? PipeOtherOpenings(x, y, z, pox, poy, poz, WATER_PIPE_MAX_OPENINGS) : 0;
+    for (int i = 0; i < 6 + pn; i++) {
+        int nx = i < 6 ? x + dx[i] : pox[i - 6];
+        int ny = i < 6 ? y + dy[i] : poy[i - 6];
+        int nz = i < 6 ? z + dz[i] : poz[i - 6];
         
         if (nz > maxZ) continue;
         if (!CanHoldWater(nx, ny, nz)) continue;
@@ -748,7 +809,8 @@ static bool TryPressure(int x, int y, int z) {
                 for (int k = queueHead - 1; k >= 0; k = pressureParent[k]) {
                     WaterPos to = pressureQueue[k];
                     WaterPos from = pressureParent[k] < 0 ? (WaterPos){x, y, z} : pressureQueue[pressureParent[k]];
-                    WaterFlowMove(from.x, from.y, from.z, to.x, to.y, to.z);
+                    if (abs(to.x - from.x) + abs(to.y - from.y) <= 1)   // a jump through a pipe is no current
+                        WaterFlowMove(from.x, from.y, from.z, to.x, to.y, to.z);
                 }
                 
                 // Clear pressure if we're no longer full
@@ -760,12 +822,13 @@ static bool TryPressure(int x, int y, int z) {
             }
         }
         
-        // Cell is full - continue searching through it
+        // Cell is full - continue searching through it (and through a pipe opening in it)
         if (current->level >= WATER_MAX_LEVEL) {
-            for (int i = 0; i < 6; i++) {
-                int nx = pos.x + dx[i];
-                int ny = pos.y + dy[i];
-                int nz = pos.z + dz[i];
+            int qn = (PipeOpeningCount() > 0) ? PipeOtherOpenings(pos.x, pos.y, pos.z, pox, poy, poz, WATER_PIPE_MAX_OPENINGS) : 0;
+            for (int i = 0; i < 6 + qn; i++) {
+                int nx = i < 6 ? pos.x + dx[i] : pox[i - 6];
+                int ny = i < 6 ? pos.y + dy[i] : poy[i - 6];
+                int nz = i < 6 ? pos.z + dz[i] : poz[i - 6];
                 
                 if (nz > maxZ) continue;
                 if (!CanHoldWater(nx, ny, nz)) continue;
@@ -866,6 +929,9 @@ static bool ProcessWaterCell(int x, int y, int z) {
     // Phase 1: Try to fall (highest priority)
     int fell = TryFall(x, y, z);
     if (fell > 0) moved = true;
+
+    // Phase 1b: through a pipe opening (pipes.h): fall to a lower opening, spread to a level one
+    if (cell->level > 0 && TryPipe(x, y, z)) moved = true;
     
     // Phase 2: Try to spread horizontally (if we still have water)
     if (cell->level > 0) {
@@ -1008,7 +1074,8 @@ void UpdateWater(void) {
     if (waterFlowTick % WATER_NAV_FLUSH == 0) WaterNavFlush();
     TideTick();
     WaterSpringsTick();
-    
+    PipeOpeningCount();   // a changed pipe network is worked out now and wakes the water at its openings
+
     // Early exit: no water activity at all
     if (waterActiveCells == 0) {
         waterUpdateCount = 0;

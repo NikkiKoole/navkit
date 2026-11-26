@@ -28,13 +28,16 @@ extern uint8_t* pipeGrid;       // the pipe byte per cell (allocated in grid_lay
 extern uint8_t* pipeConnGrid;   // the network pass's answer per cell: PIPE_CONN_* (not saved)
 #define PIPE(x, y, z)      (pipeGrid CELL_AT((x), (y), (z)))
 #define PIPE_CONN(x, y, z) (pipeConnGrid CELL_AT((x), (y), (z)))
-enum { PIPE_CONN_SUPPLY = 1 << 0, PIPE_CONN_DRAIN = 1 << 1 };
+enum { PIPE_CONN_SUPPLY = 1 << 0, PIPE_CONN_DRAIN = 1 << 1, PIPE_CONN_OPENING = 1 << 2 };
+// PIPE_CONN_SUPPLY: this water pipe is in a network with 2+ openings (water can go through it).
+// PIPE_CONN_OPENING: a water pipe end (supply + END): where water gets in and out (water.c).
 extern bool pipeOverlay;        // setting pipeOverlay: pipes under a constructed floor drawn too
 
 void ClearPipes(void);                                 // a new world: no pipes
 void PipesAfterLoad(void);                             // pipeGrid was read in: rebuild the cell list, counts, network
 uint8_t GetPipe(int x, int y, int z);                  // 0 out of bounds
 void SetPipe(int x, int y, int z, uint8_t bits);       // replaces the byte; the network is redone
+int  PipeCellCount(void);                              // cells with any pipe byte: 0 = no pipes at all
 int  PipeDrainCellCount(void);                         // cells with a drain bit: 0 = no drains here
 bool PipeDrainConnected(int x, int y, int z);          // this pipe cell's drain reaches an outlet
 // A fixture at (x, y, z) is on the drain if its own floor, or a wall cell next to it, carries a
@@ -48,6 +51,15 @@ bool PipeFixtureOnDrain(int x, int y, int z);
 typedef struct { int16_t x[PIPE_PULSE_CELLS], y[PIPE_PULSE_CELLS], z[PIPE_PULSE_CELLS]; int len; double start; bool active; } PipePulse;
 extern PipePulse pipePulses[PIPE_PULSE_MAX];
 void PipeFlushPulse(int x, int y, int z);
+// Water pipes (supply bits; DF-like: water.c moves real water through them). An opening is a
+// supply pipe's END: water in that cell can fall into the pipe or be pushed through it by
+// pressure and come out at another opening of the same network (a shut valve splits a network).
+int  PipeOpeningCount(void);                          // 0 = no water pipes: water.c skips its hooks
+bool PipeIsOpening(int x, int y, int z);
+// The other openings of (x, y, z)'s network (it must be an opening): up to max, returns how many
+int  PipeOtherOpenings(int x, int y, int z, int* ox, int* oy, int* oz, int max);
+// Lay a floor water pipe (supply), the same L as LayFloorDrain
+int  LayFloorSupply(int x1, int y1, int x2, int y2, int z);
 // Lay a floor drain from (x1, y1) to (x2, y2) on level z: along x first, then along y (an L)
 int  LayFloorDrain(int x1, int y1, int x2, int y2, int z);
 

@@ -1109,6 +1109,88 @@ static bool DrainBuildCheck(char* why, int whyLen) {
     return true;
 }
 
+// basins: water through a pipe, DF style (pipes.h openings + water.c TryPipe / TryPressure).
+// Basin A (4x4, walled, granite floor) on the ground at z1, full; basin B a 4x4 pit dug into
+// z0. A water pipe from an opening in A's floor east along z1, down a stack into the pit's side
+// and out at an opening on B's bottom; a shut valve on the way, opened at basinsValveAt. Then A
+// drains into B (B lies lower), unit by unit; 16 x 7 units in A is what B holds.
+#define BASINS_AX 6
+#define BASINS_BX 16
+#define BASINS_Y 8
+#define BASINS_W 4
+static const int basinsValveAt = 600;
+static int basinsTicks, basinsBefore;
+
+static int BasinUnits(int x0, int z) {
+    int n = 0;
+    for (int y = BASINS_Y; y < BASINS_Y + BASINS_W; y++)
+        for (int x = x0; x < x0 + BASINS_W; x++) n += GetWaterLevel(x, y, z);
+    return n;
+}
+
+static void SetupBasins(void) {
+    basinsTicks = 0;
+    basinsBefore = -1;
+    hungerEnabled = thirstEnabled = energyEnabled = bodyTempEnabled = bladderEnabled = false;
+    ClearPipes();
+    // A: granite walls round a 4x4 at z1, its floor (z0 below) granite, not soil
+    for (int y = BASINS_Y - 1; y <= BASINS_Y + BASINS_W; y++)
+        for (int x = BASINS_AX - 1; x <= BASINS_AX + BASINS_W; x++) {
+            bool inside = x >= BASINS_AX && x < BASINS_AX + BASINS_W && y >= BASINS_Y && y < BASINS_Y + BASINS_W;
+            SetWallMaterial(x, y, 0, MAT_GRANITE); ClearWallNatural(x, y, 0);
+            if (!inside) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_GRANITE); ClearWallNatural(x, y, 1); }
+        }
+    // B: a pit dug into z0 (granite round it, so the sides don't soak either)
+    for (int y = BASINS_Y - 1; y <= BASINS_Y + BASINS_W; y++)
+        for (int x = BASINS_BX - 1; x <= BASINS_BX + BASINS_W; x++) {
+            bool inside = x >= BASINS_BX && x < BASINS_BX + BASINS_W && y >= BASINS_Y && y < BASINS_Y + BASINS_W;
+            if (inside) GRID(x, y, 0) = CELL_AIR;
+            else { SetWallMaterial(x, y, 0, MAT_GRANITE); ClearWallNatural(x, y, 0); }
+        }
+    for (int y = BASINS_Y; y < BASINS_Y + BASINS_W; y++)
+        for (int x = BASINS_AX; x < BASINS_AX + BASINS_W; x++) SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+    // The pipe: opening in A at (AX+3, Y+1, 1), east along z1 through A's wall to x = BX-1, a
+    // stack down into the pit's west wall (BX-1, Y+1, 0), opening on B's bottom at (BX, Y+1, 0)
+    int py = BASINS_Y + 1;
+    LayFloorSupply(BASINS_AX + 3, py, BASINS_BX - 2, py, 1);
+    SetPipe(BASINS_AX + 3, py, 1, GetPipe(BASINS_AX + 3, py, 1) | PIPE_END);
+    SetPipe(BASINS_BX - 1, py, 1, PIPE_WALL_SUPPLY | PIPE_STACK);
+    SetPipe(BASINS_BX - 1, py, 0, PIPE_WALL_SUPPLY | PIPE_STACK);
+    SetPipe(BASINS_BX, py, 0, PIPE_FLOOR_SUPPLY | PIPE_END);
+    int vx = (BASINS_AX + BASINS_BX) / 2;
+    SetPipe(vx, py, 1, GetPipe(vx, py, 1) | PIPE_VALVE | PIPE_VALVE_CLOSED);
+    BuildEntrances();
+    BuildGraph();
+    currentViewZ = 1;
+    AddMessage("Basins: A (west) full, B (the pit, east) empty; the valve opens at tick 600 (console pipe valve)", GREEN);
+}
+
+static void BasinsLiveTick(void) {
+    basinsTicks++;
+    if (basinsTicks == basinsValveAt) {
+        int vx = (BASINS_AX + BASINS_BX) / 2, py = BASINS_Y + 1;
+        SetPipe(vx, py, 1, GetPipe(vx, py, 1) & (uint8_t)~PIPE_VALVE_CLOSED);
+    }
+}
+
+static void BasinsTickStats(void) {
+    if (basinsTicks == basinsValveAt - 1) basinsBefore = BasinUnits(BASINS_BX, 0);
+    if (basinsTicks % 600 == 0)
+        printf("  tick %5d: A %3d units, B %3d units\n", basinsTicks, BasinUnits(BASINS_AX, 1), BasinUnits(BASINS_BX, 0));
+}
+
+static void BasinsPrintStats(void) {
+    printf("Basins: A %d units, B %d units (B before the valve opened: %d)\n",
+           BasinUnits(BASINS_AX, 1), BasinUnits(BASINS_BX, 0), basinsBefore);
+}
+
+static bool BasinsCheck(char* why, int whyLen) {
+    if (basinsTicks < basinsValveAt + 1200) { snprintf(why, (size_t)whyLen, "run at least %d ticks", basinsValveAt + 1200); return false; }
+    if (basinsBefore != 0) { snprintf(why, (size_t)whyLen, "water got through the shut valve (%d units in B)", basinsBefore); return false; }
+    if (BasinUnits(BASINS_BX, 0) < 80) { snprintf(why, (size_t)whyLen, "B got only %d units after the valve opened", BasinUnits(BASINS_BX, 0)); return false; }
+    return true;
+}
+
 static void DoorwayTickStats(void) {
     doorwayTicks++;
     float r = CELL_SIZE * 0.5f;
@@ -6335,6 +6417,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0, DrainLiveTick},
     {"drain-build", "Two people lay a brick drain from a toilet to an outlet (Work > Build > Pipe drain / Outlet blueprints, 1 brick per cell, 2 for the outlet); once it's in, the toilet flushes",
                    NULL,        SetupDrainBuild, DrainBuildTickStats, DrainBuildPrintStats, DrainBuildCheck, 0, 0, DrainBuildLiveTick},
+    {"basins",     "Water through a pipe, DF style: a full basin and a pit beside it, a pipe between them with a shut valve; at tick 600 the valve opens and the basin drains into the pit (console pipe, water pipes = supply)",
+                   NULL,        SetupBasins,   BasinsTickStats, BasinsPrintStats, BasinsCheck, 0, 0, BasinsLiveTick},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
