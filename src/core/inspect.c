@@ -1480,53 +1480,9 @@ int InspectSaveFile(int argc, char** argv) {
         }
     }
     
-    // Stockpiles
-    insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= V119_MONEY) {
-        fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
-    } else if (version >= V114_GUNPOWDER) {
-        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
-        static StockpileV118 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V107_SCROUNGE) {
-        // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
-        static StockpileV113 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV113), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V113_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V106_INVENTORY) {
-        // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
-        static StockpileV106 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV106), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V106_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V105_CONCRETE) {
-        // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
-        static StockpileV105 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV105), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&insp_stockpiles[i], &oldSp[i], V105_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V104_TRASH) {
-        // v104: allowedMaterials was V104_MAT_COUNT (19) bools
-        static StockpileV104 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV104), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V104_ITEM_TYPE_COUNT);
-    } else if (version >= 91) {
-        // v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT (73) bools
-        static StockpileV103 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV103), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V103_ITEM_TYPE_COUNT);
-    } else {
-        // v90 and below: allowedTypes was V90_ITEM_TYPE_COUNT (68) bools
-        static StockpileV90 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&insp_stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
-    }
-    // Shops (v121+, money.h)
-    memset(insp_forSale, 0, sizeof(insp_forSale));
-    memset(insp_till, 0, sizeof(insp_till));
-    if (version >= V121_SHOPS) {
-        fread(insp_forSale, sizeof(bool), MAX_STOCKPILES, f);
-        fread(insp_till, sizeof(int), MAX_STOCKPILES, f);
-    }
+    // Stockpiles and shops (saveload.c StockpilesLoad: every save version)
+    insp_stockpiles = calloc(MAX_STOCKPILES, sizeof(Stockpile));
+    StockpilesLoad(f, version, insp_stockpiles, insp_forSale, insp_till);
 
     // Gather zones
     fread(&insp_gatherZoneCount, 4, 1, f);
@@ -2027,7 +1983,8 @@ int InspectSaveFile(int argc, char** argv) {
         memcpy(items, insp_items, sizeof(Item) * insp_itemHWM);
         itemHighWaterMark = insp_itemHWM;
         RebuildContainerLists();
-        memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
+        memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);   // the globals own the arrays now
+        StockpileUpdateHighWater();
         memcpy(stockpileForSale, insp_forSale, sizeof(insp_forSale));
         memcpy(stockpileTill, insp_till, sizeof(insp_till));
         ShopRecount();

@@ -23,6 +23,13 @@ vegetationGrid, snowGrid, temperatureGrid, designations,
 wearGrid, growthTimer, targetHeight, treeHarvestState, floorDirtGrid
 ```
 
+### Stockpiles in a save (v123)
+
+`StockpilesSave` / `StockpilesLoad` (saveload.c) write and read them for every version;
+`--inspect` calls the same `StockpilesLoad`. Since v123 each stockpile below
+`stockpileHighWater` is its header plus its own `width * height` cells; older saves hold 64
+fixed 32x32 structs, read as (or migrated into) `StockpileV122`, then `StockpileFromV122`.
+
 ### Section Markers
 
 Save files use hex markers for readability: `MARKER_GRIDS` (0x47524944), `MARKER_ENTITIES` (0x454E5449), `MARKER_VIEW`, `MARKER_SETTINGS`, `MARKER_END`.

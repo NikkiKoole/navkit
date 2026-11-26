@@ -810,7 +810,7 @@ void SuspendBill(int workshopIdx, int billIdx, bool suspended) {
 // Count items of a type in all stockpiles
 int CountItemsInStockpiles(ItemType type) {
     int count = 0;
-    for (int s = 0; s < MAX_STOCKPILES; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         Stockpile* sp = &stockpiles[s];
         if (!sp->active) continue;
         
@@ -1216,7 +1216,7 @@ void UpdateWorkshopDiagnostics(float dt) {
 // Link stockpile to workshop (adds to next available slot)
 bool LinkStockpileToWorkshop(int workshopIdx, int stockpileIdx) {
     if (workshopIdx < 0 || workshopIdx >= workshopCount) return false;
-    if (stockpileIdx < 0 || stockpileIdx >= stockpileCount) return false;
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES || !stockpiles[stockpileIdx].active) return false;
     
     Workshop* ws = &workshops[workshopIdx];
     

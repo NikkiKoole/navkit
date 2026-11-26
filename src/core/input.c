@@ -475,7 +475,7 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
             CancelDesignation(dx, dy, z);
             
             // Remove stockpile cells in this area
-            for (int i = 0; i < MAX_STOCKPILES; i++) {
+            for (int i = 0; i < stockpileHighWater; i++) {
                 if (stockpiles[i].active) {
                     RemoveStockpileCells(i, dx, dy, dx, dy);
                 }
@@ -1348,7 +1348,7 @@ static void ExecuteCreateStockpile(int x1, int y1, int x2, int y2, int z) {
     if (height > MAX_STOCKPILE_SIZE) height = MAX_STOCKPILE_SIZE;
     
     if (width > 0 && height > 0) {
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
+        for (int i = 0; i < stockpileHighWater; i++) {
             if (!stockpiles[i].active || stockpiles[i].z != z) continue;
             RemoveStockpileCells(i, x1, y1, x2, y2);
         }
@@ -1368,7 +1368,7 @@ static void ExecuteCreateRefusePile(int x1, int y1, int x2, int y2, int z) {
     if (height > MAX_STOCKPILE_SIZE) height = MAX_STOCKPILE_SIZE;
 
     if (width > 0 && height > 0) {
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
+        for (int i = 0; i < stockpileHighWater; i++) {
             if (!stockpiles[i].active || stockpiles[i].z != z) continue;
             RemoveStockpileCells(i, x1, y1, x2, y2);
         }

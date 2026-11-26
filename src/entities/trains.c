@@ -1259,7 +1259,7 @@ int StationCargoStockpiles(int stationIdx, int* out, int maxOut) {
     if (stationIdx < 0 || stationIdx >= stationCount || !stations[stationIdx].active) return 0;
     const TrainStation* st = &stations[stationIdx];
     int n = 0;
-    for (int sp = 0; sp < MAX_STOCKPILES && n < maxOut; sp++) {
+    for (int sp = 0; sp < stockpileHighWater && n < maxOut; sp++) {
         const Stockpile* s = &stockpiles[sp];
         if (!s->active || s->z != st->z) continue;
         bool near = false;

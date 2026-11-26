@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 122
+#define CURRENT_SAVE_VERSION 123
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -144,6 +144,15 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // the one-way layer; the group table, the place table and each saved mover's groups right after
 // the social need. Older saves: no places, no groups (everything public).
 #define V122_PLACES 122
+// v123: stockpiles sized to their area (stockpiles.h). After the items: stockpileHighWater, then per
+// slot below it the Stockpile struct (array pointers written as NULL) and, if active, its per-cell
+// arrays (width * height each: cells, slots, reservedBy, slotCounts, slotTypes, slotMaterials,
+// slotIsContainer, groundItemIdx); then stockpileForSale and stockpileTill, stockpileHighWater each.
+// Older saves: V122_MAX_STOCKPILES fixed-size StockpileV122 (or older) structs, shops 64 each.
+#define V123_STOCKPILE_CELLS 123
+#define V122_MAX_STOCKPILES 64
+#define V122_ITEM_TYPE_COUNT 86
+#define V122_MAT_COUNT 20
 #define V118_ITEM_TYPE_COUNT 85
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");
@@ -505,7 +514,37 @@ typedef struct {
     bool rejectsRotten;
 } StockpileV118;
 
-// Copy an old stockpile (StockpileV90 / V103 / V104) into a Stockpile; item types the old
+// V122 Stockpile struct (v119-v122): every per-cell array MAX_STOCKPILE_SIZE^2, saved whole.
+// The older structs migrate into this one (MIGRATE_OLD_STOCKPILE*), then StockpileFromV122
+// (saveload.c) makes a sized Stockpile of it.
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V122_ITEM_TYPE_COUNT];
+    bool allowedMaterials[V122_MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+    bool rejectsRotten;
+} StockpileV122;
+
+// Stockpiles in a save (saveload.c): write the current format; read any version into
+// dst[MAX_STOCKPILES] (inactive, no arrays on entry) and the shops (MAX_STOCKPILES each)
+#include <stdio.h>
+void StockpilesSave(FILE* f);
+void StockpilesLoad(FILE* f, int version, Stockpile* dst, bool* forSale, int* till);
+
+// Copy an old stockpile (StockpileV90 ... V118) into a StockpileV122; item types the old
 // save didn't know are not allowed, materials it didn't know are
 #define MIGRATE_OLD_STOCKPILE(sp, old, oldTypeCount) MIGRATE_OLD_STOCKPILE_M(sp, old, oldTypeCount, V104_MAT_COUNT)
 #define MIGRATE_OLD_STOCKPILE_M(sp, old, oldTypeCount, oldMatCount) do { \
@@ -514,7 +553,7 @@ typedef struct {
     (sp)->active = (old)->active; \
     memset((sp)->allowedTypes, 0, sizeof((sp)->allowedTypes)); \
     memcpy((sp)->allowedTypes, (old)->allowedTypes, (oldTypeCount) * sizeof(bool)); \
-    for (int m_ = 0; m_ < MAT_COUNT; m_++) (sp)->allowedMaterials[m_] = true; \
+    for (int m_ = 0; m_ < (int)sizeof((sp)->allowedMaterials); m_++) (sp)->allowedMaterials[m_] = true; \
     memcpy((sp)->allowedMaterials, (old)->allowedMaterials, (oldMatCount) * sizeof(bool)); \
     memcpy((sp)->cells, (old)->cells, sizeof((sp)->cells)); \
     memcpy((sp)->slots, (old)->slots, sizeof((sp)->slots)); \

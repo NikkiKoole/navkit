@@ -53,7 +53,7 @@ int AuditItemStockpileConsistency(bool verbose) {
         int iz = (int)items[i].z;
 
         bool found = false;
-        for (int s = 0; s < MAX_STOCKPILES; s++) {
+        for (int s = 0; s < stockpileHighWater; s++) {
             Stockpile* sp = &stockpiles[s];
             if (!sp->active) continue;
             if (sp->z != iz) continue;
@@ -88,7 +88,7 @@ int AuditItemStockpileConsistency(bool verbose) {
     }
 
     // Check: every stockpile slot with slotCounts > 0 should have slots[] → active item
-    for (int s = 0; s < MAX_STOCKPILES; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         Stockpile* sp = &stockpiles[s];
         if (!sp->active) continue;
 
@@ -359,7 +359,7 @@ int AuditBlueprintReservations(bool verbose) {
 int AuditStockpileSlotReservations(bool verbose) {
     int violations = 0;
 
-    for (int s = 0; s < MAX_STOCKPILES; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         Stockpile* sp = &stockpiles[s];
         if (!sp->active) continue;
 
@@ -404,7 +404,7 @@ int AuditStockpileSlotReservations(bool verbose) {
 int AuditStockpileFreeSlotCounts(bool verbose) {
     int violations = 0;
 
-    for (int s = 0; s < MAX_STOCKPILES; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         Stockpile* sp = &stockpiles[s];
         if (!sp->active) continue;
 

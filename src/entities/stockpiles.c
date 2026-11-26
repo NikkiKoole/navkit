@@ -8,9 +8,43 @@
 #include "../world/cell_defs.h"
 #include "../simulation/rooms.h"
 #include <string.h>
+#include <stdlib.h>
 
 Stockpile stockpiles[MAX_STOCKPILES];
 int stockpileCount = 0;
+int stockpileHighWater = 0;
+
+// One block per stockpile: the 4-byte arrays first, then the 1-byte ones (alignment)
+bool StockpileAllocCells(Stockpile* sp, int width, int height) {
+    StockpileFreeCells(sp);
+    size_t n = (size_t)(width > 0 ? width : 0) * (size_t)(height > 0 ? height : 0);
+    if (n == 0) n = 1;
+    size_t bytes = n * (4 * sizeof(int) + sizeof(ItemType) + sizeof(uint8_t) + 2 * sizeof(bool));
+    char* b = malloc(bytes);
+    if (!b) return false;
+    sp->slots = (int*)b;            b += n * sizeof(int);
+    sp->reservedBy = (int*)b;       b += n * sizeof(int);
+    sp->slotCounts = (int*)b;       b += n * sizeof(int);
+    sp->groundItemIdx = (int*)b;    b += n * sizeof(int);
+    sp->slotTypes = (ItemType*)b;   b += n * sizeof(ItemType);
+    sp->slotMaterials = (uint8_t*)b; b += n * sizeof(uint8_t);
+    sp->cells = (bool*)b;           b += n * sizeof(bool);
+    sp->slotIsContainer = (bool*)b;
+    return true;
+}
+
+void StockpileFreeCells(Stockpile* sp) {
+    free(sp->slots);   // the block starts with slots
+    sp->slots = sp->reservedBy = sp->slotCounts = sp->groundItemIdx = NULL;
+    sp->slotTypes = NULL;
+    sp->slotMaterials = NULL;
+    sp->cells = sp->slotIsContainer = NULL;
+}
+
+void StockpileUpdateHighWater(void) {
+    stockpileHighWater = MAX_STOCKPILES;
+    while (stockpileHighWater > 0 && !stockpiles[stockpileHighWater - 1].active) stockpileHighWater--;
+}
 
 GatherZone gatherZones[MAX_GATHER_ZONES];
 int gatherZoneCount = 0;
@@ -163,8 +197,10 @@ static inline uint8_t ResolveItemMaterial(ItemType type, uint8_t material) {
 void ClearStockpiles(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         stockpiles[i].active = false;
+        StockpileFreeCells(&stockpiles[i]);
     }
     stockpileCount = 0;
+    stockpileHighWater = 0;
     ShopResetAll();   // money.h: no shops
 }
 
@@ -194,7 +230,7 @@ void MarkStockpileGroundItem(float x, float y, int z, int itemIdx) {
     int tileY = (int)(y / CELL_SIZE);
     
     // Find which stockpile this tile belongs to
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         if (sp->z != z) continue;
@@ -215,7 +251,7 @@ void MarkStockpileGroundItem(float x, float y, int z, int itemIdx) {
 // Rebuild the entire groundItemIdx cache from current item positions
 void RebuildStockpileGroundItemCache(void) {
     // Clear all to -1 (no item)
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         int totalSlots = stockpiles[i].width * stockpiles[i].height;
         memset(stockpiles[i].groundItemIdx, -1, totalSlots * sizeof(int));
@@ -232,7 +268,7 @@ void RebuildStockpileGroundItemCache(void) {
 // Rebuild free slot counts for all stockpiles
 // A slot is "free" if: active cell, not reserved, not full, no ground item blocking, walkable
 void RebuildStockpileFreeSlotCounts(void) {
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         
@@ -353,6 +389,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             sp->z = z;
             sp->width = (width > MAX_STOCKPILE_SIZE) ? MAX_STOCKPILE_SIZE : width;
             sp->height = (height > MAX_STOCKPILE_SIZE) ? MAX_STOCKPILE_SIZE : height;
+            if (!StockpileAllocCells(sp, sp->width, sp->height)) return -1;
             sp->active = true;
             
             // Default: allow all types
@@ -397,6 +434,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             sp->rejectsRotten = true;
             
             stockpileCount++;
+            if (i >= stockpileHighWater) stockpileHighWater = i + 1;
             InvalidateStockpileSlotCacheAll();  // New stockpile added
             InvalidateRooms();
             EventLog("Stockpile %d created at (%d,%d,z%d) %dx%d", i, x, y, z, sp->width, sp->height);
@@ -438,7 +476,9 @@ void DeleteStockpile(int index) {
         
         EventLog("Stockpile %d deleted at (%d,%d,z%d)", index, sp->x, sp->y, sp->z);
         sp->active = false;
+        StockpileFreeCells(sp);
         stockpileCount--;
+        StockpileUpdateHighWater();
         InvalidateStockpileSlotCacheAll();  // Stockpile deleted
         InvalidateRooms();
     }
@@ -773,7 +813,7 @@ void ReleaseAllSlotsForMover(int moverIdx) {
     (void)moverIdx;  // No longer tracking individual movers
     // This is only called from ClearMovers() which clears all movers,
     // so we just zero all reservation counts
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         int totalSlots = sp->width * sp->height;
@@ -807,7 +847,7 @@ int FindStockpileForItem(ItemType type, uint8_t material, int* outSlotX, int* ou
     int bestSlotX = 0, bestSlotY = 0;
     int bestPriority = 0;
     
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         if (!StockpileAcceptsItem(i, type, material)) continue;
         if (stockpiles[i].freeSlotCount <= 0) continue;  // O(1) early exit if full
@@ -836,7 +876,7 @@ bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx) {
     int gx = (int)(x / CELL_SIZE);
     int gy = (int)(y / CELL_SIZE);
     
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         if (sp->z != z) continue;
@@ -1018,7 +1058,7 @@ void SyncStockpileSlotCount(float x, float y, int z) {
 
 void SyncStockpileSlotCountForItem(int itemIdx) {
     if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         int totalSlots = sp->width * sp->height;
@@ -1038,7 +1078,7 @@ int TakeFromStockpileSlot(int itemIdx, int count) {
 
     if (items[itemIdx].stackCount <= count) {
         // Taking all — find and clear the stockpile slot holding this item
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
+        for (int i = 0; i < stockpileHighWater; i++) {
             if (!stockpiles[i].active) continue;
             Stockpile* sp = &stockpiles[i];
             int totalSlots = sp->width * sp->height;
@@ -1228,7 +1268,7 @@ int FindStockpileForOverfullItem(int itemIdx, int currentStockpileIdx, int* outS
     }
     
     // Then: find any other stockpile that accepts this type and has room
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         if (i == currentStockpileIdx) continue;
         
@@ -1316,7 +1356,7 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
     int bestPriority = currentPriority;
     int bestSlotX = 0, bestSlotY = 0;
     
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active) continue;
         if (i == currentStockpileIdx) continue;  // skip current stockpile
         if (stockpiles[i].priority <= currentPriority) continue;  // must be higher priority
@@ -1384,7 +1424,7 @@ bool FindConsolidationTarget(int stockpileIdx, int srcSlotX, int srcSlotY, int* 
 
 int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
     // Scan all stockpiles for ground items on their tiles
-    for (int spIdx = 0; spIdx < MAX_STOCKPILES; spIdx++) {
+    for (int spIdx = 0; spIdx < stockpileHighWater; spIdx++) {
         if (!stockpiles[spIdx].active) continue;
         Stockpile* sp = &stockpiles[spIdx];
         
@@ -1462,7 +1502,7 @@ void SyncStockpileContainerSlotCount(int containerIdx) {
     if (items[containerIdx].state != ITEM_IN_STOCKPILE) return;
 
     // Find which stockpile slot holds this container
-    for (int s = 0; s < stockpileCount; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         Stockpile* sp = &stockpiles[s];
         if (!sp->active) continue;
         for (int idx = 0; idx < sp->width * sp->height; idx++) {

@@ -8737,9 +8737,10 @@ describe(stockpile_lifecycle) {
         RemoveStockpileCells(spIdx, 5, 5, 6, 5);
         
         // Player expectation: Reservations should be cleared
-        // (Otherwise phantom reservations block future use)
+        // (Otherwise phantom reservations block future use). With no cells left the stockpile
+        // is gone (and its arrays with it): nothing reserved either.
         reservedCount = 0;
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 2 && stockpiles[spIdx].active; i++) {
             if (stockpiles[spIdx].reservedBy[i] > 0) reservedCount++;
         }
         expect(reservedCount == 0);

@@ -3798,7 +3798,7 @@ int WorkGiver_FillWaterPot(int moverIdx) {
 
     // Find a stockpile slot for the filled pot (to return it after filling)
     int spIdx = -1, slotX = 0, slotY = 0;
-    for (int s = 0; s < stockpileCount; s++) {
+    for (int s = 0; s < stockpileHighWater; s++) {
         if (!stockpiles[s].active) continue;
         if (stockpiles[s].z != mz) continue;
         if (!StockpileAcceptsItem(s, ITEM_CLAY_POT, items[bestPot].material)) continue;
@@ -4846,7 +4846,7 @@ static void AssignJobs_P3c_Rehaul(void) {
             // For rotten items, find a stockpile that accepts rotten (rejectsRotten=false)
             if (items[j].condition == CONDITION_ROTTEN) {
                 destSp = -1;
-                for (int sp = 0; sp < MAX_STOCKPILES; sp++) {
+                for (int sp = 0; sp < stockpileHighWater; sp++) {
                     if (!stockpiles[sp].active) continue;
                     if (stockpiles[sp].rejectsRotten) continue;
                     if (!StockpileAcceptsItem(sp, items[j].type, items[j].material)) continue;
@@ -4895,7 +4895,7 @@ static void AssignJobs_P3c_Rehaul(void) {
 
 __attribute__((noinline))
 static void AssignJobs_P3e_ContainerCleanup(void) {
-    for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+    for (int spIdx = 0; spIdx < stockpileHighWater && idleMoverCount > 0; spIdx++) {
         Stockpile* sp = &stockpiles[spIdx];
         if (!sp->active) continue;
         if (sp->maxContainers == 0) continue;
@@ -4937,21 +4937,37 @@ static void AssignJobs_P3e_ContainerCleanup(void) {
 
 __attribute__((noinline))
 static void AssignJobs_P3d_Consolidate(void) {
-    for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+    if (idleMoverCount <= 0 || stockpileCount <= 0) return;
+    // The free stockpiled items, bucketed by their stockpile in item order (one pass: each
+    // stockpile then looks at its own items only, in the same order as a scan of all items would)
+    static int spFirst[MAX_STOCKPILES + 1];
+    static int spItems[MAX_ITEMS];
+    static int itemSp[MAX_ITEMS];
+    memset(spFirst, 0, sizeof(int) * (size_t)(stockpileHighWater + 1));
+    int n = 0;
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        itemSp[j] = -1;
+        if (!items[j].active || items[j].reservedBy != -1 || items[j].state != ITEM_IN_STOCKPILE) continue;
+        int sp = -1;
+        if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &sp) || sp < 0 || sp >= stockpileHighWater) continue;
+        itemSp[j] = sp;
+        spFirst[sp + 1]++;
+        n++;
+    }
+    if (n == 0) return;
+    for (int s = 0; s < stockpileHighWater; s++) spFirst[s + 1] += spFirst[s];
+    static int fill[MAX_STOCKPILES];
+    memcpy(fill, spFirst, sizeof(int) * (size_t)stockpileHighWater);
+    for (int j = 0; j < itemHighWaterMark; j++)
+        if (itemSp[j] >= 0) spItems[fill[itemSp[j]]++] = j;
+
+    for (int spIdx = 0; spIdx < stockpileHighWater && idleMoverCount > 0; spIdx++) {
         if (!stockpiles[spIdx].active) continue;
-        
-        for (int j = 0; j < itemHighWaterMark; j++) {
-            if (!items[j].active) continue;
-            if (items[j].reservedBy != -1) continue;
-            if (items[j].state != ITEM_IN_STOCKPILE) continue;
-            
-            int itemSp = -1;
-            if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &itemSp)) continue;
-            if (itemSp != spIdx) continue;
-            
+        for (int k = spFirst[spIdx]; k < spFirst[spIdx + 1]; k++) {
+            int j = spItems[k];
+            if (items[j].reservedBy != -1) continue;   // taken by an earlier assignment
             int itemSlotX = (int)(items[j].x / CELL_SIZE);
             int itemSlotY = (int)(items[j].y / CELL_SIZE);
-            
             int destSlotX, destSlotY;
             if (FindConsolidationTarget(spIdx, itemSlotX, itemSlotY, &destSlotX, &destSlotY)) {
                 if (TryAssignItemToMover(j, spIdx, destSlotX, destSlotY, false)) {

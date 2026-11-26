@@ -139,6 +139,13 @@ someone let in, a visit over, nobody trespassing). Four game days of galerij: 13
   or a drink in the same tick (they all start together), each search scans all ~1800 pieces of
   furniture: one tick of 52 ms (RestSearch), a few of 20 (DrinkSearch). Home-first searches (a
   household's own furniture first, through its place) or a furniture index per chunk would fix it.
+- Stockpiles sized to their area (save v123): `MAX_STOCKPILES` 64 -> 1024; a 1x2 fridge costs
+  46 bytes of cells instead of 23.7 KB, saves are 4-5x smaller. `galerij-big` now has the full
+  fit-out (nine pieces and a fridge stockpile a flat): at 128, 380 flats, 570 residents, 380
+  stockpiles, 0 trespass; job assignment 0.6 ms a tick after bucketing the consolidate phase
+  (it asked "which stockpile is this item in" for every item inside a loop over stockpiles).
+  Mingling now checks the cell it walks to, not just the group's middle (a host in the doorway).
+  Still: the rare push into a closed door makes the 128 run's check fail (doors, not ownership).
 
 **Next:** Town's beds, City 1999's shops (order above). Hoped-for behaviours that build on this
 (showing an unwelcome guest out): `../../vision/hoped-for-behaviours.md`.

@@ -138,7 +138,7 @@ int ItemDeposit(int type) {
 int BottleMachineShop(int f) {
     if (f < 0 || f >= MAX_FURNITURE || !furniture[f].active || furniture[f].type != FURNITURE_BOTTLE_MACHINE) return -1;
     int best = -1, bestD = BOTTLE_MACHINE_SHOP_RANGE + 1;
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         if (!stockpiles[i].active || !stockpileForSale[i] || stockpiles[i].z != furniture[f].z) continue;
         const Stockpile* sp = &stockpiles[i];
         int dx = furniture[f].x < sp->x ? sp->x - furniture[f].x : (furniture[f].x >= sp->x + sp->width ? furniture[f].x - (sp->x + sp->width - 1) : 0);

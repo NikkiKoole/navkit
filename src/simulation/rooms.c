@@ -324,7 +324,7 @@ static void ScanRoomCells(uint16_t roomId, int z, RoomBfsNode *cells, int cellCo
         }
 
         // Stockpile check (inline to avoid dependency on main.c)
-        for (int sp = 0; sp < MAX_STOCKPILES; sp++) {
+        for (int sp = 0; sp < stockpileHighWater; sp++) {
             if (!stockpiles[sp].active || stockpiles[sp].z != z) continue;
             if (cx >= stockpiles[sp].x && cx < stockpiles[sp].x + stockpiles[sp].width &&
                 cy >= stockpiles[sp].y && cy < stockpiles[sp].y + stockpiles[sp].height) {

@@ -1016,7 +1016,10 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t moverRenderSize = sizeof(MoverRenderData) * MAX_MOVERS;
             size_t itemsSize = sizeof(Item) * MAX_ITEMS;
             size_t jobsSize = sizeof(Job) * MAX_JOBS;
-            size_t stockpilesSize = sizeof(Stockpile) * MAX_STOCKPILES;
+            size_t stockpilesSize = sizeof(Stockpile) * MAX_STOCKPILES;   // headers, plus each one's cells:
+            for (int i = 0; i < stockpileHighWater; i++)
+                if (stockpiles[i].active) stockpilesSize += (size_t)(stockpiles[i].width * stockpiles[i].height) *
+                    (4 * sizeof(int) + sizeof(ItemType) + sizeof(uint8_t) + 2 * sizeof(bool));
             size_t blueprintsSize = sizeof(Blueprint) * MAX_BLUEPRINTS;
             size_t gatherZonesSize = sizeof(GatherZone) * MAX_GATHER_ZONES;
             size_t workshopsSize = sizeof(Workshop) * MAX_WORKSHOPS;

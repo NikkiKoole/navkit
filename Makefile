@@ -803,7 +803,7 @@ debug: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O0 -g -fno-omit-frame-pointer -I. -Wall -Wextra -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
 
 # AddressSanitizer build for memory debugging
-asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra
+asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Ivendor -Wall -Wextra
 asan: LDFLAGS += -fsanitize=address
 asan: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)

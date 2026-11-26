@@ -74,7 +74,7 @@ int GetAnimalAtWorldPos(float wx, float wy, int wz) {
 
 // Stockpile covering cell (gx, gy, gz), or -1
 int GetStockpileAtGrid(int gx, int gy, int gz) {
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         const Stockpile* sp = &stockpiles[i];
         if (!sp->active || sp->z != gz) continue;
         if (gx >= sp->x && gx < sp->x + sp->width && gy >= sp->y && gy < sp->y + sp->height) return i;

@@ -1133,7 +1133,7 @@ static void TownRelinkLot(TownLot* L) {
             L->ws[L->wsCount++] = w;
         }
     L->storeCount = 0;
-    for (int sp = 0; sp < MAX_STOCKPILES && L->storeCount < TOWN_MAX_LOT_STORES; sp++) {
+    for (int sp = 0; sp < stockpileHighWater && L->storeCount < TOWN_MAX_LOT_STORES; sp++) {
         const Stockpile* st = &stockpiles[sp];
         if (!st->active || st->z != L->z || st->x < L->x1 || st->x > L->x2 || st->y < L->y1 || st->y > L->y2) continue;
         if (L->kind == LOT_HOME) continue;   // a home's only stockpile is the pantry (below)
@@ -1142,7 +1142,7 @@ static void TownRelinkLot(TownLot* L) {
     L->stockpile = -1;
     if (L->fridge >= 0) {
         const Furniture* fr = &furniture[L->fridge];
-        for (int sp = 0; sp < MAX_STOCKPILES; sp++)
+        for (int sp = 0; sp < stockpileHighWater; sp++)
             if (stockpiles[sp].active && stockpiles[sp].x == fr->x && stockpiles[sp].y == fr->y && stockpiles[sp].z == fr->z)
                 { L->stockpile = sp; break; }
     }

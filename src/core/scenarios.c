@@ -687,18 +687,19 @@ static void SetupGalerij(void) {
                           GalerijFlatCount(), moverCount), GREEN);
 }
 
-// galerij-big: the galerij as a load and stress test for ownership and visits. Rows of blocks
-// fill the map (scenarioSize, default 128), as many flats as the furniture table holds (light
-// fit-out: bed, chair, tap, toilet; food on the counter, no fridge stockpile: stockpiles are
-// capped at MAX_STOCKPILES). Same check as the galerij. Use with --profile. 64: 96 flats, 144
-// residents; 128: 456 flats, 684 residents.
+// galerij-big: the galerij as a load and stress test for ownership, visits and many small
+// stockpiles. Rows of blocks fill the map (scenarioSize, default 128), each flat furnished like
+// the galerij's (nine pieces, a fridge stockpile), as many flats as the furniture and stockpile
+// tables hold. Same check as the galerij. Use with --profile. 64: 96 flats, 144 residents;
+// 128: 380 flats, 570 residents.
 static void SetupGalerijBig(void) {
-    glrLight = true;
+    glrLight = false;
     glrFlats = (gridWidth - 13) / (GLR_W - 1);
     glrBlocks = (gridHeight - 2) / GLR_STRIDE;
     if (glrFlats < 1) glrFlats = 1;
     if (glrBlocks < 1) glrBlocks = 1;
-    int maxFlats = MAX_FURNITURE / 5;                  // 4 pieces a flat, some room to spare
+    int maxFlats = MAX_FURNITURE / 10;                 // 9 pieces a flat, some room to spare
+    if (maxFlats > MAX_STOCKPILES - 16) maxFlats = MAX_STOCKPILES - 16;   // a fridge stockpile each
     if (maxFlats > GLR_MAX_FLATS) maxFlats = GLR_MAX_FLATS;
     if (2 * glrFlats > maxFlats) glrFlats = maxFlats / 2;
     while (glrBlocks > 1 && GalerijFlatCount() > maxFlats) glrBlocks--;
@@ -5984,7 +5985,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"galerij",    "A block of flats off an outdoor gallery: 8 households (places, places.h), dollhouse rules; nobody uses a home that isn't theirs",
                    NULL,        SetupGalerij, GalerijTickStats, GalerijPrintStats, GalerijCheck, 41, 16},
-    {"galerij-big", "Rows of galerij blocks filling the map (scenarioSize, default 128: 456 households, 684 residents; 64: 96 / 144), visits; ownership load test (--profile)",
+    {"galerij-big", "Rows of furnished galerij blocks filling the map (scenarioSize, default 128: 380 flats, 570 residents, 380 fridge stockpiles; 64: 96 / 144), visits; ownership and stockpile load test (--profile)",
                    NULL,        SetupGalerijBig, GalerijTickStats, GalerijPrintStats, GalerijCheck, 128, 128},
     {"visiting",   "The galerij with frequent short visits: knock, get let in, stay, leave; stats for visits let in, over, cut short, given up (settings visit*)",
                    NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},

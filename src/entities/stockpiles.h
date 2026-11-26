@@ -6,7 +6,7 @@
 #include "../world/material.h"
 #include "vendor/raylib.h"
 
-#define MAX_STOCKPILES 64
+#define MAX_STOCKPILES 1024   // loops run to stockpileHighWater, not here
 #define MAX_STOCKPILE_SIZE 32  // max width/height
 #define MAX_STACK_SIZE 10      // max items per slot
 
@@ -54,27 +54,30 @@ typedef struct {
 extern const StockpileMaterialFilterDef STOCKPILE_MATERIAL_FILTERS[];
 extern const int STOCKPILE_MATERIAL_FILTER_COUNT;
 
+// A stockpile: a zone of up to MAX_STOCKPILE_SIZE x MAX_STOCKPILE_SIZE cells. The per-cell arrays
+// hold width * height entries (index ly * width + lx), in one allocation per stockpile made by
+// CreateStockpile and freed by DeleteStockpile / ClearStockpiles: memory follows what is built.
+// Never copy a Stockpile by value (the arrays would be shared).
 typedef struct {
     int x, y, z;           // top-left corner
     int width, height;
     bool active;
     bool allowedTypes[ITEM_TYPE_COUNT];  // indexed by ItemType
     bool allowedMaterials[MAT_COUNT];    // indexed by MaterialType
-    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];     // which cells are active (for non-rectangular shapes)
-    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];      // item index per tile, -1 = empty
-    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // reservation count per tile, 0 = none
-    // Stacking support
-    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // number of items in stack
-    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // type of items in slot (-1 = empty)
-    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // material of items in slot (MAT_NONE = empty)
+    // Per cell (width * height each)
+    bool* cells;           // which cells are active (for non-rectangular shapes)
+    int* slots;            // item index per tile, -1 = empty
+    int* reservedBy;       // reservation count per tile, 0 = none
+    int* slotCounts;       // number of items in stack
+    ItemType* slotTypes;   // type of items in slot (-1 = empty)
+    uint8_t* slotMaterials; // material of items in slot (MAT_NONE = empty)
+    bool* slotIsContainer; // true if slot is an installed container
+    int* groundItemIdx;    // ground item cache: item index on this slot, -1 if none
     int maxStackSize;      // per-stockpile stack limit (1-MAX_STACK_SIZE, default MAX_STACK_SIZE)
     // Priority support
     int priority;          // higher = better storage (1-9, default 5)
     // Container support
     int maxContainers;     // max container items allowed as slots (0 = no containers, default 0)
-    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // true if slot is an installed container
-    // Ground item cache (avoids expensive FindGroundItemAtTile calls)
-    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // item index on this slot, -1 if none
     // Free slot cache (avoids scanning all tiles when stockpile is full)
     int freeSlotCount;     // number of unreserved slots with room for items (rebuilt each frame)
     // Rotten item rejection (default true — most stockpiles reject rotten food)
@@ -94,10 +97,15 @@ extern GatherZone gatherZones[MAX_GATHER_ZONES];
 extern int gatherZoneCount;
 
 extern Stockpile stockpiles[MAX_STOCKPILES];
-extern int stockpileCount;
+extern int stockpileCount;       // active stockpiles (not an index bound: use stockpileHighWater)
+extern int stockpileHighWater;   // one past the highest slot in use: loop to this, not MAX_STOCKPILES
 
 // Core functions
 void ClearStockpiles(void);
+// The per-cell arrays for width x height (any old ones freed; contents uninitialised); false if out of memory
+bool StockpileAllocCells(Stockpile* sp, int width, int height);
+void StockpileFreeCells(Stockpile* sp);
+void StockpileUpdateHighWater(void);   // after writing stockpiles[] directly (a load)
 int CreateStockpile(int x, int y, int z, int width, int height);
 void DeleteStockpile(int index);
 void AddStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2);

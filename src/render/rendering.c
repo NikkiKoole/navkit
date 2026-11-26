@@ -2794,7 +2794,7 @@ static void DrawStockpileTiles(void) {
     int viewZ = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
         if (sp->z > viewZ || sp->z < viewZ - MAX_VISIBLE_DEPTH) continue;
@@ -2848,7 +2848,7 @@ static void DrawStockpileItems(void) {
     int viewZ = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
-    for (int i = 0; i < MAX_STOCKPILES; i++) {
+    for (int i = 0; i < stockpileHighWater; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
         if (sp->z > viewZ || sp->z < viewZ - MAX_VISIBLE_DEPTH) continue;
@@ -3116,7 +3116,7 @@ static void DrawLinkingModeHighlights(void) {
     }
     
     // Highlight hovered stockpile (green if linkable, red if not)
-    if (hoveredStockpile >= 0 && hoveredStockpile < stockpileCount) {
+    if (hoveredStockpile >= 0 && hoveredStockpile < stockpileHighWater) {
         Stockpile* sp = &stockpiles[hoveredStockpile];
         if (sp->active && (int)sp->z == currentViewZ) {
             bool alreadyLinked = IsStockpileLinked(linkingWorkshopIdx, hoveredStockpile);
@@ -3870,7 +3870,7 @@ static void DrawFrontView(void) {
         }
 
         // Draw stockpile tiles for this layer
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
+        for (int i = 0; i < stockpileHighWater; i++) {
             Stockpile* sp = &stockpiles[i];
             if (!sp->active) continue;
             if (sp->z < minZ || sp->z >= maxZ) continue;
@@ -4014,7 +4014,7 @@ static void DrawFrontView(void) {
         }
 
         // Draw stockpile items for this layer
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
+        for (int i = 0; i < stockpileHighWater; i++) {
             Stockpile* sp = &stockpiles[i];
             if (!sp->active) continue;
             if (sp->z < minZ || sp->z >= maxZ) continue;

@@ -49,6 +49,14 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
 - Filters: `allowedTypes[ITEM_TYPE_COUNT]` + `allowedMaterials[MAT_COUNT]` bitmasks
 - Ground item cache: `groundItemIdx[]` avoids expensive `FindGroundItemAtTile` calls
 - Free slot cache: `freeSlotCount` rebuilt each frame
+- Per-cell arrays (`cells`, `slots`, `slotCounts`, ...) are pointers sized `width * height`
+  (one block per stockpile, `StockpileAllocCells`, freed on delete): index `ly * width + lx`,
+  never past it; `sizeof(sp->slots)` is a pointer; never copy a Stockpile by value; never read
+  the arrays of an inactive stockpile (they are NULL). Loop over stockpiles to
+  `stockpileHighWater` (`stockpileCount` counts active ones, it is not an index bound).
+  `MAX_STOCKPILES` 1024. A pass that asks "which stockpile is this item in" for every item
+  (`IsPositionInStockpile` walks all stockpiles) must not run inside a loop over stockpiles:
+  bucket the items once (see `AssignJobs_P3d_Consolidate`)
 
 ## Workshop Patterns
 

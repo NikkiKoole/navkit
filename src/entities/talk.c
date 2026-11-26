@@ -1010,6 +1010,14 @@ static float GroupAppeal(int i, int t) {
     return best;
 }
 
+// Where a mover walks to join group t: its middle, or the first member's spot when the middle
+// isn't somewhere to stand (a doorway)
+static Point MingleGoal(int t) {
+    Point goal = {(int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z};
+    if (!IsCellStandableAt(goal.z, goal.y, goal.x)) goal = (Point){(int)(talks[t].slotX[0] / CELL_SIZE), (int)(talks[t].slotY[0] / CELL_SIZE), talks[t].z};
+    return goal;
+}
+
 // The most appealing other group within range, or -1
 static int BestOtherGroup(int i, float* appeal) {
     int best = -1, cur = MoverTalk(i);
@@ -1018,7 +1026,8 @@ static int BestOtherGroup(int i, float* appeal) {
         if (t == cur || !talks[t].active) continue;
         float dx = talks[t].centerX - movers[i].x, dy = talks[t].centerY - movers[i].y;
         if (dx * dx + dy * dy > r * r) continue;
-        if (!MayEnter(i, (int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z)) continue;   // in a home not its own
+        Point g = MingleGoal(t);
+        if (!MayEnter(i, g.x, g.y, g.z)) continue;   // in a home not its own (places.h)
         float a = GroupAppeal(i, t);
         if (a > bestA) { bestA = a; best = t; }
     }
@@ -1030,8 +1039,7 @@ static int BestOtherGroup(int i, float* appeal) {
 static void MingleTo(int i, int t) {
     Mover* m = &movers[i];
     Point start = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
-    Point goal = {(int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z};
-    if (!IsCellStandableAt(goal.z, goal.y, goal.x)) goal = (Point){(int)(talks[t].slotX[0] / CELL_SIZE), (int)(talks[t].slotY[0] / CELL_SIZE), talks[t].z};
+    Point goal = MingleGoal(t);
     m->goal = goal;
     if (MoverPlanPath(i, start, goal) <= 0) return;
     m->needsRepath = false;

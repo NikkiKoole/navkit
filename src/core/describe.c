@@ -1000,7 +1000,7 @@ void DescribeWorkshopLinks(int wsIdx, DescLines* out) {
     }
     for (int i = 0; i < ws->linkedInputCount; i++) {
         int sp = ws->linkedInputStockpiles[i];
-        if (sp >= 0 && sp < stockpileCount && stockpiles[sp].active)
+        if (sp >= 0 && sp < MAX_STOCKPILES && stockpiles[sp].active)
             DescAdd(out, DESC_GOOD, "  [%d] Stockpile #%d (Pri:%d)", i + 1, sp, stockpiles[sp].priority);
         else
             DescAdd(out, DESC_BAD, "  [%d] <invalid #%d>", i + 1, sp);

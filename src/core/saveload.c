@@ -501,10 +501,8 @@ bool SaveWorld(const char* filename) {
     fwrite(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
     fwrite(items, sizeof(Item), itemHighWaterMark, f);
     
-    // Stockpiles
-    fwrite(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
-    fwrite(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);   // v121: shops (money.h)
-    fwrite(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
+    // Stockpiles (v123: sized to their area) and shops (v121, money.h)
+    StockpilesSave(f);
     
     // Gather zones
     fwrite(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);
@@ -674,6 +672,7 @@ void RebuildPostLoadState(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (stockpiles[i].active) stockpileCount++;
     }
+    StockpileUpdateHighWater();
     workshopCount = 0;
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         if (workshops[i].active) workshopCount++;
@@ -744,6 +743,139 @@ void RebuildPostLoadState(void) {
                 }
             }
         }
+    }
+}
+
+// --- Stockpiles (v123: each one's per-cell arrays sized to its area, stockpiles.h) ---
+
+static const size_t stockpileArrayBytes[8] = { sizeof(bool), sizeof(int), sizeof(int), sizeof(int),
+                                               sizeof(ItemType), sizeof(uint8_t), sizeof(bool), sizeof(int) };
+static void* StockpileArray(Stockpile* sp, int k) {
+    switch (k) {
+    case 0: return sp->cells;          case 1: return sp->slots;
+    case 2: return sp->reservedBy;     case 3: return sp->slotCounts;
+    case 4: return sp->slotTypes;      case 5: return sp->slotMaterials;
+    case 6: return sp->slotIsContainer; default: return sp->groundItemIdx;
+    }
+}
+
+void StockpilesSave(FILE* f) {
+    fwrite(&stockpileHighWater, sizeof(stockpileHighWater), 1, f);
+    for (int i = 0; i < stockpileHighWater; i++) {
+        Stockpile h = stockpiles[i];   // the header; pointers written as NULL
+        h.cells = h.slotIsContainer = NULL;
+        h.slots = h.reservedBy = h.slotCounts = h.groundItemIdx = NULL;
+        h.slotTypes = NULL;
+        h.slotMaterials = NULL;
+        fwrite(&h, sizeof(Stockpile), 1, f);
+        if (!stockpiles[i].active) continue;
+        size_t n = (size_t)(stockpiles[i].width * stockpiles[i].height);
+        for (int k = 0; k < 8; k++) fwrite(StockpileArray(&stockpiles[i], k), stockpileArrayBytes[k], n, f);
+    }
+    fwrite(stockpileForSale, sizeof(bool), (size_t)stockpileHighWater, f);
+    fwrite(stockpileTill, sizeof(int), (size_t)stockpileHighWater, f);
+}
+
+// An old fixed-size stockpile as a sized one (its first width * height entries are the cells)
+static void StockpileFromV122(Stockpile* sp, const StockpileV122* old) {
+    StockpileFreeCells(sp);
+    memset(sp, 0, sizeof(*sp));
+    sp->x = old->x; sp->y = old->y; sp->z = old->z;
+    sp->width = old->width; sp->height = old->height;
+    sp->active = old->active;
+    memcpy(sp->allowedTypes, old->allowedTypes, sizeof(old->allowedTypes));   // newer types: not allowed
+    for (int m = 0; m < MAT_COUNT; m++) sp->allowedMaterials[m] = true;       // newer materials: allowed
+    memcpy(sp->allowedMaterials, old->allowedMaterials, sizeof(old->allowedMaterials));
+    sp->maxStackSize = old->maxStackSize;
+    sp->priority = old->priority;
+    sp->maxContainers = old->maxContainers;
+    sp->freeSlotCount = old->freeSlotCount;
+    sp->rejectsRotten = old->rejectsRotten;
+    if (!sp->active) return;
+    if (sp->width < 1 || sp->height < 1 || sp->width > MAX_STOCKPILE_SIZE || sp->height > MAX_STOCKPILE_SIZE ||
+        !StockpileAllocCells(sp, sp->width, sp->height)) { sp->active = false; return; }
+    size_t n = (size_t)(sp->width * sp->height);
+    memcpy(sp->cells, old->cells, n * sizeof(bool));
+    memcpy(sp->slots, old->slots, n * sizeof(int));
+    memcpy(sp->reservedBy, old->reservedBy, n * sizeof(int));
+    memcpy(sp->slotCounts, old->slotCounts, n * sizeof(int));
+    memcpy(sp->slotTypes, old->slotTypes, n * sizeof(ItemType));
+    memcpy(sp->slotMaterials, old->slotMaterials, n * sizeof(uint8_t));
+    memcpy(sp->slotIsContainer, old->slotIsContainer, n * sizeof(bool));
+    memcpy(sp->groundItemIdx, old->groundItemIdx, n * sizeof(int));
+}
+
+// Read the stockpiles of any save version into dst[MAX_STOCKPILES] (all inactive, no arrays, on
+// entry) and the shops into forSale / till (MAX_STOCKPILES each). LoadWorld and --inspect use it.
+void StockpilesLoad(FILE* f, int version, Stockpile* dst, bool* forSale, int* till) {
+    memset(forSale, 0, MAX_STOCKPILES * sizeof(bool));
+    memset(till, 0, MAX_STOCKPILES * sizeof(int));
+    if (version >= V123_STOCKPILE_CELLS) {
+        int hw = 0;
+        fread(&hw, sizeof(hw), 1, f);
+        if (hw < 0 || hw > MAX_STOCKPILES) hw = 0;   // a damaged save: no stockpiles
+        for (int i = 0; i < hw; i++) {
+            Stockpile* sp = &dst[i];
+            fread(sp, sizeof(Stockpile), 1, f);
+            sp->cells = sp->slotIsContainer = NULL;
+            sp->slots = sp->reservedBy = sp->slotCounts = sp->groundItemIdx = NULL;
+            sp->slotTypes = NULL;
+            sp->slotMaterials = NULL;
+            if (!sp->active) continue;
+            bool ok = sp->width >= 1 && sp->height >= 1 && sp->width <= MAX_STOCKPILE_SIZE &&
+                      sp->height <= MAX_STOCKPILE_SIZE && StockpileAllocCells(sp, sp->width, sp->height);
+            if (!ok) { sp->active = false; continue; }
+            size_t n = (size_t)(sp->width * sp->height);
+            for (int k = 0; k < 8; k++) fread(StockpileArray(sp, k), stockpileArrayBytes[k], n, f);
+        }
+        fread(forSale, sizeof(bool), (size_t)hw, f);
+        fread(till, sizeof(int), (size_t)hw, f);
+        return;
+    }
+    // v122 and older: V122_MAX_STOCKPILES fixed-size structs, each made into a StockpileV122
+    static StockpileV122 old[V122_MAX_STOCKPILES];
+    if (version >= V119_MONEY) {
+        fread(old, sizeof(StockpileV122), V122_MAX_STOCKPILES, f);
+    } else if (version >= V114_GUNPOWDER) {
+        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
+        static StockpileV118 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV118), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&old[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V107_SCROUNGE) {
+        // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
+        static StockpileV113 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV113), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&old[i], &oldSp[i], V113_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V106_INVENTORY) {
+        // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
+        static StockpileV106 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV106), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&old[i], &oldSp[i], V106_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V105_CONCRETE) {
+        // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
+        static StockpileV105 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV105), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&old[i], &oldSp[i], V105_ITEM_TYPE_COUNT, V105_MAT_COUNT);
+    } else if (version >= V104_TRASH) {
+        // v104: allowedMaterials was V104_MAT_COUNT (19) bools
+        static StockpileV104 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV104), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&old[i], &oldSp[i], V104_ITEM_TYPE_COUNT);
+    } else if (version >= 91) {
+        // v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT (73) bools
+        static StockpileV103 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV103), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&old[i], &oldSp[i], V103_ITEM_TYPE_COUNT);
+    } else {
+        // v90 and below: allowedTypes was V90_ITEM_TYPE_COUNT (68) bools
+        static StockpileV90 oldSp[V122_MAX_STOCKPILES];
+        fread(oldSp, sizeof(StockpileV90), V122_MAX_STOCKPILES, f);
+        for (int i = 0; i < V122_MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&old[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
+    }
+    for (int i = 0; i < V122_MAX_STOCKPILES; i++) StockpileFromV122(&dst[i], &old[i]);
+    if (version >= V121_SHOPS) {   // v121-v122: V122_MAX_STOCKPILES each
+        fread(forSale, sizeof(bool), V122_MAX_STOCKPILES, f);
+        fread(till, sizeof(int), V122_MAX_STOCKPILES, f);
     }
 }
 
@@ -1103,57 +1235,16 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Stockpiles
-    if (version >= V119_MONEY) {
-        fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
-    } else if (version >= V114_GUNPOWDER) {
-        // v114-v118: allowedTypes was V118_ITEM_TYPE_COUNT (85) bools
-        static StockpileV118 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV118), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V118_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V107_SCROUNGE) {
-        // v107-v113: allowedTypes was V113_ITEM_TYPE_COUNT (83) bools
-        static StockpileV113 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV113), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V113_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V106_INVENTORY) {
-        // v106: allowedTypes was V106_ITEM_TYPE_COUNT (81) bools
-        static StockpileV106 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV106), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V106_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V105_CONCRETE) {
-        // v105: allowedTypes was V105_ITEM_TYPE_COUNT (78) bools
-        static StockpileV105 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV105), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE_M(&stockpiles[i], &oldSp[i], V105_ITEM_TYPE_COUNT, V105_MAT_COUNT);
-    } else if (version >= V104_TRASH) {
-        // v104: allowedMaterials was V104_MAT_COUNT (19) bools
-        static StockpileV104 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV104), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V104_ITEM_TYPE_COUNT);
-    } else if (version >= 91) {
-        // v91-v103: allowedTypes was V103_ITEM_TYPE_COUNT (73) bools
-        static StockpileV103 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV103), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V103_ITEM_TYPE_COUNT);
-    } else {
-        // v90 and below: allowedTypes was V90_ITEM_TYPE_COUNT (68) bools
-        static StockpileV90 oldSp[MAX_STOCKPILES];
-        fread(oldSp, sizeof(StockpileV90), MAX_STOCKPILES, f);
-        for (int i = 0; i < MAX_STOCKPILES; i++) MIGRATE_OLD_STOCKPILE(&stockpiles[i], &oldSp[i], V90_ITEM_TYPE_COUNT);
-    }
-    // Shops (v121+, money.h): older saves sell nothing
-    ShopResetAll();
-    if (version >= V121_SHOPS) {
-        fread(stockpileForSale, sizeof(bool), MAX_STOCKPILES, f);
-        fread(stockpileTill, sizeof(int), MAX_STOCKPILES, f);
-        ShopRecount();
-    }
+    // Stockpiles and shops (StockpilesLoad: every save version)
+    ClearStockpiles();
+    StockpilesLoad(f, version, stockpiles, stockpileForSale, stockpileTill);
+    StockpileUpdateHighWater();
+    ShopRecount();
 
     // Clear transient reservation counts (not meaningful across save/load)
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
-        memset(stockpiles[i].reservedBy, 0, sizeof(stockpiles[i].reservedBy));
+        memset(stockpiles[i].reservedBy, 0, (size_t)(stockpiles[i].width * stockpiles[i].height) * sizeof(int));
     }
 
     // Gather zones
