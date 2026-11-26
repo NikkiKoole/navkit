@@ -10,6 +10,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
 #include "../simulation/lighting.h"
+#include "../entities/places.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -127,6 +128,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     CLEAR_GRID_LAYER(vegetationGrid, 0);
     CLEAR_GRID_LAYER(unexploredGrid, 0);  // Default: all explored (sandbox)
     SparseLayerClear(&oneWayLayer);
+    ClearPlaces();          // a new world has no owners or places (places.h)
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {

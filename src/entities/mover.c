@@ -984,6 +984,7 @@ void StringPullPath(Point* pathArr, int* pathLen) {
 
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     ClearMoverRelations((int)(m - movers));   // a new mover in this slot knows nobody
+    PlacesResetMover((int)(m - movers));      // ... belongs to no household, is nobody's guest
     QueueReset((int)(m - movers));            // ... and has nothing queued (action_queue.h)
     moverCoins[m - movers] = 0;               // ... and an empty purse (money.h)
     SocialResetMover((int)(m - movers));      // ... and isn't lonely (social.h)

@@ -43,7 +43,10 @@ with a darker tint (until a `door-locked` sprite). Scenario `doorlock` (in scena
 rooms, two doors, 16 wanderers; the north door locked at tick 600, unlocked at 1800; nobody in it
 while locked, the south door takes the traffic, the north is used again after.
 
-**Next in step 1:** a small path cost for a
+**Step 2 started (2026-11-26):** the galerij building and households, on the new ownership and
+access core (`../architecture/ownership-and-access.md`): scenario `galerij`. Next: the visit.
+
+**Still open in step 1:** a small path cost for a
 closed door (`NAV_ENTER_EXTRA`); the cold-snap and locked-door scenarios. Animals don't open doors
 yet (they walk through closed ones).
 

@@ -13,6 +13,7 @@ void RebuildPostLoadState(void);
 #include "../entities/relations.h"
 #include "../entities/town.h"
 #include "../entities/social.h"
+#include "../entities/places.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -485,6 +486,13 @@ bool SaveWorld(const char* filename) {
         }
     }
 
+    // Place layer (v122+, places.h)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            SAVE_ROW(f, PLACE_AT, y, z);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -517,6 +525,7 @@ bool SaveWorld(const char* filename) {
     fwrite(moverQueues, sizeof(MoverQueue), moverCount, f);   // v112: action queues
     fwrite(moverCoins, sizeof(int), moverCount, f);           // v119: purses (money.h)
     fwrite(moverSocial, sizeof(float), moverCount, f);        // v120: the social need (social.h)
+    PlacesSave(f, moverCount);                                // v122: groups, places, memberships (places.h)
 
     // Animals (v42+)
     fwrite(&animalCount, sizeof(animalCount), 1, f);
@@ -1039,6 +1048,16 @@ bool LoadWorld(const char* filename) {
         }
     }
 
+    // Place layer (v122+); older saves: no places
+    ClearPlaces();
+    if (version >= V122_PLACES) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                LOAD_ROW_SPARSE(f, placeLayer, PLACE_AT_MUT, y, z);
+            }
+        }
+    }
+
     if (!loadRleOk) {
         printf("ERROR: corrupt grid data (a layer's run-length stream ended early or late)\n");
         AddMessage("Corrupt grid data in save", RED);
@@ -1393,6 +1412,8 @@ bool LoadWorld(const char* filename) {
     // The social need (v120+), after the purses; older saves: plenty of company
     SocialResetAll();
     if (version >= V120_SOCIAL) fread(moverSocial, sizeof(float), moverCount, f);
+    // Groups, places and memberships (v122+), after the social need; older saves: none
+    if (version >= V122_PLACES) PlacesLoad(f, moverCount);
 
     // Animals
     fread(&animalCount, sizeof(animalCount), 1, f);

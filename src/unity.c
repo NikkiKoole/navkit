@@ -61,6 +61,7 @@
 #include "entities/inventory.c"
 #include "entities/action_queue.c"
 #include "entities/money.c"
+#include "entities/places.c"
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
 #include "entities/furniture.c"

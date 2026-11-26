@@ -34,6 +34,7 @@
 #include "../entities/belts.h"
 #include "../entities/relations.h"
 #include "../entities/town.h"
+#include "../entities/places.h"
 #include "../simulation/mood.h"
 #include "save_migrations.h"
 
@@ -121,6 +122,8 @@ static int insp_moverCoins[MAX_MOVERS];   // purses (v119+, money.h)
 static bool insp_forSale[MAX_STOCKPILES];   // shops (v121+, money.h)
 static int insp_till[MAX_STOCKPILES];
 static float insp_moverSocial[MAX_MOVERS];   // the social need (v120+, social.h)
+static OwnerGroup insp_groups[MAX_GROUPS];        // places.h (v122+)
+static int16_t insp_moverGroups[MAX_MOVERS][MAX_MOVER_GROUPS];
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
 static int insp_trainCount = 0;
@@ -219,6 +222,10 @@ static void print_mover(int idx) {
     printf("Bladder: %.1f%%\n", m->bladder * 100.0f);
     { char mb[24]; printf("Purse: %s\n", MoneyFormat(insp_moverCoins[m - insp_movers], mb, sizeof mb)); }
     printf("Social: %.0f%%\n", insp_moverSocial[m - insp_movers] * 100.0f);
+    for (int k = 0; k < MAX_MOVER_GROUPS; k++) {
+        int g = insp_moverGroups[m - insp_movers][k];
+        if (g > 0 && g < MAX_GROUPS && insp_groups[g].active) printf("Group: %s (#%d)\n", insp_groups[g].name, g);
+    }
     printf("Body Temp: %.1f°C\n", m->bodyTemp);
     {
         const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING",
@@ -1437,6 +1444,9 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= V110_ONE_WAY) {
         InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // oneWay
     }
+    if (version >= V122_PLACES) {
+        InspSkipLayer(f, sizeof(uint16_t), totalCells, rle); // place layer (places.h)
+    }
 
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);
@@ -1763,6 +1773,13 @@ int InspectSaveFile(int argc, char** argv) {
     // Social need (v120+)
     for (int i = 0; i < MAX_MOVERS; i++) insp_moverSocial[i] = 1.0f;
     if (version >= V120_SOCIAL) fread(insp_moverSocial, sizeof(float), insp_moverCount, f);
+    memset(insp_groups, 0, sizeof(insp_groups));
+    memset(insp_moverGroups, 0, sizeof(insp_moverGroups));
+    if (version >= V122_PLACES) {
+        fread(insp_groups, sizeof(OwnerGroup), MAX_GROUPS, f);
+        fseek(f, (long)(sizeof(PlaceInfo) * MAX_PLACES), SEEK_CUR);   // place table (not shown)
+        fread(insp_moverGroups, sizeof(insp_moverGroups[0]), insp_moverCount, f);
+    }
 
     // Animals
     fread(&insp_animalCount, 4, 1, f);

@@ -83,9 +83,11 @@ SparseLayer farmLayer  = { NULL, 0, sizeof(FarmCell),  zeroElem, 0, "farm" };
 
 SparseLayer waterFlowLayer = { NULL, 0, sizeof(WaterFlowCell), zeroElem, 0, "waterFlow" };
 SparseLayer oneWayLayer    = { NULL, 0, sizeof(uint8_t), zeroElem, 0, "oneWay" };
+SparseLayer placeLayer     = { NULL, 0, sizeof(uint16_t), zeroElem, 0, "place" };   // places.h
 
 static SparseLayer* const sparseLayers[] = { &designationLayer, &waterLayer, &fireLayer, &smokeLayer,
-                                             &steamLayer, &farmLayer, &waterFlowLayer, &oneWayLayer, &vapourLayer };
+                                             &steamLayer, &farmLayer, &waterFlowLayer, &oneWayLayer, &vapourLayer,
+                                             &placeLayer };
 #define SPARSE_LAYER_COUNT ((int)(sizeof(sparseLayers) / sizeof(sparseLayers[0])))
 
 void* SparseLayerAllocBlock(SparseLayer* L, int chunk) {

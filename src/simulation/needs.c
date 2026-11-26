@@ -12,6 +12,7 @@
 
 #include "../entities/chase.h"   // FREETIME_PLAY
 #include "needs.h"
+#include "../entities/places.h"
 #include "../entities/money.h"
 #include "../entities/action_queue.h"
 #include "balance.h"
@@ -71,6 +72,17 @@ static bool NoWayThere(int moverIdx) {
 }
 
 // moverIdx: who would eat it (food in a shop it can't pay for is skipped, money.h)
+// Ownership (places.h): may this mover take this item / use this furniture where it is? Things
+// in someone else's home are theirs (a guest's grant covers the host's home).
+static bool NeedMayTakeItem(int moverIdx, int i) {
+    int c = items[i].containedIn >= 0 ? GetOutermostContainer(i) : i;
+    if (c < 0) c = i;
+    return MayTake(moverIdx, (int)(items[c].x / CELL_SIZE), (int)(items[c].y / CELL_SIZE), (int)items[c].z);
+}
+static bool NeedMayUseFurniture(int moverIdx, int fi) {
+    return MayUse(moverIdx, furniture[fi].x, furniture[fi].y, furniture[fi].z);
+}
+
 static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
@@ -83,6 +95,7 @@ static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
         if (items[i].condition == CONDITION_ROTTEN) continue;
         if (!NeedItemReachable(i)) continue;
         if (!MoverCanAfford(moverIdx, i)) continue;
+        if (!NeedMayTakeItem(moverIdx, i)) continue;   // someone else's (places.h)
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -99,7 +112,7 @@ static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
 
 // Find nearest edible item on the ground (not in stockpile, not reserved)
 // Returns item index or -1
-static int FindNearestEdibleOnGround(float x, float y, int z) {
+static int FindNearestEdibleOnGround(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
 
@@ -110,6 +123,7 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
         if (!ItemIsEdible(items[i].type)) continue;
         if (items[i].condition == CONDITION_ROTTEN) continue;
         if (!NeedItemReachable(i)) continue;
+        if (!NeedMayTakeItem(moverIdx, i)) continue;   // someone else's (places.h)
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -269,7 +283,7 @@ static void StartFoodSearchBody(Mover* m, int moverIdx) {
     PROFILE_ACCUM_END(FoodInStockpile);
     if (itemIdx < 0) {
         PROFILE_ACCUM_BEGIN(FoodOnGround);
-        itemIdx = FindNearestEdibleOnGround(m->x, m->y, (int)m->z);
+        itemIdx = FindNearestEdibleOnGround(moverIdx, m->x, m->y, (int)m->z);
         PROFILE_ACCUM_END(FoodOnGround);
     }
 
@@ -343,12 +357,13 @@ static void StartWarmthSearchBody(Mover* m, int moverIdx) {
 // --- Bladder seeking ---
 
 // Find nearest free furniture of a type on this z (toilet, tap)
-static int FindNearestFreeFurniture(FurnitureType type, float x, float y, int z) {
+static int FindNearestFreeFurniture(int moverIdx, FurnitureType type, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e12f;
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active || furniture[i].type != type) continue;
         if (furniture[i].z != z || furniture[i].occupant != -1) continue;
+        if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
         float dx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f - x;
         float dy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f - y;
         float distSq = dx * dx + dy * dy;
@@ -402,12 +417,13 @@ static bool FlushToilet(int fi) {
     return false;
 }
 
-static int FindBestFreeToilet(float x, float y, int z) {
+static int FindBestFreeToilet(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestScore = -1.0f;
     for (int i = 0; i < MAX_FURNITURE; i++) {
         if (!furniture[i].active || furniture[i].z != z || furniture[i].occupant != -1) continue;
         if (!(GetFurnitureDef(furniture[i].type)->capabilities & CAP_TOILET)) continue;
+        if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
         float dx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f - x;
         float dy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f - y;
         float score = (float)ToiletComfort(i) / (1.0f + sqrtf(dx * dx + dy * dy) / CELL_SIZE);
@@ -464,7 +480,7 @@ static void StartBladderSearchBody(Mover* m, int moverIdx) {
     int cz = (int)m->z;
 
     // Priority 1: a toilet (toilet, pit latrine: anything with CAP_TOILET)
-    int toiletIdx = FindBestFreeToilet(m->x, m->y, cz);
+    int toiletIdx = FindBestFreeToilet(moverIdx, m->x, m->y, cz);
     if (toiletIdx >= 0) {
         furniture[toiletIdx].occupant = moverIdx;
         m->freetimeState = FREETIME_SEEKING_TOILET;
@@ -511,6 +527,7 @@ static int FindBestDrinkableItem(int moverIdx, float x, float y, int z) {
         if (items[i].state == ITEM_IN_CONTAINER && !IsItemAccessible(i)) continue;
         if (!NeedItemReachable(i)) continue;
         if (!MoverCanAfford(moverIdx, i)) continue;
+        if (!NeedMayTakeItem(moverIdx, i)) continue;   // someone else's (places.h)
 
         float hydration = GetItemHydration(items[i].type);
         float dx = items[i].x - x;
@@ -577,7 +594,8 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
 static bool DrinkAvailable(const Mover* m) {
     if (FindBestDrinkableItem((int)(m - movers), m->x, m->y, (int)m->z) >= 0) return true;
     for (int i = 0; i < MAX_FURNITURE; i++)
-        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) return true;
+        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z &&
+            NeedMayUseFurniture((int)(m - movers), i)) return true;
     int wx, wy, wz, sx, sy, sz;
     return FindNearestWaterCell(m->x, m->y, (int)m->z, &wx, &wy, &wz, &sx, &sy, &sz);
 }
@@ -616,7 +634,7 @@ static void StartDrinkSearchBody(Mover* m, int moverIdx) {
     }
 
     // No drinks stored — a tap (clean, never runs dry)
-    int tapIdx = FindNearestFreeFurniture(FURNITURE_TAP, m->x, m->y, (int)m->z);
+    int tapIdx = FindNearestFreeFurniture(moverIdx, FURNITURE_TAP, m->x, m->y, (int)m->z);
     if (tapIdx >= 0) {
         furniture[tapIdx].occupant = moverIdx;
         EventLog("Mover %d SEEKING_TAP furniture=%d", moverIdx, tapIdx);
@@ -630,7 +648,8 @@ static void StartDrinkSearchBody(Mover* m, int moverIdx) {
 
     // Every tap on this level in use: wait a moment and try again, rather than walking to the pond
     for (int i = 0; i < MAX_FURNITURE; i++) {
-        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z) {
+        if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z &&
+            NeedMayUseFurniture(moverIdx, i)) {
             m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
             return;
         }
@@ -685,6 +704,7 @@ static void StartRestSearchBody(Mover* m, int moverIdx) {
         if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only
         if (!TownMayUseFurniture(i, moverIdx)) continue;  // someone else's bed (town homes)
+        if (!NeedMayUseFurniture(moverIdx, i)) continue;  // in someone else's home (places.h)
 
         const FurnitureDef* def = GetFurnitureDef(furniture[i].type);
         if (def->restRate <= 0.0f) continue;  // Not restable
@@ -777,11 +797,12 @@ static bool MoverHasTrait(const Mover* m, TraitType t) {
     return false;
 }
 
-typedef struct { ItemType trash; int best; float bestDistSq; } BinSearch;
+typedef struct { ItemType trash; int best; float bestDistSq; int moverIdx; } BinSearch;
 static void BinCandidate(int i, float distSq, void* user) {
     BinSearch* s = user;
     if (items[i].type != ITEM_TRASH_BIN || distSq >= s->bestDistSq) return;
     if (!NeedItemReachable(i)) return;
+    if (!MayUse(s->moverIdx, (int)(items[i].x / CELL_SIZE), (int)(items[i].y / CELL_SIZE), (int)items[i].z)) return;
     if (!ContainerHasRoomFor(i, s->trash, ItemDefaultMaterial(s->trash))) return;
     s->best = i;
     s->bestDistSq = distSq;
@@ -793,7 +814,7 @@ int FindTrashBinFor(int moverIdx, ItemType trash) {
     if (MoverHasTrait(m, TRAIT_TIDY)) radius *= 2;
     if (MoverHasTrait(m, TRAIT_SLOB)) radius = radius < 2 ? radius : 2;
     if (radius <= 0) return -1;
-    BinSearch s = { trash, -1, 1e30f };
+    BinSearch s = { trash, -1, 1e30f, moverIdx };
     QueryItemsInRadius((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z, radius, BinCandidate, &s);
     return s.best;
 }
@@ -1438,7 +1459,7 @@ static void ProcessFreetimeState(Mover* m, int moverIdx) {
             bool foodToEat = false;
             if (hungerEnabled && m->hunger < balance.hungerCriticalThreshold && canLook) {
                 foodToEat = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z) >= 0 ||
-                            FindNearestEdibleOnGround(m->x, m->y, (int)m->z) >= 0 ||
+                            FindNearestEdibleOnGround(moverIdx, m->x, m->y, (int)m->z) >= 0 ||
                             FindForageBush(m, moverIdx) >= 0;
             }
             // Dehydrating wakes a sleeper the same way: only with something to drink

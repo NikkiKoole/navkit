@@ -39,6 +39,7 @@
 #include "../simulation/needs.h"
 #include <math.h>
 #include "../entities/social.h"
+#include "../entities/places.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -473,6 +474,11 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
     }
     DescribeMoverGear(m, job, out);
     if (MoverCoins(idx) > 0) { char mb[24]; DescAdd(out, DESC_INFO, "Money: %s", MoneyFormat(MoverCoins(idx), mb, sizeof mb)); }
+    {   // Ownership (places.h): where it lives, whose guest it is
+        int hh = MoverHousehold(idx);
+        if (hh > 0) { int home = HomeOfGroup(hh); DescAdd(out, DESC_INFO, "Lives in: %s", home > 0 ? PlaceName(home) : GroupName(hh)); }
+        if (MoverGrant(idx) > 0) DescAdd(out, DESC_INFO, "Guest in: %s", PlaceName(MoverGrant(idx)));
+    }
     DescribeMoverRelations(idx, detail, out);
     if (MoverIsMingling(idx)) DescAdd(out, DESC_INFO, "Going over to another group");
     int partner = TalkPartner(idx);
@@ -640,6 +646,14 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
     }
     if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_UP) DescAdd(out, DESC_INFO, "One-way: up only");
     if (IsLadderCell(ct) && ONE_WAY(x, y, z) == ONEWAY_DOWN) DescAdd(out, DESC_INFO, "One-way: down only");
+    {   // Ownership (places.h): whose home or place this is
+        int pl = PlaceAt(x, y, z);
+        if (pl > 0) {
+            int own = OwnerAt(x, y, z);
+            if (own > 0 && strcmp(PlaceName(pl), GroupName(own)) != 0) DescAdd(out, DESC_INFO, "Place: %s (%s)", PlaceName(pl), GroupName(own));
+            else DescAdd(out, DESC_INFO, "Place: %s%s", PlaceName(pl), own > 0 ? " (private)" : "");
+        }
+    }
     if (ct == CELL_DOOR) DescAdd(out, DESC_INFO, "Closed: keeps out smoke, water and cold");
     if (ct == CELL_DOOR_OPEN) DescAdd(out, DESC_WARN, "Open: smoke, water and cold get through");
     if (ct == CELL_DOOR_LOCKED) DescAdd(out, DESC_BAD, "Locked: nobody gets through");

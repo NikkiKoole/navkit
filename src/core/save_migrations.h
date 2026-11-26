@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 121
+#define CURRENT_SAVE_VERSION 122
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -140,6 +140,10 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v121: shops (money.h): stockpileForSale (MAX_STOCKPILES bools) and stockpileTill (MAX_STOCKPILES
 // ints) right after the stockpiles. Older saves: nothing for sale, empty tills.
 #define V121_SHOPS 121
+// v122: places (places.h, ownership and access): the place layer (uint16 per cell) right after
+// the one-way layer; the group table, the place table and each saved mover's groups right after
+// the social need. Older saves: no places, no groups (everything public).
+#define V122_PLACES 122
 #define V118_ITEM_TYPE_COUNT 85
 #define V113_ITEM_TYPE_COUNT 83
 _Static_assert(ITEM_SALTPETER == V113_ITEM_TYPE_COUNT, "v114 item types start where v113's ended");

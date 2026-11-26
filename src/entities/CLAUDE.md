@@ -106,6 +106,15 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   per can from the nearest shop's till (`BottleMachineShop`, same level, 12 cells).
   Plan: `docs/vision/city-1999.md` "Money and exchange".
 
+## Ownership and access (`places.c`)
+
+- Who may enter / use / take what, where: `MayEnter` / `MayUse` / `MayTake(mover, x, y, z)`,
+  `OwnerAt`. Never read `placeLayer` or the tables directly (design guard: everything else is an
+  addition inside places.c). Ownership never changes walkability; only locks do.
+- A new search that picks something for a mover to take or use (need, free time, job) must ask
+  these (needs.c: `NeedMayTakeItem`, `NeedMayUseFurniture`). Plan and guards:
+  `docs/todo/architecture/ownership-and-access.md`.
+
 ## Social behaviour (`notice.c`, `talk.c`, `relations.c`, `chase.c`)
 
 Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built").
