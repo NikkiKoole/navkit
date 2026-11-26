@@ -459,6 +459,7 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
         if (!isTrapped || (rand() % 3) == 0) {
             cell->level--;
             if (cell->level == 0) {
+                smokeActiveCells--;
                 cell->hasPressure = false;
                 cell->pressureSourceZ = 0;
             }

@@ -1,6 +1,6 @@
 # Smoke activity counter drift
 
-**Status: OPEN** (found 2026-11-25, not investigated)
+**Status: FIXED 2026-11-26**: dissipation (`smoke.c`, the fade step) took a cell to 0 without `smokeActiveCells--`. campfire, heat, doorsmoke, flashfire, explosions: no drift. (Found 2026-11-25.)
 
 `smokeActiveCells` (the count of cells with smoke, smoke.c) ends far above the real number in
 every run with smoke; `ValidateSimActivityCounts` corrects it. The windowed loop checks every
