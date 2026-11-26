@@ -46,14 +46,45 @@ instead of `.alias`. Jump targets are a fixed set of marks (runes / symbols) pla
 counter, latch) for small machines you can walk along; a card when it would take a room of
 gates. Progression: levers -> gates -> the card reader feels like an invention.
 
-**Proposed for the language (not yet agreed):**
-- Run the whole card top to bottom whenever one of its sides changes (a PLC scan), instead of
-  `ON` / `SLEEP` / `RET` handlers. Free while nothing changes; most labels vanish. `WAIT n` for
-  sequences (airlock).
-- Skip-next conditionals (DCPU-16 style: `IF> A 6` guards the next line) instead of `CMP` + a
-  hidden flag + jumps: in a pick-from-list editor every line stands on its own.
-- Keep the layers few: stockpile rules where they already exist, gates, cards. No separate
-  "prebuilt block" engine and no Factorio multi-signal wires (pick the item in the device setting).
+**Run on change (agreed).** The whole card runs top to bottom whenever one of its sides'
+read lanes changes (a PLC scan), instead of `ON` / `SLEEP` / `RET` handlers. Free while nothing
+changes. Rules:
+- Registers and memory persist between runs (so cards can count and remember).
+- A card runs at most once per tick, and its writes take effect next tick. A card that writes a
+  door and then sees the door change runs again once; writing the same value again is not a
+  change, so it settles. A card that never settles costs one run per tick, no more.
+- `WAIT n` (for sequences such as an airlock): if a side changes while the card waits, it
+  finishes first, then runs again from the top if something changed meanwhile (a dirty flag).
+- An instruction budget per run, if jumps exist at all: a run that hits it stops there and
+  the card shows it (a jammed reader), instead of hanging the tick.
+
+**Skip-next conditionals (agreed).** DCPU-16 style: `IF≤ A 2` guards the next line, instead of
+`CMP` + a hidden flag + jumps; in a pick-from-list editor every line stands on its own. Also from
+DCPU-16: when an IF fails and the skipped line is itself an IF, skipping continues, so stacked
+IFs are an AND. Most cards then need no labels at all:
+
+```
+IN   A  N            ; cistern keeper: gauge on N, valve on E
+IF≤  A  2
+OUT  E  OPEN
+IF≥  A  6
+OUT  E  SHUT         ; 3..5: no change, so the valve doesn't flap
+
+IN   A  N            ; night gate: clock (hour) on N, plate outside on S, gate on E
+IN   B  S
+SET  C  LOCKED
+IF≥  A  6
+IF<  A  20
+SET  C  OPEN         ; daytime
+IF>  B  0
+SET  C  OPEN         ; someone outside
+OUT  E  C
+```
+
+**Few layers (agreed).** Levers, plates and links first, then gates, then the card reader: one
+signal model, one simulation. Prebuilt blocks are a card reader with a standard card. Stockpiles
+keep plain settings (limits, priority); no "when -> then" rule list there (that would be a
+second programming system). No Factorio multi-signal wires: pick the item in the device setting.
 
 **Carry into step 3 now (cheap):**
 - every switchable part has a number you write and a number you read;
