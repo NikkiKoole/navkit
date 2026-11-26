@@ -465,12 +465,14 @@ static Color GetDepthTintDarkened(int itemZ, int viewZ) {
     return WHITE;
 }
 
-// Helper: check if a cell at (x, y, cellZ) is visible from viewZ
+// Helper: check if a cell at (x, y, cellZ) is visible from viewZ. Callers pass the level above
+// the thing (thingZ + 1). A floor or solid cell at the viewed level itself covers it too: a roof
+// (a floor at viewZ) hides the residents and furniture under it.
 static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
     if (cellZ < 0) cellZ = 0;
-    if (viewZ > gridDepth) viewZ = gridDepth;
-    for (int zCheck = cellZ; zCheck < viewZ; zCheck++) {
+    if (viewZ > gridDepth - 1) viewZ = gridDepth - 1;
+    for (int zCheck = cellZ; zCheck <= viewZ; zCheck++) {
         if (CellIsSolid(GRID(x, y, zCheck)) || HAS_FLOOR(x, y, zCheck)) {
             return false;
         }
