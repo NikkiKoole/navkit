@@ -50,6 +50,7 @@ int WalkCostToWater(int x, int y, int z, int maxCost, int* outWaterZ);
 // nearest trash bin with room within trashBinWalkCells (Tidy: twice as far, Slob: only a bin
 // right there), else onto the ground as litter. It becomes a real item only then.
 extern int trashBinWalkCells;
+extern int forageFarCells;      // a second, wider bush search when none is near (setting forageFar)
 extern int latrineDirtPerUse;   // floor dirt a pit latrine gets per use (setting latrineDirt)
 extern int toiletDryDirtPerUse; // ... a toilet without water to flush it (setting toiletDryDirt)
 extern bool toiletsPlumbed;     // mains water: every toilet flushes (off in survival: water nearby needed)

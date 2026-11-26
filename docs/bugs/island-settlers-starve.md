@@ -1,6 +1,6 @@
 # Island settlers starve by day three
 
-**Status: OPEN** (found 2026-11-25 while measuring the social need, not investigated)
+**Status: MOSTLY FIXED 2026-11-26** (found 2026-11-25): 6 of 8 seeds keep all three settlers alive 10 days without a player; seed 7 open (see the end)
 
 All three settlers of the `island` game die of starvation on day 3, in every run tried. It is
 not the social need (same with `socialNeed` on and off) and not the games (they don't start:
@@ -59,3 +59,23 @@ their 48-cell forage search bare (a bush ripens again after ~4 game days); survi
 settler lives 10 days on 211 bushes. Options: settlers forage further when nothing is near,
 bushes give more than one handful, or accept that the island needs a player. Also: animal
 respawns come from the map edge (sea on the island), so hunted game doesn't come back yet.
+
+## Part 3: forage further, bushes give more (2026-11-26, user picked both)
+
+- A bush gives `bushBerries` berries when picked (setting, default 3; was 1). The rest lies by
+  the bush and is the next meal (food on the ground comes first).
+- No ripe bush within ~48 cells: one more search as far as `forageFarCells` (setting
+  `forageFar`, default 160; only bushes the settler has seen).
+
+| island, 10 days, no player | meals (3 settlers) | deaths |
+|---|---|---|
+| seeds 0-4, 6 | 72 each (2.4 per settler per day) | 0 |
+| seed 5 | 64 | 1 (D10) |
+| seed 7 | 14 | 3 (D4-D6) |
+
+Survival seeds 0 and 3, 10 days: 24 meals, alive.
+
+**Left: seed 7.** Only 7 bushes are ever discovered; one settler forages far, the other two
+only eat what's left by the bushes it picked and starve. Bushes under the fog can't be found, and
+exploring was left out on purpose (2026-11-23: it pulled settlers away from their water). If
+wanted: explore only when hungry with no food known.

@@ -244,8 +244,12 @@ static int FindForageBush(const Mover* m, int moverIdx) {
     Point from = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     ForageCtx ctx = {moverIdx};
     Point found = from;
+    // Near first (~48 cells); none there: once more as far as forageFarCells (three settlers
+    // pick their own area bare: docs/bugs/island-settlers-starve.md)
     if (!RipeBushAt(&ctx, from.x, from.y, from.z) &&
-        NavFindNearest(NavGame(), from, RipeBushAt, &ctx, FORAGE_SEARCH_COST, &found, NULL, 0, NULL) < 0)
+        NavFindNearest(NavGame(), from, RipeBushAt, &ctx, FORAGE_SEARCH_COST, &found, NULL, 0, NULL) < 0 &&
+        (forageFarCells * 10 <= FORAGE_SEARCH_COST ||
+         NavFindNearest(NavGame(), from, RipeBushAt, &ctx, forageFarCells * 10, &found, NULL, 0, NULL) < 0))
         return -1;
     Plant* p = GetPlantAt(found.x, found.y, found.z);
     return p ? (int)(p - plants) : -1;
@@ -791,6 +795,7 @@ static bool CriticalNeed(Mover* m, int moverIdx, bool canSearch, void (*startSea
 // --- Trash ---
 
 int trashBinWalkCells = 12;
+int forageFarCells = 160;
 
 static bool MoverHasTrait(const Mover* m, TraitType t) {
     for (int i = 0; i < MAX_TRAITS; i++) if (m->traits[i] == t) return true;

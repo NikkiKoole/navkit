@@ -32,6 +32,7 @@ typedef struct {
 
 extern Plant plants[MAX_PLANTS];
 extern int plantCount;
+extern int bushBerries;   // berries a ripe bush gives when picked (setting bushBerries)
 
 void InitPlants(void);
 void ClearPlants(void);

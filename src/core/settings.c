@@ -794,6 +794,10 @@ static const Setting settings[] = {
       "Most a mover carries in hands, pockets and on the back (the back counts half). Above it nothing more is picked up.", NULL),
     SET_INT("trashBinWalk", "Bin Walk (cells)", "Entities/Movers/Needs", trashBinWalkCells, 0.2f, 0, 64,
       "How far a mover walks to put a can or wrapper in a trash bin (Tidy: twice as far, Slob: 2). No bin with room that close: litter.", NULL),
+    SET_INT("forageFar", "Forage Far (cells)", "Entities/Movers/Needs", forageFarCells, 1.0f, 0, 400,
+      "A hungry mover with no food lying around looks for a ripe berry bush within ~48 cells of walking; none there: once more as far as this (only bushes it has seen). 48 or less: no second search.", NULL),
+    SET_INT("bushBerries", "Bush Berries", "Entities/Movers/Needs", bushBerries, 0.1f, 1, 10,
+      "Berries a ripe bush gives when picked (foraging or a harvest order). The rest lies by the bush for the next meal.", NULL),
 
     // --- Movers: avoidance ---
     SET_BOOL("avoidance", "Enabled", "Entities/Movers/Avoidance", useMoverAvoidance,

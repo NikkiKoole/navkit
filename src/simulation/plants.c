@@ -73,6 +73,8 @@ bool IsPlantRipe(int x, int y, int z) {
     return p && p->stage == PLANT_STAGE_RIPE;
 }
 
+int bushBerries = 3;
+
 void HarvestPlant(int x, int y, int z) {
     Plant* p = GetPlantAt(x, y, z);
     if (!p || p->stage != PLANT_STAGE_RIPE) return;
@@ -86,7 +88,7 @@ void HarvestPlant(int x, int y, int z) {
     float py = y * CELL_SIZE + CELL_SIZE * 0.5f;
     switch (p->type) {
         case PLANT_BERRY_BUSH:
-            SpawnItem(px, py, (float)z, ITEM_BERRIES);
+            for (int i = 0; i < (bushBerries > 0 ? bushBerries : 1); i++) SpawnItem(px, py, (float)z, ITEM_BERRIES);
             break;
         case PLANT_WILD_WHEAT:
             SpawnItem(px, py, (float)z, ITEM_WHEAT_SEEDS);
