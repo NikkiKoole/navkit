@@ -184,7 +184,7 @@ Scenario `powder-fire` (in scenarios-check), tests in test_explosion "gunpowder_
 - A pile of n goes off as one charge of `blastPower * cbrt(n)` (8 = twice the power, capped).
 - `ExplosionCount()`; the console `explode` reports how much gunpowder it set off.
 - Headless runs now check the simulation activity counters at the end (as the windowed loop does
-  every 60 s): found `docs/bugs/smoke-activity-counter-drift.md` (smoke.c, not explosions).
+  every 60 s): found `docs/done/bugs/smoke-activity-counter-drift.md` (fixed 11-26) (smoke.c, not explosions).
 
 ## Built: blast and dust effects (slice 5, 2026-11-25)
 
