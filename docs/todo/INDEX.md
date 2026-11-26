@@ -93,6 +93,7 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 - `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer (names + mood done, skills not started)
 - `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel (shake built, incl. thunder; small next: mining / construction shake, sprite tweens)
 - `world/island.md` — Finite island grown from a seed (drainage, rivers, cover, loose items); terrain, scenario and game `island`; lived-in island measured (11-23); open: 128 islands mostly cut off, seed 4 at `rampDensity 1`
+- `world/soil-moisture.md` — Idea: soil holds water (soaks in, plants + sun take it out), evaporation per surface and depth, moisture labels soaked..parched, crops wilt/rot
 - `world/water-ideas.md` — Parked ideas: spring size by catchment + soaking, sea current, showcases (hot spring, volcano, waterfall mist), rafts (piers, rafts as vehicles), flecks redesign
 - `world/water.md` — Water simulation: settled water rests, map edge as outlet (v101), edge-fed rivers, wading out, fair update order, trickling springs (v103); open: soaking sink (the --inspect mismatch and the flaky connectivity test are fixed)
 - `world/trains.md` — Track, stations, boarding, coloured lines, transfers, subway, freight/cargo (v97), settings saved (v99). Not buildable by players yet (dev Draw track only); no timetables
