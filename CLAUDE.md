@@ -232,6 +232,17 @@ gatherings (also round fires by themselves), walks, greetings, doorway manners, 
 settings, scenarios and next steps: `docs/todo/social/noticing.md`; code patterns:
 `src/entities/CLAUDE.md` "Social behaviour".
 
+## Ownership, doors and visiting
+
+Who may enter, use or take what, where: `src/entities/places.c` (groups such as households,
+places as a 16-bit per-cell layer with parents and rules, grants for guests). Ask
+`MayEnter` / `MayUse` / `MayTake`; every need search does. Ownership never changes walkability;
+only locks do. Doors are three cell types (`CELL_DOOR` closed, `CELL_DOOR_OPEN`, `CELL_DOOR_LOCKED` =
+a wall to the pathfinder; `CellIsDoor` for all): movers open closed doors as they pass, they stay
+open, the Work tool dOors marks them to open or close. Visits (`visit.c`): knock, let in with a
+grant, stay, leave. Scenarios `galerij`, `visiting`, `doorsmoke`, `doorlock`. Plans:
+`docs/todo/architecture/ownership-and-access.md`, `docs/todo/world/infrastructure.md`.
+
 ## Selection and the inspector panel
 
 Left-click in normal mode selects a mover, animal, workshop, stockpile or blueprint (`src/core/selection.c`);

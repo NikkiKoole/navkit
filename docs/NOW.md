@@ -34,14 +34,18 @@ The design is still in flux. Pick work that makes the engine better for *every* 
 | Town | City builder where every citizen is a mover | live, newest | `vision/town.md` "Where we are" |
 | City 1999 | One homeless person in a city: bins, cans, coins | paused (scenarios `trash`, `bottlerun`) | `vision/city-1999.md` "Where we are" |
 | Cars | 2x2 steering cars on a lane network, road tool | experiment, branch `cars-experiment` | `research/cars-experiment.md` (on that branch) |
-| Scenarios | ~76 dev/test setups (`--scenario list`) | dev | `src/core/scenarios.c` |
+| Galerij | A block of flats: 8 households, front doors, friends visiting | scenarios `galerij`, `visiting` (newest) | `todo/architecture/ownership-and-access.md` "Where we are" |
+| Scenarios | ~80 dev/test setups (`--scenario list`) | dev | `src/core/scenarios.c` |
 
 Engine threads that the lenses share (each doc has its own state):
 social behaviour (`todo/social/noticing.md`), action queue (`todo/architecture/action-queue-and-need-index.md`),
 explosions (`todo/world/explosions.md`, paused), throwing (`todo/gameplay/throwing.md`),
 water and tide (`todo/world/water.md`, `todo/world/tide.md` parked), belts and trains
 (`todo/world/conveyors.md`, `todo/world/trains.md`), big worlds (`todo/architecture/chunked-world-plan.md`),
-infrastructure: doors, locks, mechanisms, pipes (`todo/world/infrastructure.md`, plan).
+infrastructure: doors, locks, mechanisms, pipes (`todo/world/infrastructure.md`: doors open / closed / locked
+and the door chore built, visiting built, levers next), ownership and access: who may enter, use, take
+what, where (`todo/architecture/ownership-and-access.md`: core + households built; Town's beds and City 1999's
+shops to move onto it). Behaviours we hope to see emerge: `vision/hoped-for-behaviours.md`.
 
 ## Next: one UI for many ways of playing
 
