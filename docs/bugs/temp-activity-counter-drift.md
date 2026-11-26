@@ -1,6 +1,13 @@
 # Temperature activity counter drift in the GUI
 
-**Status: OPEN** (seen 2026-11-21, not investigated)
+**Status: FIXED 2026-11-26** (seen 2026-11-21). Cause: every layer gets its "empty" value
+after a map size change (`AllocGridLayers`, `grid_layers.c`), and the temperature layer's was zero
+bytes, which means `stable = 0`: every cell unstable while `tempUnstableCells` stays 0. Any path
+that changes the map size and doesn't call `InitTemperature` afterwards gave exactly this drift
+(16384 = every cell of a 32x32x16 map). The commands and starts tried below all call it, which is
+why they never showed it. Fix: the layer's empty value is `InitTemperature` (stable at ambient,
+counters 0). Test: `test_temperature` "should leave the unstable count right after a map size
+change without InitTemperature" (fails without the fix).
 
 ## Description
 

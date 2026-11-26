@@ -140,7 +140,7 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(smokePressureVisited, 0),
     LAYER_DEF(smokeHasRisen, 0),
     LAYER_DEF(steamHasRisen, 0),
-    LAYER_DEF(temperatureGrid, 0),
+    LAYER_DEF_FN(temperatureGrid, InitTemperature),   // empty = stable at ambient (0 bytes = all unstable)
     LAYER_DEF(snowGrid, 0),
     LAYER_DEF(snowAccumGrid, 0),
     LAYER_DEF(wearGrid, 0),

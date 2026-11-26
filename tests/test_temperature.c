@@ -908,6 +908,20 @@ describe(temperature_ambient_changes) {
         seasonalAmplitude = oldSeasonal; diurnalAmplitude = oldDiurnal;
     }
 
+    // A new map size reallocates every layer; the temperature layer's empty value must be
+    // "stable at ambient" (what InitTemperature writes), not zero bytes (= every cell unstable
+    // with tempUnstableCells 0: the GUI's "tempUnstableCells = 0, actual = 16384" drift)
+    it("should leave the unstable count right after a map size change without InitTemperature") {
+        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+        InitTemperature();
+        RebuildSimActivityCounts();
+        expect(ValidateSimActivityCounts());
+        InitGridWithSizeAndChunkSize(48, 40, 8, 8);   // new size: the arena is mapped again
+        expect(tempUnstableCells == 0);
+        expect(IsTemperatureStable(5, 5, 0));
+        expect(ValidateSimActivityCounts());
+    }
+
     // UpdateTemperature skips chunks without active cells; it must give exactly the full scan's
     // result (a wrong per-chunk count would leave cells unprocessed)
     it("should give the same temperatures with quiet chunks skipped as with a full scan") {
