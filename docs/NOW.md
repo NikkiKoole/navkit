@@ -40,7 +40,8 @@ Engine threads that the lenses share (each doc has its own state):
 social behaviour (`todo/social/noticing.md`), action queue (`todo/architecture/action-queue-and-need-index.md`),
 explosions (`todo/world/explosions.md`, paused), throwing (`todo/gameplay/throwing.md`),
 water and tide (`todo/world/water.md`, `todo/world/tide.md` parked), belts and trains
-(`todo/world/conveyors.md`, `todo/world/trains.md`), big worlds (`todo/architecture/chunked-world-plan.md`).
+(`todo/world/conveyors.md`, `todo/world/trains.md`), big worlds (`todo/architecture/chunked-world-plan.md`),
+infrastructure: doors, locks, mechanisms, pipes (`todo/world/infrastructure.md`, plan).
 
 ## Next: one UI for many ways of playing
 

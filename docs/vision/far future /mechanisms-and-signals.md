@@ -1,5 +1,8 @@
 # Mechanisms & Signals — The Road to Logic
 
+> 2026-11-26: Layer 1 is now planned in `docs/todo/world/infrastructure.md` together with keys and
+> pipes. A standalone sandbox of all three layers exists: `experiments/mechanisms/` (`make mechanisms`).
+
 Companion doc to `gates-and-processors.md`. That doc dreams big (processors, punch cards, 13 eras). This doc answers: **what do we actually build first, and how does each layer work under the hood?**
 
 ---

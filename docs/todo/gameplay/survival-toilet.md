@@ -117,6 +117,9 @@ Levels 1-2 need no new systems. 3 brings the first pipes (drain only), 4 the sec
 
 ## The pipe layer (`pipeGrid`, agreed with dreamengine)
 
+> Part of the joint plan `../world/infrastructure.md` (pipes are its step 4; a valve is a
+> switchable part a lever can drive).
+
 One byte per cell, a grid layer of its own (`cellFlags` is full): one `LAYER_DEF` row, untouched
 pages cost no memory, saves run-length code it (a save bump; older saves: no pipes). Pipes take
 no cell of their own, so walking, rooms and the pathfinder don't change. Same layout as

@@ -44,6 +44,9 @@ Asked for 2026-11-24: ladders with a direction (one way), keys and doors, maybe 
 
 ## Parked: keys and locked doors (user: fix later)
 
+> Now part of the joint plan `../world/infrastructure.md` (doors, locks, mechanisms, pipes): door
+> states first, then household front doors and visiting (step 2), the rest of keys in step 5.
+
 Decided so far: **keys are real items**, carried around (dropped, picked up, lost).
 Open points, from the first look:
 - A key item needs a lock id (an `Item` field, save bump); a door a lock id (small table).
