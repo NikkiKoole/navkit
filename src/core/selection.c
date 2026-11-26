@@ -13,6 +13,7 @@
 #include "../entities/money.h"
 #include "../entities/elevators.h"
 #include "../world/cell_defs.h"
+#include "../world/mechanisms.h"
 #include <math.h>
 
 Selection selection = {SEL_NONE, -1};
@@ -37,6 +38,7 @@ bool SelectionValid(void) {
         case SEL_WORKSHOP:  ok = selection.idx >= 0 && selection.idx < MAX_WORKSHOPS && workshops[selection.idx].active; break;
         case SEL_STOCKPILE: ok = selection.idx >= 0 && selection.idx < MAX_STOCKPILES && stockpiles[selection.idx].active; break;
         case SEL_LOT:       ok = selection.idx >= 0 && selection.idx < townLotHighWater && townLots[selection.idx].active; break;
+        case SEL_MECHANISM: ok = selection.idx >= 0 && selection.idx < MAX_MECHANISMS && mechanisms[selection.idx].kind != MECH_NONE; break;
     }
     if (!ok) ClearSelection();
     return ok;
@@ -105,6 +107,8 @@ Selection PickSelectionAt(float wx, float wy, int z) {
     if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight && z >= 0 && z < gridDepth) {
         int lot = TownLotAt(cx, cy, z);   // the lot is what a town player means (it lists its stores)
         if (lot >= 0) return (Selection){SEL_LOT, lot};
+        int mech = MechanismAt(cx, cy, z);   // before a stockpile: a plate often has a 1x1 one on it
+        if (mech >= 0) return (Selection){SEL_MECHANISM, mech};
         int ws = FindWorkshopAt(cx, cy, z);
         if (ws >= 0) return (Selection){SEL_WORKSHOP, ws};
         int sp = GetStockpileAtGrid(cx, cy, z);
@@ -400,7 +404,45 @@ static void VerbStackDown(int i) { StockpileAdjustStackSize(i, -1); }
 static void VerbContainersUp(int i) { StockpileAdjustContainers(i, 1); }
 static void VerbContainersDown(int i) { StockpileAdjustContainers(i, -1); }
 
+// ---------------------------------------------------------------------------
+// Lever / plate actions
+// ---------------------------------------------------------------------------
+
+void MechanismOrderPull(int idx) {
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind != MECH_LEVER) return;
+    Mechanism* m = &mechanisms[idx];
+    if (DesignatePullLever(m->x, m->y, m->z)) AddMessage("Lever marked: a worker will pull it", GREEN);
+    else AddMessage("That lever is already marked", GRAY);
+}
+
+void MechanismPullNow(int idx) {
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind != MECH_LEVER) return;
+    PullLever(idx);
+}
+
+void InputMode_StartMechanismLinking(int idx);   // input_mode.c: linking a lever / plate is an input mode
+void MechanismStartLinking(int idx) {
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind == MECH_NONE) return;
+    InputMode_StartMechanismLinking(idx);
+}
+
+void MechanismRemove(int idx) {
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind == MECH_NONE) return;
+    Mechanism* m = &mechanisms[idx];
+    RemoveMechanism(m->x, m->y, m->z);
+    ClearSelection();
+}
+
+static const char* PullLabel(int i) {
+    return (i >= 0 && i < MAX_MECHANISMS && mechanisms[i].kind == MECH_LEVER) ? "Pull" : "(a plate: weight pulls it)";
+}
+
 static const SelectionVerb selectionVerbs[] = {
+    // Lever / plate (buttons only)
+    { SEL_MECHANISM, "Pull", PullLabel, 0, 0, false, false, true, MechanismOrderPull },
+    { SEL_MECHANISM, "Link", NULL, 0, 0, false, false, true, MechanismStartLinking },
+    { SEL_MECHANISM, "Pull now", NULL, 0, 0, false, false, true, MechanismPullNow },
+    { SEL_MECHANISM, "Remove", NULL, 0, 0, false, false, true, MechanismRemove },
     // Mover. F: follow the hovered mover, else the selected one (input.c, global key)
     { SEL_MOVER, "Follow", FollowLabel, KEY_F, 0, false, false, true, ToggleMoverFollow },
     { SEL_MOVER, "Draft", DraftLabel, KEY_D, 0, false, true, true, ToggleMoverDraft },

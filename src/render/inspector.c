@@ -18,6 +18,7 @@
 #include "../entities/stockpiles.h"
 #include "../entities/money.h"
 #include "../world/designations.h"
+#include "../world/mechanisms.h"
 
 Color DescToneColor(DescTone tone);   // tooltips.c
 
@@ -80,6 +81,23 @@ static void VerbButtons(SelectionKind kind, int idx, bool draw, float x, float* 
 
 static void MoverButtons(bool draw, float x, float* y) {
     VerbButtons(SEL_MOVER, selection.idx, draw, x, y);
+}
+
+// A lever / plate: its buttons, then per link Invert / Unlink
+static void MechanismContent(bool draw, float x, float* y) {
+    int idx = selection.idx;
+    VerbButtons(SEL_MECHANISM, idx, draw, x, y);
+    for (int l = 0; l < MAX_MECH_LINKS; l++) {
+        const MechLink* k = &mechLinks[l];
+        if (k->src != idx) continue;
+        const char* what = MechTargetName(k->x, k->y, k->z);
+        float bx = x;
+        if (draw) DrawTextShadow(TextFormat("%s %d,%d", what ? what : "(gone)", k->x, k->y), (int)bx, (int)*y + 5, 14, WHITE);
+        bx += 110;
+        if (Button(k->invert ? "Inverted" : "Normal", draw, &bx, *y)) FlipMechanismLinkInvert(l);
+        if (Button("Unlink", draw, &bx, *y)) { UnlinkMechanism(idx, k->x, k->y, k->z); *y += INSPECTOR_BUTTON_H; return; }
+        *y += INSPECTOR_BUTTON_H;
+    }
 }
 
 static void WorkshopContent(bool draw, float x, float* y) {
@@ -217,6 +235,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
         case SEL_WORKSHOP:  DescribeWorkshopStatus(selection.idx, &d); break;
         case SEL_STOCKPILE: DescribeStockpile(selection.idx, &d); break;
         case SEL_LOT:       DescribeLot(selection.idx, &d); break;
+        case SEL_MECHANISM: DescribeMechanism(selection.idx, &d); break;
         case SEL_NONE:      return 0;
     }
     if (d.count == 0) return 0;
@@ -234,6 +253,7 @@ static float PanelContent(bool draw, float x, float top, float right) {
     if (selection.kind == SEL_MOVER) MoverButtons(draw, x, &y);
     else if (selection.kind == SEL_WORKSHOP) WorkshopContent(draw, x, &y);
     else if (selection.kind == SEL_STOCKPILE) StockpileContent(draw, x, &y);
+    else if (selection.kind == SEL_MECHANISM) MechanismContent(draw, x, &y);
     return y - top;
 }
 
@@ -285,6 +305,11 @@ void DrawSelectionHighlight(void) {
             const Stockpile* sp = &stockpiles[selection.idx];
             wx = sp->x * CELL_SIZE; wy = sp->y * CELL_SIZE; wz = sp->z;
             wcells = (float)sp->width; hcells = (float)sp->height;
+            break;
+        }
+        case SEL_MECHANISM: {
+            const Mechanism* m = &mechanisms[selection.idx];
+            wx = m->x * CELL_SIZE; wy = m->y * CELL_SIZE; wz = m->z;
             break;
         }
         case SEL_LOT: {

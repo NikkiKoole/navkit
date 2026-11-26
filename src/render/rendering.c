@@ -8,6 +8,7 @@
 #include "../core/input_mode.h"
 #include "../core/time.h"
 #include "../simulation/vapour.h"
+#include "../simulation/moisture.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/chase.h"
@@ -919,6 +920,20 @@ void DrawRampOverlay(void) {
     }
 }
 
+// Grass on dry ground turns straw, on parched ground brown (moisture.h); normal or wetter ground
+// keeps the biome's tint unchanged
+static Color GrassTintAt(int x, int y, int zSoil) {
+    Color base = biomePresets[selectedBiome].grassTint;
+    int m = MOISTURE(x, y, zSoil);
+    if (m >= MOISTURE_NORMAL) return base;
+    float t = (float)(MOISTURE_NORMAL - m) / (float)MOISTURE_NORMAL;   // 0 at normal, 1 bone dry
+    Color dry = { 255, (unsigned char)(235 - 40 * t), (unsigned char)(160 - 70 * t), 255 };
+    Color mixed = { (unsigned char)(base.r + (dry.r - base.r) * t * 0.5f + 0.5f),
+                    (unsigned char)(base.g + (dry.g - base.g) * (0.4f + 0.6f * t)),
+                    (unsigned char)(base.b + (dry.b - base.b) * (0.4f + 0.6f * t)), 255 };
+    return mixed;
+}
+
 static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -951,7 +966,7 @@ static void DrawGrassOverlay(void) {
                 // Grass is on top of solid, lit from the air above (zDepth+1)
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
-                else tint = MultiplyColor(tint, biomePresets[selectedBiome].grassTint);
+                else tint = MultiplyColor(tint, GrassTintAt(x, y, zDepth));
                 FastSprite(atlas, src, dest, tint);
             }
         }
@@ -986,7 +1001,7 @@ static void DrawGrassOverlay(void) {
                 Rectangle src = SpriteGetRect(sprite);
                 Color lightTint = GetLightColor(x, y, z, skyColor);
                 if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
-                else lightTint = MultiplyColor(lightTint, biomePresets[selectedBiome].grassTint);
+                else lightTint = MultiplyColor(lightTint, GrassTintAt(x, y, zBelow));
                 FastSprite(atlas, src, dest, lightTint);
             }
         }
@@ -3015,6 +3030,12 @@ static void DrawMechanisms(void) {
     float size = CELL_SIZE * zoom;
     Vector2 g = ScreenToGrid(GetMousePosition());
     int hover = MechanismAt((int)g.x, (int)g.y, z);
+    int shown = linkingMechanismIdx >= 0 ? linkingMechanismIdx
+              : (selection.kind == SEL_MECHANISM && SelectionValid()) ? selection.idx : -1;
+    if (linkingMechanismIdx >= 0 && MechTargetName((int)g.x, (int)g.y, z)) {   // a door / valve to click
+        Rectangle t = { offset.x + (int)g.x * size, offset.y + (int)g.y * size, size, size };
+        DrawRectangleLinesEx(t, 3.0f, MechLinked(linkingMechanismIdx, (int)g.x, (int)g.y, z) ? (Color){ 230, 80, 60, 255 } : (Color){ 90, 230, 110, 255 });
+    }
     for (int i = 0; i < MAX_MECHANISMS; i++) {
         Mechanism* m = &mechanisms[i];
         if (m->kind == MECH_NONE || m->z != z) continue;
@@ -3036,7 +3057,7 @@ static void DrawMechanisms(void) {
         MechLink* k = &mechLinks[l];
         if (k->src < 0) continue;
         Mechanism* m = &mechanisms[k->src];
-        if (!linksOverlay && k->src != hover) continue;
+        if (!linksOverlay && k->src != hover && k->src != shown) continue;
         if (m->z != z && k->z != z) continue;
         Vector2 a = { offset.x + (m->x + 0.5f) * size, offset.y + (m->y + 0.5f) * size };
         Vector2 b = { offset.x + (k->x + 0.5f) * size, offset.y + (k->y + 0.5f) * size };
@@ -4023,7 +4044,7 @@ static void DrawFrontView(void) {
                 Color grassLight = GetLightColor(x, worldY, zBelow, skyColor);
                 Color grassTint = MultiplyColor(layerTint, grassLight);
                 if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
-                else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
+                else grassTint = MultiplyColor(grassTint, GrassTintAt(x, worldY, zBelow));
                 FastSprite(atlas, SpriteGetRect(grassSprite), grassDest, grassTint);
             }
         }

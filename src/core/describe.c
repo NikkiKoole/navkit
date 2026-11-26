@@ -46,6 +46,7 @@
 #include <string.h>
 #include "../entities/adverts.h"
 #include "../entities/visit.h"
+#include "../world/mechanisms.h"
 
 void DescAdd(DescLines* d, DescTone tone, const char* fmt, ...) {
     if (d->count >= DESC_MAX_LINES) return;
@@ -1047,6 +1048,31 @@ void DescFillMeter(char* out, size_t outSize, float ratio, int width) {
     bar[idx++] = ']';
     bar[idx] = '\0';
     snprintf(out, outSize, "%s %d%%", bar, (int)(ratio * 100.0f + 0.5f));
+}
+
+void DescribeMechanism(int idx, DescLines* out) {
+    out->count = 0;
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind == MECH_NONE) return;
+    const Mechanism* m = &mechanisms[idx];
+    bool lever = m->kind == MECH_LEVER;
+    DescAdd(out, DESC_TITLE, "%s", lever ? "Lever" : "Pressure plate");
+    DescAdd(out, m->on ? DESC_GOOD : DESC_MUTED, "%s", lever ? (m->on ? "On (pulled)" : "Off")
+                                                              : (m->on ? "Pressed: on" : "Up: off"));
+    if (!lever) DescAdd(out, DESC_INFO, "Held down by a weight of %d (a person or animal 1, an item its stack)", plateWeight);
+    if (lever && DESIGNATION(m->x, m->y, m->z).type == DESIGNATION_PULL_LEVER) DescAdd(out, DESC_WARN, "Marked: a worker will pull it");
+    int n = 0;
+    for (int l = 0; l < MAX_MECH_LINKS; l++) {
+        const MechLink* k = &mechLinks[l];
+        if (k->src != idx) continue;
+        const char* what = MechTargetName(k->x, k->y, k->z);
+        const char* state = MechTargetStateName(k->x, k->y, k->z);
+        DescAdd(out, what ? DESC_NORMAL : DESC_MUTED, "-> %s at %d,%d: %s%s%s", what ? what : "(gone)", k->x, k->y,
+                state ? state : "-", k->invert ? ", inverted" : "",
+                MechLockWaiting(k->x, k->y, k->z) ? ", waiting to lock" : "");
+        n++;
+    }
+    if (n == 0) DescAdd(out, DESC_MUTED, "Not linked: Link, then click doors or valves");
+    else DescAdd(out, DESC_INFO, "On: %s. Off: %s.", "doors open, valves open", "doors lock, valves shut");
 }
 
 void DescribeStockpile(int spIdx, DescLines* out) {

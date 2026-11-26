@@ -21,6 +21,7 @@ typedef enum {
     SUBMODE_BUILD,    // Construct wall, Floor, Ladder, Ramp
     SUBMODE_HARVEST,  // Chop tree, Gather/Plant sapling
     SUBMODE_LINKING_STOCKPILES,  // Link stockpiles to workshops
+    SUBMODE_LINKING_MECHANISM,   // Link a lever / plate to doors and valves (mechanisms.h)
 } WorkSubMode;
 
 // Actions within modes
@@ -205,6 +206,7 @@ void InputMode_FlipHow(void);                      // I: flip buildNow and the c
 
 // Link stockpiles to workshop `wsIdx`: the next stockpile click links it (ESC/L ends).
 void InputMode_StartLinking(int wsIdx);
+void InputMode_StartMechanismLinking(int idx);   // a lever / plate: click doors and valves (mechanisms.h)
 
 void SetSelectedFurnitureRecipe(int recipeIndex);
 void SelectBuildRecipe(int recipeIndex);       // selects it in its category (wall, ladder, furniture, ...)

@@ -67,6 +67,14 @@ void MechWrite(int x, int y, int z, int value);
 int  MechRead(int x, int y, int z);            // -1 = nothing there
 bool MechLockWaiting(int x, int y, int z);     // a door told to lock, waiting for its doorway
 
+// Link mode (the inspector's "Link" button): clicking a door or valve links or unlinks it
+extern int linkingMechanismIdx;                // -1 = not linking
+bool ToggleMechanismLink(int src, int tx, int ty, int tz);   // true = now linked, false = unlinked (or no target)
+bool MechLinked(int src, int tx, int ty, int tz);
+void FlipMechanismLinkInvert(int linkIdx);
+const char* MechTargetName(int x, int y, int z);   // "door", "valve", NULL
+const char* MechTargetStateName(int x, int y, int z);   // "locked", "closed", "open", "shut", NULL
+
 void MechanismsTick(void);                     // plates + waiting doors
 
 // Pulling a lever by order: a designation on the lever's cell, a mover walks up and pulls it

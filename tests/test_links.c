@@ -20,6 +20,9 @@ static bool test_verbose = false;
 #include "../src/entities/workshops.h"
 #include "../src/simulation/balance.h"
 #include "../src/core/time.h"
+#include "../src/core/selection.h"
+#include "../src/core/describe.h"
+#include "../src/world/construction.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -228,6 +231,57 @@ describe(pulling_by_order) {
     }
 }
 
+describe(building_and_linking) {
+    it("a lever and a plate are built from blueprints, and not where one already is") {
+        SetupWorld();
+        int bp = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_LEVER);
+        expect(bp >= 0);
+        CompleteBlueprint(bp);
+        int lever = MechanismAt(2, 2, 0);
+        expect(lever >= 0 && mechanisms[lever].kind == MECH_LEVER);
+        expect(CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_PRESSURE_PLATE) < 0);   // taken
+        bp = CreateRecipeBlueprint(3, 2, 0, CONSTRUCTION_PRESSURE_PLATE);
+        CompleteBlueprint(bp);
+        expect(MechanismAt(3, 2, 0) >= 0 && mechanisms[MechanismAt(3, 2, 0)].kind == MECH_PLATE);
+    }
+
+    it("clicking a door links it, clicking it again unlinks it; flipping invert acts at once") {
+        SetupWorld();
+        int lever = PlaceMechanism(2, 4, 0, MECH_LEVER);
+        expect(ToggleMechanismLink(lever, 6, 4, 0));                // linked
+        expect(MechLinked(lever, 6, 4, 0));
+        expect(!ToggleMechanismLink(lever, 6, 4, 0));               // unlinked
+        expect(!MechLinked(lever, 6, 4, 0));
+        expect(!ToggleMechanismLink(lever, 5, 5, 0));               // not a target
+        int l = LinkMechanism(lever, 6, 4, 0, false);
+        FlipMechanismLinkInvert(l);                                 // off + inverted = open now
+        expect(mechLinks[l].invert == 1);
+        expect(GRID(6, 4, 0) == CELL_DOOR_OPEN);
+        FlipMechanismLinkInvert(l);
+        expect(GRID(6, 4, 0) == CELL_DOOR_LOCKED);
+    }
+
+    it("a click on a lever selects it, and it describes itself and its links") {
+        SetupWorld();
+        int lever = PlaceMechanism(2, 4, 0, MECH_LEVER);
+        LinkMechanism(lever, 6, 4, 0, false);
+        Selection s = PickSelectionAt(2.5f * CELL_SIZE, 4.5f * CELL_SIZE, 0);
+        expect(s.kind == SEL_MECHANISM && s.idx == lever);
+        DescLines d;
+        DescribeMechanism(lever, &d);
+        expect(d.count >= 3);
+        expect(strcmp(d.lines[0].text, "Lever") == 0);
+        bool sawDoor = false;
+        for (int i = 0; i < d.count; i++) if (strstr(d.lines[i].text, "door at 6,4: closed")) sawDoor = true;
+        expect(sawDoor);
+        MechanismPullNow(lever);
+        DescribeMechanism(lever, &d);
+        expect(strstr(d.lines[1].text, "On") != NULL);
+        MechanismRemove(lever);
+        expect(MechanismAt(2, 4, 0) < 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -236,5 +290,6 @@ int main(int argc, char* argv[]) {
     test(valves_and_numbers);
     test(mechanism_save);
     test(pulling_by_order);
+    test(building_and_linking);
     return summary();
 }

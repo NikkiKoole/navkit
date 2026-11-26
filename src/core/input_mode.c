@@ -4,6 +4,7 @@
 #include "../game_state.h"  // Includes raylib.h
 #include "../simulation/lighting.h"
 #include "../entities/workshops.h"
+#include "../world/mechanisms.h"
 #include <stdio.h>
 
 // State
@@ -94,6 +95,7 @@ void InputMode_ExitToNormal(void) {
     inputAction = ACTION_NONE;
     selectedMaterial = 1;
     linkingWorkshopIdx = -1;  // Reset linking state
+    linkingMechanismIdx = -1;
 }
 
 void InputMode_StartLinking(int wsIdx) {
@@ -101,6 +103,14 @@ void InputMode_StartLinking(int wsIdx) {
     workSubMode = SUBMODE_LINKING_STOCKPILES;
     linkingWorkshopIdx = wsIdx;
     AddMessage("LINKING MODE: Click stockpile to link (ESC to cancel)", YELLOW);
+}
+
+void InputMode_StartMechanismLinking(int idx) {
+    if (idx < 0 || idx >= MAX_MECHANISMS || mechanisms[idx].kind == MECH_NONE) return;
+    inputMode = MODE_WORK;
+    workSubMode = SUBMODE_LINKING_MECHANISM;
+    linkingMechanismIdx = idx;
+    AddMessage("LINKING: click a door or valve to link it, again to unlink (ESC or L: done)", YELLOW);
 }
 
 void InputMode_SelectAction(InputAction action) {

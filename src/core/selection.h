@@ -17,6 +17,7 @@ typedef enum {
     SEL_WORKSHOP,
     SEL_STOCKPILE,
     SEL_LOT,          // a town lot (town.c): a click inside one selects the lot, not its stores/stoves
+    SEL_MECHANISM,    // a lever or pressure plate (mechanisms.h)
 } SelectionKind;
 
 typedef struct {
@@ -63,6 +64,12 @@ void StockpileToggleForSale(int spIdx);                 // a shop or not (money.
 void StockpileToggleMaterial(int spIdx, int materialFilterIdx);   // STOCKPILE_MATERIAL_FILTERS
 // Items enabled / total in a filter category
 void StockpileCategoryCounts(int spIdx, int category, int* enabled, int* total);
+
+// Lever / plate actions (shared by the inspector buttons and the palette)
+void MechanismOrderPull(int idx);        // mark the lever: a worker walks over and pulls it
+void MechanismPullNow(int idx);          // flip it now (dev)
+void MechanismStartLinking(int idx);     // link mode: click doors and valves
+void MechanismRemove(int idx);
 
 // Verbs: what can be done to a selected / hovered thing, as data (docs/todo/ui/find-palette.md
 // step 4). The inspector's buttons and the hover keys read this table, and a pie menu or a

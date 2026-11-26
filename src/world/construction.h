@@ -118,6 +118,8 @@ typedef enum {
     CONSTRUCTION_FIRE_BARREL,            // 1 stage: 4 planks (furniture: a burning barrel, built empty)
     CONSTRUCTION_DRAIN,                  // 1 stage: 1 bricks (a floor drain, pipes.h)
     CONSTRUCTION_DRAIN_OUTLET,           // 1 stage: 2 bricks (a floor drain that is an outlet)
+    CONSTRUCTION_LEVER,                  // 1 stage: 2 sticks + 1 rock (furniture category: a lever, mechanisms.h)
+    CONSTRUCTION_PRESSURE_PLATE,         // 1 stage: 2 rocks (furniture category: a pressure plate, mechanisms.h)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

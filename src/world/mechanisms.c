@@ -49,6 +49,7 @@ static void RecountMechanisms(void) {
 }
 
 void ClearMechanisms(void) {
+    linkingMechanismIdx = -1;
     memset(mechanisms, 0, sizeof(mechanisms));
     for (int i = 0; i < MAX_MECH_LINKS; i++) { memset(&mechLinks[i], 0, sizeof(MechLink)); mechLinks[i].src = -1; }
     mechHigh = linkHigh = plateCount = 0;
@@ -188,6 +189,43 @@ bool UnlinkMechanism(int src, int tx, int ty, int tz) {
         if (l->src == src && l->x == tx && l->y == ty && l->z == tz) { l->src = -1; return true; }
     }
     return false;
+}
+
+int linkingMechanismIdx = -1;
+
+bool MechLinked(int src, int tx, int ty, int tz) {
+    for (int i = 0; i < linkHigh; i++) {
+        MechLink* l = &mechLinks[i];
+        if (l->src == src && l->x == tx && l->y == ty && l->z == tz) return true;
+    }
+    return false;
+}
+
+bool ToggleMechanismLink(int src, int tx, int ty, int tz) {
+    if (UnlinkMechanism(src, tx, ty, tz)) return false;
+    return LinkMechanism(src, tx, ty, tz, false) >= 0;
+}
+
+void FlipMechanismLinkInvert(int linkIdx) {
+    if (linkIdx < 0 || linkIdx >= MAX_MECH_LINKS || mechLinks[linkIdx].src < 0) return;
+    MechLink* l = &mechLinks[linkIdx];
+    l->invert = !l->invert;
+    Mechanism* m = &mechanisms[l->src];
+    MechWrite(l->x, l->y, l->z, ((m->on != 0) != (l->invert != 0)) ? 1 : 0);   // takes effect now
+}
+
+const char* MechTargetName(int x, int y, int z) {
+    if (!InMap(x, y, z)) return NULL;
+    if (CellIsDoor(GRID(x, y, z))) return "door";
+    if (GetPipe(x, y, z) & PIPE_VALVE) return "valve";
+    return NULL;
+}
+
+const char* MechTargetStateName(int x, int y, int z) {
+    int v = MechRead(x, y, z);
+    if (v < 0) return NULL;
+    if (CellIsDoor(GRID(x, y, z))) return v == 0 ? "locked" : v == 1 ? "closed" : "open";
+    return v ? "open" : "shut";
 }
 
 int MechLinkCount(int src) {

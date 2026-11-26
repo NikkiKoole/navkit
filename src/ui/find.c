@@ -132,6 +132,7 @@ static const char* SelKindLabel(SelectionKind k) {
         case SEL_WORKSHOP:  return "Workshop";
         case SEL_STOCKPILE: return "Stockpile";
         case SEL_LOT:       return "Lot";
+        case SEL_MECHANISM: return "Lever / plate";
         default:            return "Other";
     }
 }

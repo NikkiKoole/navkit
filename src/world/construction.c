@@ -1256,6 +1256,40 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_LEVER] = {
+        .name = "Lever",
+        .buildCategory = BUILD_FURNITURE,   // listed with furniture; completing it places a lever (mechanisms.h)
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                { .alternatives = {{ .itemType = ITEM_STICKS }}, .altCount = 1, .count = 2, .anyBuildingMat = false },
+                { .alternatives = {{ .itemType = ITEM_ROCK }}, .altCount = 1, .count = 1, .anyBuildingMat = false },
+            },
+            .inputCount = 2,
+            .buildTime = 1.5f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 1,
+    },
+    [CONSTRUCTION_PRESSURE_PLATE] = {
+        .name = "Pressure Plate",
+        .buildCategory = BUILD_FURNITURE,   // listed with furniture; completing it places a plate (mechanisms.h)
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_ROCK }},
+                .altCount = 1,
+                .count = 2,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 1.5f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

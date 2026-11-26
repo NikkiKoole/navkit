@@ -109,6 +109,8 @@ void DescribeStockpile(int spIdx, DescLines* out);
 // A town lot (town.c): a home's people and pantry, a workplace's hours, staff and stores, a
 // farm's field, a granary's stock. Used by the inspector and --describe-lot.
 void DescribeLot(int lot, DescLines* out);
+// A lever or pressure plate (mechanisms.h): on / off, what it does, its links and their targets' state
+void DescribeMechanism(int idx, DescLines* out);
 // The town in one line (people, homeless, jobless, food) for the play HUD's overview bar
 void DescribeTownOverview(char* buf, int len);
 // "[|||||     ] 50%": ratio 0..1 as a text meter `width` bars wide

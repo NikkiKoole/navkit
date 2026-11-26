@@ -23,6 +23,7 @@
 #include "../entities/belts.h"
 #include "../game_state.h"
 #include "pipes.h"
+#include "mechanisms.h"
 #include <string.h>
 #include <math.h>
 
@@ -2283,6 +2284,7 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     } else if (recipe->buildCategory == BUILD_FURNITURE) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
         if (GetFurnitureAt(x, y, z) >= 0) return -1;
+        if (MechanismAt(x, y, z) >= 0) return -1;   // a lever or plate there already
     } else if (recipe->buildCategory == BUILD_DOOR) {
         if (!IsCellWalkableAt(z, y, x)) return -1;
         // Door must be adjacent to at least one wall
@@ -2872,6 +2874,8 @@ void CompleteBlueprint(int blueprintIdx) {
         else if (bp->recipeIndex == CONSTRUCTION_PIT_LATRINE) ft = FURNITURE_PIT_LATRINE;
         else if (bp->recipeIndex == CONSTRUCTION_TOILET) ft = FURNITURE_TOILET;
         else if (bp->recipeIndex == CONSTRUCTION_FIRE_BARREL) ft = FURNITURE_FIRE_BARREL;
+        if (bp->recipeIndex == CONSTRUCTION_LEVER) PlaceMechanism(x, y, z, MECH_LEVER);
+        else if (bp->recipeIndex == CONSTRUCTION_PRESSURE_PLATE) PlaceMechanism(x, y, z, MECH_PLATE);
         if (ft != FURNITURE_NONE) {
             int fi = SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
             // a built barrel starts empty (unlit): haulers fill it (JOBTYPE_REFUEL)

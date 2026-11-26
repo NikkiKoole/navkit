@@ -23,6 +23,7 @@
 #include "../entities/town.h"
 #include "../entities/belts.h"
 #include "../world/pipes.h"
+#include "../world/mechanisms.h"
 
 // Forward declaration
 void HandleInput(void);
@@ -2872,6 +2873,29 @@ void HandleInput(void) {
         }
         
         // Don't process other inputs while in linking mode
+        return;
+    }
+
+    // ========================================================================
+    // Lever / plate linking mode (the inspector's Link button, mechanisms.h)
+    // ========================================================================
+    if (workSubMode == SUBMODE_LINKING_MECHANISM) {
+        if (linkingMechanismIdx < 0 || mechanisms[linkingMechanismIdx].kind == MECH_NONE ||
+            IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_L)) {
+            workSubMode = SUBMODE_NONE;
+            inputMode = MODE_NORMAL;
+            linkingMechanismIdx = -1;
+            AddMessage("Linking done", GRAY);
+            return;
+        }
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !ui_wants_mouse()) {
+            Vector2 g = ScreenToGrid(GetMousePosition());
+            int tx = (int)g.x, ty = (int)g.y, tz = currentViewZ;
+            const char* what = MechTargetName(tx, ty, tz);
+            if (!what) AddMessage("Not a door or valve", RED);
+            else if (ToggleMechanismLink(linkingMechanismIdx, tx, ty, tz)) AddMessage(TextFormat("Linked the %s at %d,%d", what, tx, ty), GREEN);
+            else AddMessage(TextFormat("Unlinked the %s at %d,%d", what, tx, ty), GRAY);
+        }
         return;
     }
 
