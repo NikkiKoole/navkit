@@ -1105,6 +1105,29 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    // Pipes (pipes.h): bricks for now (user, 2026-11-26), a clay pipe item later
+    [CONSTRUCTION_DRAIN] = {
+        .name = "Drain Pipe",
+        .buildCategory = BUILD_PIPE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{ .alternatives = {{ .itemType = ITEM_BRICKS }}, .altCount = 1, .count = 1, .anyBuildingMat = false }},
+            .inputCount = 1,
+            .buildTime = 0.25f,   // game hours: dig a trench, lay the pipe, cover it
+        }},
+        .resultMaterial = MAT_NONE,
+    },
+    [CONSTRUCTION_DRAIN_OUTLET] = {
+        .name = "Drain Outlet",
+        .buildCategory = BUILD_PIPE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{ .alternatives = {{ .itemType = ITEM_BRICKS }}, .altCount = 1, .count = 2, .anyBuildingMat = false }},
+            .inputCount = 1,
+            .buildTime = 0.5f,    // game hours: the drain's end, where it flows out
+        }},
+        .resultMaterial = MAT_NONE,
+    },
     [CONSTRUCTION_BELT] = {
         .name = "Conveyor Belt",
         .buildCategory = BUILD_BELT,

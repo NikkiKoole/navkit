@@ -22,6 +22,7 @@
 #include "../entities/elevators.h"
 #include "../entities/belts.h"
 #include "../game_state.h"
+#include "pipes.h"
 #include <string.h>
 #include <math.h>
 
@@ -2303,6 +2304,13 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         // Laid on walkable ground (the builder stands on it); one belt per cell
         if (!IsCellWalkableAt(z, y, x)) return -1;
         if (BeltAt(x, y, z) >= 0) return -1;
+    } else if (recipe->buildCategory == BUILD_PIPE) {
+        // In the floor of walkable ground (the builder stands on it). A drain where there is
+        // none; an outlet where there is no outlet yet (on a drain or not)
+        if (!IsCellWalkableAt(z, y, x)) return -1;
+        uint8_t pb = GetPipe(x, y, z);
+        if (recipeIndex == CONSTRUCTION_DRAIN && (pb & PIPE_FLOOR_DRAIN)) return -1;
+        if (recipeIndex == CONSTRUCTION_DRAIN_OUTLET && (pb & PIPE_FLOOR_DRAIN) && (pb & PIPE_END)) return -1;
     } else if (recipe->buildCategory == BUILD_SHAFT) {
         // On walkable ground or the top of a shaft, with room for the level above
         if (!CanPlaceShaft(x, y, z)) return -1;
@@ -2881,6 +2889,17 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->assignedBuilder = -1;
         blueprintCount--;
         if (PlaceShaft(x, y, z, finalMat)) EventLog("Elevator shaft built at (%d,%d,%d)", x, y, z);
+        return;
+    }
+
+    if (recipe->buildCategory == BUILD_PIPE) {
+        uint8_t pb = GetPipe(x, y, z) | PIPE_FLOOR_DRAIN;
+        if (bp->recipeIndex == CONSTRUCTION_DRAIN_OUTLET) pb |= PIPE_END;
+        SetPipe(x, y, z, pb);
+        EventLog("%s built at (%d,%d,%d)", recipe->name, x, y, z);
+        bp->active = false;
+        bp->assignedBuilder = -1;
+        blueprintCount--;
         return;
     }
 

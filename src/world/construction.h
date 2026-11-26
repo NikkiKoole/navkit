@@ -21,6 +21,7 @@ typedef enum {
     BUILD_DOOR,
     BUILD_BELT,         // conveyor belt cell (belts.c); direction in Blueprint.workshopType
     BUILD_SHAFT,        // elevator shaft (elevators.c): like a ladder, reaches one level up
+    BUILD_PIPE,         // a pipe in the cell's floor (pipes.h): the cell itself doesn't change
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -115,6 +116,8 @@ typedef enum {
     CONSTRUCTION_TOILET,                 // 1 stage: 3 planks or 3 clay (furniture)
     CONSTRUCTION_RAILING,                // 1 stage: 2 sticks or 2 planks (CELL_RAILING: stops walking only)
     CONSTRUCTION_FIRE_BARREL,            // 1 stage: 4 planks (furniture: a burning barrel, built empty)
+    CONSTRUCTION_DRAIN,                  // 1 stage: 1 bricks (a floor drain, pipes.h)
+    CONSTRUCTION_DRAIN_OUTLET,           // 1 stage: 2 bricks (a floor drain that is an outlet)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

@@ -145,6 +145,8 @@ typedef enum {
     ACTION_DRAW_LOT_MILL,       // Draw > Town: a mill (querns + granary)
     ACTION_DRAW_LOT_FARM,       // Draw > Town: a wheat farm (field + seed store)
     ACTION_DRAW_LOT_GRANARY,    // Draw > Town: a granary (wheat + flour for the winter)
+    ACTION_WORK_DRAIN,          // Work > Build: a line of floor drain blueprints (pipes.h, appended)
+    ACTION_WORK_DRAIN_OUTLET,   // Work > Build: a drain outlet blueprint (appended)
 } InputAction;
 
 // Current input state

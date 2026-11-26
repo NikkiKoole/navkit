@@ -12,6 +12,7 @@ static bool test_verbose = false;
 #include "../src/world/cell_defs.h"
 #include "../src/world/pipes.h"
 #include "../src/world/designations.h"
+#include "../src/world/construction.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/items.h"
 #include "../src/entities/jobs.h"
@@ -131,6 +132,43 @@ describe(drain_network) {
     }
 }
 
+describe(drain_blueprints) {
+    it("a drain blueprint goes on walkable ground without a drain; built, it is a floor drain") {
+        SetupGround();
+        int bp = CreateRecipeBlueprint(4, 4, 1, CONSTRUCTION_DRAIN);
+        expect(bp >= 0);
+        expect(GetPipe(4, 4, 1) == 0);                        // a plan, not a pipe yet
+        CompleteBlueprint(bp);
+        expect(!blueprints[bp].active);
+        expect(GetPipe(4, 4, 1) == PIPE_FLOOR_DRAIN);
+        expect(GRID(4, 4, 1) == CELL_AIR);                    // the cell itself is unchanged
+        expect(CreateRecipeBlueprint(4, 4, 1, CONSTRUCTION_DRAIN) < 0);   // already a drain
+        expect(CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRAIN) < 0);   // inside the ground
+    }
+
+    it("an outlet goes on a drain (or bare ground) and makes it the drain's end") {
+        SetupGround();
+        LayFloorDrain(2, 2, 6, 2, 1);
+        int bp = CreateRecipeBlueprint(6, 2, 1, CONSTRUCTION_DRAIN_OUTLET);
+        expect(bp >= 0);
+        expect(!PipeDrainConnected(2, 2, 1));
+        CompleteBlueprint(bp);
+        expect(GetPipe(6, 2, 1) == (PIPE_FLOOR_DRAIN | PIPE_END));
+        expect(PipeDrainConnected(2, 2, 1));
+        expect(CreateRecipeBlueprint(6, 2, 1, CONSTRUCTION_DRAIN_OUTLET) < 0);   // already an outlet
+        int lone = CreateRecipeBlueprint(9, 9, 1, CONSTRUCTION_DRAIN_OUTLET);
+        expect(lone >= 0);
+        CompleteBlueprint(lone);
+        expect(GetPipe(9, 9, 1) == (PIPE_FLOOR_DRAIN | PIPE_END));
+    }
+
+    it("drains cost a brick, an outlet two") {
+        expect(GetConstructionRecipe(CONSTRUCTION_DRAIN)->stages[0].inputs[0].alternatives[0].itemType == ITEM_BRICKS);
+        expect(GetConstructionRecipe(CONSTRUCTION_DRAIN)->stages[0].inputs[0].count == 1);
+        expect(GetConstructionRecipe(CONSTRUCTION_DRAIN_OUTLET)->stages[0].inputs[0].count == 2);
+    }
+}
+
 describe(drain_toilet) {
     it("in a world with drains a toilet off the drain is a dry toilet, on a connected drain it flushes") {
         SetupGround();
@@ -183,6 +221,7 @@ int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(drain_network);
+    test(drain_blueprints);
     test(drain_toilet);
     return summary();
 }

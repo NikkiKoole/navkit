@@ -22,6 +22,7 @@
 #include "../entities/elevators.h"
 #include "../entities/town.h"
 #include "../entities/belts.h"
+#include "../world/pipes.h"
 
 // Forward declaration
 void HandleInput(void);
@@ -1229,6 +1230,38 @@ static void ExecuteRemoveBelt(int x1, int y1, int x2, int y2, int z) {
                               cancelled, cancelled == 1 ? "" : "s"), ORANGE);
 }
 
+// Drain blueprints (pipes.h): an L from the drag's first corner to its last, along x then y
+static void ExecuteDesignateDrain(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int x = x1; x <= x2; x++) if (CreateRecipeBlueprint(x, y1, z, CONSTRUCTION_DRAIN) >= 0) count++;
+    for (int y = y1 + 1; y <= y2; y++) if (CreateRecipeBlueprint(x2, y, z, CONSTRUCTION_DRAIN) >= 0) count++;
+    if (count > 0) AddMessage(TextFormat("Created %d drain blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+}
+
+static void ExecuteDesignateDrainOutlet(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int y = y1; y <= y2; y++)
+        for (int x = x1; x <= x2; x++)
+            if (CreateRecipeBlueprint(x, y, z, CONSTRUCTION_DRAIN_OUTLET) >= 0) count++;
+    if (count > 0) AddMessage(TextFormat("Created %d outlet blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+}
+
+// Right-drag with a drain tool: cancel pipe blueprints and take out built pipes (spike: at once,
+// no bricks back)
+static void ExecuteRemoveDrain(int x1, int y1, int x2, int y2, int z) {
+    int cancelled = 0, removed = 0;
+    for (int y = y1; y <= y2; y++)
+        for (int x = x1; x <= x2; x++) {
+            int bpIdx = GetBlueprintAt(x, y, z);
+            if (bpIdx >= 0 && (blueprints[bpIdx].recipeIndex == CONSTRUCTION_DRAIN ||
+                               blueprints[bpIdx].recipeIndex == CONSTRUCTION_DRAIN_OUTLET)) { CancelBlueprint(bpIdx); cancelled++; }
+            if (GetPipe(x, y, z)) { SetPipe(x, y, z, 0); removed++; }
+        }
+    if (cancelled + removed > 0)
+        AddMessage(TextFormat("Removed %d pipe%s, cancelled %d blueprint%s", removed, removed == 1 ? "" : "s",
+                              cancelled, cancelled == 1 ? "" : "s"), ORANGE);
+}
+
 // Elevator shaft blueprints: on the viewed level, each one a shaft from here up one level
 // (or one more level on top of a shaft). Build a taller shaft level by level.
 static void ExecuteDesignateShaft(int x1, int y1, int x2, int y2, int z) {
@@ -2084,6 +2117,7 @@ RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
 RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
 RECT_TOOL(ExecuteDesignateDoor)
 RECT_TOOL(ExecuteDesignateBelt)      RECT_TOOL(ExecuteRemoveBelt)
+RECT_TOOL(ExecuteDesignateDrain)     RECT_TOOL(ExecuteDesignateDrainOutlet)  RECT_TOOL(ExecuteRemoveDrain)
 RECT_TOOL(ExecuteDesignateShaft)     RECT_TOOL(ExecuteRemoveShaft)
 RECT_TOOL(ExecuteCreateGatherZone)   RECT_TOOL(ExecuteEraseGatherZone)
 RECT_TOOL(ExecuteDesignateChop)      RECT_TOOL(ExecuteCancelChop)
@@ -2268,6 +2302,8 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_WORK_FURNITURE]     = PAIR(ExecuteDesignateFurniture, ExecuteCancelBuild),
     [ACTION_WORK_DOOR]          = PAIR(ExecuteDesignateDoor, ExecuteCancelBuild),
     [ACTION_WORK_BELT]          = PAIR(ExecuteDesignateBelt, ExecuteRemoveBelt),
+    [ACTION_WORK_DRAIN]         = PAIR(ExecuteDesignateDrain, ExecuteRemoveDrain),
+    [ACTION_WORK_DRAIN_OUTLET]  = PAIR(ExecuteDesignateDrainOutlet, ExecuteRemoveDrain),
     [ACTION_WORK_SHAFT]         = PAIR(ExecuteDesignateShaft, ExecuteRemoveShaft),
     [ACTION_WORK_WORKSHOP_CAMPFIRE]     = WS_WORK(WORKSHOP_CAMPFIRE),
     [ACTION_WORK_WORKSHOP_GROUND_FIRE]  = WS_WORK(WORKSHOP_GROUND_FIRE),

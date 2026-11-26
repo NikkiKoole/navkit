@@ -1933,6 +1933,7 @@ int main(int argc, char** argv) {
         DrawMiningDesignations();
         DrawOneWayLadders();
         DrawBlueprints();
+        DrawPipeBlueprints();   // the planned pipe's shape over its blueprint tiles (pipes.h)
         DrawTerrainBrushPreview();
         DrawWorkshopPlacementPreview();
         if (showChunkBoundaries) {

@@ -749,6 +749,32 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     {
+        .action = ACTION_WORK_DRAIN,
+        .hints = { "L-drag: a drain from corner to corner (along x, then y)", "1 bricks per cell", "R-drag remove" },
+        .name = "DRAIN",
+        .barDisplayText = "Pipe drain",
+        .barKey = 'p',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_WORK_DRAIN_OUTLET,
+        .hints = { "Click: where a drain flows out (2 bricks)", "R-click remove" },
+        .name = "OUTLET",
+        .barDisplayText = "Outlet",
+        .barKey = 'o',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
         .action = ACTION_WORK_SHAFT,
         .hints = { "Shaft: from here up one level", "On a shaft top: one more level", "L-drag designate", "R-drag take down" },
         .name = "ELEVATOR",

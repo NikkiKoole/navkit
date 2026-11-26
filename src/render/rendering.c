@@ -2959,9 +2959,20 @@ static int PipeSpriteFor(int mask, bool inner) {
     return inner ? railSprites[mask & 15] : pipeSprites[mask & 15];
 }
 
+// A drain blueprint at (x, y, z): the pipe as it will be (drawn faint, joins like a pipe)
+static bool PipeBlueprintAt(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    int bi = GetBlueprintAt(x, y, z);
+    return bi >= 0 && (blueprints[bi].recipeIndex == CONSTRUCTION_DRAIN || blueprints[bi].recipeIndex == CONSTRUCTION_DRAIN_OUTLET);
+}
+
+static bool PipeDrainOrPlanned(int x, int y, int z) {
+    return (GetPipe(x, y, z) & PIPE_DRAIN) || PipeBlueprintAt(x, y, z);
+}
+
 static int PipeDrainMask(int x, int y, int z) {
-    return ((GetPipe(x, y - 1, z) & PIPE_DRAIN) ? 1 : 0) | ((GetPipe(x + 1, y, z) & PIPE_DRAIN) ? 2 : 0)
-         | ((GetPipe(x, y + 1, z) & PIPE_DRAIN) ? 4 : 0) | ((GetPipe(x - 1, y, z) & PIPE_DRAIN) ? 8 : 0);
+    return (PipeDrainOrPlanned(x, y - 1, z) ? 1 : 0) | (PipeDrainOrPlanned(x + 1, y, z) ? 2 : 0)
+         | (PipeDrainOrPlanned(x, y + 1, z) ? 4 : 0) | (PipeDrainOrPlanned(x - 1, y, z) ? 8 : 0);
 }
 
 // Flushes running down the drain: a bright blob ~3 cells long moving from the fixture to the
@@ -3020,6 +3031,24 @@ static void DrawPipes(void) {
             }
         }
     DrawPipePulses(skyColor);
+}
+
+// Drain blueprints: the pipe as it will be, over the blueprint tile (drawn after DrawBlueprints),
+// joined to its built and planned neighbours
+static void DrawPipeBlueprints(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        const Blueprint* bp = &blueprints[i];
+        if (!bp->active || bp->z != z) continue;
+        if (bp->recipeIndex != CONSTRUCTION_DRAIN && bp->recipeIndex != CONSTRUCTION_DRAIN_OUTLET) continue;
+        if (HAS_FLOOR(bp->x, bp->y, z) && !pipeOverlay) continue;
+        Rectangle dest = { offset.x + bp->x * size, offset.y + bp->y * size, size, size };
+        if (dest.x < -size || dest.y < -size || dest.x > GetScreenWidth() || dest.y > GetScreenHeight()) continue;
+        FastSprite(atlas, SpriteGetRect(PipeSpriteFor(PipeDrainMask(bp->x, bp->y, z), false)), dest, (Color){ 176, 112, 78, 200 });
+        if (bp->recipeIndex == CONSTRUCTION_DRAIN_OUTLET)
+            DrawCircleV((Vector2){ dest.x + size * 0.5f, dest.y + size * 0.5f }, size * 0.22f, (Color){ 30, 24, 18, 140 });
+    }
 }
 
 static void DrawFurniture(void) {

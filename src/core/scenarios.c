@@ -951,6 +951,78 @@ static bool DrainCheck(char* why, int whyLen) {
     return true;
 }
 
+// drain-build: the drain laid by movers (pipes.h, CONSTRUCTION_DRAIN / _OUTLET, Work > Build >
+// Pipe drain / Outlet): two people, a toilet, 20 bricks on the ground, and the blueprints the
+// tools make: a drain from the toilet east and south, an outlet at its end. They haul and
+// build; until the outlet is in the toilet is dry, after it flushes.
+#define DRAINBUILD_END_Y 13
+static int drainBuildTicks, drainBuildBuiltAt, drainBuildDryAfter, drainBuildCleanAfter, drainBuildPrev[2], drainBuildPrevDirt;
+
+static void SetupDrainBuild(void) {
+    drainBuildTicks = drainBuildDryAfter = drainBuildCleanAfter = 0;
+    drainBuildBuiltAt = -1;
+    drainBuildPrev[0] = drainBuildPrev[1] = FREETIME_NONE;
+    hungerEnabled = thirstEnabled = energyEnabled = bodyTempEnabled = false;
+    bladderEnabled = true;
+    toiletsPlumbed = true;   // mains water: whether it flushes is up to the drain
+    endlessMoverMode = false;
+    ClearPipes();
+    SpawnFurniture(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1, FURNITURE_TOILET, MAT_GRANITE);
+    for (int x = DRAIN_TOILET_X; x <= DRAIN_END_X; x++) CreateRecipeBlueprint(x, DRAIN_TOILET_Y, 1, CONSTRUCTION_DRAIN);
+    for (int y = DRAIN_TOILET_Y + 1; y <= DRAINBUILD_END_Y; y++) CreateRecipeBlueprint(DRAIN_END_X, y, 1, CONSTRUCTION_DRAIN);
+    CreateRecipeBlueprint(DRAIN_END_X, DRAINBUILD_END_Y + 1, 1, CONSTRUCTION_DRAIN_OUTLET);
+    int bricks = SpawnItem(5.5f * CELL_SIZE, 10.5f * CELL_SIZE, 1.0f, ITEM_BRICKS);
+    if (bricks >= 0) items[bricks].stackCount = 20;
+    SpawnMoverAt(4, 4, 1);
+    SpawnMoverAt(4, 6, 1);
+    drainBuildPrevDirt = GetFloorDirt(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1);
+    currentViewZ = 1;
+    AddMessage("Drain build: 20 bricks, a drain and an outlet to lay (Work > Build > Pipe drain / Outlet)", GREEN);
+}
+
+static int DrainBuildPending(void) {
+    int n = 0;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++)
+        if (blueprints[i].active && (blueprints[i].recipeIndex == CONSTRUCTION_DRAIN || blueprints[i].recipeIndex == CONSTRUCTION_DRAIN_OUTLET)) n++;
+    return n;
+}
+
+// Events (window and headless): a toilet visit every drainNeedEvery ticks for whoever is free
+static void DrainBuildLiveTick(void) {
+    drainBuildTicks++;
+    if (drainBuildTicks % drainNeedEvery != 0) return;
+    for (int k = 0; k < 2 && k < moverCount; k++) {
+        Mover* m = &movers[k];
+        if (m->active && m->freetimeState == FREETIME_NONE && m->currentJobId < 0) { m->bladder = 0.05f; break; }
+    }
+}
+
+static void DrainBuildTickStats(void) {
+    if (drainBuildBuiltAt < 0 && DrainBuildPending() == 0) drainBuildBuiltAt = drainBuildTicks;
+    int dirt = GetFloorDirt(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1);
+    for (int k = 0; k < 2 && k < moverCount; k++) {
+        int st = movers[k].freetimeState;
+        if (drainBuildPrev[k] == FREETIME_USING_TOILET && st != FREETIME_USING_TOILET && drainBuildBuiltAt >= 0) {
+            if (dirt > drainBuildPrevDirt) drainBuildDryAfter++; else drainBuildCleanAfter++;
+        }
+        drainBuildPrev[k] = st;
+    }
+    drainBuildPrevDirt = dirt;
+}
+
+static void DrainBuildPrintStats(void) {
+    printf("Drain build: %d blueprints left, all built at tick %d; toilet uses after: %d flushed, %d dry; on a drain: %s\n",
+           DrainBuildPending(), drainBuildBuiltAt, drainBuildCleanAfter, drainBuildDryAfter,
+           PipeFixtureOnDrain(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1) ? "yes" : "no");
+}
+
+static bool DrainBuildCheck(char* why, int whyLen) {
+    if (drainBuildBuiltAt < 0) { snprintf(why, (size_t)whyLen, "%d drain blueprints still unbuilt", DrainBuildPending()); return false; }
+    if (!PipeFixtureOnDrain(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1)) { snprintf(why, (size_t)whyLen, "built, but the toilet is not on a connected drain"); return false; }
+    if (drainBuildDryAfter > 0) { snprintf(why, (size_t)whyLen, "%d dry uses after the drain was built", drainBuildDryAfter); return false; }
+    return true;
+}
+
 static void DoorwayTickStats(void) {
     doorwayTicks++;
     float r = CELL_SIZE * 0.5f;
@@ -6159,6 +6231,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
     {"drain",      "Drain spike: a toilet whose floor drain ends nowhere is a dry toilet (floor dirt); at tick 1200 the drain's end becomes an outlet and it flushes clean (console pipe, setting pipeOverlay)",
                    NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0, DrainLiveTick},
+    {"drain-build", "Two people lay a brick drain from a toilet to an outlet (Work > Build > Pipe drain / Outlet blueprints, 1 brick per cell, 2 for the outlet); once it's in, the toilet flushes",
+                   NULL,        SetupDrainBuild, DrainBuildTickStats, DrainBuildPrintStats, DrainBuildCheck, 0, 0, DrainBuildLiveTick},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
