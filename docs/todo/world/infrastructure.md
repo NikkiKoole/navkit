@@ -69,8 +69,16 @@ brown when connected; outlet a dark dot, valve a green / red square); hidden und
 constructed floor unless setting `pipeOverlay`. Console `pipe drain x1 y1 x2 y2` (an L of floor
 drain), `pipe outlet|valve x y`, `pipe remove`, `pipe clear`. Scenario `drain` (in
 scenarios-check): before the outlet 4 uses all dry, after it 6 all flushed. `tests/test_pipes.c`.
-**Not in the spike:** saving (a save bump), pipe items and laying by movers (blueprints, the belt
-line tool), wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
+**Laid by movers (2026-11-26):** recipes `CONSTRUCTION_DRAIN` (1 bricks) and
+`CONSTRUCTION_DRAIN_OUTLET` (2 bricks; user: bricks for now, a clay pipe item later), category
+`BUILD_PIPE`: on walkable ground, completing sets the floor drain bit (and END), the cell stays as
+it is. Work > Build > Pipe drain (p: L-drag, along x then y) and Outlet (o: click); R-drag cancels
+blueprints and takes pipes out (at once, no bricks back yet). Planned pipes draw their shape over
+the blueprint tiles. Scenario `drain-build`: two people haul 20 bricks and lay toilet -> outlet,
+then every use flushes. A lever can drive a drain valve (navkit-1e's mechanisms flip
+`PIPE_VALVE_CLOSED` through `SetPipe`).
+**Not in the spike:** saving (v126, after 124 soil moisture and 125 mechanisms; until then a
+loaded game has no pipes and valve links point at nothing), the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
 rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
 pipe cells, so it never sweeps the map.
 
