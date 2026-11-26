@@ -867,6 +867,26 @@ static void ExecuteCancelPlantSapling(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+// Doors: each door marked for the other way from how it is now (open -> shut, shut -> open)
+static void ExecuteMarkDoor(int x1, int y1, int x2, int y2, int z) {
+    int toClose = 0, toOpen = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++) {
+            bool wasOpen = GRID(dx, dy, z) == CELL_DOOR_OPEN;
+            if (DesignateDoor(dx, dy, z)) { if (wasOpen) toClose++; else toOpen++; }
+        }
+    if (toClose > 0) AddMessage(TextFormat("Marked %d door%s to close", toClose, toClose > 1 ? "s" : ""), SKYBLUE);
+    if (toOpen > 0) AddMessage(TextFormat("Marked %d door%s to open", toOpen, toOpen > 1 ? "s" : ""), SKYBLUE);
+}
+
+static void ExecuteCancelDoorMark(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++)
+        for (int dx = x1; dx <= x2; dx++)
+            if (HasDoorDesignation(dx, dy, z)) { CancelDesignation(dx, dy, z); count++; }
+    if (count > 0) AddMessage(TextFormat("Cancelled %d door mark%s", count, count > 1 ? "s" : ""), SKYBLUE);
+}
+
 static void ExecuteDesignateClean(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -2058,6 +2078,7 @@ RECT_TOOL(ExecuteDesignateDigRamp)   RECT_TOOL(ExecuteCancelDigRamp)
 RECT_TOOL(ExecuteDesignateRemoveFloor) RECT_TOOL(ExecuteCancelRemoveFloor)
 RECT_TOOL(ExecuteDesignateRemoveRamp)  RECT_TOOL(ExecuteCancelRemoveRamp)
 RECT_TOOL(ExecuteDesignateBlast)     RECT_TOOL(ExecuteCancelBlast)
+RECT_TOOL(ExecuteMarkDoor)           RECT_TOOL(ExecuteCancelDoorMark)
 RECT_TOOL(ExecuteDesignateBuild)     RECT_TOOL(ExecuteCancelBuild)
 RECT_TOOL(ExecuteDesignateLadder)    RECT_TOOL(ExecuteDesignateFloor)
 RECT_TOOL(ExecuteDesignateRamp)      RECT_TOOL(ExecuteDesignateFurniture)
@@ -2276,6 +2297,7 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_WORK_GATHER_TREE]   = PAIR(ExecuteDesignateGatherTree, ExecuteCancelGatherTree),
     [ACTION_WORK_PLANT_SAPLING] = PAIR(ExecuteDesignatePlantSapling, ExecuteCancelPlantSapling),
     [ACTION_WORK_CLEAN]         = PAIR(ExecuteDesignateClean, ExecuteCancelClean),
+    [ACTION_WORK_OPERATE_DOOR]  = PAIR(ExecuteMarkDoor, ExecuteCancelDoorMark),
     [ACTION_WORK_HARVEST_BERRY] = PAIR(ExecuteDesignateHarvestBerry, ExecuteCancelHarvestBerry),
     [ACTION_WORK_KNAP]          = PAIR(ExecuteDesignateKnap, ExecuteCancelKnap),
     [ACTION_WORK_DIG_ROOTS]     = PAIR(ExecuteDesignateDigRoots, ExecuteCancelDigRoots),

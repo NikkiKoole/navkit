@@ -1117,6 +1117,18 @@ const ActionDef ACTION_REGISTRY[] = {
     // ========================================================================
     
     {
+        .action = ACTION_WORK_OPERATE_DOOR,
+        .name = "DOORS",
+        .barDisplayText = "dOors",
+        .barKey = 'o',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
         .action = ACTION_WORK_CLEAN,
         .name = "CLEAN",
         .barDisplayText = "Clean",

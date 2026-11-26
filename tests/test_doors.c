@@ -300,6 +300,37 @@ describe(door_states) {
         expect(OneWayDoorDir(3, 3, 1, &dx, &dy));
         expect(dx == 1 && dy == 0);
     }
+
+    it("marking a door asks for the other state, and completing it puts the door that way") {
+        InitTestGrid(8, 8);
+        InitDesignations();
+        GRID(3, 3, 1) = CELL_DOOR_OPEN;
+        GRID(5, 3, 1) = CELL_DOOR;
+        GRID(6, 3, 1) = CELL_WALL;
+        expect(DesignateDoor(3, 3, 1));
+        expect(DESIGNATION(3, 3, 1).type == DESIGNATION_CLOSE_DOOR);
+        expect(DesignateDoor(5, 3, 1));
+        expect(DESIGNATION(5, 3, 1).type == DESIGNATION_OPEN_DOOR);
+        expect(!DesignateDoor(3, 3, 1));            // already marked
+        expect(!DesignateDoor(6, 3, 1));            // not a door
+        expect(HasDoorDesignation(3, 3, 1) && HasDoorDesignation(5, 3, 1));
+        CompleteDoorDesignation(3, 3, 1);
+        CompleteDoorDesignation(5, 3, 1);
+        expect(GRID(3, 3, 1) == CELL_DOOR);
+        expect(GRID(5, 3, 1) == CELL_DOOR_OPEN);
+        expect(!HasDoorDesignation(3, 3, 1) && !HasDoorDesignation(5, 3, 1));
+    }
+
+    it("a close mark stays a close mark when someone opens the door meanwhile") {
+        InitTestGrid(8, 8);
+        InitDesignations();
+        GRID(3, 3, 1) = CELL_DOOR_OPEN;
+        expect(DesignateDoor(3, 3, 1));
+        SetDoorOpen(3, 3, 1, false);                // someone shut it
+        SetDoorOpen(3, 3, 1, true);                 // and someone walked through again
+        CompleteDoorDesignation(3, 3, 1);
+        expect(GRID(3, 3, 1) == CELL_DOOR);         // still shut, not flipped
+    }
 }
 
 // =============================================================================

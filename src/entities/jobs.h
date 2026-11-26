@@ -50,6 +50,7 @@ typedef enum {
     JOBTYPE_THROW,                   // Fetch a small item, throw it at a goal cell (throwing.c)
     JOBTYPE_BLAST,                   // Fetch gunpowder, set it in a designated wall, light it, run
     JOBTYPE_REFUEL,                  // Fetch sticks or a log, toss it into a burning barrel (furniture.c fuel)
+    JOBTYPE_DOOR,                    // Walk up to a door marked open/close and open or shut it
     JOBTYPE_COUNT
 } JobType;
 
@@ -94,6 +95,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_THROW]               = "THROW",
         [JOBTYPE_BLAST]               = "BLAST",
         [JOBTYPE_REFUEL]              = "REFUEL",
+        [JOBTYPE_DOOR]                = "DOOR",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -234,6 +236,7 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_RemoveBelt(Job* job, void* mover, float dt);
 JobRunResult RunJob_Blast(Job* job, void* mover, float dt);
+JobRunResult RunJob_Door(Job* job, void* mover, float dt);
 JobRunResult RunJob_Refuel(Job* job, void* mover, float dt);   // targetMine* = the barrel's cell, targetAdj* = where to stand
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);

@@ -1,7 +1,7 @@
 # Infrastructure: doors, locks, mechanisms, pipes (and what else is like them)
 
-> Status: step 1 half done (2026-11-26): doors open and closed. Locked and the "close door" chore
-> are next (see "Where we are"). Otherwise a plan. Joins three older
+> Status: step 1 mostly done (2026-11-26): doors open and closed, the open/close door chore.
+> Locked doors are next (see "Where we are"). Otherwise a plan. Joins three older
 > plans into one: keys (`../pathfinding/one-way-and-doors.md` "Parked: keys"), mechanisms layer 1
 > (`../../vision/far future /mechanisms-and-signals.md`) and the pipe layer
 > (`../gameplay/survival-toilet.md` "The pipe layer"). Those stay as the detail; this is the
@@ -23,8 +23,15 @@ opens, smoke follows after, the door stays open. Tests: `test_doors` "door_state
 Side fix: movement now treats a one-way door as a wall from its wrong side (a push in a crowd
 nudged someone back over the threshold in `door-oneway`).
 
-**Next in step 1:** the "close door" chore (a designation, an idle mover walks over and shuts it);
-locked-for-everyone (impassable: a local rebuild like placing a wall); a small path cost for a
+**The open/close door chore (2026-11-26, user: opening on purpose is the same chore as closing):**
+Work tool "dOors" (key O; play HUD Huisje "Open/Close Doors") marks each door for the other way
+from how it is now: `DESIGNATION_CLOSE_DOOR` / `DESIGNATION_OPEN_DOOR` (`DesignateDoor` in
+`designations.c`), one job `JOBTYPE_DOOR` (`RunJob_Door`, adjacent like gather tree; anyone does
+it; work time `doorOpenSeconds`). The mark keeps the wanted state, so a passer-by opening the door
+meanwhile doesn't flip it; already that way on arrival: the mark just clears. `doorsmoke` now
+marks the door once everyone is out and checks one walks back and shuts it.
+
+**Next in step 1:** locked-for-everyone (impassable: a local rebuild like placing a wall); a small path cost for a
 closed door (`NAV_ENTER_EXTRA`); the cold-snap and locked-door scenarios. Animals don't open doors
 yet (they walk through closed ones).
 

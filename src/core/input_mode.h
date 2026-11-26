@@ -111,6 +111,8 @@ typedef enum {
     ACTION_WORK_DIG_ROOTS,
     // Work > Clean (top-level, no submode)
     ACTION_WORK_CLEAN,
+    // Work > Doors (top-level): mark doors to be opened or shut (the other way from how they are)
+    ACTION_WORK_OPERATE_DOOR,
     // Work > Gather (top-level, no submode)
     ACTION_WORK_GATHER,
     // Work > Explore (top-level, no submode)

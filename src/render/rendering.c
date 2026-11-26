@@ -3245,6 +3245,8 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_FARM]           = {120, 80, 40, 200},
     [DESIGNATION_REMOVE_BELT]    = {230, 120, 60, 200},
     [DESIGNATION_BLAST]          = {220, 40, 40, 200},
+    [DESIGNATION_CLOSE_DOOR]     = {120, 200, 255, 200},
+    [DESIGNATION_OPEN_DOOR]      = {255, 220, 120, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -3268,6 +3270,8 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_FARM]           = {100, 60, 20, 255},
     [DESIGNATION_REMOVE_BELT]    = {210, 100, 40, 255},
     [DESIGNATION_BLAST]          = {255, 60, 30, 255},
+    [DESIGNATION_CLOSE_DOOR]     = {90, 170, 240, 255},
+    [DESIGNATION_OPEN_DOOR]      = {240, 200, 90, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -3284,6 +3288,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_CLEAN]          = {200, 230, 255, 180},
     [JOBTYPE_REMOVE_BELT]    = {230, 120, 60, 180},
     [JOBTYPE_BLAST]          = {220, 40, 40, 180},
+    [JOBTYPE_DOOR]           = {160, 210, 255, 180},
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 

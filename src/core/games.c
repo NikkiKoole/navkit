@@ -703,7 +703,8 @@ static bool HasSticksOrPlanks(const GameToolContext* c) { return c->hasSticks ||
     {HUD_TAB_BUILD,  "Build Railing",    ACTION_WORK_CONSTRUCT, CONSTRUCTION_RAILING,     HasSticksOrPlanks}, \
     {HUD_TAB_BUILD,  "Build Fire Barrel", ACTION_WORK_FURNITURE, CONSTRUCTION_FIRE_BARREL, HasPlanks}, \
     {HUD_TAB_BUILD,  "Build Belt",       ACTION_WORK_BELT,              -1, HasPlanks}, \
-    {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}
+    {HUD_TAB_BUILD,  "Build Elevator",   ACTION_WORK_SHAFT,             -1, HasPlanks}, \
+    {HUD_TAB_BUILD,  "Open/Close Doors", ACTION_WORK_OPERATE_DOOR,      -1, NULL}
 
 static const GameTool survivalTools[] = {
     {HUD_TAB_NATURE, "Explore", ACTION_WORK_EXPLORE, -1, NULL},   // fog of war

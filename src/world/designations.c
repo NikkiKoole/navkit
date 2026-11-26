@@ -3001,6 +3001,42 @@ bool HasBlastDesignation(int x, int y, int z) {
     return DESIGNATION(x, y, z).type == DESIGNATION_BLAST;
 }
 
+// =============================================================================
+// Open / close door (adjacent designations, JOBTYPE_DOOR): doors don't close by themselves.
+// The mark keeps the wanted state, so a passer-by opening the door meanwhile can't flip it.
+// =============================================================================
+
+bool DesignateDoor(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    CellType c = GRID(x, y, z);
+    if (!CellIsDoor(c)) return false;
+    if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
+    DesignationType t = c == CELL_DOOR_OPEN ? DESIGNATION_CLOSE_DOOR : DESIGNATION_OPEN_DOOR;
+    DESIGNATION_MUT(x, y, z).type = t;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(t);
+    return true;
+}
+
+bool HasDoorDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    DesignationType t = DESIGNATION(x, y, z).type;
+    return t == DESIGNATION_CLOSE_DOOR || t == DESIGNATION_OPEN_DOOR;
+}
+
+void CompleteDoorDesignation(int x, int y, int z) {
+    if (!HasDoorDesignation(x, y, z)) return;
+    DesignationType t = DESIGNATION(x, y, z).type;
+    SetDoorOpen(x, y, z, t == DESIGNATION_OPEN_DOOR);
+    activeDesignationCount--;
+    DESIGNATION_MUT(x, y, z).type = DESIGNATION_NONE;
+    DESIGNATION_MUT(x, y, z).assignedMover = -1;
+    DESIGNATION_MUT(x, y, z).progress = 0.0f;
+    InvalidateDesignationCache(t);
+}
+
 int CountBlastDesignations(void) {
     int n = 0;
     for (int z = 0; z < gridDepth; z++)

@@ -142,6 +142,10 @@ static int gatherReedsCacheCount = 0;
 
 static AdjacentDesignationEntry gatherTreeCache[MAX_DESIGNATION_CACHE];
 static int gatherTreeCacheCount = 0;
+static AdjacentDesignationEntry closeDoorCache[MAX_DESIGNATION_CACHE];
+static int closeDoorCacheCount = 0;
+static AdjacentDesignationEntry openDoorCache[MAX_DESIGNATION_CACHE];
+static int openDoorCacheCount = 0;
 
 static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
 static int cleanCacheCount = 0;
@@ -177,6 +181,8 @@ static bool plantSaplingCacheDirty = true;
 static bool gatherGrassCacheDirty = true;
 static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
+static bool closeDoorCacheDirty = true;
+static bool openDoorCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool removeBeltCacheDirty = true;
 static bool blastCacheDirty = true;
@@ -295,6 +301,10 @@ static int WorkGiver_TillDesignation(int moverIdx);
 static int WorkGiver_CleanDesignation(int moverIdx);
 static int WorkGiver_RemoveBelt(int moverIdx);
 static int WorkGiver_Blast(int moverIdx);
+static int WorkGiver_CloseDoor(int moverIdx);
+static int WorkGiver_OpenDoor(int moverIdx);
+static void RebuildCloseDoorDesignationCache(void);
+static void RebuildOpenDoorDesignationCache(void);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -354,6 +364,10 @@ static DesignationJobSpec designationSpecs[] = {
      removeBeltCache, &removeBeltCacheCount, &removeBeltCacheDirty},
     {DESIGNATION_BLAST, JOBTYPE_BLAST, RebuildBlastDesignationCache, WorkGiver_Blast,
      blastCache, &blastCacheCount, &blastCacheDirty},
+    {DESIGNATION_CLOSE_DOOR, JOBTYPE_DOOR, RebuildCloseDoorDesignationCache, WorkGiver_CloseDoor,
+     closeDoorCache, &closeDoorCacheCount, &closeDoorCacheDirty},
+    {DESIGNATION_OPEN_DOOR, JOBTYPE_DOOR, RebuildOpenDoorDesignationCache, WorkGiver_OpenDoor,
+     openDoorCache, &openDoorCacheCount, &openDoorCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -497,6 +511,18 @@ static void RebuildGatherTreeDesignationCache(void) {
     if (!gatherTreeCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_GATHER_TREE, gatherTreeCache, &gatherTreeCacheCount, true);
     gatherTreeCacheDirty = false;
+}
+
+static void RebuildCloseDoorDesignationCache(void) {
+    if (!closeDoorCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_CLOSE_DOOR, closeDoorCache, &closeDoorCacheCount, true);
+    closeDoorCacheDirty = false;
+}
+
+static void RebuildOpenDoorDesignationCache(void) {
+    if (!openDoorCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_OPEN_DOOR, openDoorCache, &openDoorCacheCount, true);
+    openDoorCacheDirty = false;
 }
 
 static void RebuildCleanDesignationCache(void) {
@@ -1577,6 +1603,29 @@ JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     if (job->step == STEP_WORKING) {
         JobRunResult r = RunWorkProgress(job, d, mover, dt, GATHER_TREE_WORK_TIME, true, 1.0f);
         if (r == JOBRUN_DONE) CompleteGatherTreeDesignation(tx, ty, tz, job->assignedMover);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Open / close door: walk up next to the door, open or shut it as marked (a short operate step,
+// doorOpenSeconds). Already that way when it gets there (someone else did it): just clear the mark.
+JobRunResult RunJob_Door(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || (d->type != DESIGNATION_CLOSE_DOOR && d->type != DESIGNATION_OPEN_DOOR)) return JOBRUN_FAIL;
+    CellType c = GRID(tx, ty, tz);
+    if (!CellIsDoor(c)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }            // the door is gone
+    if ((c == CELL_DOOR_OPEN) == (d->type == DESIGNATION_OPEN_DOOR)) {                    // already as wanted
+        CompleteDoorDesignation(tx, ty, tz);
+        return JOBRUN_DONE;
+    }
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        float t = doorOpenSeconds > 0.05f ? doorOpenSeconds : 0.05f;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, t, true, 1.0f);
+        if (r == JOBRUN_DONE) CompleteDoorDesignation(tx, ty, tz);
         return r;
     }
     return JOBRUN_FAIL;
@@ -3845,6 +3894,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_GATHER_REEDS] = RunJob_GatherReeds,
     [JOBTYPE_THROW] = RunJob_Throw,
     [JOBTYPE_BLAST] = RunJob_Blast,
+    [JOBTYPE_DOOR] = RunJob_Door,
     [JOBTYPE_REFUEL] = RunJob_Refuel,
 };
 
@@ -7193,6 +7243,56 @@ static int WorkGiver_RemoveBelt(int moverIdx) {
     m->needsRepath = true;
     RemoveMoverFromIdleList(moverIdx);
     return jobId;
+}
+
+// Open / close door: nearest door with that mark; anyone can do it
+static int WorkGiver_DoorFrom(int moverIdx, AdjacentDesignationEntry* cache, int cacheCount, DesignationType type) {
+    Mover* m = &movers[moverIdx];
+    int bestX = -1, bestY = -1, bestZ = -1, bestAdjX = -1, bestAdjY = -1;
+    float bestDistSq = 1e30f;
+    for (int i = 0; i < cacheCount; i++) {
+        AdjacentDesignationEntry* e = &cache[i];
+        Designation* d = GetDesignation(e->x, e->y, e->z);
+        if (!d || d->type != type || d->assignedMover != -1 || d->unreachableCooldown > 0.0f) continue;
+        float dx = e->adjX * CELL_SIZE + CELL_SIZE * 0.5f - m->x;
+        float dy = e->adjY * CELL_SIZE + CELL_SIZE * 0.5f - m->y;
+        float distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestX = e->x; bestY = e->y; bestZ = e->z; bestAdjX = e->adjX; bestAdjY = e->adjY;
+        }
+    }
+    if (bestX < 0) return -1;
+    if (!JobInRange(moverIdx, bestX, bestY, bestZ)) return -1;
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    if (!FindReachableAdjacentTile(bestX, bestY, bestZ, moverCell, &bestAdjX, &bestAdjY)) {
+        Designation* d = GetDesignation(bestX, bestY, bestZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+    int jobId = CreateJob(JOBTYPE_DOOR);
+    if (jobId < 0) return -1;
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestX;
+    job->targetMineY = bestY;
+    job->targetMineZ = bestZ;
+    job->targetAdjX = bestAdjX;
+    job->targetAdjY = bestAdjY;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+    GetDesignation(bestX, bestY, bestZ)->assignedMover = moverIdx;
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestAdjX, bestAdjY, bestZ };
+    m->needsRepath = true;
+    RemoveMoverFromIdleList(moverIdx);
+    return jobId;
+}
+static int WorkGiver_CloseDoor(int moverIdx) {
+    return WorkGiver_DoorFrom(moverIdx, closeDoorCache, closeDoorCacheCount, DESIGNATION_CLOSE_DOOR);
+}
+static int WorkGiver_OpenDoor(int moverIdx) {
+    return WorkGiver_DoorFrom(moverIdx, openDoorCache, openDoorCacheCount, DESIGNATION_OPEN_DOOR);
 }
 
 // WorkGiver_Blast: nearest blast designation + nearest gunpowder; miners do it

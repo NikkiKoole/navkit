@@ -415,9 +415,11 @@ static void SetupDoorway(void) {
 // doorsmoke: a smoke-filled room (8 x 8 inside, roofed), one closed door in its east wall, three
 // people inside who walk out to a spot east of it. The closed door holds the smoke in; the first
 // one out opens it and leaves it open (doors don't close by themselves), and the smoke follows
-// them out. Check: no smoke outside before the door opens, some after, the door still open.
+// them out. Once all three are out the scenario marks the door to close (the open/close door
+// chore) and one of them walks back and shuts it. Check: no smoke outside before the door
+// opens, some after, still open once everyone is out, shut at the end.
 static const int dsX0 = 8, dsY0 = 8, dsX1 = 17, dsY1 = 17, dsDoorX = 17, dsDoorY = 12;
-static int dsOutsideBefore, dsOutsideMost, dsOpenTick, dsTicks;
+static int dsOutsideBefore, dsOutsideMost, dsOpenTick, dsTicks, dsMarkTick, dsClosedTick;
 
 static int DoorSmokeOutside(void) {
     int total = 0;
@@ -431,7 +433,7 @@ static int DoorSmokeOutside(void) {
 }
 
 static void SetupDoorSmoke(void) {
-    dsOutsideBefore = dsOutsideMost = 0; dsOpenTick = -1; dsTicks = 0;
+    dsOutsideBefore = dsOutsideMost = 0; dsOpenTick = dsMarkTick = dsClosedTick = -1; dsTicks = 0;
     smokeEnabled = true;
     for (int y = dsY0; y <= dsY1; y++)
         for (int x = dsX0; x <= dsX1; x++) {
@@ -464,20 +466,31 @@ static void DoorSmokeTickStats(void) {
     int out = DoorSmokeOutside();
     if (GRID(dsDoorX, dsDoorY, 1) == CELL_DOOR_OPEN) {
         if (dsOpenTick < 0) dsOpenTick = dsTicks;
-    } else if (out > dsOutsideBefore) dsOutsideBefore = out;
+    } else if (dsOpenTick < 0 && out > dsOutsideBefore) dsOutsideBefore = out;   // before anyone opened it
     if (out > dsOutsideMost) dsOutsideMost = out;
+    // Everyone out and done walking, the door left open: mark it to be shut
+    if (dsMarkTick < 0 && dsOpenTick >= 0) {
+        bool allOut = moverCount > 0;
+        for (int i = 0; i < moverCount; i++)
+            if (movers[i].active && (QueueBusy(i) || (int)(movers[i].x / CELL_SIZE) <= dsX1)) allOut = false;
+        if (allOut && GRID(dsDoorX, dsDoorY, 1) == CELL_DOOR_OPEN && DesignateDoor(dsDoorX, dsDoorY, 1))
+            dsMarkTick = dsTicks;
+    }
+    if (dsMarkTick >= 0 && dsClosedTick < 0 && GRID(dsDoorX, dsDoorY, 1) == CELL_DOOR) dsClosedTick = dsTicks;
 }
 
 static void DoorSmokePrintStats(void) {
-    printf("Door opened at tick %d; smoke outside before: %d, most after: %d; door now %s\n", dsOpenTick,
-           dsOutsideBefore, dsOutsideMost, GRID(dsDoorX, dsDoorY, 1) == CELL_DOOR_OPEN ? "open" : "closed");
+    printf("Door opened at tick %d; smoke outside before: %d, most after: %d; marked to close at tick %d, "
+           "shut at tick %d; door now %s\n", dsOpenTick, dsOutsideBefore, dsOutsideMost, dsMarkTick, dsClosedTick,
+           GRID(dsDoorX, dsDoorY, 1) == CELL_DOOR_OPEN ? "open" : "closed");
 }
 
 static bool DoorSmokeCheck(char* why, int whyLen) {
     if (dsOpenTick < 0) { snprintf(why, (size_t)whyLen, "nobody opened the door"); return false; }
     if (dsOutsideBefore > 0) { snprintf(why, (size_t)whyLen, "smoke got out through the closed door (%d)", dsOutsideBefore); return false; }
     if (dsOutsideMost == 0) { snprintf(why, (size_t)whyLen, "no smoke followed them out of the open door"); return false; }
-    if (GRID(dsDoorX, dsDoorY, 1) != CELL_DOOR_OPEN) { snprintf(why, (size_t)whyLen, "the door closed by itself"); return false; }
+    if (dsMarkTick < 0) { snprintf(why, (size_t)whyLen, "the door wasn't still open once everyone was out"); return false; }
+    if (GRID(dsDoorX, dsDoorY, 1) != CELL_DOOR) { snprintf(why, (size_t)whyLen, "nobody shut the door marked to close"); return false; }
     return true;
 }
 
@@ -5590,7 +5603,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupGathering, GatheringTickStats, GatheringPrintStats, GatheringCheck, 0, 0},
     {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
-    {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out (setting doorOpenSeconds)",
+    {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
                    NULL,        SetupHallway,  HallwayTickStats, HallwayPrintStats, NULL, 0, 0},

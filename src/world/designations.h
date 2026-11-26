@@ -30,6 +30,8 @@ typedef enum {
     DESIGNATION_FARM,           // Till soil for farming
     DESIGNATION_REMOVE_BELT,    // Take down a conveyor belt (refunds a plank, drops the load)
     DESIGNATION_BLAST,          // Blast mining: set a gunpowder charge in this wall, light it, run (JOBTYPE_BLAST)
+    DESIGNATION_CLOSE_DOOR,     // Close this open door: a mover walks up next to it and shuts it (JOBTYPE_DOOR)
+    DESIGNATION_OPEN_DOOR,      // Open this closed door on purpose (to air a room, ...) (JOBTYPE_DOOR)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -56,6 +58,8 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_FARM]           = "FARM",
         [DESIGNATION_REMOVE_BELT]    = "REMOVE_BELT",
         [DESIGNATION_BLAST]          = "BLAST",
+        [DESIGNATION_CLOSE_DOOR]     = "CLOSE_DOOR",
+        [DESIGNATION_OPEN_DOOR]      = "OPEN_DOOR",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -378,6 +382,12 @@ int CountCleanDesignations(void);
 bool DesignateBlast(int x, int y, int z);
 bool HasBlastDesignation(int x, int y, int z);
 int CountBlastDesignations(void);
+// Open / close a door as a chore: marks a door for the other state from the one it is in now
+// (open -> DESIGNATION_CLOSE_DOOR, closed -> DESIGNATION_OPEN_DOOR); a mover walks up and does it.
+// False: not a door, or already marked.
+bool DesignateDoor(int x, int y, int z);
+bool HasDoorDesignation(int x, int y, int z);              // either mark
+void CompleteDoorDesignation(int x, int y, int z);         // puts the door the way it was marked, clears the mark
 bool DesignateRemoveBelt(int x, int y, int z);
 bool HasRemoveBeltDesignation(int x, int y, int z);
 void CancelRemoveBeltDesignation(int x, int y, int z);
