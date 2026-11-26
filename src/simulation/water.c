@@ -232,6 +232,9 @@ static void WaterNavFlush(void) {
         for (int i = 0; i < WATER_NAV_SLOTS; i++) {
             WaterNavPending* e = &waterNavPending[i];
             if (e->gen != waterNavGen) continue;
+            // The map may have shrunk since (a game start that resizes it without ClearWater):
+            // reading a cell past the edge indexes past the layer's chunk table (crashed)
+            if (!WaterInBounds(e->x, e->y, e->z)) continue;
             bool deep = WATER(e->x, e->y, e->z).level >= WATER_BLOCKS_MOVEMENT;
             if (deep != e->knownDeep) { MarkChunkDirty(e->x, e->y, e->z); waterNavReports++; }
         }

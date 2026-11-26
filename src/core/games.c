@@ -378,6 +378,7 @@ static void StartDollhouse(void) {
 
     // A city flat (concrete) on a small plot: 14x10 under a roof, a railed balcony, a pond
     InitGridWithSizeAndChunkSize(20, 18, 10, 9);
+    ClearWater();   // the previous game's water bookkeeping (its pending nav reports crashed on the smaller map)
     ClearAnimals();
     ClearFurniture();
     InitPlants();

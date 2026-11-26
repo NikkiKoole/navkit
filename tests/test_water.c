@@ -1819,6 +1819,30 @@ describe(water_springs) {
     }
 }
 
+extern long waterNavReports;   // water.c
+
+describe(water_nav_after_resize) {
+    it("should not report a depth crossing from a bigger map after the map shrinks") {
+        // field (64x64) -> dollhouse (20x18) crashed: a pending crossing at x=60 was flushed
+        // after the resize, reading the water layer's chunk table past its end
+        InitGridWithSizeAndChunkSize(1024, 1024, 16, 16);
+        gridDepth = 16;
+        InitWater();
+        // a walled-in pocket, so the water stays put
+        GRID(1000, 1000, 0) = CELL_WALL;
+        GRID(999, 1000, 1) = CELL_WALL; GRID(1001, 1000, 1) = CELL_WALL;
+        GRID(1000, 999, 1) = CELL_WALL; GRID(1000, 1001, 1) = CELL_WALL;
+        SetWaterLevel(1000, 1000, 1, WATER_MAX_LEVEL);
+        for (int i = 0; i < 60; i++) UpdateWater();      // flushed: nav knows it is deep
+        expect(GetWaterLevel(1000, 1000, 1) >= WATER_BLOCKS_MOVEMENT);
+        SetWaterLevel(1000, 1000, 1, 0);                 // drained: pending (nav knew deep)
+        InitGridWithSizeAndChunkSize(20, 18, 10, 9);
+        long before = waterNavReports;
+        for (int i = 0; i < 120; i++) UpdateWater();      // passes a flush
+        expect(waterNavReports == before);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1848,6 +1872,7 @@ int main(int argc, char* argv[]) {
     test(water_freezing);
     test(water_drift);
     test(water_springs);
+    test(water_nav_after_resize);
     
     return summary();
 }
