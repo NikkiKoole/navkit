@@ -31,3 +31,21 @@ test no longer measures a busy colony over a whole day. The action-queue doc's m
 (`../todo/architecture/action-queue-and-need-index.md`, ~940 movers) was taken when they lived.
 Unknown whether the island used to keep its settlers alive (worth checking an older commit
 before digging into the food code).
+
+## Cause, part 1: too few bushes (fixed 2026-11-26)
+
+The island placed bushes only where the tree roll fell just short (~0.1% of grass/scrub, none
+in forest, none near ramps): 27 bushes on a 256 island (seed 3), two thirds bare (96 game hours
+to ripe). Survival's hills place 211 on 128x128. After the 5 starting berries nobody found food
+again: `FindForageBush` (48 cells of walking) found no ripe bush. Now `island_gen.c` places them
+as survival does (forest edges 8%, open 2%, clumped; a third ripe, a third budding): 167 on seed 3.
+
+| run | before | after |
+|---|---|---|
+| seed 3, 3 days | 5 meals, all dead D3 | 18 meals, all alive |
+| seed 1, 3 days | 2 meals, all dead D3 | 18 meals, all alive |
+| seeds 0-7, 10 days | - | all starve D3-D9 (seed 7 first, 8 meals) |
+
+Still open: bushes are the island's only food (no animals, no wild crops), and three settlers
+eat their 48-cell area bare (a bush ripens again after ~4 game days). Next (user, 2026-11-26):
+give the island survival's wild crops and animals.

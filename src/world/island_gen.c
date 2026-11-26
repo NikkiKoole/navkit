@@ -768,15 +768,44 @@ void GenerateIsland(void) {
                                                        cover[i] == IS_MARSH ? 0 : 1, tmp[i] < 4.0f * cs, nz);
                 PlaceWorldGenTree(x, y, bz, tm, true);
                 trees++;
-            } else if ((cover[i] == IS_GRASS || cover[i] == IS_SCRUB) && roll > 0.996f - 0.006f * bp->bushDensity) {
-                int wz = bz + 1;
-                if (wz < gridDepth && GRID(x, y, wz) == CELL_AIR && !CellIsRamp(GRID(x, y, bz))) {
-                    GRID(x, y, wz) = CELL_BUSH;
-                    int p = SpawnPlant(x, y, wz, PLANT_BERRY_BUSH);
-                    if (p >= 0 && GetRandomValue(0, 2) == 0) plants[p].stage = PLANT_STAGE_RIPE;
-                    bushes++;
+            }
+        }
+    }
+
+    // Berry bushes, as survival's hills place them (terrain.c): mostly on forest edges (1-4
+    // trunks within 2 cells), rarely in the open, never in deep forest, in clumps; a third
+    // start ripe and a third budding. The island used to get ~0.1% of grass/scrub (27 bushes
+    // on a 256 island) and its settlers starved by day three (docs/bugs/island-settlers-starve.md).
+    float bushScale = 0.08f / cs;
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            int i = y * W + x;
+            if (cover[i] != IS_GRASS && cover[i] != IS_SCRUB && cover[i] != IS_FOREST) continue;
+            int bz = top[i], wz = bz + 1;
+            if (wz >= gridDepth || GRID(x, y, wz) != CELL_AIR || CellIsRamp(GRID(x, y, bz))) continue;
+            int nearbyTrees = 0;
+            for (int dy = -2; dy <= 2; dy++)
+                for (int dx = -2; dx <= 2; dx++) {
+                    int xx = x + dx, yy = y + dy;
+                    if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+                    int tz = top[yy * W + xx] + 1;
+                    if (tz < gridDepth && GRID(xx, yy, tz) == CELL_TREE_TRUNK) nearbyTrees++;
+                }
+            float chance = nearbyTrees == 0 ? 0.02f : nearbyTrees <= 4 ? 0.08f : 0.0f;
+            if (chance <= 0.0f) continue;
+            if (OctavePerlin(x * bushScale + o3, y * bushScale + o1, 2, 0.5f) > 0.45f) continue;
+            if (GetRandomValue(0, 999) / 1000.0f > chance * bp->bushDensity) continue;
+            GRID(x, y, wz) = CELL_BUSH;
+            int p = SpawnPlant(x, y, wz, PLANT_BERRY_BUSH);
+            if (p >= 0) {
+                int r = GetRandomValue(0, 2);
+                if (r == 0) plants[p].stage = PLANT_STAGE_RIPE;
+                else if (r == 1) {
+                    plants[p].stage = PLANT_STAGE_BUDDING;
+                    plants[p].growthProgress = GetRandomValue(0, 100) / 100.0f;
                 }
             }
+            bushes++;
         }
     }
 
