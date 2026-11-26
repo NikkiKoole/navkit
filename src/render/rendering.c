@@ -3052,16 +3052,11 @@ static void DrawMechanisms(void) {
         Mechanism* m = &mechanisms[i];
         if (m->kind == MECH_NONE || m->z != z) continue;
         Rectangle r = { offset.x + m->x * size, offset.y + m->y * size, size, size };
-        float cx = r.x + size * 0.5f, cy = r.y + size * 0.5f;
-        if (m->kind == MECH_PLATE) {   // the user's tiles: raised, or pressed down
-            Color sky = forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay);   // lit like the ground it lies on
-            FastSprite(atlas, SpriteGetRect(m->on ? SPRITE_plate_pressed : SPRITE_plate_up), r, GetLightColor(m->x, m->y, m->z, sky));
-        } else {
-            DrawRectangleRec((Rectangle){ cx - size * 0.25f, cy + size * 0.12f, size * 0.5f, size * 0.18f }, (Color){ 70, 64, 58, 255 });
-            Vector2 tip = { cx + (m->on ? 0.28f : -0.28f) * size, cy - size * 0.32f };
-            DrawLineEx((Vector2){ cx, cy + size * 0.15f }, tip, size * 0.1f, (Color){ 120, 84, 50, 255 });
-            DrawCircleV(tip, size * 0.09f, m->on ? (Color){ 70, 190, 80, 255 } : (Color){ 200, 60, 50, 255 });
-        }
+        // the user's tiles, lit like the ground they stand on: a plate raised or pressed, a lever off or on
+        Color sky = forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay);
+        int sprite = m->kind == MECH_PLATE ? (m->on ? SPRITE_plate_pressed : SPRITE_plate_up)
+                                           : (m->on ? SPRITE_lever_on : SPRITE_lever_off);
+        FastSprite(atlas, SpriteGetRect(sprite), r, GetLightColor(m->x, m->y, m->z, sky));
     }
     for (int l = 0; l < MAX_MECH_LINKS; l++) {
         MechLink* k = &mechLinks[l];

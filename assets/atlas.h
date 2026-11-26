@@ -85,6 +85,7 @@
     #define SPRITE_middle_dot SPRITE8X8_middle_dot
     #define SPRITE_track_nsew SPRITE8X8_track_nsew
     #define SPRITE_tree_planks_oak SPRITE8X8_tree_planks_oak
+    #define SPRITE_lever_on SPRITE8X8_lever_on
     #define SPRITE_pipe_ns SPRITE8X8_pipe_ns
     #define SPRITE_division SPRITE8X8_division
     #define SPRITE_tree_trunk_pine SPRITE8X8_tree_trunk_pine
@@ -174,6 +175,7 @@
     #define SPRITE_door_ew SPRITE8X8_door_ew
     #define SPRITE_rail_sw SPRITE8X8_rail_sw
     #define SPRITE_weedy SPRITE8X8_weedy
+    #define SPRITE_lever_off SPRITE8X8_lever_off
     #define SPRITE_track_nsw SPRITE8X8_track_nsw
     #define SpriteGetRect SPRITE8X8GetRect
 #elif TILE_SIZE == 16
@@ -252,6 +254,7 @@
     #define SPRITE_middle_dot SPRITE16X16_middle_dot
     #define SPRITE_track_nsew SPRITE16X16_track_nsew
     #define SPRITE_tree_planks_oak SPRITE16X16_tree_planks_oak
+    #define SPRITE_lever_on SPRITE16X16_lever_on
     #define SPRITE_pipe_ns SPRITE16X16_pipe_ns
     #define SPRITE_division SPRITE16X16_division
     #define SPRITE_tree_trunk_pine SPRITE16X16_tree_trunk_pine
@@ -341,6 +344,7 @@
     #define SPRITE_door_ew SPRITE16X16_door_ew
     #define SPRITE_rail_sw SPRITE16X16_rail_sw
     #define SPRITE_weedy SPRITE16X16_weedy
+    #define SPRITE_lever_off SPRITE16X16_lever_off
     #define SPRITE_track_nsw SPRITE16X16_track_nsw
     #define SpriteGetRect SPRITE16X16GetRect
 #else
