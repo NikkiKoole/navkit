@@ -38,6 +38,7 @@
 #include "../entities/relations.h"
 #include "../entities/chase.h"
 #include "../entities/throwing.h"
+#include "../entities/adverts.h"
 #include "../entities/visit.h"
 #include "../entities/town.h"
 #include <strings.h>
@@ -652,6 +653,8 @@ static const Setting settings[] = {
       "How close two idle movers must be to start talking.", NULL),
     SET_BOOL("autoVisits", "Visits: on", "Entities/Movers/Noticing", autoVisits,
       "Residents visit friends at home by themselves: knock, get let in, stay a while (visit.c; galerij)."),
+    SET_BOOL("homeLife", "Home life: on", "Entities/Movers/Noticing", homeLife,
+      "Residents at home with nothing to do pick something their home offers: relax on the sofa, look out of a window, tidy a dirty floor, potter about (adverts.c; galerij)."),
     SET_FLOAT("visitsPerDay", "Visits: per day", "Entities/Movers/Noticing", visitsPerDay, 0.1f, 0.0f, 20.0f,
       "How often a free resident at home sets off to visit, per day (a chance spread over the day).", NULL),
     SET_FLOAT("visitMinLike", "Visits: min like", "Entities/Movers/Noticing", visitMinLike, 1.0f, 0.0f, 100.0f,

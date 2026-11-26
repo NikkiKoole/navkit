@@ -1,5 +1,6 @@
 // visit.c - visiting a friend at home (see visit.h)
 #include "visit.h"
+#include "adverts.h"
 #include "activity.h"
 #include "places.h"
 #include "relations.h"
@@ -92,8 +93,11 @@ static int VisitFindHost(const VisitState* st) {
         if (j == st->guest || !movers[j].active || !MoverInGroup(j, st->household)) continue;
         int x = (int)(movers[j].x / CELL_SIZE), y = (int)(movers[j].y / CELL_SIZE);
         if (PlaceAt(x, y, (int)movers[j].z) != st->home) continue;
-        if (movers[j].freetimeState != FREETIME_NONE || !ActivityMoverFree(j) || MoverInActivity(j)) continue;
+        bool pastime = AdvertBusy(j);   // relaxing, looking out, ...: gets up for the door
+        if ((movers[j].freetimeState != FREETIME_NONE && !pastime) || MoverInActivity(j)) continue;
+        if (!pastime && !ActivityMoverFree(j)) continue;
         if (PlayWantsToStop(j)) continue;
+        if (pastime) AdvertStop(j);
         return j;
     }
     return -1;
@@ -256,6 +260,7 @@ int VisitStart(int guest, int friendMover) {
     if (hh <= 0 || home <= 0 || MoverInGroup(guest, hh)) return -1;
     VisitState tmp = {0};
     if (!VisitDoorSides(home, &tmp.outX, &tmp.outY, &tmp.inX, &tmp.inY, &tmp.z)) return -1;
+    AdvertStop(guest);   // a pastime at home gives way
     if (!ActivityMoverFree(guest) || MoverInActivity(guest)) return -1;
     int a = ActivityStart(ACT_VISIT);
     if (a < 0) return -1;
@@ -286,7 +291,8 @@ void ClearVisits(void) {
 // Free, idle, nothing pressing: may set off on a visit
 static bool VisitCanGo(int i) {
     const Mover* m = &movers[i];
-    if (!m->active || !ActivityMoverFree(i) || MoverInActivity(i) || m->freetimeState != FREETIME_NONE) return false;
+    bool pastime = AdvertBusy(i);   // pottering at home: may set off all the same (VisitStart stops it)
+    if (!m->active || MoverInActivity(i) || (!pastime && (!ActivityMoverFree(i) || m->freetimeState != FREETIME_NONE))) return false;
     if (MoverTalk(i) >= 0 || visitCooldown[i] > 0.0f || PlayWantsToStop(i)) return false;
     int hh = MoverHousehold(i);
     if (hh <= 0) return false;

@@ -32,6 +32,8 @@ typedef enum {            // append only: saves store the number
                           // a held bag (MoverStow); stays in the hand when nothing has room
     ACT_CASH_IN,          // at the target bottle machine: hand in the empty cans carried, one at a
                           // time, for their deposit (money.h); ends when none are left or the till is short
+    ACT_TIDY,             // clean the target cell's floor: duration game seconds there, then the dirt
+                          // goes down DIRT_CLEAN_AMOUNT (free time at home, adverts.h)
     ACT_TYPE_COUNT
 } ActionType;
 
@@ -132,6 +134,10 @@ static inline MoverAction ActCashIn(int machine) {
 }
 #define CASH_IN_PER_UNIT_GH 0.01f   // feeding one can into the machine (game hours)
 #define SEARCH_BIN_GH 0.2f   // rummaging in a bin (game hours), as scrounging
+static inline MoverAction ActTidy(int x, int y, int z, float gameSeconds) {
+    return (MoverAction){ .type = ACT_TIDY, .targetKind = ATGT_CELL, .x = (int16_t)x, .y = (int16_t)y,
+                          .z = (int16_t)z, .target = -1, .duration = gameSeconds };
+}
 static inline MoverAction ActWait(float gameSeconds) {
     return (MoverAction){ .type = ACT_WAIT, .duration = gameSeconds, .target = -1 };
 }

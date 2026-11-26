@@ -44,6 +44,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "adverts.h"
 #include "visit.h"
 #include "places.h"
 
@@ -1195,6 +1196,7 @@ void ClearMovers(void) {
     ClearRelations();
     ClearChase();
     ClearVisits();
+    ClearAdverts();
     ClearExplosions();   // knocked movers, fuses, flying items (indices go stale)
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));

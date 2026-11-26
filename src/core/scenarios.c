@@ -39,6 +39,7 @@
 #include "../entities/throwing.h"
 #include "../entities/places.h"
 #include "../entities/visit.h"
+#include "../entities/adverts.h"
 #include "describe.h"
 #include "../world/pipes.h"
 
@@ -97,6 +98,7 @@ static void SnapshotOrRestoreSettings(void) {
     autoGames = false;   // movers starting games by themselves: a scenario that wants it sets it
     autoVisits = false;  // residents visiting friends by themselves: likewise
     moverWanderPause = savedSettings.wanderPause;
+    homeLife = false;    // free time at home (adverts.h): likewise
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
     jobDistanceWeight = savedSettings.jobDistanceWeight;
@@ -523,6 +525,7 @@ static bool glrLight;               // galerij-big: bed, tap, toilet, chair; foo
 static int glrHome[GLR_MAX_FLATS];  // place per flat: block, floor, then flat along the gallery
 static long glrTrespassTicks, glrTicks;
 static long glrClosedDoorSteps;     // steps into a door that was still closed (a nudge slipping through)
+static long glrAtHomeTicks, glrIdleHomeTicks;   // resident-ticks at home, and of those standing with nothing to do
 
 static int GalerijFlatX(int k) { return GLR_X0 + k * (GLR_W - 1); }
 static int GalerijBlockY(int b) { return GLR_Y0 + b * GLR_STRIDE; }
@@ -677,6 +680,7 @@ static void BuildGalerij(void) {
     autoGames = false;
     autoVisits = true;        // friends between flats visit each other (visit.c)
     endlessMoverMode = false;
+    homeLife = true;          // free time at home: relax, look out, tidy, potter (adverts.c)
     dayLength = 360.0f;
     currentViewZ = 2;
 }
@@ -735,7 +739,7 @@ static void GalerijLogTrespass(int i, int x, int y, int z, const char* what) {
 }
 static void GalerijTickStats(void) {
     glrTicks++;
-    if (glrTicks == 1) { glrTrespassLogged = 0; memset(glrWasTrespassing, 0, sizeof(glrWasTrespassing)); }
+    if (glrTicks == 1) { glrTrespassLogged = 0; memset(glrWasTrespassing, 0, sizeof(glrWasTrespassing)); glrAtHomeTicks = glrIdleHomeTicks = 0; }
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
@@ -754,6 +758,12 @@ static void GalerijTickStats(void) {
         if (!m->active) continue;
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
         bool trespass = !MayEnter(i, x, y, z);
+        int home = HomeOfGroup(MoverHousehold(i));
+        if (home > 0 && PlaceContains(home, x, y, z)) {
+            glrAtHomeTicks++;
+            if (m->freetimeState == FREETIME_NONE && m->currentJobId < 0 && m->pathIndex < 0 && !m->needsRepath &&
+                MoverTalk(i) < 0 && !MoverInActivity(i)) glrIdleHomeTicks++;
+        }
         if (trespass) glrTrespassTicks++;
         if (trespass && !glrWasTrespassing[i]) GalerijLogTrespass(i, x, y, z, "Trespass");   // as it walks in
         glrWasTrespassing[i] = trespass;
@@ -772,6 +782,9 @@ static void GalerijPrintStats(void) {
     printf("Visits: %ld set off, %ld let in, %ld talked, %ld over, %ld cut short (a need), %ld gave up (nobody answered)\n",
            visitStarted, visitAnswered, visitTalks, visitDone, visitCutShort, visitGivenUp);
     for (int k = 0; k < glrTrespassLogged; k++) printf("  %s\n", glrTrespassLog[k]);
+    printf("At home: standing idle %.0f%% of the time; talks %ld; home life (%s): %ld relax, %ld look out, %ld tidy, %ld potter\n",
+           glrAtHomeTicks ? 100.0 * glrIdleHomeTicks / glrAtHomeTicks : 0.0, talkStartedCount, homeLife ? "on" : "off",
+           advertStarted[ADV_RELAX], advertStarted[ADV_LOOK_OUT], advertStarted[ADV_TIDY], advertStarted[ADV_POTTER]);
 }
 
 static bool GalerijCheck(char* why, int whyLen) {

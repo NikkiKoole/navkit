@@ -15,6 +15,7 @@
 #include "../world/cell_defs.h"
 #include "places.h"
 #include "visit.h"
+#include "adverts.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -228,9 +229,11 @@ int TalkPartner(int i) {
 }
 
 // Free to stop and talk: on its feet, no job, no need being handled, not drafted or travelling
+// (Something it does at home to pass the time, adverts.h, doesn't stop it: joining a talk ends that.)
 static bool CanTalk(int i) {
     const Mover* m = &movers[i];
-    if (!m->active || m->currentJobId >= 0 || m->freetimeState != FREETIME_NONE) return false;
+    if (!m->active || m->currentJobId >= 0) return false;
+    if (m->freetimeState != FREETIME_NONE && !AdvertBusy(i)) return false;
     if (m->isDrafted || m->transportState != TRANSPORT_NONE) return false;
     if (m->z - floorf(m->z) > 0.0001f) return false;   // on a ladder or ramp
     if (moverTalkIdx[i] || moverTalkCooldown[i] > 0.0f) return false;
@@ -398,6 +401,7 @@ int GatheringStart(int focus, float seconds) {
 }
 
 static void WatchJoin(int t, int i) {
+    AdvertStop(i);
     Talk* tk = &talks[t];
     if (tk->count >= TALK_SLOTS || moverTalkIdx[i]) return;
     int spot = WatchPickSpot(tk, &movers[i]);
@@ -467,6 +471,8 @@ static bool WalkPickLeg(int leader) {
 
 bool TalkWalkStart(int leader, int follower) {
     if (moverTalkIdx[leader] || moverTalkIdx[follower]) return false;
+    AdvertStop(leader);
+    AdvertStop(follower);
     if (!WalkPickLeg(leader)) return false;
     int z = (int)movers[leader].z;
     int t = -1;
@@ -493,6 +499,7 @@ bool TalkWalkStart(int leader, int follower) {
 
 // Join a group walking by (room permitting)
 static bool WalkJoin(int t, int i) {
+    AdvertStop(i);
     Talk* tk = &talks[t];
     if (!tk->active || tk->kind != TALK_WALK || tk->count >= WALK_MAX || moverTalkIdx[i]) return false;
     tk->members[tk->count++] = i;
@@ -532,6 +539,8 @@ static bool TryWalk(int i) {
 }
 
 int TalkStart(int a, int b) {
+    AdvertStop(a);   // a pastime at home gives way to a talk
+    AdvertStop(b);
     int t = -1;
     for (int k = 0; k < MAX_TALKS; k++) if (!talks[k].active) { t = k; break; }
     if (t < 0) return -1;
@@ -573,6 +582,7 @@ void TalkSetTimeLeft(int i, float seconds) {
 void TalkJoin(int t, int i) {
     Talk* tk = &talks[t];
     if (!tk->active || tk->kind != TALK_CHAT || tk->count >= TALK_MAX_MEMBERS || moverTalkIdx[i]) return;
+    AdvertStop(i);
     tk->members[tk->count++] = i;
     moverTalkIdx[i] = t + 1;
     StopWalking(i);

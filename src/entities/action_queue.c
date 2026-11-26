@@ -22,6 +22,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include "../simulation/floordirt.h"
 
 MoverQueue moverQueues[MAX_MOVERS];
 bool sitToEat = true;
@@ -355,6 +356,17 @@ static StepResult QStepWait(int moverIdx, MoverAction* a) {
     return a->progress >= a->duration ? STEP_DONE : STEP_RUNNING;
 }
 
+// Cleaning the floor where it stands (the walk before it brought it here)
+static StepResult QStepTidy(int moverIdx, MoverAction* a) {
+    Mover* m = &movers[moverIdx];
+    if (!QAtCell(m, a->x, a->y, a->z)) return STEP_FAILED;
+    m->timeWithoutProgress = 0.0f;
+    a->progress += gameDeltaTime;
+    if (a->progress < a->duration) return STEP_RUNNING;
+    CleanFloorDirt(a->x, a->y, a->z, DIRT_CLEAN_AMOUNT);
+    return STEP_DONE;
+}
+
 // The table (CAP_FLAT_SURFACE: table, desk) next to a seat, -1 = none
 static int QTableOfSeat(int seat) {
     if (!QFurnitureValid(seat)) return -1;
@@ -465,6 +477,7 @@ void QueueTick(int moverIdx) {
             case ACT_SEARCH_BIN:   r = QStepSearchBin(moverIdx, a); break;
             case ACT_STOW:         r = QStepStow(moverIdx, a); break;
             case ACT_CASH_IN:      r = QStepCashIn(moverIdx, a); break;
+            case ACT_TIDY:         r = QStepTidy(moverIdx, a); break;
             default: break;
         }
         if (r == STEP_RUNNING) return;
@@ -497,6 +510,7 @@ const char* QueueStepName(int moverIdx) {
         case ACT_SEARCH_BIN:   return "Searching the bin";
         case ACT_STOW:         return "Putting it away";
         case ACT_CASH_IN:      return "Cashing in cans";
+        case ACT_TIDY:         return "Tidying up";
         default:          return NULL;
     }
 }
@@ -521,6 +535,7 @@ static const char* StepLabel(const MoverAction* a) {
         case ACT_SEARCH_BIN:   return "Search bin";
         case ACT_STOW:         return "Put away";
         case ACT_CASH_IN:      return "Cash in";
+        case ACT_TIDY:         return "Tidy";
         default:          return "?";
     }
 }

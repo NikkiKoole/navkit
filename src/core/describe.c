@@ -43,6 +43,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include "../entities/adverts.h"
 #include "../entities/visit.h"
 
 void DescAdd(DescLines* d, DescTone tone, const char* fmt, ...) {
@@ -502,9 +503,11 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (detail == DESC_DEBUG) DescAdd(out, DESC_MUTED, "Talk %d: %.0f s left, %s", t, talks[t].timeLeft,
                                           MoverIsSpeaking(idx) ? "speaking" : "listening");
     }
-    {   // a visit (visit.c), or its part in a game (chase.c)
+    {   // a visit (visit.c), its part in a game (chase.c), or free time at home (adverts.c)
         char g[80];
-        if (VisitDescribe(idx, g, sizeof(g))) {
+        if (AdvertDescribe(idx, g, sizeof(g))) {
+            DescAdd(out, DESC_INFO, "%s", g);
+        } else if (VisitDescribe(idx, g, sizeof(g))) {
             DescAdd(out, DESC_INFO, "%s", g);
         } else if (ChaseDescribe(idx, g, sizeof(g))) {
             DescAdd(out, DESC_INFO, "%s", g);

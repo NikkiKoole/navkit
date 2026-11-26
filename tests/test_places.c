@@ -13,6 +13,9 @@
 #include "../src/entities/furniture.h"
 #include "../src/entities/places.h"
 #include "../src/entities/visit.h"
+#include "../src/entities/adverts.h"
+#include "../src/entities/action_queue.h"
+#include "../src/simulation/floordirt.h"
 #include "../src/entities/talk.h"
 #include "../src/entities/chase.h"
 #include "../src/entities/activity.h"
@@ -551,6 +554,109 @@ describe(places_home_first) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Free time at home (adverts.c): a home offers things to do; residents pick and do them
+// ---------------------------------------------------------------------------
+
+// A home (x 0..6, y 0..6) with walls round it, a window in the north wall, a sofa; one
+// resident inside, nothing it needs
+static int HomeLifeWorld(int* mover, int* sofa) {
+    Setup();
+    hungerEnabled = thirstEnabled = energyEnabled = bladderEnabled = false;
+    endlessMoverMode = false;   // as the galerij: idle residents don't wander off by themselves
+    for (int y = 0; y <= 6; y++)
+        for (int x = 0; x <= 6; x++)
+            if (x == 0 || x == 6 || y == 0 || y == 6) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_BRICK); }
+    GRID(3, 0, 1) = CELL_WINDOW;
+    GRID(3, 6, 1) = CELL_DOOR;
+    BuildEntrances(); BuildGraph();
+    int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat");
+    int home = PlaceCreate(hh, 0, PLACE_RULES_HOME, "Flat");
+    PlaceFillRect(home, 0, 0, 6, 6, 1);
+    PlaceSetDoor(home, 3, 6, 1);
+    *sofa = SpawnFurniture(5, 5, 1, FURNITURE_SOFA, MAT_OAK);
+    *mover = AddMover(2, 3);
+    movers[*mover].speed = MOVER_SPEED;
+    MoverJoinGroup(*mover, hh);
+    ClearAdverts();
+    homeLife = true;
+    return home;
+}
+
+static void HomeLifeRun(int ticks) {
+    for (int t = 0; t < ticks; t++) {
+        currentTick++;
+        Tick();
+        ProcessFreetimeNeeds();   // runs the action queues
+        TalkTick(TICK_DT);
+        ChaseTick(TICK_DT);       // runs the activities (a visit)
+        VisitTick(TICK_DT);
+        AdvertTick(TICK_DT);
+    }
+}
+
+describe(places_home_life) {
+    it("a resident at home with nothing to do picks something its home offers, and over time all kinds") {
+        int m, sofa;
+        HomeLifeWorld(&m, &sofa);
+        SetFloorDirt(1, 1, 1, 120);
+        HomeLifeRun(2 * TICK_RATE);
+        char what[64] = "";
+        AdvertDescribe(m, what, sizeof what);
+        bool started = advertStarted[ADV_RELAX] + advertStarted[ADV_LOOK_OUT] + advertStarted[ADV_TIDY] + advertStarted[ADV_POTTER] > 0;
+        HomeLifeRun(40000);
+        if (test_verbose) printf("  first: %s; relax %ld, look out %ld, tidy %ld, potter %ld; dirt left %d\n", what,
+                                 advertStarted[ADV_RELAX], advertStarted[ADV_LOOK_OUT], advertStarted[ADV_TIDY],
+                                 advertStarted[ADV_POTTER], GetFloorDirt(1, 1, 1));
+        expect(started);
+        expect(advertStarted[ADV_RELAX] > 0 && advertStarted[ADV_LOOK_OUT] > 0 && advertStarted[ADV_POTTER] > 0);
+        expect(advertStarted[ADV_TIDY] > 0 && GetFloorDirt(1, 1, 1) < 120);   // tidied
+        homeLife = false;
+    }
+
+    it("a need ends it at once; away from home nothing starts; with the rule off nothing starts") {
+        int m, sofa;
+        HomeLifeWorld(&m, &sofa);
+        HomeLifeRun(2 * TICK_RATE);
+        bool busy = AdvertBusy(m);
+        thirstEnabled = true;
+        movers[m].thirst = 0.05f;                         // parched
+        AdvertTick(TICK_DT);
+        bool stopped = !AdvertBusy(m) && sofa >= 0 && furniture[sofa].occupant != m;
+        thirstEnabled = false;
+        movers[m].thirst = 1.0f;
+        ClearAdverts();
+        if (QueueBusy(m)) QueueEnd(m);
+        movers[m].x = 8.5f * CELL_SIZE; movers[m].y = 8.5f * CELL_SIZE;   // outside
+        HomeLifeRun(3 * TICK_RATE);
+        bool away = !AdvertBusy(m);
+        movers[m].x = 2.5f * CELL_SIZE; movers[m].y = 3.5f * CELL_SIZE;
+        movers[m].pathIndex = -1; movers[m].needsRepath = false;
+        homeLife = false;
+        ClearAdverts();
+        HomeLifeRun(3 * TICK_RATE);
+        bool off = !AdvertBusy(m);
+        if (test_verbose) printf("  busy %d stopped %d away %d off %d\n", busy, stopped, away, off);
+        expect(busy && stopped && away && off);
+    }
+
+    it("relaxing at home, it still answers the door to a visitor") {
+        int host, guest;
+        VisitWorld(&host, &guest);
+        homeLife = true;
+        ClearAdverts();
+        SpawnFurniture(1, 1, 1, FURNITURE_SOFA, MAT_OAK);
+        HomeLifeRun(3 * TICK_RATE);
+        bool relaxing = AdvertBusy(host);
+        expect(VisitStart(guest, host) >= 0);
+        for (int t = 0; t < 20000 && visitDone == 0; t++) HomeLifeRun(1);
+        if (test_verbose) printf("  relaxing %d, answered %ld, done %ld, gave up %ld\n", relaxing, visitAnswered, visitDone, visitGivenUp);
+        expect(relaxing && visitAnswered == 1 && visitDone == 1);
+        homeLife = false; talkEnabled = false;
+        visitCloseChance = 0.5f; visitStayMinHours = 1.0f; visitStayMaxHours = 2.5f;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     test(places_rules);
@@ -559,5 +665,6 @@ int main(int argc, char* argv[]) {
     test(places_visit);
     test(places_stress);
     test(places_home_first);
+    test(places_home_life);
     return summary();
 }

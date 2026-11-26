@@ -195,6 +195,18 @@ Scoring: `needUrgency * ad.rate / (1 + distance)` with behavioral dithering (pic
 
 **Freetime only, never interferes with jobs.** Plugs into `ProcessMoverFreetime()` — replaces hardcoded search loops, doesn't touch AssignJobs or RunJob_*.
 
+**Spike built (2026-11-26): free time at home** (`src/entities/adverts.c`, game rule `homeLife`, on in
+the galerij). Not the need searches yet: what a resident does at home when nothing needs doing.
+A sofa / chair offers "relax", a window "look out", a dirty floor "tidy" (new queue step
+`ACT_TIDY`), any spot "potter about". Score `rate / (1 + distance / 10)`, the rate from the mover
+and the moment (tired: the sofa; Tidy trait: the dirt; dark: not the window); the best of each
+kind, then one of those at random by score (variety). Done as a short action queue; a free gap of
+0.1-0.6 game hours between; a need ends it at once; a pastime doesn't stop a talk, a gathering,
+a walk or setting off on a visit (joining ends it), and someone relaxing answers the door.
+Galerij, two game days: standing idle at home 54% -> 18%, talks 55 -> 58. Next: more rows (read,
+cook a snack, water plants), faces (look out of the window), moodlets for them, a pastime's
+appeal from mood (bored), then the need searches onto the same scoring.
+
 **Reservations: use existing mechanisms.** `ReserveItem()` for items (already used by freetime food/drink seeking), `furniture.occupant` for furniture (already used by rest seeking). No new reservation type needed.
 
 ---

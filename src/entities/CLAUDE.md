@@ -114,6 +114,15 @@ Movers, items, jobs, stockpiles, workshops, animals, trains, containers, stackin
   per can from the nearest shop's till (`BottleMachineShop`, same level, 12 cells).
   Plan: `docs/vision/city-1999.md` "Money and exchange".
 
+## Free time at home (`adverts.c`)
+
+- A spike of the advertisement system (docs/todo/dollhouse-domestic-life.md): residents at home
+  with nothing to do pick what the home offers (relax, look out, tidy, potter) and do it as an
+  action queue. Game rule `homeLife`. `AdvertBusy(i)` = doing one: anything social that wants the
+  mover (talk start/join, gatherings, walks, visits, the door) treats it as free and calls
+  `AdvertStop(i)` first. A new kind: a row in `advertKinds[]`, offers in `AdvCollect`, its plan in
+  `AdvStart`.
+
 ## Ownership and access (`places.c`)
 
 - Who may enter / use / take what, where: `MayEnter` / `MayUse` / `MayTake(mover, x, y, z)`,

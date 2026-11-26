@@ -63,6 +63,7 @@
 #include "entities/money.c"
 #include "entities/places.c"
 #include "entities/visit.c"
+#include "entities/adverts.c"
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
 #include "entities/furniture.c"
