@@ -8,6 +8,7 @@
 #include "../core/time.h"
 #include "tide.h"
 #include "weather.h"
+#include "moisture.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -1098,31 +1099,15 @@ void UpdateWater(void) {
     }
 budgetSpent:
     
-    // Sync water presence to cell wetness on soil (interval-based)
+    // Water standing on soil soaks in (moisture.c), once per wetnessSyncInterval
     wetnessSyncAccum += gameDeltaTime;
     float wetnessIntervalGS = GameHoursToGameSeconds(wetnessSyncInterval);
     if (wetnessSyncAccum >= wetnessIntervalGS) {
         wetnessSyncAccum -= wetnessIntervalGS;
-        for (int z = 0; z < gridDepth; z++) {
+        for (int z = 1; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
-                    int level = wp->level;
-                    if (level <= 0) continue;
-                    
-                    // Set wetness on the soil cell below the water
-                    // Water sits in the air cell; soil is at z-1
-                    int soilZ = z - 1;
-                    if (soilZ < 0) continue;
-                    if (!CellIsSolid(GRID(x, y, soilZ))) continue;
-                    if (!IsWallNatural(x, y, soilZ)) continue;
-                    if (!IsSoilMaterial(GetWallMaterial(x, y, soilZ))) continue;
-                    
-                    // Map water level to wetness: 1→damp, 2-3→wet, 4+→soaked
-                    int wetness = (level <= 1) ? 1 : (level <= 3) ? 2 : 3;
-                    int current = GET_CELL_WETNESS(x, y, soilZ);
-                    if (wetness > current) {
-                        SET_CELL_WETNESS(x, y, soilZ, wetness);
-                    }
+                    if (wp->level > 0) SoilSoakFrom(x, y, z);
                 }
             }
         }

@@ -21,6 +21,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/steam.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/moisture.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
@@ -490,6 +491,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             SAVE_ROW(f, PLACE_AT, y, z);
+        }
+    }
+
+    // Soil moisture (v124+, moisture.h)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            SAVE_ROW(f, MOISTURE, y, z);
         }
     }
 
@@ -1188,6 +1196,18 @@ bool LoadWorld(const char* filename) {
                 LOAD_ROW_SPARSE(f, placeLayer, PLACE_AT_MUT, y, z);
             }
         }
+    }
+
+    // Soil moisture (v124+); older saves: worked out from the wetness bits on the first tick
+    if (version >= V124_SOIL_MOISTURE) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                LOAD_ROW(f, MOISTURE, y, z);
+            }
+        }
+        SoilMoistureMarkLoaded();
+    } else {
+        CLEAR_GRID_LAYER(moistureGrid, 0);
     }
 
     if (!loadRleOk) {

@@ -1,4 +1,5 @@
 #include "weather.h"
+#include "moisture.h"
 #include "temperature.h"
 #include "water.h"
 #include "balance.h"
@@ -319,11 +320,8 @@ static void RainWetnessRow(int y) {
                 // Found ground at z
                 if (!IsSoilMaterial(GetWallMaterial(x, y, z))) break;
                 if (!IsExposedToSky(x, y, z)) break;
-                // Increase wetness
-                int wetness = GET_CELL_WETNESS(x, y, z);
-                if (wetness < 3) {
-                    SET_CELL_WETNESS(x, y, z, wetness + 1);
-                }
+                // Rain soaks into the soil (moisture.c)
+                WetSoilAt(x, y, z, MOISTURE_RAIN_STEP);
                 break;  // Only process topmost ground
             }
         }
@@ -572,11 +570,8 @@ static void SnowRow(int y, float elapsedTime, bool isSnowing, bool isFreezing, b
                     if (SNOW_ACCUM(x, y, z) >= threshold) {
                         SNOW_ACCUM(x, y, z) = 0.0f;
                         SetSnowLevel(x, y, z, currentSnow - 1);
-                        // Add wetness from melted snow
-                        int wetness = GET_CELL_WETNESS(x, y, z);
-                        if (wetness < 3) {
-                            SET_CELL_WETNESS(x, y, z, wetness + 1);
-                        }
+                        // Melted snow soaks into the soil (moisture.c)
+                        WetSoilAt(x, y, z, MOISTURE_RAIN_STEP);
                     }
                 }
                 

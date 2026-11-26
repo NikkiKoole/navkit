@@ -29,6 +29,7 @@
 #include "../simulation/fire.h"
 #include "../simulation/explosion.h"
 #include "../simulation/vapour.h"
+#include "../simulation/moisture.h"
 #include "../world/support.h"
 #include "../entities/talk.h"
 #include "../entities/relations.h"
@@ -4402,8 +4403,12 @@ static void SetupSoak(void) {
     waterEvaporationEnabled = true;
     groundWearEnabled = true;
     weatherEnabled = false;            // no rain: only what the ground and the air do
+    baseSurfaceTemp = 20;              // a steady 20 C: the rates' reference (restored by the next scenario)
+    seasonalAmplitude = 0;
+    diurnalAmplitude = 0;
     soakSampleCount = 0;
     soakNextSample = gameTime;
+    soilMoistureEnabled = true;
     for (int p = 0; p < SOAK_PLOTS; p++) soakX0[p] = 3 + p * (SOAK_IN + 3);
     for (int r = 0; r < SOAK_ROWS; r++) soakY0[r] = 3 + r * (SOAK_IN + 3);
     for (int r = 0; r < SOAK_ROWS; r++)
@@ -4424,11 +4429,14 @@ static void SetupSoak(void) {
                     SetWallMaterial(x, y, 0, mat);
                     if (p >= 4) ClearWallNatural(x, y, 0);
                     SetVegetation(x, y, 0, p == 0 ? VEG_GRASS_TALLER : VEG_NONE);
-                    SET_CELL_WETNESS(x, y, 0, 0);
                     if (p == 5) SET_FLOOR(x, y, 2);   // the roof
-                    SetWaterLevel(x, y, 1, soakFill[r]);
                 }
         }
+    SoilMoistureInitNow();   // "normal" ground everywhere, then the water on top of it
+    for (int r = 0; r < SOAK_ROWS; r++)
+        for (int p = 0; p < SOAK_PLOTS; p++)
+            for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
+                for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) SetWaterLevel(x, y, 1, soakFill[r]);
     BuildEntrances(); BuildGraph();
 }
 
@@ -4441,17 +4449,22 @@ static void SoakTickStats(void) {
             for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
                 for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) {
                     units += WATER(x, y, 1).level;
-                    wet += GET_CELL_WETNESS(x, y, 0);
+                    wet += MOISTURE(x, y, 0);
                 }
             soakUnits[soakSampleCount][r][p] = units;
-            soakWet[soakSampleCount][r][p] = wet / (float)(SOAK_IN * SOAK_IN);
+            soakWet[soakSampleCount][r][p] = 100.0f * wet / (float)(SOAK_IN * SOAK_IN * MOISTURE_FULL);
         }
     soakSampleCount++;
 }
 
 static void SoakPrintStats(void) {
+    printf("Water units soaked into soil: %ld\n", soilSoakedUnits);
+    printf("Temperature at the end (C), water cell / soil cell, per basin of the pond row:");
+    for (int p = 0; p < SOAK_PLOTS; p++)
+        printf(" %s %d/%d", soakNames[p], GetTemperature(soakX0[p] + 1, soakY0[1] + 1, 1), GetTemperature(soakX0[p] + 1, soakY0[1] + 1, 0));
+    printf("\n");
     for (int r = 0; r < SOAK_ROWS; r++) {
-        printf("\nBasins filled to level %d (%d units each): water units left / avg soil wetness 0-3\n",
+        printf("\nBasins filled to level %d (%d units each): water units left / avg soil moisture %\n",
                soakFill[r], soakFill[r] * SOAK_IN * SOAK_IN);
         printf("%6s", "GH");
         for (int p = 0; p < SOAK_PLOTS; p++) printf(" %12s", soakNames[p]);
@@ -4462,7 +4475,7 @@ static void SoakPrintStats(void) {
                 !memcmp(soakUnits[s][r], soakUnits[s - 1][r], sizeof soakUnits[s][r]) &&
                 !memcmp(soakWet[s][r], soakWet[s - 1][r], sizeof soakWet[s][r])) continue;
             printf("%6.0f", s * soakSampleGH);
-            for (int p = 0; p < SOAK_PLOTS; p++) printf("    %4d / %.1f", soakUnits[s][r][p], soakWet[s][r][p]);
+            for (int p = 0; p < SOAK_PLOTS; p++) printf("    %4d / %3.0f", soakUnits[s][r][p], soakWet[s][r][p]);
             printf("\n");
         }
     }

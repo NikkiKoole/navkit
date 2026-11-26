@@ -46,7 +46,9 @@ z=0: [DIRT] <- solid
 ## Cell Flags (bitfield in `CELL_FLAGS(x, y, z)`)
 
 - `CF_WALL`, `CF_SOLID` — most systems check these flags, not specific CellTypes
-- 2-bit wetness: `GET_CELL_WETNESS` / `SET_CELL_WETNESS` (0-3: dry/damp/wet/soaked)
+- 2-bit wetness: `GET_CELL_WETNESS` (0-3: dry/damp/wet/soaked) is a bucket of soil moisture
+  (`MOISTURE(x, y, z)`, 0-255, `src/simulation/moisture.h`): write moisture with `SetSoilMoisture` /
+  `WetSoilAt` / `SoilWetAtLeast`, never the bits (the next moisture change overwrites them)
 - 2-bit surface: `GET_CELL_SURFACE` (SURFACE_BARE / SURFACE_TRAMPLED)
 - Single bits: `CELL_FLAG_BURNED`, `HAS_FLOOR`, `CELL_FLAG_WORKSHOP_BLOCK`
 

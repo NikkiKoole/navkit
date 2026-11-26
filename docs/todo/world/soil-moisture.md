@@ -1,6 +1,6 @@
 # Soil moisture: water soaks into the ground, plants and sun take it out
 
-Research 2026-11-26. Status: idea, nothing built. Pairs with "Soaking" in `water-ideas.md`
+Research 2026-11-26. Status: partial. Steps 1-3 built (measuring scenario, evaporation per surface, the moisture layer); next: grass and crops react. Pairs with "Soaking" in `water-ideas.md`
 and the open "soaking sink" in `water.md`.
 
 The user's ask: water on grass / open ground disappears too fast. Let the top soil absorb it,
@@ -146,7 +146,7 @@ makes watering, irrigation ditches and drainage real jobs.
 
 1. ~~Measure first~~ done: scenario `soak` (see Measured).
 2. ~~Evaporation per surface and depth (2)~~ done 2026-11-26, see "Step 2 built".
-3. Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5).
+3. ~~Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5)~~ done 2026-11-26, see "Step 3 built".
 4. Grass reacts to moisture (6, grass part).
 5. Crops: curve, health, wilting/rot; watering job adds moisture (6, crops part).
 
@@ -178,4 +178,54 @@ Island seed 1 (`--game island --seed 1`), water units by z, old -> new: the sea 
 rivers and lakes above z4 about the same, **lowland z4 1.5k -> 5.1k**, settled (day 1 2.9k, day 3
 5.2k, day 4 5.1k): shallow films on the coastal flats no longer vanish in a sweep. Soaking
 (step 3) should take most of that film into the soil.
+
+## Step 3 built (2026-11-26): the moisture layer (save v124)
+
+`src/simulation/moisture.c/.h`. `moistureGrid`: a byte per cell (dense, like `wearGrid`), on natural
+soil cells with open space above: how full the soil is, 0-255. Labels (`SoilMoistureState`):
+parched < 26 <= dry < 64 <= normal < 128 <= moist < 180 <= wet < 230 <= soaked. The 2-bit wetness
+is now a bucket of it (moist 1, wet 2 = mud, soaked 3), written by `SetSoilMoisture`, so mud,
+fire, smoke and crops read it unchanged. Cell describe line: "Soil: Moist (62%)".
+
+- **Soaking** (the old wetness sync pass in `water.c`, every `wetnessSyncInterval` 0.8 GH): water
+  standing on soil soaks one unit in with a chance per soil (sand/gravel 1.0, dirt/peat 0.5, clay
+  0.15, x `moistureSoak`), worth 255 / capacity points (capacity in water units: sand/gravel 1,
+  dirt 2, clay 2.5, peat 4). A full soil takes nothing more. Counter `soilSoakedUnits`.
+- **Drying** (`UpdateSoilMoisture`, its own sweep every 2 GH, levels interleaved, spread over the
+  interval on big maps): toward a floor, "normal" (100) up to 20 C, 0 at 35 C (heat dries ground
+  out; groundwater keeps temperate ground normal). Half-life `moistureDryHours` (36 GH) at 20 C on
+  open bare dirt, x temperature / 20, x wind, x 0.1 under a roof, x soil (sand 2, clay 0.6, peat
+  0.5), x vegetation (grass shades the soil but drinks: bare 1.0, short grass 0.8, grass 0.85,
+  tall 0.9, taller 1.0, reeds 1.3). Below the floor it creeps back up at a quarter of that speed.
+- **Wetting**: rain and snow melt +40 per step (`WetSoilAt`), watering and Town irrigation at least
+  200 (`SoilWetAtLeast`, `WATER_POUR_MOISTURE`).
+- **A new world** sets itself up on first use (`gridGeneration`): soil under water full, the rest
+  normal (old saves: from their wetness bits). Saves v124 store the layer after the place layer.
+- Settings: `soilMoisture`, `moistureDryHours`, `moistureSoak` (not saved).
+
+`soak` (now at a steady 20 C) after step 3, units left / soil moisture %:
+
+```
+puddle  GH   grass     dirt      sand      clay      concrete  roofed
+         0   16 / 39   16 / 39   16 / 39   16 / 39   16 / 0    16 / 0
+        12    0 / 79    0 / 79    0 / 78    0 / 73   15 / 0    16 / 0
+        48    0 / 59    0 / 58    0 / 49    0 / 61    7 / 0    16 / 0
+       144    0 / 42    0 / 42    0 / 39    0 / 46    1 / 0    16 / 0
+pond     8   46 / 96   46 / 99   47 / 100  40 / 83   63 / 0    63 / 0
+       140   14 / 97    7 / 82   10 / 89    2 / 73   17 / 0    60 / 0
+```
+
+A puddle on soil is in the ground within half a game day and leaves wet (muddy) ground that is
+back to normal in ~5 days (sand fastest, clay slowest); on concrete it stands for days; roofed it
+stays. Ponds fill their soil first (dirt takes ~1 unit per cell from normal, clay 2), then
+evaporate as in step 2.
+
+Island seed 1, 2 game days: lowland (z4) water 4.6k -> 3.3k units (the flats soak some up), rivers
+and sea unchanged. Cost: 1024 world, 0.27 ms/tick average, worst 4.9 ms after the first tick
+(the first tick sets a new world up: 48 ms on 1024); before interleaving the levels a sweep tick
+hit 26 ms.
+
+Not done yet: no tint for dry/parched ground (only the mud overlay and the describe line), no
+sideways spread (a riverbank isn't a humid band), trees don't drink, grass and crops don't react
+(steps 4-5).
 

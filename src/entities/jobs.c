@@ -24,6 +24,7 @@
 #include "butchering.h"
 #include "tool_quality.h"
 #include "../simulation/farming.h"
+#include "../simulation/moisture.h"
 #include "throwing.h"
 #include <math.h>
 #include "town.h"
@@ -3336,7 +3337,7 @@ JobRunResult RunJob_WaterCrop(Job* job, void* moverPtr, float dt) {
         JobRunResult r = RunWorkProgress(job, NULL, mover, dt, WATER_CROP_WORK_TIME, true, 1.0f);
         if (r == JOBRUN_DONE) {
             // Wetness is on the soil cell at z-1
-            SET_CELL_WETNESS(tx, ty, tz - 1, WATER_POUR_WETNESS);
+            SoilWetAtLeast(tx, ty, tz - 1, WATER_POUR_MOISTURE);
             // Consume water
             if (job->carryingItem >= 0) {
                 DeleteItem(job->carryingItem);

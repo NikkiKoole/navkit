@@ -36,6 +36,7 @@
 #include "core/effects.c"
 #include "simulation/steam.c"
 #include "simulation/groundwear.c"
+#include "simulation/moisture.c"
 #include "simulation/floordirt.c"
 #include "simulation/temperature.c"
 #include "simulation/weather.c"

@@ -10,6 +10,7 @@
 #include "stockpiles.h"
 #include "workshops.h"
 #include "../simulation/farming.h"
+#include "../simulation/moisture.h"
 #include "../world/designations.h"
 #include "action_queue.h"
 #include "../simulation/balance.h"
@@ -1068,7 +1069,7 @@ void TownTick(float dt) {
         if (L->kind == LOT_FARM && townIrrigation)
             for (int y = L->y1; y <= L->y2; y++)
                 for (int x = L->x1; x <= L->x2; x++)
-                    if (FARM(x, y, L->z).tilled && GET_CELL_WETNESS(x, y, L->z) < 2) SET_CELL_WETNESS(x, y, L->z, 2);
+                    if (FARM(x, y, L->z).tilled) SoilWetAtLeast(x, y, L->z, WATER_POUR_MOISTURE);
     }
     for (int l = 0; l < townLotHighWater; l++) {
         if (!townLots[l].active) continue;

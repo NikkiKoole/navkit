@@ -6,6 +6,10 @@
 #include "../src/world/material.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/groundwear.h"
+#include "../src/simulation/moisture.h"
+#include "../src/simulation/temperature.h"
+#include "../src/simulation/weather.h"
+#include "../src/simulation/balance.h"
 #include "../src/simulation/floordirt.h"
 #include "../src/core/time.h"
 #include "../src/core/sim_manager.h"
@@ -29,6 +33,15 @@ static void SetupDirtGrid(void) {
     InitTime();
     // Fast wetness sync for testing
     wetnessSyncInterval = 0.2f;  // 0.2 game-hours (= 0.5s at dayLength=60)
+}
+
+// Run the moisture sweep for this many game hours
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+
+static void RunMoistureHours(float hours) {
+    float total = GameHoursToGameSeconds(hours), elapsed = 0;
+    while (elapsed < total) { gameDeltaTime = TICK_DT; UpdateSoilMoisture(); elapsed += TICK_DT; }
 }
 
 // =============================================================================
@@ -203,60 +216,88 @@ describe(water_wetness_sync) {
 // =============================================================================
 
 describe(wetness_drying) {
+    // Soil dries in the moisture sweep (moisture.c): toward "normal" (MOISTURE_BASELINE) at a
+    // steady 15 C, never below it; the wetness bits follow moisture.
+    static int savedBase, savedSeason, savedDay;
+
     it("should dry wetness over time when no water present") {
         SetupDirtGrid();
-        SET_CELL_WETNESS(3, 2, 0, 3);  // soaked
-
-        // Run groundwear updates (interval = 5s by default)
-        // We need wearActiveCells or waterActiveCells > 0 to not early-exit
-        // Set waterActiveCells to trick the early-exit check
-        waterActiveCells = 1;
-
-        float elapsed = 0;
-        while (elapsed < 20.0f) {
-            gameDeltaTime = TICK_DT;
-            UpdateGroundWear();
-            elapsed += TICK_DT;
-        }
-
-        waterActiveCells = 0;
-
-        int wetness = GET_CELL_WETNESS(3, 2, 0);
-        expect(wetness < 3);  // should have dried at least once
+        savedBase = baseSurfaceTemp; savedSeason = seasonalAmplitude; savedDay = diurnalAmplitude;
+        baseSurfaceTemp = 15; seasonalAmplitude = 0; diurnalAmplitude = 0;
+        InitTemperature();
+        SoilMoistureInitNow();
+        SetSoilMoisture(3, 2, 0, 240);   // soaked
+        expect(GET_CELL_WETNESS(3, 2, 0) == 3);
+        RunMoistureHours(24.0f);
+        expect(MOISTURE(3, 2, 0) < 240);
+        expect(GET_CELL_WETNESS(3, 2, 0) < 3);
     }
 
     it("should not dry if water is still present above") {
         SetupDirtGrid();
-        SET_CELL_WETNESS(3, 2, 0, 3);
+        InitTemperature();
+        SoilMoistureInitNow();
+        SetSoilMoisture(3, 2, 0, 240);
         SetWaterLevel(3, 2, 1, 5);  // water above
-
-        waterActiveCells = 1;
-        float elapsed = 0;
-        while (elapsed < 20.0f) {
-            gameDeltaTime = TICK_DT;
-            UpdateGroundWear();
-            elapsed += TICK_DT;
-        }
-
-        int wetness = GET_CELL_WETNESS(3, 2, 0);
-        expect(wetness == 3);  // should stay soaked
+        RunMoistureHours(24.0f);
+        expect(MOISTURE(3, 2, 0) == 240);
     }
 
-    it("should eventually dry completely to zero") {
+    it("should settle at normal ground, not below, in mild weather") {
         SetupDirtGrid();
-        SET_CELL_WETNESS(3, 2, 0, 1);  // just damp
+        InitTemperature();
+        SoilMoistureInitNow();
+        SetSoilMoisture(3, 2, 0, 150);  // damp
+        RunMoistureHours(400.0f);
+        expect(GET_CELL_WETNESS(3, 2, 0) == 0);
+        expect(MOISTURE(3, 2, 0) >= MOISTURE_BASELINE - 2 && MOISTURE(3, 2, 0) <= MOISTURE_BASELINE + 2);
+        expect(SoilMoistureState(MOISTURE(3, 2, 0)) == SOIL_NORMAL);
+        baseSurfaceTemp = savedBase; seasonalAmplitude = savedSeason; diurnalAmplitude = savedDay;
+    }
+}
 
-        waterActiveCells = 1;
+describe(soil_soaking) {
+    it("should soak a puddle into dirt, not into stone") {
+        SetupDirtGrid();
+        waterEvaporationEnabled = false;
+        SetWallMaterial(5, 2, 0, MAT_GRANITE);
+        SoilMoistureInitNow();
+        SetWaterLevel(3, 2, 1, 1);   // a puddle on dirt
+        SetWaterLevel(5, 2, 1, 1);   // and one on stone
+        int before = MOISTURE(3, 2, 0);
         float elapsed = 0;
-        while (elapsed < 20.0f) {
-            gameDeltaTime = TICK_DT;
-            UpdateGroundWear();
-            elapsed += TICK_DT;
-        }
-        waterActiveCells = 0;
+        while (elapsed < 10.0f) { gameDeltaTime = TICK_DT; UpdateWater(); elapsed += TICK_DT; }
+        expect(GetWaterLevel(3, 2, 1) == 0);
+        expect(MOISTURE(3, 2, 0) > before);
+        expect(GetWaterLevel(5, 2, 1) == 1);
+        waterEvaporationEnabled = true;
+    }
 
-        int wetness = GET_CELL_WETNESS(3, 2, 0);
-        expect(wetness == 0);
+    it("should keep moisture through save and load") {
+        SetupDirtGrid();
+        SoilMoistureInitNow();
+        SetSoilMoisture(3, 2, 0, 201);
+        SetSoilMoisture(4, 2, 0, 17);
+        expect(SaveWorld("/tmp/test_mud_moisture_save.bin"));
+        SetSoilMoisture(3, 2, 0, 100);
+        SetSoilMoisture(4, 2, 0, 100);
+        expect(LoadWorld("/tmp/test_mud_moisture_save.bin"));
+        AddSoilMoisture(0, 0, 0, 0);   // a first use after the load must not set the world up again
+        expect(MOISTURE(3, 2, 0) == 201);
+        expect(MOISTURE(4, 2, 0) == 17);
+        expect(GET_CELL_WETNESS(3, 2, 0) == 2);
+    }
+
+    it("should stop soaking when the soil is full") {
+        SetupDirtGrid();
+        waterEvaporationEnabled = false;
+        SoilMoistureInitNow();
+        SetSoilMoisture(3, 2, 0, MOISTURE_FULL);
+        SetWaterLevel(3, 2, 1, 1);
+        float elapsed = 0;
+        while (elapsed < 10.0f) { gameDeltaTime = TICK_DT; UpdateWater(); elapsed += TICK_DT; }
+        expect(GetWaterLevel(3, 2, 1) == 1);
+        waterEvaporationEnabled = true;
     }
 }
 
@@ -312,6 +353,7 @@ int main(int argc, char** argv) {
     test(muddy_detection);
     test(water_wetness_sync);
     test(wetness_drying);
+    test(soil_soaking);
     test(mud_dirt_tracking);
     
     return summary();

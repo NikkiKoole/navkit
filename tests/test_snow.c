@@ -298,8 +298,9 @@ describe(snow_melting) {
         InitSnow();
         InitWeather();
         
-        // Set up dirt with snow
+        // Set up dirt with snow (natural soil: melt water soaks into it, moisture.c)
         GRID(5, 5, 0) = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
+        WALL_NATURAL(5, 5, 0) = 1;
         SetSnowLevel(5, 5, 0, 2);
         
         // Warm temperature

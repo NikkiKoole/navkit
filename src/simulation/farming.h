@@ -68,7 +68,7 @@ extern int farmActiveCells;  // count of tilled cells (for sim tick skipping)
 
 // Watering
 #define WATER_CROP_WORK_TIME 0.3f   // Game-hours to pour water
-#define WATER_POUR_WETNESS   2      // Sets cell to "wet" = ideal 1.0x growth
+#define WATER_POUR_MOISTURE  200    // Watering wets the soil to at least this (moisture.h: "wet" = ideal 1.0x growth)
 
 // Growth times (game-hours per full growth cycle at 1.0x rate)
 #define WHEAT_GROWTH_GH     72.0f

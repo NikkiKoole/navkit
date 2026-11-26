@@ -1447,6 +1447,9 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= V122_PLACES) {
         InspSkipLayer(f, sizeof(uint16_t), totalCells, rle); // place layer (places.h)
     }
+    if (version >= V124_SOIL_MOISTURE) {
+        InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // soil moisture (moisture.h)
+    }
 
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);

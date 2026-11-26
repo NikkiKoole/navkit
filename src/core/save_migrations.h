@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 123
+#define CURRENT_SAVE_VERSION 124
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -150,6 +150,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // slotIsContainer, groundItemIdx); then stockpileForSale and stockpileTill, stockpileHighWater each.
 // Older saves: V122_MAX_STOCKPILES fixed-size StockpileV122 (or older) structs, shops 64 each.
 #define V123_STOCKPILE_CELLS 123
+// v124: soil moisture (moisture.h): a byte per cell right after the place layer. Older saves:
+// worked out on the first tick from the wetness bits (soil under water full, else "normal").
+#define V124_SOIL_MOISTURE 124
 #define V122_MAX_STOCKPILES 64
 #define V122_ITEM_TYPE_COUNT 86
 #define V122_MAT_COUNT 20

@@ -3,6 +3,7 @@
 #include "../game_state.h"
 #include "../core/time.h"
 #include "../simulation/water.h"
+#include "../simulation/moisture.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -325,6 +326,12 @@ static const Setting settings[] = {
       "Game hours an open-sky water surface at 20 C takes to lose one level (1/7 cell), any depth. Scales with temperature (none at freezing, up to 2x hot), faster in wind, a tenth under a roof. Not saved.", DescWaterEvap),
     SET_FLOAT("waterEvapInterval", "Evap sweep (GH)", "Simulation/Water/Advanced", waterEvapInterval, 0.5f, 0.5f, 120.0f,
       "Game hours between evaporation sweeps (granularity only; the rate is waterEvapHours).", NULL),
+    SET_BOOL("soilMoisture", "Soil moisture", "Simulation/Water", soilMoistureEnabled,
+      "Soil holds water: water on soil soaks in, sun, wind and plants dry it again, rain wets it (moisture.c). Off: nothing soaks in or dries. Not saved."),
+    SET_FLOAT("moistureDryHours", "Soil dries (GH)", "Simulation/Water", moistureDryHours, 4.0f, 2.0f, 500.0f,
+      "Game hours for open bare dirt at 20 C to lose half of the water it holds above normal (grass a bit slower, sand 2x faster, clay and peat slower, a roof 10x slower). Not saved.", NULL),
+    SET_FLOAT("moistureSoak", "Soaking speed", "Simulation/Water/Advanced", moistureSoakSpeed, 0.1f, 0.0f, 4.0f,
+      "Multiplier on how fast water standing on soil soaks in (sand fast, clay slow). Not saved.", NULL),
     SET_FLOAT("waterSpeedShallow", "Speed: Shallow (1-2)", "Simulation/Water/Advanced", waterSpeedShallow, 0.05f, 0.1f, 1.0f,
       "Mover speed multiplier in level 1-2 water.", DescSpeedShallow),
     SET_FLOAT("waterSpeedMedium", "Speed: Medium (3-4)", "Simulation/Water/Advanced", waterSpeedMedium, 0.05f, 0.1f, 1.0f,

@@ -9,6 +9,7 @@
 #include "../src/entities/mover.h"
 #include "../src/entities/jobs.h"
 #include "../src/simulation/farming.h"
+#include "../src/simulation/moisture.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/temperature.h"
@@ -955,8 +956,9 @@ describe(farming) {
         }
         expect(r == JOBRUN_DONE);
 
-        // Wetness should be set on the soil cell at z-1
-        expect(GET_CELL_WETNESS(5, 5, 0) == WATER_POUR_WETNESS);
+        // The soil cell at z-1 is watered: moisture at least the pour amount, which reads "wet"
+        expect(MOISTURE(5, 5, 0) >= WATER_POUR_MOISTURE);
+        expect(GET_CELL_WETNESS(5, 5, 0) == 2);
 
         // Water item should be consumed
         expect(!items[waterIdx].active);

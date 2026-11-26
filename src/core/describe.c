@@ -22,6 +22,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/rooms.h"
 #include "../simulation/farming.h"
+#include "../simulation/moisture.h"
 #include "../simulation/temperature.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -693,19 +694,16 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
 
     DescribeCellFarm(x, y, z, out);
 
-    // Wetness / mud (this cell, else the ground below)
+    // Soil moisture (this cell, else the ground below): moisture.h
     {
-        int wetZ = z;
-        int wetness = GET_CELL_WETNESS(x, y, wetZ);
-        if (wetness == 0 && wetZ > 0) {
-            wetZ = z - 1;
-            wetness = GET_CELL_WETNESS(x, y, wetZ);
-        }
-        if (wetness > 0) {
-            bool muddy = IsMuddy(x, y, wetZ);
-            const char* wet = wetness >= 3 ? (muddy ? "Soaked (muddy)" : "Soaked") :
-                              wetness >= 2 ? (muddy ? "Wet (muddy)" : "Wet") : "Damp";
-            DescAdd(out, DESC_NORMAL, "Wetness: %s", wet);
+        int soilZ = IsSoilSurface(x, y, z) ? z : (z > 0 && IsSoilSurface(x, y, z - 1)) ? z - 1 : -1;
+        if (soilZ >= 0) {
+            int m = MOISTURE(x, y, soilZ);
+            SoilState st = SoilMoistureState(m);
+            DescTone tone = st == SOIL_PARCHED ? DESC_BAD : st == SOIL_DRY ? DESC_WARN :
+                            st >= SOIL_WET ? DESC_INFO : DESC_NORMAL;
+            DescAdd(out, tone, "Soil: %s%s (%d%%)", SoilStateName(st), IsMuddy(x, y, soilZ) ? ", muddy" : "",
+                    m * 100 / MOISTURE_FULL);
         }
     }
 

@@ -2665,6 +2665,9 @@ void TickWithDt(float dt) {
     PROFILE_BEGIN(GroundWear);
     UpdateGroundWear();
     PROFILE_END(GroundWear);
+    PROFILE_BEGIN(SoilMoisture);
+    UpdateSoilMoisture();   // soil dries (moisture.c)
+    PROFILE_END(SoilMoisture);
 
     // Lighting (recompute if terrain changed)
     PROFILE_BEGIN(Lighting);
