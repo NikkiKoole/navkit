@@ -51,7 +51,7 @@ typedef struct {
     void* state;                 // the kind's own state (ActivityDef.stateSize bytes)
 } Activity;
 
-#define MAX_ACTIVITIES 64
+#define MAX_ACTIVITIES 256
 extern Activity activities[MAX_ACTIVITIES];
 extern long playLeftCount;       // members who left an activity (stats)
 

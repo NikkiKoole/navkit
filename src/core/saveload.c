@@ -556,7 +556,7 @@ bool SaveWorld(const char* filename) {
     
     // Furniture (v54+)
     fwrite(&furnitureCount, sizeof(furnitureCount), 1, f);
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (furniture[i].active) {
             fwrite(&furniture[i], sizeof(Furniture), 1, f);
         }
@@ -573,7 +573,7 @@ bool SaveWorld(const char* filename) {
     TownSave(f);
 
     // Furniture fuel (v117+): one float per saved furniture, in the order written above
-    for (int i = 0; i < MAX_FURNITURE; i++)
+    for (int i = 0; i < furnitureHighWater; i++)
         if (furniture[i].active) fwrite(&furnitureFuel[i], sizeof(float), 1, f);
     
     // === VIEW SECTION ===
@@ -689,7 +689,7 @@ void RebuildPostLoadState(void) {
     RebuildContainerLists();   // contents lists follow containedIn (old saves have none)
     RecalcAllCarried();        // carried weight per mover (inventory.c, not saved)
     ThrowLandAll();            // flights aren't saved: things in the air lie where they are
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (furniture[i].active && furniture[i].occupant >= 0) {
             if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {
                 furniture[i].occupant = -1;
@@ -1548,11 +1548,12 @@ bool LoadWorld(const char* filename) {
         for (int i = 0; i < savedCount; i++) {
             Furniture f_tmp;
             fread(&f_tmp, sizeof(Furniture), 1, f);
-            if (f_tmp.active) {
+            if (f_tmp.active && i < MAX_FURNITURE) {
                 furniture[i] = f_tmp;
             }
         }
-        furnitureCount = savedCount;
+        furnitureCount = savedCount < MAX_FURNITURE ? savedCount : MAX_FURNITURE;
+        furnitureHighWater = furnitureCount;
     }
 
     // Conveyor belts (v98+). Older saves have none; BeltsAfterLoad also puts any item left

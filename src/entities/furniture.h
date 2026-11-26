@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "../world/grid.h"
 
-#define MAX_FURNITURE 512
+#define MAX_FURNITURE 4096   // pieces at once; loops run to furnitureHighWater, not here
 
 // Capability flags for furniture/stations (bitmask)
 typedef enum {
@@ -76,6 +76,7 @@ typedef struct {
 
 extern Furniture furniture[MAX_FURNITURE];
 extern int furnitureCount;
+extern int furnitureHighWater;   // one past the highest slot in use: loop to this, not MAX_FURNITURE
 extern uint8_t* furnitureMoveCostGrid;
 // FURNITURE_MOVE_COST(x, y, z) lives in grid.h (cell_defs.h needs it before this header)
 extern CapabilityBits* capabilityGrid;

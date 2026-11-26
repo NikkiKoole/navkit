@@ -11,6 +11,7 @@
 
 Furniture furniture[MAX_FURNITURE];
 int furnitureCount = 0;
+int furnitureHighWater = 0;   // one past the highest slot in use: loops stop here
 uint8_t* furnitureMoveCostGrid = NULL;   // allocated in grid_layers.c
 CapabilityBits* capabilityGrid = NULL;   // allocated in grid_layers.c
 
@@ -61,6 +62,7 @@ void ClearFurniture(void) {
         furniture[i].occupant = -1;
     }
     furnitureCount = 0;
+    furnitureHighWater = 0;
     memset(furnitureFuel, 0, sizeof(furnitureFuel));
     CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
     CLEAR_GRID_LAYER(capabilityGrid, 0);
@@ -93,6 +95,7 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
     f->occupant = -1;
     furnitureFuel[idx] = furnitureDefs[type].fuelHours;   // placed lit, with a full load
     furnitureCount++;
+    if (idx >= furnitureHighWater) furnitureHighWater = idx + 1;
 
     const FurnitureDef* def = &furnitureDefs[type];
     if (def->blocking) {
@@ -140,11 +143,12 @@ void RemoveFurniture(int index) {
     f->active = false;
     f->occupant = -1;
     furnitureCount--;
+    while (furnitureHighWater > 0 && !furniture[furnitureHighWater - 1].active) furnitureHighWater--;
     InvalidateRooms();
 }
 
 int GetFurnitureAt(int x, int y, int z) {
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active) continue;
         if (furniture[i].x == x && furniture[i].y == y && furniture[i].z == z) {
             return i;
@@ -197,7 +201,7 @@ void ReleaseFurniture(int furnitureIdx, int moverIdx) {
 }
 
 void ReleaseFurnitureForMover(int moverIdx) {
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (furniture[i].active && furniture[i].occupant == moverIdx) {
             furniture[i].occupant = -1;
         }
@@ -206,7 +210,7 @@ void ReleaseFurnitureForMover(int moverIdx) {
 
 void RebuildFurnitureMoveCostGrid(void) {
     CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active) continue;
         const FurnitureDef* def = &furnitureDefs[furniture[i].type];
         if (def->blocking) {
@@ -226,7 +230,7 @@ void RebuildFurnitureMoveCostGrid(void) {
 void RebuildCapabilityGrid(void) {
     if (!capabilityGrid) return;
     CLEAR_GRID_LAYER(capabilityGrid, 0);
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active) continue;
         CapabilityBits caps = furnitureDefs[furniture[i].type].capabilities;
         if (caps) SetCapability(furniture[i].x, furniture[i].y, furniture[i].z, caps);
@@ -305,7 +309,7 @@ int FeltHeatAt(int x, int y, int z) {
 
 void FurnitureHeatTick(void) {
     if (!temperatureEnabled || furnitureCount == 0) return;
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active) continue;
         int t = furnitureDefs[furniture[i].type].heatTemp;
         if (t <= 0 || !FurnitureLit(i)) continue;
@@ -350,7 +354,7 @@ void FurnitureAddFuel(int fi, int itemType) {
 void FurnitureFuelTick(void) {
     if (furnitureCount == 0 || gameDeltaTime <= 0.0f) return;
     float hours = gameDeltaTime / GameHoursToGameSeconds(1.0f);
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active || furnitureDefs[furniture[i].type].fuelHours <= 0.0f) continue;
         if (furnitureFuel[i] <= 0.0f) continue;
         furnitureFuel[i] -= hours;

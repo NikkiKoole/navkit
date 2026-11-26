@@ -131,8 +131,14 @@ someone let in, a visit over, nobody trespassing). Four game days of galerij: 13
   (`chase.c`; games are off in the galerij); `StartScrounging`'s bins don't ask `MayTake`; jobs
   ignore ownership (haulers, builders: by design for now). A mover is very rarely pushed one cell
   sideways into a closed door it walks past (1 step in two game days at 128, doors, not
-  ownership). Scale caps outside places: `MAX_FURNITURE` 512 and `MAX_STOCKPILES` 64 hold a
-  fully furnished galerij to ~56 flats; `MAX_ACTIVITIES` 64 caps visits + games at once.
+  ownership).
+- Scale caps outside places: furniture now 4096 (was 512; loops run to `furnitureHighWater`, so a
+  small game pays nothing), activities 256 (was 64). `galerij-big` at 128: 456 flats, 684
+  residents, 0 trespass over two game days. Still capped: `MAX_STOCKPILES` 64 (23.7 KB each,
+  saved whole), so flats there have no fridge stockpile. Seen at 684: when everyone needs a bed
+  or a drink in the same tick (they all start together), each search scans all ~1800 pieces of
+  furniture: one tick of 52 ms (RestSearch), a few of 20 (DrinkSearch). Home-first searches (a
+  household's own furniture first, through its place) or a furniture index per chunk would fix it.
 
 **Next:** Town's beds, City 1999's shops (order above). Hoped-for behaviours that build on this
 (showing an unwelcome guest out): `../../vision/hoped-for-behaviours.md`.

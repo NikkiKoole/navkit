@@ -2689,7 +2689,7 @@ int WorkGiver_Refuel(int moverIdx) {
     if (!m->capabilities.canHaul) return -1;
     int moverZ = (int)m->z;
 
-    for (int fi = 0; fi < MAX_FURNITURE; fi++) {
+    for (int fi = 0; fi < furnitureHighWater; fi++) {
         if (!FurnitureNeedsFuel(fi)) continue;
         const Furniture* f = &furniture[fi];
         if (f->z != moverZ) continue;
@@ -4729,7 +4729,7 @@ static void AssignJobs_P2b_PassiveDelivery(void) {
 __attribute__((noinline))
 static void AssignJobs_P2g_Refuel(void) {
     bool any = false;
-    for (int fi = 0; fi < MAX_FURNITURE && !any; fi++) any = FurnitureNeedsFuel(fi);
+    for (int fi = 0; fi < furnitureHighWater && !any; fi++) any = FurnitureNeedsFuel(fi);
     if (!any) return;
     int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
     if (!idleCopy) return;

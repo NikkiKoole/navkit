@@ -359,7 +359,7 @@ static StepResult QStepWait(int moverIdx, MoverAction* a) {
 static int QTableOfSeat(int seat) {
     if (!QFurnitureValid(seat)) return -1;
     const Furniture* s = &furniture[seat];
-    for (int f = 0; f < MAX_FURNITURE; f++) {
+    for (int f = 0; f < furnitureHighWater; f++) {
         if (!furniture[f].active || f == seat || furniture[f].z != s->z) continue;
         if (!(GetFurnitureDef(furniture[f].type)->capabilities & CAP_FLAT_SURFACE)) continue;
         if (abs(furniture[f].x - s->x) <= 1 && abs(furniture[f].y - s->y) <= 1) return f;
@@ -657,7 +657,7 @@ static int QFindSeatNear(const Mover* m) {
     int best = -1;
     float bestScore = 1e9f;   // distance less how nice the neighbours are (talk.c SeatPreference)
     int mx = QMoverCellX(m), my = QMoverCellY(m), mz = (int)m->z;
-    for (int f = 0; f < MAX_FURNITURE; f++) {
+    for (int f = 0; f < furnitureHighWater; f++) {
         if (!furniture[f].active || furniture[f].z != mz) continue;
         if (!(GetFurnitureDef(furniture[f].type)->capabilities & CAP_SEATING)) continue;
         if (!FurnitureHasRoom(f)) continue;

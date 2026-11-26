@@ -2941,7 +2941,7 @@ static void DrawFurniture(void) {
     int viewZ = currentViewZ;
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
 
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         Furniture* f = &furniture[i];
         if (!f->active) continue;
         if (f->z > viewZ || f->z < viewZ - MAX_VISIBLE_DEPTH) continue;
@@ -3927,7 +3927,7 @@ static void DrawFrontView(void) {
         }
 
         // Draw furniture for this layer
-        for (int i = 0; i < MAX_FURNITURE; i++) {
+        for (int i = 0; i < furnitureHighWater; i++) {
             Furniture* f = &furniture[i];
             if (!f->active) continue;
             if (f->y != worldY) continue;

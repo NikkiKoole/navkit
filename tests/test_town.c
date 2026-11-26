@@ -49,14 +49,14 @@ static void SetupTown(void) {
 
 static int CountFurnitureIn(int x1, int y1, int x2, int y2) {
     int n = 0;
-    for (int i = 0; i < MAX_FURNITURE; i++)
+    for (int i = 0; i < furnitureHighWater; i++)
         if (furniture[i].active && furniture[i].x >= x1 && furniture[i].x <= x2 && furniture[i].y >= y1 && furniture[i].y <= y2) n++;
     return n;
 }
 
 static int CountFurnitureType(FurnitureType t) {
     int n = 0;
-    for (int i = 0; i < MAX_FURNITURE; i++) n += furniture[i].active && furniture[i].type == t;
+    for (int i = 0; i < furnitureHighWater; i++) n += furniture[i].active && furniture[i].type == t;
     return n;
 }
 

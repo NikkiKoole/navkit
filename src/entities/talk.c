@@ -855,7 +855,7 @@ int MoverDiningAt(int i) {
 
 // The table next to seat f (a flat surface in the 8 cells round it), -1 if none
 static int TableNextTo(int f) {
-    for (int k = 0; k < MAX_FURNITURE; k++) {
+    for (int k = 0; k < furnitureHighWater; k++) {
         if (!furniture[k].active || furniture[k].z != furniture[f].z) continue;
         if (!(GetFurnitureDef(furniture[k].type)->capabilities & CAP_FLAT_SURFACE)) continue;
         if (abs(furniture[k].x - furniture[f].x) <= 1 && abs(furniture[k].y - furniture[f].y) <= 1) return k;
@@ -957,7 +957,7 @@ float SpotPreference(int i, float x, float y, int z) {
     float near = SPOT_NEAR * CELL_SIZE, bonus = 0.0f;
     int counted[32], nc = 0;
     // who will sit next to it: the occupants of seats round the spot
-    for (int f = 0; f < MAX_FURNITURE; f++) {
+    for (int f = 0; f < furnitureHighWater; f++) {
         if (!furniture[f].active || furniture[f].z != z || furniture[f].occupant < 0 || furniture[f].occupant == i) continue;
         float fx = (furniture[f].x + 0.5f) * CELL_SIZE - x, fy = (furniture[f].y + 0.5f) * CELL_SIZE - y;
         if (fx * fx + fy * fy > near * near || fx * fx + fy * fy < 1.0f) continue;   // (not the spot itself)
@@ -1157,7 +1157,7 @@ void AutoGatherTick(float dt) {
                     AutoGatherEnsure(AG_COOKING, w, movers[cook].x, movers[cook].y, (int)movers[cook].z, "the cooking", 10.0f, 30.0f);
             }
         }
-        for (int f = 0; f < MAX_FURNITURE; f++) {
+        for (int f = 0; f < furnitureHighWater; f++) {
             if (!furniture[f].active || !(GetFurnitureDef(furniture[f].type)->capabilities & CAP_HEAT)) continue;
             if (!FurnitureLit(f)) continue;   // a barrel gone out draws nobody
             AutoGatherEnsure(AG_HEAT, f, (furniture[f].x + 0.5f) * CELL_SIZE, (furniture[f].y + 0.5f) * CELL_SIZE,

@@ -360,7 +360,7 @@ static void StartWarmthSearchBody(Mover* m, int moverIdx) {
 static int FindNearestFreeFurniture(int moverIdx, FurnitureType type, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e12f;
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active || furniture[i].type != type) continue;
         if (furniture[i].z != z || furniture[i].occupant != -1) continue;
         if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
@@ -420,7 +420,7 @@ static bool FlushToilet(int fi) {
 static int FindBestFreeToilet(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestScore = -1.0f;
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active || furniture[i].z != z || furniture[i].occupant != -1) continue;
         if (!(GetFurnitureDef(furniture[i].type)->capabilities & CAP_TOILET)) continue;
         if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
@@ -593,7 +593,7 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
 // Is there anything to drink for this mover (a stored drink, any tap on its level, natural water)?
 static bool DrinkAvailable(const Mover* m) {
     if (FindBestDrinkableItem((int)(m - movers), m->x, m->y, (int)m->z) >= 0) return true;
-    for (int i = 0; i < MAX_FURNITURE; i++)
+    for (int i = 0; i < furnitureHighWater; i++)
         if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z &&
             NeedMayUseFurniture((int)(m - movers), i)) return true;
     int wx, wy, wz, sx, sy, sz;
@@ -647,7 +647,7 @@ static void StartDrinkSearchBody(Mover* m, int moverIdx) {
     }
 
     // Every tap on this level in use: wait a moment and try again, rather than walking to the pond
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z &&
             NeedMayUseFurniture(moverIdx, i)) {
             m->needSearchCooldown = GameHoursToGameSeconds(balance.waterSearchCooldownGH);
@@ -699,7 +699,7 @@ static void StartRestSearchBody(Mover* m, int moverIdx) {
     float mx = m->x, my = m->y;
     int mz = (int)m->z;
 
-    for (int i = 0; i < MAX_FURNITURE; i++) {
+    for (int i = 0; i < furnitureHighWater; i++) {
         if (!furniture[i].active) continue;
         if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only

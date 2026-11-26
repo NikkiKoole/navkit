@@ -515,7 +515,7 @@ static bool DoorSmokeCheck(char* why, int whyLen) {
 #define GLR_W 7                     // flat width incl. walls (neighbours share a wall)
 #define GLR_D 6                     // flat depth incl. walls (front wall at GLR_Y0 + 5)
 #define GLR_STRIDE 10               // block to block (galerij-big): flats, gallery, railing, a path
-#define GLR_MAX_FLATS 128
+#define GLR_MAX_FLATS 512
 static int glrFlats = 4;            // per floor per block
 static int glrBlocks = 1;
 static bool glrLight;               // galerij-big: bed, tap, toilet, chair; food on the counter
@@ -690,7 +690,8 @@ static void SetupGalerij(void) {
 // galerij-big: the galerij as a load and stress test for ownership and visits. Rows of blocks
 // fill the map (scenarioSize, default 128), as many flats as the furniture table holds (light
 // fit-out: bed, chair, tap, toilet; food on the counter, no fridge stockpile: stockpiles are
-// capped at MAX_STOCKPILES). Same check as the galerij. Use with --profile.
+// capped at MAX_STOCKPILES). Same check as the galerij. Use with --profile. 64: 96 flats, 144
+// residents; 128: 456 flats, 684 residents.
 static void SetupGalerijBig(void) {
     glrLight = true;
     glrFlats = (gridWidth - 13) / (GLR_W - 1);
@@ -5983,7 +5984,7 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"galerij",    "A block of flats off an outdoor gallery: 8 households (places, places.h), dollhouse rules; nobody uses a home that isn't theirs",
                    NULL,        SetupGalerij, GalerijTickStats, GalerijPrintStats, GalerijCheck, 41, 16},
-    {"galerij-big", "Rows of galerij blocks filling the map (scenarioSize, default 128): ~100 households, ~170 residents, visits; ownership load test (--profile)",
+    {"galerij-big", "Rows of galerij blocks filling the map (scenarioSize, default 128: 456 households, 684 residents; 64: 96 / 144), visits; ownership load test (--profile)",
                    NULL,        SetupGalerijBig, GalerijTickStats, GalerijPrintStats, GalerijCheck, 128, 128},
     {"visiting",   "The galerij with frequent short visits: knock, get let in, stay, leave; stats for visits let in, over, cut short, given up (settings visit*)",
                    NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},
