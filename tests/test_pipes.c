@@ -24,6 +24,8 @@ static bool test_verbose = false;
 #include "../src/simulation/floordirt.h"
 #include "../src/simulation/rooms.h"
 #include "../src/core/time.h"
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 #include "test_helpers.h"
 #include <string.h>
 
@@ -122,6 +124,27 @@ describe(drain_network) {
         SetPipe(9, 5, 1, PIPE_WALL_DRAIN | PIPE_END);
         expect(PipeFixtureOnDrain(8, 5, 1));                  // the wall cell east of it
         expect(!PipeFixtureOnDrain(8, 7, 1));                 // diagonal doesn't count
+    }
+
+    it("pipes survive a save and load (v126): bits, network, counts") {
+        SetupGround();
+        LayFloorDrain(2, 2, 8, 4, 1);
+        SetPipe(8, 4, 1, GetPipe(8, 4, 1) | PIPE_END);
+        SetPipe(5, 2, 1, GetPipe(5, 2, 1) | PIPE_VALVE | PIPE_VALVE_CLOSED);
+        SetPipe(12, 12, 1, PIPE_FLOOR_DRAIN);                 // a lone, unconnected drain
+        int cells = PipeDrainCellCount();
+        expect(SaveWorld("/tmp/test_pipes_save.bin"));
+        ClearPipes();
+        expect(PipeDrainCellCount() == 0);
+        expect(LoadWorld("/tmp/test_pipes_save.bin"));
+        expect(PipeDrainCellCount() == cells);
+        expect(GetPipe(8, 4, 1) == (PIPE_FLOOR_DRAIN | PIPE_END));
+        expect(GetPipe(5, 2, 1) & PIPE_VALVE_CLOSED);
+        expect(PipeDrainConnected(6, 2, 1));                  // outlet side of the shut valve
+        expect(!PipeDrainConnected(2, 2, 1));                 // beyond it
+        expect(!PipeDrainConnected(12, 12, 1));
+        SetPipe(5, 2, 1, GetPipe(5, 2, 1) & (uint8_t)~PIPE_VALVE_CLOSED);   // the list works after a load
+        expect(PipeDrainConnected(2, 2, 1));
     }
 
     it("a new world has no pipes") {

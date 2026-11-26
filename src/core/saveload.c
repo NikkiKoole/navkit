@@ -23,6 +23,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/moisture.h"
+#include "../world/pipes.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
@@ -499,6 +500,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             SAVE_ROW(f, MOISTURE, y, z);
+        }
+    }
+
+    // Pipes (v126+, pipes.h): the pipe byte; the network is worked out again after loading
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            SAVE_ROW(f, PIPE, y, z);
         }
     }
 
@@ -1211,6 +1219,17 @@ bool LoadWorld(const char* filename) {
         SoilMoistureMarkLoaded();
     } else {
         CLEAR_GRID_LAYER(moistureGrid, 0);
+    }
+
+    // Pipes (v126+); older saves: none
+    ClearPipes();
+    if (version >= V126_PIPES) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                LOAD_ROW(f, PIPE, y, z);
+            }
+        }
+        PipesAfterLoad();
     }
 
     if (!loadRleOk) {

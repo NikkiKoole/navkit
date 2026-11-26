@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 125
+#define CURRENT_SAVE_VERSION 126
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -156,6 +156,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v125: mechanisms (mechanisms.h): the mechanism table, the link table and the doors waiting to
 // lock, right after the weather state (before the end marker). Older saves: none.
 #define V125_MECHANISMS 125
+// v126: pipes (pipes.h): the pipe byte per cell (pipeGrid) right after the soil moisture layer.
+// Older saves: no pipes.
+#define V126_PIPES 126
 #define V122_MAX_STOCKPILES 64
 #define V122_ITEM_TYPE_COUNT 86
 #define V122_MAT_COUNT 20

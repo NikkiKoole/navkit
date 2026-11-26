@@ -32,6 +32,7 @@ enum { PIPE_CONN_SUPPLY = 1 << 0, PIPE_CONN_DRAIN = 1 << 1 };
 extern bool pipeOverlay;        // setting pipeOverlay: pipes under a constructed floor drawn too
 
 void ClearPipes(void);                                 // a new world: no pipes
+void PipesAfterLoad(void);                             // pipeGrid was read in: rebuild the cell list, counts, network
 uint8_t GetPipe(int x, int y, int z);                  // 0 out of bounds
 void SetPipe(int x, int y, int z, uint8_t bits);       // replaces the byte; the network is redone
 int  PipeDrainCellCount(void);                         // cells with a drain bit: 0 = no drains here

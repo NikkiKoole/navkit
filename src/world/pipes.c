@@ -46,6 +46,21 @@ static void PipeListRemove(int x, int y, int z) {
         }
 }
 
+void PipesAfterLoad(void) {
+    pipeCellCount = 0;
+    drainCells = 0;
+    memset(pipePulses, 0, sizeof(pipePulses));
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                uint8_t b = PIPE(x, y, z);
+                if (!b) continue;
+                PipeListAdd(x, y, z);
+                if (b & PIPE_DRAIN) drainCells++;
+            }
+    pipesDirty = true;
+}
+
 void SetPipe(int x, int y, int z, uint8_t bits) {
     if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return;
     uint8_t old = PIPE(x, y, z);
