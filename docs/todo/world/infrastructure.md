@@ -77,8 +77,9 @@ blueprints and takes pipes out (at once, no bricks back yet). Planned pipes draw
 the blueprint tiles. Scenario `drain-build`: two people haul 20 bricks and lay toilet -> outlet,
 then every use flushes. A lever can drive a drain valve (navkit-1e's mechanisms flip
 `PIPE_VALVE_CLOSED` through `SetPipe`).
-**Not in the spike:** saving (v126, after 124 soil moisture and 125 mechanisms; until then a
-loaded game has no pipes and valve links point at nothing), the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
+**Saved (v126):** the pipe byte right after the soil moisture layer; `PipesAfterLoad` rebuilds
+the cell list and the network (older saves: no pipes). Valve links (v125) now survive a load.
+**Not in the spike:** the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
 rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
 pipe cells, so it never sweeps the map.
 
