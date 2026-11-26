@@ -30,6 +30,7 @@
 #include "town.h"
 #include "furniture.h"
 #include "../world/mechanisms.h"
+#include "../world/pumps.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -150,6 +151,8 @@ static AdjacentDesignationEntry openDoorCache[MAX_DESIGNATION_CACHE];
 static int openDoorCacheCount = 0;
 static AdjacentDesignationEntry pullLeverCache[MAX_DESIGNATION_CACHE];
 static int pullLeverCacheCount = 0;
+static AdjacentDesignationEntry workPumpCache[MAX_DESIGNATION_CACHE];
+static int workPumpCacheCount = 0;
 
 static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
 static int cleanCacheCount = 0;
@@ -188,6 +191,7 @@ static bool gatherTreeCacheDirty = true;
 static bool closeDoorCacheDirty = true;
 static bool openDoorCacheDirty = true;
 static bool pullLeverCacheDirty = true;
+static bool workPumpCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool removeBeltCacheDirty = true;
 static bool blastCacheDirty = true;
@@ -312,6 +316,8 @@ static void RebuildCloseDoorDesignationCache(void);
 static void RebuildOpenDoorDesignationCache(void);
 static int WorkGiver_PullLever(int moverIdx);
 static void RebuildPullLeverDesignationCache(void);
+static int WorkGiver_WorkPump(int moverIdx);
+static void RebuildWorkPumpDesignationCache(void);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -377,6 +383,8 @@ static DesignationJobSpec designationSpecs[] = {
      openDoorCache, &openDoorCacheCount, &openDoorCacheDirty},
     {DESIGNATION_PULL_LEVER, JOBTYPE_PULL_LEVER, RebuildPullLeverDesignationCache, WorkGiver_PullLever,
      pullLeverCache, &pullLeverCacheCount, &pullLeverCacheDirty},
+    {DESIGNATION_WORK_PUMP, JOBTYPE_WORK_PUMP, RebuildWorkPumpDesignationCache, WorkGiver_WorkPump,
+     workPumpCache, &workPumpCacheCount, &workPumpCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -538,6 +546,11 @@ static void RebuildPullLeverDesignationCache(void) {
     if (!pullLeverCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_PULL_LEVER, pullLeverCache, &pullLeverCacheCount, true);
     pullLeverCacheDirty = false;
+}
+static void RebuildWorkPumpDesignationCache(void) {
+    if (!workPumpCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_WORK_PUMP, workPumpCache, &workPumpCacheCount, true);
+    workPumpCacheDirty = false;
 }
 
 static void RebuildCleanDesignationCache(void) {
@@ -1662,6 +1675,26 @@ JobRunResult RunJob_PullLever(Job* job, void* moverPtr, float dt) {
         float t = doorOpenSeconds > 0.05f ? doorOpenSeconds : 0.05f;
         JobRunResult r = RunWorkProgress(job, d, mover, dt, t, true, 1.0f);
         if (r == JOBRUN_DONE) CompletePullLeverDesignation(tx, ty, tz);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Work a pump (pumps.h): walk up next to it, then pump for pumpWorkHours; water moves only
+// while the worker is at it (PumpWork every tick of the work step)
+JobRunResult RunJob_WorkPump(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_WORK_PUMP) return JOBRUN_FAIL;
+    int pi = PumpAt(tx, ty, tz);
+    if (pi < 0) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }   // the pump is gone
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        float hours = pumpWorkHours > 0.05f ? pumpWorkHours : 0.05f;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, GameHoursToGameSeconds(hours), true, 1.0f);
+        PumpWork(pi, dt);
+        if (r == JOBRUN_DONE) CompleteWorkPumpDesignation(tx, ty, tz);
         return r;
     }
     return JOBRUN_FAIL;
@@ -3932,6 +3965,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_BLAST] = RunJob_Blast,
     [JOBTYPE_DOOR] = RunJob_Door,
     [JOBTYPE_PULL_LEVER] = RunJob_PullLever,
+    [JOBTYPE_WORK_PUMP] = RunJob_WorkPump,
     [JOBTYPE_REFUEL] = RunJob_Refuel,
 };
 
@@ -7300,7 +7334,8 @@ static int WorkGiver_RemoveBelt(int moverIdx) {
 
 // Open / close door: nearest door with that mark; anyone can do it
 static int WorkGiver_DoorFrom(int moverIdx, AdjacentDesignationEntry* cache, int cacheCount, DesignationType type) {
-    JobType jobType = type == DESIGNATION_PULL_LEVER ? JOBTYPE_PULL_LEVER : JOBTYPE_DOOR;
+    JobType jobType = type == DESIGNATION_PULL_LEVER ? JOBTYPE_PULL_LEVER
+                    : type == DESIGNATION_WORK_PUMP ? JOBTYPE_WORK_PUMP : JOBTYPE_DOOR;
     Mover* m = &movers[moverIdx];
     int bestX = -1, bestY = -1, bestZ = -1, bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
@@ -7351,6 +7386,10 @@ static int WorkGiver_OpenDoor(int moverIdx) {
 // Pull a lever (mechanisms.h): same shape, nearest lever with the mark; anyone can do it
 static int WorkGiver_PullLever(int moverIdx) {
     return WorkGiver_DoorFrom(moverIdx, pullLeverCache, pullLeverCacheCount, DESIGNATION_PULL_LEVER);
+}
+// Work a pump (pumps.h): same shape; anyone can do it
+static int WorkGiver_WorkPump(int moverIdx) {
+    return WorkGiver_DoorFrom(moverIdx, workPumpCache, workPumpCacheCount, DESIGNATION_WORK_PUMP);
 }
 
 // WorkGiver_Blast: nearest blast designation + nearest gunpowder; miners do it

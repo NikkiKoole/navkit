@@ -3,6 +3,7 @@
 #include "material.h"
 #include "pathfinding.h"
 #include "pipes.h"
+#include "pumps.h"
 #include "mechanisms.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -135,6 +136,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     SparseLayerClear(&oneWayLayer);
     ClearPlaces();          // a new world has no owners or places (places.h)
     ClearPipes();           // ... and no pipes (pipes.h)
+    ClearPumps();           // ... or pumps (pumps.h)
     ClearMechanisms();      // ... no levers, plates or links (mechanisms.h)
     InitMaterials();
     

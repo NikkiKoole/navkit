@@ -33,6 +33,7 @@ typedef enum {
     DESIGNATION_CLOSE_DOOR,     // Close this open door: a mover walks up next to it and shuts it (JOBTYPE_DOOR)
     DESIGNATION_OPEN_DOOR,      // Open this closed door on purpose (to air a room, ...) (JOBTYPE_DOOR)
     DESIGNATION_PULL_LEVER,     // Pull this lever: a mover walks up next to it and pulls it (JOBTYPE_PULL_LEVER, mechanisms.h)
+    DESIGNATION_WORK_PUMP,      // Work this pump: a mover stands next to it and pumps for a while (JOBTYPE_WORK_PUMP, pumps.h)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -62,6 +63,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_CLOSE_DOOR]     = "CLOSE_DOOR",
         [DESIGNATION_OPEN_DOOR]      = "OPEN_DOOR",
         [DESIGNATION_PULL_LEVER]     = "PULL_LEVER",
+        [DESIGNATION_WORK_PUMP]      = "WORK_PUMP",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }

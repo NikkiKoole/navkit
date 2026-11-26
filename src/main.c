@@ -1924,6 +1924,7 @@ int main(int argc, char** argv) {
         }
         DrawStockpileTiles();
         DrawPipes();          // under workshops and furniture (pipes.h, drain spike)
+        DrawPumps();          // pumps (pumps.h)
         DrawMechanisms();     // levers, pressure plates, links (mechanisms.h)
         DrawWorkshops();
         DrawFurniture();

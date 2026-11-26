@@ -27,6 +27,7 @@
 #include "../entities/elevators.h"
 #include "../simulation/balance.h"
 #include "../world/pipes.h"
+#include "../world/pumps.h"
 #include "../world/mechanisms.h"
 #include <math.h>
 
@@ -3101,6 +3102,32 @@ static void DrawPipeBlueprints(void) {
     }
 }
 
+// Pumps (pumps.h): a disc over the pump block with an arrow to its output; the arrow pulses
+// while it is being worked (placeholder until a sprite)
+static void DrawPumps(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    for (int i = 0; i < MAX_PUMPS; i++) {
+        const Pump* p = &pumps[i];
+        if (!p->active || p->z != z) continue;
+        float cx = offset.x + (p->x + 0.5f) * size, cy = offset.y + (p->y + 0.5f) * size;
+        if (cx < -size || cy < -size || cx > GetScreenWidth() + size || cy > GetScreenHeight() + size) continue;
+        DrawCircleV((Vector2){ cx, cy }, size * 0.42f, (Color){ 120, 84, 50, 255 });
+        DrawCircleLinesV((Vector2){ cx, cy }, size * 0.42f, (Color){ 60, 40, 24, 255 });
+        bool working = p->workedAgo < 0.25f;
+        float pulse = working ? 0.5f + 0.5f * sinf((float)GetTime() * 14.0f) : 0.0f;
+        Color arrow = working ? (Color){ (unsigned char)(90 + 60 * pulse), (unsigned char)(160 + 60 * pulse), 240, 255 } : (Color){ 200, 180, 140, 255 };
+        Vector2 tip = { cx + p->dx * size * 0.34f, cy + p->dy * size * 0.34f };
+        Vector2 tail = { cx - p->dx * size * 0.2f, cy - p->dy * size * 0.2f };
+        float px = (float)-p->dy, py = (float)p->dx;
+        DrawLineEx(tail, tip, fmaxf(1.0f, size * 0.1f), arrow);
+        DrawTriangle(tip, (Vector2){ tip.x - p->dx * size * 0.18f + px * size * 0.14f, tip.y - p->dy * size * 0.18f + py * size * 0.14f },
+                     (Vector2){ tip.x - p->dx * size * 0.18f - px * size * 0.14f, tip.y - p->dy * size * 0.18f - py * size * 0.14f }, arrow);
+        DrawTriangle(tip, (Vector2){ tip.x - p->dx * size * 0.18f - px * size * 0.14f, tip.y - p->dy * size * 0.18f - py * size * 0.14f },
+                     (Vector2){ tip.x - p->dx * size * 0.18f + px * size * 0.14f, tip.y - p->dy * size * 0.18f + py * size * 0.14f }, arrow);
+    }
+}
+
 static void DrawFurniture(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -3416,6 +3443,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_CLOSE_DOOR]     = {120, 200, 255, 200},
     [DESIGNATION_OPEN_DOOR]      = {255, 220, 120, 200},
     [DESIGNATION_PULL_LEVER]     = {255, 160, 60, 200},
+    [DESIGNATION_WORK_PUMP]      = {90, 160, 230, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -3442,6 +3470,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_CLOSE_DOOR]     = {90, 170, 240, 255},
     [DESIGNATION_OPEN_DOOR]      = {240, 200, 90, 255},
     [DESIGNATION_PULL_LEVER]     = {240, 140, 40, 255},
+    [DESIGNATION_WORK_PUMP]      = {70, 140, 220, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -3460,6 +3489,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_BLAST]          = {220, 40, 40, 180},
     [JOBTYPE_DOOR]           = {160, 210, 255, 180},
     [JOBTYPE_PULL_LEVER]     = {255, 170, 80, 180},
+    [JOBTYPE_WORK_PUMP]      = {100, 170, 240, 180},
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 

@@ -44,6 +44,7 @@
 #include <stdio.h>
 #include "../entities/town.h"
 #include "../world/pipes.h"
+#include "../world/pumps.h"
 #include "../world/mechanisms.h"
 #include <stdarg.h>
 #include <string.h>
@@ -493,6 +494,42 @@ static void RunPipe(const CmdValue* v) {
     }
 }
 
+// ---- pump: DF-style screw pumps (pumps.h), on the viewed level ----
+static const char* const pumpChoices[] = { "place", "remove", "order", "list" };
+static const char* const pumpDirChoices[] = { "n", "e", "s", "w" };
+static void RunPump(const CmdValue* v) {
+    int z = currentViewZ, c = v[0].choice;
+    if (c == 3) {
+        int n = 0;
+        for (int i = 0; i < MAX_PUMPS; i++) {
+            if (!pumps[i].active) continue;
+            const Pump* p = &pumps[i];
+            Say(WHITE, "Pump %d at %d,%d,%d facing %d,%d: %d units lifted%s", i, p->x, p->y, p->z, p->dx, p->dy, p->unitsMoved,
+                DESIGNATION(p->x, p->y, p->z).type == DESIGNATION_WORK_PUMP ? " (ordered)" : "");
+            n++;
+        }
+        if (n == 0) Say(YELLOW, "No pumps");
+        return;
+    }
+    int x, y;
+    if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
+    if (c == 0) {
+        static const int ddx[4] = {0, 1, 0, -1}, ddy[4] = {-1, 0, 1, 0};
+        int d = v[3].given ? v[3].choice : 1;
+        int idx = PlacePump(x, y, z, ddx[d], ddy[d]);
+        if (idx < 0) Say(YELLOW, "No pump at %d,%d (level %d): off the map, a wall there, or level 0", x, y, z);
+        else Say(GREEN, "Pump %d at %d,%d: lifts from %d,%d,%d to %d,%d,%d when worked (pump order)", idx, x, y,
+                 x, y, z - 1, x + ddx[d], y + ddy[d], z);
+        return;
+    }
+    int idx = PumpAt(x, y, z);
+    if (idx < 0) { Say(YELLOW, "No pump at %d,%d (level %d)", x, y, z); return; }
+    if (c == 1) { RemovePump(idx); Say(GREEN, "Pump removed"); }
+    else if (DesignateWorkPump(x, y, z)) Say(GREEN, "Pump at %d,%d marked: a worker will pump for %.1f game hours", x, y, pumpWorkHours);
+    else Say(YELLOW, "That pump is already marked");
+}
+
 // ---- time: speed, daylength ----
 static const char* const speedChoices[] = { "pause", "resume", "toggle" };
 static void RunSpeed(const CmdValue* v) {
@@ -873,6 +910,12 @@ static const CommandDef commandTable[] = {
            { .name = "x2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunPipe, NULL },
+    { "pump", "World/Pipes", "DF-style screw pump: pump place x y [n|e|s|w] (lifts water from the cell below to the cell beside it, one level up), remove x y, order x y (a worker pumps a while), list. On the viewed level; no x y = the mouse",
+      4, { ARG_CHOICE("what", pumpChoices),
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "dir", .type = CARG_CHOICE, .optional = true, .choices = pumpDirChoices, .choiceCount = 4 } },
+      RunPump, NULL },
     { "mech", "World/Mechanisms", "Levers and pressure plates: mech lever|plate|remove x y, mech link|linkinv|unlink x y tx ty (the mechanism at x y works the door or valve at tx ty; linkinv: on locks it), mech pull x y (now), mech order x y (a worker pulls it), mech list. A linked door: on = open, off = locked (it waits until nobody is in the doorway). On the viewed level; no x y = the mouse",
       5, { ARG_CHOICE("what", mechChoices),
            { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },

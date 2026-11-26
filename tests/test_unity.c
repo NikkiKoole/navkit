@@ -151,6 +151,7 @@ bool bladderEnabled = false;
 #include "../src/core/saveload.c"
 #include "../src/world/grid_layers.c"
 #include "../src/world/pipes.c"
+#include "../src/world/pumps.c"
 #include "../src/world/mechanisms.c"
 #include "../src/core/describe.c"
 #include "../src/core/command_args.c"

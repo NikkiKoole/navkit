@@ -43,6 +43,7 @@
 #include "../entities/adverts.h"
 #include "describe.h"
 #include "../world/pipes.h"
+#include "../world/pumps.h"
 #include "../world/mechanisms.h"
 
 // ---------------------------------------------------------------------------
@@ -1188,6 +1189,109 @@ static bool BasinsCheck(char* why, int whyLen) {
     if (basinsTicks < basinsValveAt + 1200) { snprintf(why, (size_t)whyLen, "run at least %d ticks", basinsValveAt + 1200); return false; }
     if (basinsBefore != 0) { snprintf(why, (size_t)whyLen, "water got through the shut valve (%d units in B)", basinsBefore); return false; }
     if (BasinUnits(BASINS_BX, 0) < 80) { snprintf(why, (size_t)whyLen, "B got only %d units after the valve opened", BasinUnits(BASINS_BX, 0)); return false; }
+    return true;
+}
+
+// pumploop: the loop the user asked for (2026-11-26): a basin drains through a pipe into a pit
+// beside it, a DF-style screw pump (pumps.h) worked by a settler lifts it back. Basin A (4x4, z1,
+// a gap in its east wall at the pump), pit B (4x4 dug into z0). The pump sits over the pit's
+// corner facing west: it lifts from the pit into the gap, which runs into A. A water pipe from
+// A's floor through its wall (with the valve) down into the pit. The scenario pulls the
+// "lever": valve open until A is low, then shut and the pump ordered until A is full again.
+#define PL_AX 6
+#define PL_BX 11
+#define PL_Y 8
+#define PL_W 4
+static int plTicks, plState, plCycles, plLowest, plHighestAfterLow;
+static bool plOrdered;   // this round's pump order was given
+
+static int PumpLoopUnits(int x0, int z) {
+    int n = 0;
+    for (int y = PL_Y; y < PL_Y + PL_W; y++)
+        for (int x = x0; x < x0 + PL_W; x++) n += GetWaterLevel(x, y, z);
+    return n;
+}
+
+static void PumpLoopValve(bool open) {
+    int vx = PL_AX + PL_W, vy = PL_Y + PL_W - 1;
+    uint8_t b = GetPipe(vx, vy, 1);
+    SetPipe(vx, vy, 1, open ? (uint8_t)(b & ~PIPE_VALVE_CLOSED) : (uint8_t)(b | PIPE_VALVE_CLOSED));
+}
+
+static void SetupPumpLoop(void) {
+    plTicks = plCycles = 0;
+    plState = 0;
+    plLowest = 999;
+    plHighestAfterLow = 0;
+    plOrdered = false;
+    hungerEnabled = thirstEnabled = energyEnabled = bodyTempEnabled = bladderEnabled = false;
+    endlessMoverMode = false;
+    ClearPipes();
+    ClearPumps();
+    // A: granite walls round a 4x4 at z1 (a gap east at the pump row), granite floor
+    for (int y = PL_Y - 1; y <= PL_Y + PL_W; y++)
+        for (int x = PL_AX - 1; x <= PL_AX + PL_W; x++) {
+            bool inside = x >= PL_AX && x < PL_AX + PL_W && y >= PL_Y && y < PL_Y + PL_W;
+            SetWallMaterial(x, y, 0, MAT_GRANITE); ClearWallNatural(x, y, 0);
+            if (inside || (x == PL_AX + PL_W && y == PL_Y)) continue;
+            GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_GRANITE); ClearWallNatural(x, y, 1);
+        }
+    // B: a pit dug into z0, granite round it
+    for (int y = PL_Y - 1; y <= PL_Y + PL_W; y++)
+        for (int x = PL_BX - 1; x <= PL_BX + PL_W; x++) {
+            bool inside = x >= PL_BX && x < PL_BX + PL_W && y >= PL_Y && y < PL_Y + PL_W;
+            if (inside) GRID(x, y, 0) = CELL_AIR;
+            else { SetWallMaterial(x, y, 0, MAT_GRANITE); ClearWallNatural(x, y, 0); }
+        }
+    for (int y = PL_Y; y < PL_Y + PL_W; y++)
+        for (int x = PL_AX; x < PL_AX + PL_W; x++) SetWaterLevel(x, y, 1, WATER_MAX_LEVEL);
+    // The pipe: an opening in A's corner, through the wall (the valve) down into the pit
+    int wy = PL_Y + PL_W - 1, wx = PL_AX + PL_W;
+    SetPipe(wx - 1, wy, 1, PIPE_FLOOR_SUPPLY | PIPE_END);
+    SetPipe(wx, wy, 1, PIPE_WALL_SUPPLY | PIPE_STACK | PIPE_VALVE | PIPE_VALVE_CLOSED);
+    SetPipe(wx, wy, 0, PIPE_WALL_SUPPLY | PIPE_STACK);
+    SetPipe(wx + 1, wy, 0, PIPE_FLOOR_SUPPLY | PIPE_END);
+    // The pump over the pit's corner, facing west into A's gap
+    PlacePump(PL_BX, PL_Y, 1, -1, 0);
+    BuildEntrances();
+    BuildGraph();
+    SpawnMoverAt(3, 3, 1);
+    currentViewZ = 1;
+    AddMessage("Pump loop: the valve drains A into the pit, then a worker pumps it back (console pipe valve 10 11, pump order 11 8)", GREEN);
+}
+
+static void PumpLoopLiveTick(void) {
+    plTicks++;
+    int a = PumpLoopUnits(PL_AX, 1), b = PumpLoopUnits(PL_BX, 0);
+    if (plState == 0 && plTicks == 300) { PumpLoopValve(true); plState = 1; }
+    else if (plState == 1 && a < 20) { PumpLoopValve(false); plState = 2; plOrdered = false; }   // drained: shut, pump
+    else if (plState == 2) {
+        bool ordered = DESIGNATION(PL_BX, PL_Y, 1).type == DESIGNATION_WORK_PUMP;
+        // Full again, or the pit down to its puddles (level-1 water rests where it is: the pump
+        // only gets what runs to the cell under it)
+        if (a >= 75 || b < 20) { plCycles++; PumpLoopValve(true); plState = 1; }   // round two
+        else if (!ordered) plOrdered = DesignateWorkPump(PL_BX, PL_Y, 1) || plOrdered;
+    }
+}
+
+static void PumpLoopTickStats(void) {
+    int a = PumpLoopUnits(PL_AX, 1);
+    if (plState == 2 && a < plLowest) plLowest = a;
+    if (plLowest < 999 && a > plHighestAfterLow) plHighestAfterLow = a;
+    if (plTicks % 600 == 0)
+        printf("  tick %5d: A %3d, pit %3d, gap %d (state %d, cycles %d)\n", plTicks, a, PumpLoopUnits(PL_BX, 0),
+               GetWaterLevel(PL_AX + PL_W, PL_Y, 1), plState, plCycles);
+}
+
+static void PumpLoopPrintStats(void) {
+    int pi = PumpAt(PL_BX, PL_Y, 1);
+    printf("Pump loop: %d full rounds; A lowest %d, highest after that %d; pump lifted %d units\n",
+           plCycles, plLowest, plHighestAfterLow, pi >= 0 ? pumps[pi].unitsMoved : -1);
+}
+
+static bool PumpLoopCheck(char* why, int whyLen) {
+    if (plLowest > 25) { snprintf(why, (size_t)whyLen, "A never drained (lowest %d units)", plLowest); return false; }
+    if (plHighestAfterLow < 70) { snprintf(why, (size_t)whyLen, "the pump didn't fill A again (highest %d units)", plHighestAfterLow); return false; }
     return true;
 }
 
@@ -6442,6 +6546,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDrainBuild, DrainBuildTickStats, DrainBuildPrintStats, DrainBuildCheck, 0, 0, DrainBuildLiveTick},
     {"basins",     "Water through a pipe, DF style: a full basin and a pit beside it, a pipe between them with a shut valve; at tick 600 the valve opens and the basin drains into the pit (console pipe, water pipes = supply)",
                    NULL,        SetupBasins,   BasinsTickStats, BasinsPrintStats, BasinsCheck, 0, 0, BasinsLiveTick},
+    {"pumploop",   "A basin drains through a pipe into a pit, a worker pumps it back up with a DF-style screw pump, and round again (pump, pipe valve; settings pumpRate, pumpWorkHours)",
+                   NULL,        SetupPumpLoop, PumpLoopTickStats, PumpLoopPrintStats, PumpLoopCheck, 0, 0, PumpLoopLiveTick},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",

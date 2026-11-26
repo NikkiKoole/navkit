@@ -48,6 +48,7 @@ done <<'EOF'
 0   | 0 | --scenario drain
 0   | 0 | --scenario drain-build
 0   | 0 | --scenario basins
+0   | 0 | --scenario pumploop
 0   | 0 | --scenario leverflood
 0   | 0 | --scenario plategate
 0   | 0 | --scenario galerij

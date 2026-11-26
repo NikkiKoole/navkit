@@ -11,6 +11,8 @@ static bool test_verbose = false;
 #include "../src/world/material.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/pipes.h"
+#include "../src/world/pumps.h"
+#include "../src/simulation/water.h"
 #include "../src/world/designations.h"
 #include "../src/world/construction.h"
 #include "../src/entities/mover.h"
@@ -187,6 +189,54 @@ describe(water_pipes) {
     }
 }
 
+describe(screw_pumps) {
+    it("a pump is a block over water; worked, it lifts water from below to beside it, at its rate") {
+        SetupGround();
+        InitWater();
+        GRID(5, 5, 0) = CELL_AIR;                             // a hole in the ground with water in it
+        SetWaterLevel(5, 5, 0, 7);
+        int pi = PlacePump(5, 5, 1, 1, 0);                    // over the hole, facing east
+        expect(pi >= 0);
+        expect(GRID(5, 5, 1) == CELL_WALL && PumpAt(5, 5, 1) == pi);
+        expect(PlacePump(5, 5, 1, 1, 0) < 0);                 // already a pump there
+        float rate = pumpUnitsPerSecond;
+        pumpUnitsPerSecond = 2.0f;
+        PumpWork(pi, 1.0f);                                   // one game second: 2 units
+        expect(GetWaterLevel(5, 5, 0) == 5 && GetWaterLevel(6, 5, 1) == 2);
+        for (int i = 0; i < 20; i++) PumpWork(pi, 1.0f);      // the hole runs dry
+        expect(GetWaterLevel(5, 5, 0) == 0 && GetWaterLevel(6, 5, 1) == 7);
+        expect(pumps[pi].unitsMoved == 7);
+        pumpUnitsPerSecond = rate;
+        RemovePump(pi);
+        expect(GRID(5, 5, 1) == CELL_AIR && PumpAt(5, 5, 1) < 0);
+    }
+
+    it("a full output stops the pump; not worked, nothing moves") {
+        SetupGround();
+        InitWater();
+        GRID(5, 5, 0) = CELL_AIR;
+        SetWaterLevel(5, 5, 0, 7);
+        SetWaterLevel(6, 5, 1, 7);
+        int pi = PlacePump(5, 5, 1, 1, 0);
+        PumpWork(pi, 5.0f);
+        expect(GetWaterLevel(5, 5, 0) == 7);
+        SetWaterLevel(6, 5, 1, 0);
+        expect(GetWaterLevel(5, 5, 0) == 7);                  // nobody pumps: it stays below
+    }
+
+    it("a work order marks the pump and clears when done") {
+        SetupGround();
+        int pi = PlacePump(5, 5, 1, 0, -1);
+        expect(pi >= 0);
+        expect(DesignateWorkPump(5, 5, 1));
+        expect(!DesignateWorkPump(5, 5, 1));                  // already marked
+        expect(DESIGNATION(5, 5, 1).type == DESIGNATION_WORK_PUMP);
+        CompleteWorkPumpDesignation(5, 5, 1);
+        expect(DESIGNATION(5, 5, 1).type == DESIGNATION_NONE);
+        expect(!DesignateWorkPump(9, 9, 1));                  // no pump there
+    }
+}
+
 describe(drain_blueprints) {
     it("a drain blueprint goes on walkable ground without a drain; built, it is a floor drain") {
         SetupGround();
@@ -277,6 +327,7 @@ int main(int argc, char* argv[]) {
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     test(drain_network);
     test(water_pipes);
+    test(screw_pumps);
     test(drain_blueprints);
     test(drain_toilet);
     return summary();

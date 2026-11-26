@@ -23,6 +23,7 @@
 #include "../entities/adverts.h"
 #include "../entities/visit.h"
 #include "../world/mechanisms.h"
+#include "../world/pumps.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -71,6 +72,7 @@ void SimStep(float dt) {
     PROFILE_END(Designations);
 
     MechanismsTick();   // pressure plates, doors waiting for their doorway to clear (mechanisms.h)
+    PumpsTick(dt);      // pump drawing timers (pumps.h)
 
     PROFILE_BEGIN(Needs);
     PROFILE_BEGIN(NeedsTick); NeedsTick(); PROFILE_END(NeedsTick);

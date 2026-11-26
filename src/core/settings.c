@@ -43,6 +43,7 @@
 #include "../entities/visit.h"
 #include "../world/mechanisms.h"
 #include "../entities/town.h"
+#include "../world/pumps.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -891,6 +892,10 @@ static const Setting settings[] = {
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
       "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
+    SET_FLOAT("pumpRate", "Pump Rate (units/s)", "Simulation/Water", pumpUnitsPerSecond, 0.1f, 0.1f, 30.0f,
+      "Water units a worked pump lifts per game second (from the cell below it to the cell beside it, one level up).", NULL),
+    SET_FLOAT("pumpWorkHours", "Pump Work (GH)", "Simulation/Water", pumpWorkHours, 0.05f, 0.1f, 8.0f,
+      "How long one 'work the pump' order lasts, in game hours.", NULL),
     SET_BOOL("pipeOverlay", "Pipe overlay", "Rendering & Debug", pipeOverlay,
       "Draw pipes under constructed floors too (pipes on bare ground always show)."),
     SET_BOOL("linksOverlay", "Links overlay", "Rendering & Debug", linksOverlay,

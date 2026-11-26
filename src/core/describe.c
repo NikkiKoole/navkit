@@ -816,6 +816,7 @@ static const struct { const char* name; const char* worker; } designationText[DE
     [DESIGNATION_CLOSE_DOOR]     = {"Close Door",     "Worker"},
     [DESIGNATION_OPEN_DOOR]      = {"Open Door",      "Worker"},
     [DESIGNATION_PULL_LEVER]     = {"Pull Lever",     "Worker"},
+    [DESIGNATION_WORK_PUMP]      = {"Work Pump",      "Worker"},
 };
 
 const char* DesignationDisplayName(int type) {
