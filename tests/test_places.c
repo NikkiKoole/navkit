@@ -473,6 +473,63 @@ describe(places_stress) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Home first: the furniture in a place, and searches at home looking there first
+// ---------------------------------------------------------------------------
+
+describe(places_home_first) {
+    it("a place lists the furniture in it and in the places inside it, kept up to date") {
+        Setup();
+        int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat");
+        int home = PlaceCreate(hh, 0, PLACE_RULES_HOME, "Flat");
+        int room = PlaceCreate(hh, home, 0, "Bedroom");
+        PlaceFillRect(home, 0, 0, 4, 4, 1);
+        PlaceFillRect(room, 0, 0, 1, 1, 1);
+        int bed = SpawnFurniture(0, 0, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        int tap = SpawnFurniture(3, 3, 1, FURNITURE_TAP, MAT_GRANITE);
+        int outside = SpawnFurniture(8, 8, 1, FURNITURE_CHAIR, MAT_OAK);
+        const int* list;
+        int n = PlaceFurniture(home, &list);
+        bool inHome = n == 2 && list[0] == bed && list[1] == tap;
+        n = PlaceFurniture(room, &list);
+        bool inRoom = n == 1 && list[0] == bed;
+        RemoveFurniture(bed);
+        n = PlaceFurniture(home, &list);
+        bool afterRemove = n == 1 && list[0] == tap;
+        PlaceFillRect(home, 8, 8, 8, 8, 1);                // the chair's cell joins the home
+        n = PlaceFurniture(home, &list);
+        bool afterFill = n == 2 && list[0] == tap && list[1] == outside;
+        expect(inHome && inRoom && afterRemove && afterFill);
+        expect(PlaceContains(home, 1, 1, 1) && PlaceContains(home, 4, 4, 1) && !PlaceContains(room, 4, 4, 1));
+    }
+
+    it("at home a tired resident takes its own bed, even with a public bed nearer; away, the nearest") {
+        Setup();
+        energyEnabled = true;
+        int a = AddMover(4, 2);
+        int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat");
+        MoverJoinGroup(a, hh);
+        int home = PlaceCreate(hh, 0, PLACE_RULES_HOME, "Flat");
+        PlaceFillRect(home, 0, 0, 4, 9, 1);
+        PlaceSetDoor(home, 2, 9, 1);
+        int own = SpawnFurniture(0, 9, 1, FURNITURE_PLANK_BED, MAT_OAK);
+        int pub = SpawnFurniture(5, 2, 1, FURNITURE_PLANK_BED, MAT_OAK);   // public, one step outside
+        movers[a].hunger = 1.0f;
+        movers[a].energy = 0.1f;
+        movers[a].needSearchCooldown = 0.0f;
+        ProcessFreetimeNeeds();
+        bool atHome = movers[a].freetimeState == FREETIME_SEEKING_REST && movers[a].needTarget == own;
+        // The same mover outside its home: the nearest bed it may use
+        ReleaseFurniture(own, a);
+        movers[a].freetimeState = FREETIME_NONE;
+        movers[a].x = 8.5f * CELL_SIZE; movers[a].y = 2.5f * CELL_SIZE;
+        movers[a].needSearchCooldown = 0.0f;
+        ProcessFreetimeNeeds();
+        bool away = movers[a].freetimeState == FREETIME_SEEKING_REST && movers[a].needTarget == pub;
+        expect(atHome && away);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     test(places_rules);
@@ -480,5 +537,6 @@ int main(int argc, char* argv[]) {
     test(places_save);
     test(places_visit);
     test(places_stress);
+    test(places_home_first);
     return summary();
 }

@@ -95,6 +95,12 @@ bool MayTake(int moverIdx, int x, int y, int z);
 int  OwnerAt(int x, int y, int z);
 // The home place of a household group: the place it owns with the front door, 0 = none
 int  HomeOfGroup(int group);
+// Is the cell in place p (or in a place inside it)?
+bool PlaceContains(int p, int x, int y, int z);
+// The furniture in place p and the places inside it, in index order (a search at home looks
+// here first). Rebuilt on use after furniture or places changed (PlacesFurnitureChanged).
+int  PlaceFurniture(int p, const int** list);
+void PlacesFurnitureChanged(void);               // furniture.c: a piece came or went
 const char* PlaceName(int place);                // "" for 0 / unknown
 const char* GroupName(int group);                // "public" for 0
 

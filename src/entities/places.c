@@ -2,6 +2,8 @@
 #include "places.h"
 #include "mover.h"
 #include <string.h>
+#include <stdlib.h>
+#include "furniture.h"
 
 OwnerGroup groups[MAX_GROUPS];
 PlaceInfo places[MAX_PLACES];
@@ -11,6 +13,14 @@ int16_t moverGrant[MAX_MOVERS];
 // HomeOfGroup cache: the home place per group, rebuilt when a place or door changes
 static int16_t placesHomeOf[MAX_GROUPS];
 static bool placesHomesDirty = true;
+
+// PlaceFurniture: each piece listed under its place and every place that place is inside
+static int placeFurnFirst[MAX_PLACES + 1];       // list of place p: placeFurnList[first[p] .. first[p+1])
+static int* placeFurnList;
+static int placeFurnCap;
+static bool placeFurnDirty = true;
+
+void PlacesFurnitureChanged(void) { placeFurnDirty = true; }
 
 static void PlacesCopyName(char* dst, const char* src) {
     strncpy(dst, src ? src : "", PLACE_NAME_LEN - 1);
@@ -27,6 +37,7 @@ void ClearPlaces(void) {
     PlacesCopyName(groups[0].name, "public");
     SparseLayerClear(&placeLayer);
     placesHomesDirty = true;
+    placeFurnDirty = true;
 }
 
 void PlacesResetMover(int moverIdx) {
@@ -63,6 +74,7 @@ int PlaceCreate(int owner, int parent, uint8_t rules, const char* name) {
                              .rules = rules, .rulesSet = rules, .doorX = -1, .doorY = -1, .doorZ = -1 };
         PlacesCopyName(places[p].name, name);
         placesHomesDirty = true;
+        placeFurnDirty = true;
         return p;
     }
     return -1;
@@ -76,6 +88,7 @@ void PlaceFillRect(int place, int x0, int y0, int x1, int y1, int z) {
             if (place == 0 && !SparseLayerHasBlock(&placeLayer, x, y)) continue;   // nothing to clear
             PLACE_AT_MUT(x, y, z) = (uint16_t)place;
         }
+    placeFurnDirty = true;
 }
 
 void PlaceSetDoor(int place, int x, int y, int z) {
@@ -178,6 +191,48 @@ int HomeOfGroup(int group) {
     return placesHomeOf[group];
 }
 
+bool PlaceContains(int p, int x, int y, int z) {
+    if (p <= 0) return false;
+    for (int q = PlaceAt(x, y, z), guard = 0; q > 0 && guard < PLACE_MAX_DEPTH; q = places[q].parent, guard++)
+        if (q == p) return true;
+    return false;
+}
+
+static void PlacesRebuildFurniture(void) {
+    memset(placeFurnFirst, 0, sizeof(placeFurnFirst));
+    for (int pass = 0; pass < 2; pass++) {             // count, then fill (in furniture order)
+        static int fill[MAX_PLACES];
+        if (pass == 1) {
+            for (int p = 0; p < MAX_PLACES; p++) placeFurnFirst[p + 1] += placeFurnFirst[p];
+            int total = placeFurnFirst[MAX_PLACES];
+            if (total > placeFurnCap) {
+                int* grown = realloc(placeFurnList, sizeof(int) * (size_t)total);
+                if (!grown) { memset(placeFurnFirst, 0, sizeof(placeFurnFirst)); return; }
+                placeFurnList = grown;
+                placeFurnCap = total;
+            }
+            memcpy(fill, placeFurnFirst, sizeof(fill));
+        }
+        for (int i = 0; i < furnitureHighWater; i++) {
+            if (!furniture[i].active) continue;
+            for (int q = PlaceAt(furniture[i].x, furniture[i].y, furniture[i].z), guard = 0;
+                 q > 0 && guard < PLACE_MAX_DEPTH; q = places[q].parent, guard++) {
+                if (pass == 0) placeFurnFirst[q + 1]++;
+                else placeFurnList[fill[q]++] = i;
+            }
+        }
+    }
+    placeFurnDirty = false;
+}
+
+int PlaceFurniture(int p, const int** list) {
+    *list = NULL;
+    if (p <= 0 || p >= MAX_PLACES || !places[p].active) return 0;
+    if (placeFurnDirty) PlacesRebuildFurniture();
+    *list = placeFurnList + placeFurnFirst[p];
+    return placeFurnFirst[p + 1] - placeFurnFirst[p];
+}
+
 const char* PlaceName(int place) {
     return (place > 0 && place < MAX_PLACES && places[place].active) ? places[place].name : "";
 }
@@ -200,4 +255,5 @@ void PlacesLoad(FILE* f, int moverCount) {
     fread(moverGroups, sizeof(moverGroups[0]), (size_t)moverCount, f);
     memset(moverGrant, 0, sizeof(moverGrant));            // grants aren't saved: a load ends visits
     placesHomesDirty = true;
+    placeFurnDirty = true;
 }

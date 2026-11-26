@@ -1645,6 +1645,7 @@ bool LoadWorld(const char* filename) {
         }
         furnitureCount = savedCount < MAX_FURNITURE ? savedCount : MAX_FURNITURE;
         furnitureHighWater = furnitureCount;
+        PlacesFurnitureChanged();
     }
 
     // Conveyor belts (v98+). Older saves have none; BeltsAfterLoad also puts any item left

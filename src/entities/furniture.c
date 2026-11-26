@@ -1,4 +1,5 @@
 #include "furniture.h"
+#include "places.h"
 #include "mover.h"
 #include "workshops.h"
 #include "../world/pathfinding.h"
@@ -63,6 +64,7 @@ void ClearFurniture(void) {
     }
     furnitureCount = 0;
     furnitureHighWater = 0;
+    PlacesFurnitureChanged();
     memset(furnitureFuel, 0, sizeof(furnitureFuel));
     CLEAR_GRID_LAYER(furnitureMoveCostGrid, 0);
     CLEAR_GRID_LAYER(capabilityGrid, 0);
@@ -96,6 +98,7 @@ int SpawnFurniture(int x, int y, int z, FurnitureType type, uint8_t material) {
     furnitureFuel[idx] = furnitureDefs[type].fuelHours;   // placed lit, with a full load
     furnitureCount++;
     if (idx >= furnitureHighWater) furnitureHighWater = idx + 1;
+    PlacesFurnitureChanged();
 
     const FurnitureDef* def = &furnitureDefs[type];
     if (def->blocking) {
@@ -144,6 +147,7 @@ void RemoveFurniture(int index) {
     f->occupant = -1;
     furnitureCount--;
     while (furnitureHighWater > 0 && !furniture[furnitureHighWater - 1].active) furnitureHighWater--;
+    PlacesFurnitureChanged();
     InvalidateRooms();
 }
 

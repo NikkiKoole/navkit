@@ -146,6 +146,11 @@ someone let in, a visit over, nobody trespassing). Four game days of galerij: 13
   (it asked "which stockpile is this item in" for every item inside a loop over stockpiles).
   Mingling now checks the cell it walks to, not just the group's middle (a host in the doorway).
   Still: the rare push into a closed door makes the 128 run's check fail (doors, not ownership).
+- Home first: a resident at home (inside its household's home) looks at its home's furniture
+  first for a bed, a tap or a toilet (`PlaceFurniture`, `NeedHomeFurniture` in needs.c), the
+  whole world only if nothing there fits. Same choices in every scenario (all runs identical);
+  at 570 residents the worst RestSearch tick went 33 -> 0.7 ms. DrinkSearch still spikes (14 ms):
+  it scans every item for something drinkable before it looks for a tap.
 
 **Next:** Town's beds, City 1999's shops (order above). Hoped-for behaviours that build on this
 (showing an unwelcome guest out): `../../vision/hoped-for-behaviours.md`.

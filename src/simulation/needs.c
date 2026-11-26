@@ -83,6 +83,19 @@ static bool NeedMayUseFurniture(int moverIdx, int fi) {
     return MayUse(moverIdx, furniture[fi].x, furniture[fi].y, furniture[fi].z);
 }
 
+// At home (inside its household's home place): the home's furniture, for a search to try before
+// looking at everything (places.h PlaceFurniture). NULL: not at home, search everything.
+static const int* NeedHomeFurniture(int moverIdx, int* n) {
+    *n = 0;
+    int home = HomeOfGroup(MoverHousehold(moverIdx));
+    if (home <= 0) return NULL;
+    const Mover* m = &movers[moverIdx];
+    if (!PlaceContains(home, (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z)) return NULL;
+    const int* list;
+    *n = PlaceFurniture(home, &list);
+    return list;
+}
+
 static int FindNearestEdibleInStockpile(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e30f;
@@ -361,10 +374,15 @@ static void StartWarmthSearchBody(Mover* m, int moverIdx) {
 // --- Bladder seeking ---
 
 // Find nearest free furniture of a type on this z (toilet, tap)
+// At home: the home's own first, then everywhere (NeedHomeFurniture).
 static int FindNearestFreeFurniture(int moverIdx, FurnitureType type, float x, float y, int z) {
     int bestIdx = -1;
     float bestDistSq = 1e12f;
-    for (int i = 0; i < furnitureHighWater; i++) {
+    int homeN;
+    const int* home = NeedHomeFurniture(moverIdx, &homeN);
+    for (int pass = home ? 0 : 1; pass < 2 && bestIdx < 0; pass++)
+    for (int k = 0, n = pass == 0 ? homeN : furnitureHighWater; k < n; k++) {
+        int i = pass == 0 ? home[k] : k;
         if (!furniture[i].active || furniture[i].type != type) continue;
         if (furniture[i].z != z || furniture[i].occupant != -1) continue;
         if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
@@ -424,7 +442,11 @@ static bool FlushToilet(int fi) {
 static int FindBestFreeToilet(int moverIdx, float x, float y, int z) {
     int bestIdx = -1;
     float bestScore = -1.0f;
-    for (int i = 0; i < furnitureHighWater; i++) {
+    int homeN;
+    const int* home = NeedHomeFurniture(moverIdx, &homeN);   // at home: its own first
+    for (int pass = home ? 0 : 1; pass < 2 && bestIdx < 0; pass++)
+    for (int k = 0, n = pass == 0 ? homeN : furnitureHighWater; k < n; k++) {
+        int i = pass == 0 ? home[k] : k;
         if (!furniture[i].active || furniture[i].z != z || furniture[i].occupant != -1) continue;
         if (!(GetFurnitureDef(furniture[i].type)->capabilities & CAP_TOILET)) continue;
         if (!NeedMayUseFurniture(moverIdx, i)) continue;   // someone else's (places.h)
@@ -703,7 +725,11 @@ static void StartRestSearchBody(Mover* m, int moverIdx) {
     float mx = m->x, my = m->y;
     int mz = (int)m->z;
 
-    for (int i = 0; i < furnitureHighWater; i++) {
+    int homeN;
+    const int* home = NeedHomeFurniture(moverIdx, &homeN);   // at home: its own bed first (places.h)
+    for (int pass = home ? 0 : 1; pass < 2 && bestIdx < 0; pass++)
+    for (int k = 0, n = pass == 0 ? homeN : furnitureHighWater; k < n; k++) {
+        int i = pass == 0 ? home[k] : k;
         if (!furniture[i].active) continue;
         if (!FurnitureHasRoom(i)) continue;  // Already occupied (a double bed takes two)
         if (furniture[i].z != mz) continue;  // Same z-level only
