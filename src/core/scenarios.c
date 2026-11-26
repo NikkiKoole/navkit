@@ -4564,12 +4564,16 @@ static float soakWet[SOAK_SAMPLES][SOAK_ROWS][SOAK_PLOTS];
 static int soakSampleCount;
 static double soakNextSample;
 static float soakSampleGH = 4.0f;      // game hours between samples
+static bool soakRain;                  // scenario rainfall: no water poured, it rains for a day
+static double soakRainEnd;
+#define SOAK_RAIN_HOURS 24.0f
 
-static void SetupSoak(void) {
+static void SetupSoakWorld(bool rain) {
+    soakRain = rain;
     waterEnabled = true;
     waterEvaporationEnabled = true;
     groundWearEnabled = true;
-    weatherEnabled = false;            // no rain: only what the ground and the air do
+    weatherEnabled = rain;             // soak: no rain, only what the ground and the air do
     baseSurfaceTemp = 20;              // a steady 20 C: the rates' reference (restored by the next scenario)
     seasonalAmplitude = 0;
     diurnalAmplitude = 0;
@@ -4593,18 +4597,36 @@ static void SetupSoak(void) {
                     if (p == 2) mat = MAT_SAND;
                     if (p == 3) mat = MAT_CLAY;
                     if (p >= 4) mat = MAT_CONCRETE;
+                    if (p == 4 && rain) mat = MAT_GRANITE;   // rainfall: natural rock (built ground catches no rain)
                     SetWallMaterial(x, y, 0, mat);
-                    if (p >= 4) ClearWallNatural(x, y, 0);
+                    if (p >= 4 && !(p == 4 && rain)) ClearWallNatural(x, y, 0);
                     SetVegetation(x, y, 0, p == 0 ? VEG_GRASS_TALLER : VEG_NONE);
                     if (p == 5) SET_FLOOR(x, y, 2);   // the roof
                 }
         }
     SoilMoistureInitNow();   // "normal" ground everywhere, then the water on top of it
-    for (int r = 0; r < SOAK_ROWS; r++)
-        for (int p = 0; p < SOAK_PLOTS; p++)
-            for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
-                for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) SetWaterLevel(x, y, 1, soakFill[r]);
+    if (!rain)
+        for (int r = 0; r < SOAK_ROWS; r++)
+            for (int p = 0; p < SOAK_PLOTS; p++)
+                for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
+                    for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) SetWaterLevel(x, y, 1, soakFill[r]);
+    if (rain) {   // steady rain for a day (SoakLiveTick ends it)
+        weatherState.current = WEATHER_RAIN;
+        weatherState.intensity = 1.0f;
+        weatherState.transitionTimer = 1e9f;
+        soakRainEnd = gameTime + GameHoursToGameSeconds(SOAK_RAIN_HOURS);
+    }
     BuildEntrances(); BuildGraph();
+}
+static void SetupSoak(void) { SetupSoakWorld(false); }
+static void SetupRainfall(void) { SetupSoakWorld(true); }
+
+// rainfall: the rain stops after a day (and stays dry), in the window too
+static void SoakLiveTick(void) {
+    if (soakRain && weatherState.current == WEATHER_RAIN && gameTime >= soakRainEnd) {
+        weatherState.current = WEATHER_CLEAR;
+        weatherState.transitionTimer = 1e9f;
+    }
 }
 
 static void SoakTickStats(void) {
@@ -4631,10 +4653,11 @@ static void SoakPrintStats(void) {
         printf(" %s %d/%d", soakNames[p], GetTemperature(soakX0[p] + 1, soakY0[1] + 1, 1), GetTemperature(soakX0[p] + 1, soakY0[1] + 1, 0));
     printf("\n");
     for (int r = 0; r < SOAK_ROWS; r++) {
-        printf("\nBasins filled to level %d (%d units each): water units left / avg soil moisture %\n",
+        if (soakRain) printf("\nRow %d, rain for %.0f GH then dry: water units standing / avg soil moisture %%\n", r + 1, SOAK_RAIN_HOURS);
+        else printf("\nBasins filled to level %d (%d units each): water units left / avg soil moisture %%\n",
                soakFill[r], soakFill[r] * SOAK_IN * SOAK_IN);
         printf("%6s", "GH");
-        for (int p = 0; p < SOAK_PLOTS; p++) printf(" %12s", soakNames[p]);
+        for (int p = 0; p < SOAK_PLOTS; p++) printf(" %12s", soakRain && p == 4 ? "rock" : soakNames[p]);
         printf("\n");
         for (int s = 0; s < soakSampleCount; s++) {
             // only rows where something changed (and the last one)
@@ -6507,6 +6530,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupThrowHunt, ThrowHuntTickStats, ThrowHuntPrintStats, ThrowHuntCheck, 40, 32},
     {"soak",       "Six walled basins with a puddle and a pond on grass, dirt, sand, clay, concrete, roofed concrete, no rain: how fast the water goes (soil-moisture.md)",
                    NULL,        SetupSoak, SoakTickStats, SoakPrintStats, NULL, 48, 20},
+    {"rainfall",   "The soak basins without water: a day of steady rain, then dry weather: what soaks in, what stands, how it dries (rainWater, soil-moisture.md)",
+                   NULL,        SetupRainfall, SoakTickStats, SoakPrintStats, NULL, 48, 20, SoakLiveTick},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",

@@ -43,6 +43,7 @@
 #include "../entities/visit.h"
 #include "../world/mechanisms.h"
 #include "../entities/town.h"
+#include "../world/pumps.h"
 #include <strings.h>
 
 // ---------------------------------------------------------------------------
@@ -417,10 +418,14 @@ static const Setting settings[] = {
       "Shortest weather spell (game hours).", DescWeatherMin),
     SET_FLOAT("weatherMaxDuration", "Max Duration", "Weather & Time/Weather", weatherMaxDuration, 1.0f, 10.0f, 600.0f,
       "Longest weather spell (game hours).", DescWeatherMax),
-    SET_FLOAT("rainWetnessInterval", "Rain Wetness Interval", "Weather & Time/Weather", rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-      "Game hours between ground wetness increments during rain.", NULL),
-    SET_FLOAT("heavyRainWetnessInterval", "Heavy Rain Interval", "Weather & Time/Weather", heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-      "Game hours between ground wetness increments during heavy rain.", NULL),
+    SET_FLOAT("rainWater", "Rain (units/day)", "Weather & Time/Weather", rainWater, 0.25f, 0.0f, 50.0f,
+      "Water units (1/7 cell) rain puts on each open cell per game day of rain. On soil with room it soaks in, else it runs off as water. Not saved.", NULL),
+    SET_FLOAT("heavyRainWater", "Heavy rain (units/day)", "Weather & Time/Weather", heavyRainWater, 0.25f, 0.0f, 50.0f,
+      "The same in heavy rain and thunderstorms. Not saved.", NULL),
+    SET_FLOAT("rainWetnessInterval", "Rain sweep (GH)", "Weather & Time/Weather", rainWetnessInterval, 0.5f, 0.5f, 30.0f,
+      "Game hours between rain sweeps (granularity only; the amount is rainWater).", NULL),
+    SET_FLOAT("heavyRainWetnessInterval", "Heavy rain sweep (GH)", "Weather & Time/Weather", heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
+      "Game hours between rain sweeps in heavy rain (granularity only; the amount is heavyRainWater).", NULL),
     SET_FLOAT("lightningInterval", "Lightning Interval", "Weather & Time/Weather", lightningInterval, 1.0f, 0.5f, 30.0f,
       "Game hours between lightning strikes in thunderstorms.", NULL),
     SET_FLOAT("snowAccumulation", "Snow Accumulation", "Weather & Time/Weather", snowAccumulationRate, 0.01f, 0.01f, 1.0f,
@@ -887,6 +892,10 @@ static const Setting settings[] = {
     // --- Lighting ---
     SET_BOOL_HOOK("lighting", "Enabled", "Rendering & Debug/Lighting", lightingEnabled,
       "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
+    SET_FLOAT("pumpRate", "Pump Rate (units/s)", "Simulation/Water", pumpUnitsPerSecond, 0.1f, 0.1f, 30.0f,
+      "Water units a worked pump lifts per game second (from the cell below it to the cell beside it, one level up).", NULL),
+    SET_FLOAT("pumpWorkHours", "Pump Work (GH)", "Simulation/Water", pumpWorkHours, 0.05f, 0.1f, 8.0f,
+      "How long one 'work the pump' order lasts, in game hours.", NULL),
     SET_BOOL("pipeOverlay", "Pipe overlay", "Rendering & Debug", pipeOverlay,
       "Draw pipes under constructed floors too (pipes on bare ground always show)."),
     SET_BOOL("linksOverlay", "Links overlay", "Rendering & Debug", linksOverlay,

@@ -72,6 +72,8 @@ extern float weatherMinDuration;        // Min game-seconds per weather (default
 extern float weatherMaxDuration;        // Max game-seconds per weather (default 120)
 extern float rainWetnessInterval;       // Game-seconds between wetness increments during rain (default 5)
 extern float heavyRainWetnessInterval;  // Faster for heavy rain (default 2)
+extern float rainWater;                 // water units per open cell per game day of rain (moisture.c soaks it)
+extern float heavyRainWater;            // the same in heavy rain and thunderstorms
 extern float intensityRampSpeed;        // How fast intensity ramps to 1.0 (default 0.2 per second)
 
 // Weather API

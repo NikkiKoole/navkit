@@ -311,17 +311,40 @@ static int WeatherRowsDue(float accum, float interval) {
 }
 static int rainSweepRow = 0;
 
+// Rain falls as water (docs/todo/world/soil-moisture.md): each sweep every column open to the sky
+// gets one water unit (1/7 cell) with a small chance, rainWater units per cell per game day of
+// rain (heavyRainWater in heavy rain and storms), times the weather's intensity. On natural soil
+// with room it soaks in where it lands (at that soil's speed: clay lets most of it stand); on
+// full soil, natural rock or water it lands as water and runs off downhill like any other.
+// Built ground and roofs catch nothing (gutters), the sea neither.
+float rainWater = 0.5f;
+float heavyRainWater = 1.5f;
+static float rainChance = 0.0f;   // per column, this sweep
+// Its own random numbers: a roll per column per sweep must not shift rand()'s sequence (the
+// weather itself, fire, everything else would change with the map size)
+static uint32_t rainRng = 0x9E3779B9u;
+static float RainRand01(void) {
+    rainRng ^= rainRng << 13; rainRng ^= rainRng >> 17; rainRng ^= rainRng << 5;
+    return (float)(rainRng >> 8) / 16777216.0f;
+}
+
 static void RainWetnessRow(int y) {
         for (int x = 0; x < gridWidth; x++) {
-            // Find the ground z (topmost solid cell)
+            if (RainRand01() >= rainChance) continue;
+            // Find the ground z (topmost solid cell; water and floors in air cells don't count)
             for (int z = gridDepth - 1; z >= 0; z--) {
                 CellType cell = GRID(x, y, z);
                 if (cell == CELL_AIR) continue;
                 // Found ground at z
-                if (!IsSoilMaterial(GetWallMaterial(x, y, z))) break;
-                if (!IsExposedToSky(x, y, z)) break;
-                // Rain soaks into the soil (moisture.c)
-                WetSoilAt(x, y, z, MOISTURE_RAIN_STEP);
+                if (!IsExposedToSky(x, y, z)) break;      // under a roof or a floor
+                if (!IsWallNatural(x, y, z)) break;       // built: gutters take it
+                int wz = z + 1;
+                if (wz >= gridDepth) break;
+                while (wz + 1 < gridDepth && WATER(x, y, wz).level >= WATER_MAX_LEVEL) wz++;   // the water's surface
+                if (waterEdgeOutflow && wz <= waterEdgeSeaZ) break;   // the sea
+                if (WATER(x, y, wz).level >= WATER_MAX_LEVEL) break;
+                if (wz == z + 1 && WATER(x, y, wz).level == 0 && RainSoaksIn(x, y, z)) break;
+                AddWater(x, y, wz, 1);
                 break;  // Only process topmost ground
             }
         }
@@ -334,6 +357,8 @@ static void ApplyRainWetness(void) {
     float intervalGH = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM)
                      ? heavyRainWetnessInterval : rainWetnessInterval;
     float intervalGS = GameHoursToGameSeconds(intervalGH);
+    float perDay = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM) ? heavyRainWater : rainWater;
+    rainChance = perDay * intervalGH / 24.0f * weatherState.intensity;
 
     rainWetnessAccum += gameDeltaTime;
     if (rainSweepRow > gridHeight) rainSweepRow = gridHeight;
@@ -354,18 +379,9 @@ static void ApplyRainWetness(void) {
 // Weather-Driven Rain Spawning
 // =============================================================================
 
-static void ManageRainSpawning(void) {
-    WeatherType w = weatherState.current;
-    bool shouldRain = (w == WEATHER_RAIN || w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM);
-
-    if (shouldRain && !IsRaining()) {
-        int coverage = 5;
-        if (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM) coverage = 30;
-        SpawnSkyWater(coverage);
-    } else if (!shouldRain && IsRaining()) {
-        StopRain();
-    }
-}
+// (Weather rain used to drop sky water blobs here, SpawnSkyWater on 5-30% of the map in 4-7
+// unit drops, which flooded flat maps; it falls as rainWater in RainWetnessRow now. The console
+// `rain` command still drops them, and the weather leaves that alone.)
 
 // =============================================================================
 // Wind Update
@@ -437,9 +453,6 @@ void UpdateWeather(void) {
 
     // Rain wetness on exposed cells
     ApplyRainWetness();
-
-    // Manage rain water spawning (connect to existing water.c rain system)
-    ManageRainSpawning();
 }
 
 // =============================================================================

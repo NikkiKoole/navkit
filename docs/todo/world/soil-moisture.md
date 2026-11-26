@@ -1,6 +1,6 @@
 # Soil moisture: water soaks into the ground, plants and sun take it out
 
-Research 2026-11-26. Status: partial. Steps 1-3 built (measuring scenario, evaporation per surface, the moisture layer); next: grass and crops react. Pairs with "Soaking" in `water-ideas.md`
+Research 2026-11-26. Status: partial. Steps 1-3 built (measuring scenario, evaporation per surface, the moisture layer) and rain falls as water; next: grass and crops react. Pairs with "Soaking" in `water-ideas.md`
 and the open "soaking sink" in `water.md`.
 
 The user's ask: water on grass / open ground disappears too fast. Let the top soil absorb it,
@@ -228,4 +228,41 @@ hit 26 ms.
 Not done yet: no tint for dry/parched ground (only the mud overlay and the describe line), no
 sideways spread (a riverbank isn't a humid band), trees don't drink, grass and crops don't react
 (steps 4-5).
+
+## Rain falls as water (2026-11-26)
+
+User: rain should add some water that reacts with the soil like other water, but not a lot,
+to be tweaked. Before: weather rain did two unrelated things: wetness +1 per sweep on soil, and
+sky water blobs (`SpawnSkyWater`: 5% of the map's cells per 30 game-s in rain, 30% in heavy rain,
+4-7 units each) which flooded flat maps (the Town game turns weather off for that reason).
+
+Now (`RainWetnessRow`, `weather.c`): each rain sweep every column open to the sky gets one water
+unit with chance `rainWater` (0.5) / `heavyRainWater` (1.5) units per cell per game day x the
+sweep interval x the weather's intensity. Where it lands:
+- natural soil with room: soaks in at once by that soil's soaking chance (`RainSoaksIn`), so clay
+  lets most of it stand;
+- otherwise (full soil, natural rock, the top of standing water): one water unit, which runs off
+  downhill, soaks in later or evaporates like any water;
+- built ground, paving and roofs catch nothing (gutters), the sea neither.
+The sweep has its own random generator (a roll per column must not shift `rand()`: the weather's
+own sequence changed and test_thunderstorm's summer storm went missing). Weather rain drops no sky
+blobs any more; the console `rain` command still does. Snow melt still wets the soil directly.
+
+Scenario `rainfall` (the soak basins, no water, a day of steady rain, then dry; 20 C), soil
+moisture % after the day (normal is 39): rainWater 0.5 -> ~53 (moist); 1 -> ~70 (moist, a few
+puddles where drops met full soil, clay 53, rock hollow 10 units); 3 -> ~97-100 (soaked, puddles
+everywhere).
+
+Island seed 1 with weather on, starting in heavy rain (it then rained 4 days, heavy and light):
+lowland (z4) water, units:
+
+| | day 1 | day 2 | day 4 | day 6 (dry since day 5) |
+|---|---|---|---|---|
+| no rain | 1.8k | | | |
+| rain 1 / heavy 3 | 41k | 105k | 76k | |
+| rain 0.5 / heavy 1.5 (default) | 21k | 63k | 46k | 9.7k |
+
+The flats flood in a long wet spell and dry within ~2 days after. Weather is still off in every
+game (only scenarios `island-winter` and `heat` turn it on); tick cost with heavy rain on the
+island 0.53 -> 0.57 ms.
 

@@ -44,6 +44,9 @@ void AddSoilMoisture(int x, int y, int z, int dm);
 void WetSoilAt(int x, int y, int z, int dm);
 // At least this wet (watering a crop, irrigation)
 void SoilWetAtLeast(int x, int y, int z, int m);
+// A unit of rain landing on soil (x, y, z): soaks in at once if the soil has room, by its soaking
+// chance (true = taken); else it lands as water
+bool RainSoaksIn(int x, int y, int z);
 
 // Water standing at (x, y, z) on soil at z-1 may soak one unit in (the water sync pass)
 void SoilSoakFrom(int x, int y, int z);

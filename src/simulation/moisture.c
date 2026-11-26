@@ -105,6 +105,19 @@ static float Rand01(void) { return (float)rand() / ((float)RAND_MAX + 1.0f); }
 // Moisture points one water unit is worth in this soil (a full cell = capacity units)
 static int PointsPerUnit(const SoilDef* d) { return (int)(MOISTURE_FULL / d->capacity + 0.5f); }
 
+bool RainSoaksIn(int x, int y, int z) {
+    if (!soilMoistureEnabled || !IsSoilSurface(x, y, z)) return false;
+    EnsureMoistureWorld();
+    const SoilDef* d = SoilDefOf(GetWallMaterial(x, y, z));
+    if (!d) return false;
+    int per = PointsPerUnit(d);
+    if (MOISTURE(x, y, z) > MOISTURE_FULL - per / 2) return false;   // full
+    if (Rand01() >= d->soak * moistureSoakSpeed) return false;
+    AddSoilMoisture(x, y, z, per);
+    soilSoakedUnits++;
+    return true;
+}
+
 void SoilSoakFrom(int x, int y, int z) {
     if (!soilMoistureEnabled || z <= 0) return;
     EnsureMoistureWorld();

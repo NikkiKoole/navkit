@@ -3,6 +3,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/simulation/weather.h"
+#include "../src/simulation/moisture.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
 #include "../src/world/grid.h"
@@ -276,16 +277,18 @@ describe(roof_detection) {
 // =============================================================================
 
 describe(rain_wetness) {
+    // Rain falls as water units (rainWater / heavyRainWater per open cell per game day): on soil
+    // with room it soaks in (moisture.c), else it lands as water. Tests use a lot of rain.
     it("should increase wetness on exposed dirt during rain") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
         rainWetnessInterval = 0.2f;  // Fast for testing
-        // Run enough ticks for wetness to increase
+        float saved = rainWater; rainWater = 200.0f;
         for (int i = 0; i < 120; i++) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
         }
-        // Check some exposed dirt cells gained wetness
+        rainWater = saved;
         int totalWetness = 0;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -299,6 +302,7 @@ describe(rain_wetness) {
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
         rainWetnessInterval = 0.2f;
+        float saved = rainWater; rainWater = 200.0f;
         // Shelter cell (3,2)
         PlaceRoof(3, 2);
         SET_CELL_WETNESS(3, 2, 0, 0);
@@ -306,19 +310,21 @@ describe(rain_wetness) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
         }
+        rainWater = saved;
         expect(GET_CELL_WETNESS(3, 2, 0) == 0);
+        expect(GetWaterLevel(3, 2, 1) == 0);
     }
 
     it("should create mud on exposed dirt during heavy rain") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_HEAVY_RAIN);
         heavyRainWetnessInterval = 0.12f;
-        // Run long enough for wetness to reach 2+ on some cells
+        float saved = heavyRainWater; heavyRainWater = 200.0f;
         for (int i = 0; i < 600; i++) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
         }
-        // Check at least one cell became muddy
+        heavyRainWater = saved;
         int muddyCount = 0;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -328,51 +334,42 @@ describe(rain_wetness) {
         expect(muddyCount > 0);
     }
 
-    it("should not increase wetness on non-soil cells") {
+    it("should put rain on bare rock as water, not as wetness") {
         SetupWeatherGrid();
-        // Change cell to granite
-        SetWallMaterial(3, 2, 0, MAT_GRANITE);
+        // Every ground cell natural granite: nothing soaks in
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) SetWallMaterial(x, y, 0, MAT_GRANITE);
         ForceWeather(WEATHER_RAIN);
         rainWetnessInterval = 0.2f;
-        SET_CELL_WETNESS(3, 2, 0, 0);
+        float saved = rainWater; rainWater = 200.0f;
         for (int i = 0; i < 300; i++) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
         }
-        expect(GET_CELL_WETNESS(3, 2, 0) == 0);
+        rainWater = saved;
+        int water = 0, wet = 0;
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) { water += GetWaterLevel(x, y, 1); wet += GET_CELL_WETNESS(x, y, 0); }
+        expect(water > 0);
+        expect(wet == 0);
     }
 
-    it("should increase wetness faster during HEAVY_RAIN than RAIN") {
-        // Test with RAIN - use long intervals so wetness doesn't cap at max(3)
-        SetupWeatherGrid();
-        ForceWeather(WEATHER_RAIN);
-        rainWetnessInterval = 1.2f;
-        heavyRainWetnessInterval = 0.6f;
-        // 120 ticks = 2 seconds: RAIN gets 0 increments (interval=3s), HEAVY_RAIN gets 1 (interval=1.5s)
-        for (int i = 0; i < 120; i++) {
-            gameDeltaTime = TICK_DT;
-            UpdateWeather();
+    it("should bring more water in HEAVY_RAIN than in RAIN") {
+        int got[2];
+        for (int k = 0; k < 2; k++) {
+            SetupWeatherGrid();
+            ForceWeather(k == 0 ? WEATHER_RAIN : WEATHER_HEAVY_RAIN);
+            rainWetnessInterval = 0.2f;
+            heavyRainWetnessInterval = 0.2f;
+            float savedR = rainWater, savedH = heavyRainWater;
+            rainWater = 20.0f; heavyRainWater = 60.0f;
+            for (int i = 0; i < 600; i++) { gameDeltaTime = TICK_DT; UpdateWeather(); }
+            rainWater = savedR; heavyRainWater = savedH;
+            got[k] = 0;
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++) got[k] += MOISTURE(x, y, 0) + GetWaterLevel(x, y, 1) * 128;
         }
-        int rainWetness = 0;
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                rainWetness += GET_CELL_WETNESS(x, y, 0);
-
-        // Test with HEAVY_RAIN (same duration)
-        SetupWeatherGrid();
-        ForceWeather(WEATHER_HEAVY_RAIN);
-        rainWetnessInterval = 1.2f;
-        heavyRainWetnessInterval = 0.6f;
-        for (int i = 0; i < 120; i++) {
-            gameDeltaTime = TICK_DT;
-            UpdateWeather();
-        }
-        int heavyWetness = 0;
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                heavyWetness += GET_CELL_WETNESS(x, y, 0);
-
-        expect(heavyWetness > rainWetness);
+        expect(got[1] > got[0]);
     }
 }
 
@@ -381,32 +378,27 @@ describe(rain_wetness) {
 // =============================================================================
 
 describe(rain_water_spawning) {
-    it("should spawn sky water during rain weather") {
+    it("should not drop sky water blobs during rain weather (rain falls as rainWater instead)") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
-        // Run a few ticks of weather update
-        for (int i = 0; i < 60; i++) {
-            gameDeltaTime = TICK_DT;
-            UpdateWeather();
-        }
-        expect(IsRaining());
-    }
-
-    it("should stop sky water when weather changes to CLEAR") {
-        SetupWeatherGrid();
-        ForceWeather(WEATHER_RAIN);
-        for (int i = 0; i < 60; i++) {
-            gameDeltaTime = TICK_DT;
-            UpdateWeather();
-        }
-        expect(IsRaining());
-        // Switch to clear
-        ForceWeather(WEATHER_CLEAR);
         for (int i = 0; i < 60; i++) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
         }
         expect(!IsRaining());
+    }
+
+    it("should leave a console rain (sky water) alone when the weather changes") {
+        SetupWeatherGrid();
+        SpawnSkyWater(20);
+        expect(IsRaining());
+        ForceWeather(WEATHER_CLEAR);
+        for (int i = 0; i < 60; i++) {
+            gameDeltaTime = TICK_DT;
+            UpdateWeather();
+        }
+        expect(IsRaining());
+        StopRain();
     }
 }
 
