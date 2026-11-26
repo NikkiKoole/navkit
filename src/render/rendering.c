@@ -3046,7 +3046,8 @@ static void DrawMechanisms(void) {
         Rectangle r = { offset.x + m->x * size, offset.y + m->y * size, size, size };
         float cx = r.x + size * 0.5f, cy = r.y + size * 0.5f;
         if (m->kind == MECH_PLATE) {   // the user's tiles: raised, or pressed down
-            FastSprite(atlas, SpriteGetRect(m->on ? SPRITE_plate_pressed : SPRITE_plate_up), r, WHITE);
+            Color sky = forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay);   // lit like the ground it lies on
+            FastSprite(atlas, SpriteGetRect(m->on ? SPRITE_plate_pressed : SPRITE_plate_up), r, GetLightColor(m->x, m->y, m->z, sky));
         } else {
             DrawRectangleRec((Rectangle){ cx - size * 0.25f, cy + size * 0.12f, size * 0.5f, size * 0.18f }, (Color){ 70, 64, 58, 255 });
             Vector2 tip = { cx + (m->on ? 0.28f : -0.28f) * size, cy - size * 0.32f };
