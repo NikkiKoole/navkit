@@ -3139,7 +3139,8 @@ static void DrawPumps(void) {
         if (cx < -size || cy < -size || cx > GetScreenWidth() + size || cy > GetScreenHeight() + size) continue;
         // The user's pump tile (drawn along N-S): turned along the pump's direction, in oak
         Rectangle cell = { cx - size * 0.5f, cy - size * 0.5f, size, size };
-        DrawCellSpriteTurned(SPRITE_pump, cell, p->dx != 0, (Color){ 156, 110, 64, 255 });
+        Color skyColor = forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay);   // lit like the ground (not glowing at night)
+        DrawCellSpriteTurned(SPRITE_pump, cell, p->dx != 0, MultiplyColor((Color){ 156, 110, 64, 255 }, GetLightColor(p->x, p->y, p->z, skyColor)));
         bool working = p->workedAgo < 0.25f;
         float pulse = working ? 0.5f + 0.5f * sinf((float)GetTime() * 14.0f) : 0.0f;
         Color arrow = working ? (Color){ (unsigned char)(90 + 60 * pulse), (unsigned char)(160 + 60 * pulse), 240, 255 } : (Color){ 200, 180, 140, 255 };
