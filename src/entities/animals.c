@@ -77,6 +77,38 @@ void SpawnAnimal(AnimalType type, int spawnZ, AnimalBehavior behavior) {
     }
 }
 
+// An animal at a given cell (for maps with height, where SpawnAnimal's one z level doesn't
+// fit). Returns its index, -1 when the pool is full.
+int SpawnAnimalAt(AnimalType type, AnimalBehavior behavior, int cx, int cy, int cz) {
+    int slot = -1;
+    for (int i = 0; i < animalCount; i++) {
+        if (!animals[i].active) { slot = i; break; }
+    }
+    if (slot < 0) {
+        if (animalCount >= MAX_ANIMALS) return -1;
+        slot = animalCount++;
+    }
+    Animal* a = &animals[slot];
+    memset(a, 0, sizeof(*a));
+    a->x = (cx + 0.5f) * CELL_SIZE;
+    a->y = (cy + 0.5f) * CELL_SIZE;
+    a->z = (float)cz;
+    a->type = type;
+    a->state = ANIMAL_IDLE;
+    a->behavior = behavior;
+    a->active = true;
+    a->speed = type == ANIMAL_PREDATOR ? 80.0f : ANIMAL_SPEED;
+    a->animPhase = (float)(rand() % 1000) / 1000.0f * 6.28f;
+    a->targetCellX = cx;
+    a->targetCellY = cy;
+    a->wanderAngle = (float)(rand() % 1000) / 1000.0f * 6.28f;
+    a->targetAnimalIdx = -1;
+    a->reservedByHunter = -1;
+    animalScareTimer[slot] = animalDazeTimer[slot] = 0.0f;
+    animalVelX[slot] = animalVelY[slot] = 0.0f;
+    return slot;
+}
+
 void ClearAnimals(void) {
     animalCount = 0;
     for (int i = 0; i < MAX_ANIMALS; i++) {

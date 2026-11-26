@@ -809,14 +809,44 @@ void GenerateIsland(void) {
         }
     }
 
+    // Wild crops, ripe, as survival's hills scatter them (terrain.c), by cover instead of soil:
+    // wheat in grass, lentils in scrub and moor, flax in marsh and by rivers and lakes. Capped
+    // like survival (100 per 128x128, scaled to the map).
+    int wildCrops = 0, maxWildCrops = (int)(100.0f * bp->wildCropDensity * (W * H) / (128.0f * 128.0f));
+    for (int y = 0; y < H && wildCrops < maxWildCrops; y++) {
+        for (int x = 0; x < W && wildCrops < maxWildCrops; x++) {
+            int i = y * W + x;
+            int bz = top[i], wz = bz + 1;
+            if (wz >= gridDepth || GRID(x, y, wz) != CELL_AIR || !CellIsSolid(GRID(x, y, bz))) continue;
+            PlantType type = PLANT_TYPE_COUNT;
+            float chance = 0.0f;
+            if (cover[i] == IS_GRASS) { type = PLANT_WILD_WHEAT; chance = 0.02f; }
+            else if (cover[i] == IS_SCRUB || cover[i] == IS_MOOR) { type = PLANT_WILD_LENTILS; chance = 0.01f; }
+            else if (cover[i] == IS_MARSH) { type = PLANT_WILD_FLAX; chance = 0.015f; }
+            else if (cover[i] == IS_FOREST || cover[i] == IS_BEACH) {
+                for (int dy = -3; dy <= 3 && type == PLANT_TYPE_COUNT; dy++)
+                    for (int dx = -3; dx <= 3; dx++) {
+                        int xx = x + dx, yy = y + dy;
+                        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+                        int c = cover[yy * W + xx];
+                        if (c == IS_RIVER || c == IS_LAKE) { type = PLANT_WILD_FLAX; chance = 0.015f; break; }
+                    }
+            }
+            if (type == PLANT_TYPE_COUNT) continue;
+            if (GetRandomValue(0, 999) / 1000.0f > chance * bp->wildCropDensity) continue;
+            int p = SpawnPlant(x, y, wz, type);
+            if (p >= 0) { plants[p].stage = PLANT_STAGE_RIPE; wildCrops++; }
+        }
+    }
+
     {
         int land = n - coverCount[IS_SEA];
         int peak = 0;
         for (int i = 0; i < n; i++) if (top[i] > peak) peak = top[i];
         TraceLog(LOG_INFO, "GenerateIsland: %dx%d land %.0f%% peak z=%d (sea z=%d) mountains=%.2f wind=%.0fdeg "
-                 "rivers %d cells (min flow %.0f) lakes %d sources %d ramps %d trees %d bushes %d",
+                 "rivers %d cells (min flow %.0f) lakes %d sources %d ramps %d trees %d bushes %d wild crops %d",
                  W, H, 100.0f * land / n, peak, IS_SEA_Z, mountains, windAngle * RAD2DEG,
-                 riverCells, riverMin, lakeCells, sources, ramps, trees, bushes);
+                 riverCells, riverMin, lakeCells, sources, ramps, trees, bushes, wildCrops);
         char buf[256]; int off = 0;
         for (int c = IS_LAKE; c < IS_COVER_COUNT && off < (int)sizeof(buf) - 24; c++)
             off += snprintf(buf + off, sizeof(buf) - off, " %s %.0f%%", isCoverNames[c],

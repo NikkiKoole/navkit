@@ -56,6 +56,7 @@ extern float animalSpawnIntervalGH;   // game hours between respawn attempts (no
 // Core functions
 void SpawnAnimal(AnimalType type, int z, AnimalBehavior behavior);
 void SpawnAnimalAtEdge(AnimalType type, int z, AnimalBehavior behavior);
+int SpawnAnimalAt(AnimalType type, AnimalBehavior behavior, int x, int y, int z);
 void AnimalsTick(float dt);
 void ClearAnimals(void);
 int CountActiveAnimals(void);

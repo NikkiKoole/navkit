@@ -46,6 +46,16 @@ as survival does (forest edges 8%, open 2%, clumped; a third ripe, a third buddi
 | seed 1, 3 days | 2 meals, all dead D3 | 18 meals, all alive |
 | seeds 0-7, 10 days | - | all starve D3-D9 (seed 7 first, 8 meals) |
 
-Still open: bushes are the island's only food (no animals, no wild crops), and three settlers
-eat their 48-cell area bare (a bush ripens again after ~4 game days). Next (user, 2026-11-26):
-give the island survival's wild crops and animals.
+## Part 2: survival's other food (2026-11-26)
+
+The island now also has what survival's map has: wild crops (wheat in grass, lentils in scrub
+and moor, flax in marsh and by water; ripe; 186 on seed 3; they give seeds to start farms) and
+8 grazers to hunt, placed on reachable ground at the start (`SpawnAnimalAt`, animals.c).
+Without a player both stay unused (harvest and hunting are orders), so the 10-day no-player run
+is the same: seeds 0-7 starve between D3 and D9, 7-45 meals.
+
+Still open (not a generator bug any more): three settlers left alone eat the bushes within
+their 48-cell forage search bare (a bush ripens again after ~4 game days); survival's single
+settler lives 10 days on 211 bushes. Options: settlers forage further when nothing is near,
+bushes give more than one handful, or accept that the island needs a player. Also: animal
+respawns come from the map edge (sea on the island), so hunted game doesn't come back yet.

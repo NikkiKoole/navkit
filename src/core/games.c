@@ -332,6 +332,16 @@ static void StartIsland(void) {
     }
     if (moverCount > 0) SpawnStartingSupplies(movers[0].x, movers[0].y, movers[0].z);
 
+    // Game to hunt, on ground the settlers can reach (survival's animals walk in at the map
+    // edge on one z level; here the edge is sea). Respawns still come from the edge, so on the
+    // island they don't come back yet.
+    for (int i = 0, tries = 0; i < animalTargetPopulation && tries < 200; tries++) {
+        Point p = GetRandomWalkableCellReachableFrom(anchor);
+        if (p.x < 0 || GetWaterLevel(p.x, p.y, p.z) > 0) continue;
+        if (SpawnAnimalAt(ANIMAL_GRAZER, BEHAVIOR_STEERING_GRAZER, p.x, p.y, p.z) < 0) break;
+        i++;
+    }
+
     // The tide (setting islandTide): only now, so the settlers and their supplies were placed
     // with the sea full (never on flats that flood later). Ramps from the beach down to the
     // flats, the sea set to the current tide, the nav graph again.
