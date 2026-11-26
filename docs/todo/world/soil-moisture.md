@@ -145,8 +145,37 @@ makes watering, irrigation ditches and drainage real jobs.
 ## Suggested order
 
 1. ~~Measure first~~ done: scenario `soak` (see Measured).
-2. Evaporation per surface and depth (2): fixes "too fast on grass, never in a basin" alone,
-   no new layer.
+2. ~~Evaporation per surface and depth (2)~~ done 2026-11-26, see "Step 2 built".
 3. Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5).
 4. Grass reacts to moisture (6, grass part).
 5. Crops: curve, health, wilting/rot; watering job adds moisture (6, crops part).
+
+## Step 2 built (2026-11-26): evaporation per surface, any depth
+
+`WaterEvaporateSweep` (`water.c`): every `waterEvapInterval` (sweep, 4 GH) each **top** water cell
+(no water above it) loses 1 unit with chance `waterEvapInterval / waterEvapHours` x factor.
+Factor: temperature / 20 C (0 at or below freezing, max 2), x (1 + 0.25 x wind) under the sky
+with weather on, x 0.1 under a roof (`IsExposedToSky`). Setting `waterEvapHours` (default 48,
+not saved): game hours for an open surface at 20 C to lose one level. Skipped: sources, frozen
+water, the tide's sea/surf, and with `waterEdgeOutflow` everything at or below `waterEdgeSeaZ`
+(the island's sea is not marked `isSea` when the tide is off: it evaporated 31k units in 2 days
+before that rule). Tests in `test_water.c` (open vs roofed, only the top of a column, not at
+freezing, not the sea). Headless runs now print `Water per z-level (units, sea apart)`.
+
+`soak` after (puddle row / pond row, units left):
+
+```
+GH     grass  dirt  sand  clay  concrete  roofed        pond: grass dirt sand clay concrete roofed
+ 0      16    16    16    16     16        16                 64    64   64   64    64      64
+24       7     9    10     9     12        16                 57    55   58   56    57      64
+48       3     6     3     7      7        15                 47    43   47   49    53      62
+```
+
+A pond in the open loses about one level per 2 days; under a roof almost nothing; a puddle lasts
+2-3 days instead of halving every 4 GH. Soil makes no difference yet (that is step 3).
+
+Island seed 1 (`--game island --seed 1`), water units by z, old -> new: the sea (z1-3) unchanged,
+rivers and lakes above z4 about the same, **lowland z4 1.5k -> 5.1k**, settled (day 1 2.9k, day 3
+5.2k, day 4 5.1k): shallow films on the coastal flats no longer vanish in a sweep. Soaking
+(step 3) should take most of that film into the soil.
+

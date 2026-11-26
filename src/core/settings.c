@@ -54,8 +54,8 @@ static float BaseTilesPerGameHour(void) { return balance.baseMoverSpeed / (float
 static float BaseTilesPerRealSecond(void) { return balance.baseMoverSpeed / (float)CELL_SIZE * (60.0f / dayLength); }
 
 static const char* DescWaterEvap(void) {
-    return TextFormat("Puddles evaporate every %.1f game hours (%.0f real s at this day length).",
-                      waterEvapInterval, RealSeconds(waterEvapInterval));
+    return TextFormat("An open water surface at 20 C loses one level every %.0f game hours (%.0f real s at this day length).",
+                      waterEvapHours, RealSeconds(waterEvapHours));
 }
 static const char* DescSpeedShallow(void) {
     return TextFormat("Mover speed in shallow water: %.0f%% (%.0f tiles per game hour).",
@@ -321,8 +321,10 @@ static const Setting settings[] = {
       "Game hours the tide takes to sweep across the map: the water crosses wading depth strip by strip (0 = all at once). Not saved.", NULL),
     SET_FLOAT("tideWaveAngle", "Tide wave angle", "Simulation/Water", tideWaveAngle, 15.0f, 0.0f, 359.0f,
       "Direction the tide wave travels (0 = from the west going east, 90 = from the north). Set before the sea is marked. Not saved.", NULL),
-    SET_FLOAT("waterEvapInterval", "Evap Interval (GH)", "Simulation/Water", waterEvapInterval, 0.5f, 0.5f, 120.0f,
-      "Game hours between evaporation attempts for level-1 water.", DescWaterEvap),
+    SET_FLOAT("waterEvapHours", "Evaporation (GH/level)", "Simulation/Water", waterEvapHours, 4.0f, 1.0f, 2000.0f,
+      "Game hours an open-sky water surface at 20 C takes to lose one level (1/7 cell), any depth. Scales with temperature (none at freezing, up to 2x hot), faster in wind, a tenth under a roof. Not saved.", DescWaterEvap),
+    SET_FLOAT("waterEvapInterval", "Evap sweep (GH)", "Simulation/Water/Advanced", waterEvapInterval, 0.5f, 0.5f, 120.0f,
+      "Game hours between evaporation sweeps (granularity only; the rate is waterEvapHours).", NULL),
     SET_FLOAT("waterSpeedShallow", "Speed: Shallow (1-2)", "Simulation/Water/Advanced", waterSpeedShallow, 0.05f, 0.1f, 1.0f,
       "Mover speed multiplier in level 1-2 water.", DescSpeedShallow),
     SET_FLOAT("waterSpeedMedium", "Speed: Medium (3-4)", "Simulation/Water/Advanced", waterSpeedMedium, 0.05f, 0.1f, 1.0f,

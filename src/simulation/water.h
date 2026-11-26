@@ -13,7 +13,7 @@
 // Pressure settings
 #define WATER_PRESSURE_SEARCH_LIMIT 64  // Max cells to search when tracing pressure
 
-// Evaporation (default: shallow water evaporates every 4.0 game-hours)
+// Evaporation sweep interval (game hours); the rate is waterEvapHours
 #define WATER_EVAP_INTERVAL_DEFAULT 4.0f
 
 // Performance tuning
@@ -58,7 +58,8 @@ extern bool waterEvaporationEnabled; // Toggle evaporation (disable for testing)
 // Generated terrains turn it on (GenerateCurrentTerrain); off = the edge is a wall (tests)
 extern bool waterEdgeOutflow;
 extern int waterEdgeSeaZ;
-extern float waterEvapInterval;     // Game-seconds between evaporation attempts for level-1 water
+extern float waterEvapInterval;     // Game hours between evaporation sweeps
+extern float waterEvapHours;        // Game hours an open-sky surface at 20 C takes to lose one unit (not saved)
 extern int waterUpdateCount;        // Cells updated last tick (for debug/profiling)
 
 // Speed multipliers for movers walking through water (lower = slower)

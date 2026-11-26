@@ -6,6 +6,7 @@
 #include "../src/simulation/water.h"
 #include "../src/world/pathfinding.h"
 #include "../src/simulation/temperature.h"
+#include "../src/simulation/balance.h"
 #include "../src/entities/items.h"
 #include "../src/entities/mover.h"
 #include <stdlib.h>
@@ -848,7 +849,7 @@ describe(water_evaporation) {
         expect(GetWaterLevel(2, 0, 0) == WATER_MAX_LEVEL);
     }
     
-    it("should not evaporate water above level 1") {
+    it("should conserve water while spreading with evaporation off") {
         InitTestGridFromAscii(
             "....\n");
         
@@ -872,6 +873,85 @@ describe(water_evaporation) {
         expect(totalWater == 2);
         
         waterEvaporationEnabled = true;  // Re-enable for other tests
+    }
+
+    // The surface rule (soil-moisture.md): every top surface may lose one unit per sweep, any
+    // depth; chance = waterEvapInterval / waterEvapHours x (temperature / 20 C), a tenth roofed.
+    // Two one-cell basins at 20 C, chance 1 in the open: the open one loses exactly 1 per sweep.
+    it("should evaporate deep water from an open surface, much less under a roof") {
+        InitTestGridFromAscii(
+            "#####\n"
+            "#.#.#\n"
+            "#####\n");
+        expect(gridDepth >= 3);
+        InitWater();
+        InitTemperature();
+        float savedDt = gameDeltaTime, savedInterval = waterEvapInterval, savedHours = waterEvapHours;
+        gameDeltaTime = TICK_DT;
+        waterEvaporationEnabled = true;
+        waterEvapInterval = 0.5f;
+        waterEvapHours = 0.5f;            // chance 1 per sweep at 20 C under the sky
+        GRID(3, 1, 1) = CELL_WALL;        // the roof over the east basin
+        SetTemperature(1, 1, 0, 20);
+        SetTemperature(3, 1, 0, 20);
+        SetWaterLevel(1, 1, 0, 7);
+        SetWaterLevel(3, 1, 0, 7);
+        int sweepTicks = (int)(GameHoursToGameSeconds(waterEvapInterval) / TICK_DT);
+        RunWaterTicks(sweepTicks * 6 + sweepTicks / 2);   // 6 sweeps
+        if (test_verbose) printf("open %d, roofed %d\n", GetWaterLevel(1, 1, 0), GetWaterLevel(3, 1, 0));
+        expect(GetWaterLevel(1, 1, 0) == 1);
+        expect(GetWaterLevel(3, 1, 0) >= 4);
+        gameDeltaTime = savedDt; waterEvapInterval = savedInterval; waterEvapHours = savedHours;
+    }
+
+    it("should only evaporate the top of a water column, and not at freezing") {
+        InitTestGridFromAscii(
+            "#####\n"
+            "#.#.#\n"
+            "#####\n");
+        InitWater();
+        InitTemperature();
+        float savedDt = gameDeltaTime, savedInterval = waterEvapInterval, savedHours = waterEvapHours;
+        gameDeltaTime = TICK_DT;
+        waterEvapInterval = 0.5f;
+        waterEvapHours = 0.5f;
+        for (int y = 0; y < 3; y++)       // the basins' walls one level up too
+            for (int x = 0; x < 5; x++)
+                if (GRID(x, y, 0) == CELL_WALL) GRID(x, y, 1) = CELL_WALL;
+        SetTemperature(1, 1, 0, 20); SetTemperature(1, 1, 1, 20);
+        SetTemperature(3, 1, 0, 0);      // the east basin at freezing point (not frozen yet)
+        SetWaterLevel(1, 1, 0, 7);
+        SetWaterLevel(1, 1, 1, 3);
+        SetWaterLevel(3, 1, 0, 7);
+        int sweepTicks = (int)(GameHoursToGameSeconds(waterEvapInterval) / TICK_DT);
+        RunWaterTicks(sweepTicks * 2 + sweepTicks / 2);   // 2 sweeps
+        expect(GetWaterLevel(1, 1, 1) == 1);
+        expect(GetWaterLevel(1, 1, 0) == 7);
+        expect(GetWaterLevel(3, 1, 0) == 7);
+        gameDeltaTime = savedDt; waterEvapInterval = savedInterval; waterEvapHours = savedHours;
+    }
+
+    it("should not evaporate the sea (water at or below the map edge's sea height)") {
+        InitTestGridFromAscii(
+            "#####\n"
+            "#.#.#\n"
+            "#####\n");
+        InitWater();
+        InitTemperature();
+        float savedDt = gameDeltaTime, savedInterval = waterEvapInterval, savedHours = waterEvapHours;
+        gameDeltaTime = TICK_DT;
+        waterEvapInterval = 0.5f;
+        waterEvapHours = 0.5f;
+        waterEdgeOutflow = true;
+        waterEdgeSeaZ = 0;
+        SetTemperature(1, 1, 0, 20);
+        SetWaterLevel(1, 1, 0, 7);
+        int sweepTicks = (int)(GameHoursToGameSeconds(waterEvapInterval) / TICK_DT);
+        RunWaterTicks(sweepTicks * 3);
+        expect(GetWaterLevel(1, 1, 0) == 7);
+        waterEdgeOutflow = false;
+        waterEdgeSeaZ = -1;
+        gameDeltaTime = savedDt; waterEvapInterval = savedInterval; waterEvapHours = savedHours;
     }
 }
 

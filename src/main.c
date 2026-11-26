@@ -1288,6 +1288,22 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     printf("Active cells: Water=%d, Fire=%d, Steam=%d, Smoke=%d\n", 
            waterCells, fireCells, steamCells, smokeCells);
     
+    // Water units per z-level (the sea apart: the tide sets it), for balance runs
+    printf("Water per z-level (units, sea apart): ");
+    long waterTotal = 0, seaTotal = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        long units = 0;
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                const WaterCell* w = &WATER(x, y, z);
+                if (w->level == 0) continue;
+                if (w->isSea || w->isSurf) seaTotal += w->level; else units += w->level;
+            }
+        waterTotal += units;
+        if (units > 0) printf("z%d=%ld ", z, units);
+    }
+    printf("(total=%ld, sea=%ld)\n", waterTotal, seaTotal);
+
     // Smoke per z-level with cell locations
     int smokeTotalLevel = 0;
     int smokeMaxZ = -1;

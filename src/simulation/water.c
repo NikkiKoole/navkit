@@ -7,6 +7,7 @@
 #include "../world/cell_defs.h"
 #include "../core/time.h"
 #include "tide.h"
+#include "weather.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -920,19 +921,44 @@ static bool ProcessWaterCell(int x, int y, int z) {
     return moved;
 }
 
-// Evaporation, once per waterEvapInterval: every level-1 cell (a puddle, the edge of a film) has
-// an even chance to dry up. A sweep of its own, so level-1 water can rest between sweeps
-// instead of being processed every tick, and every puddle gets its chance (the update cap
-// used to skip the ones late in the scan).
+// Evaporation, once per waterEvapInterval: every top water surface (any depth: the cell with no
+// water above it) may lose one unit. An open-sky surface at 20 C loses one unit per
+// waterEvapHours on average; it goes with the temperature (none at freezing, up to 2x when hot),
+// faster in wind, and a tenth under a roof. So a puddle and a pond lose the same per cell of
+// surface, a covered basin keeps its water, and the old "level-1 cells halve every sweep" is gone
+// (docs/todo/world/soil-moisture.md, scenario soak). A sweep of its own, so water can rest.
+float waterEvapHours = 48.0f;
+#define WATER_EVAP_ROOFED 0.1f
+
+static float WaterEvapFactor(int x, int y, int z) {
+    int t = GetTemperature(x, y, z);
+    if (t <= 0) return 0.0f;
+    float f = t / 20.0f;
+    if (f > 2.0f) f = 2.0f;
+    if (IsExposedToSky(x, y, z)) {
+        if (weatherEnabled) f *= 1.0f + 0.25f * weatherState.windStrength;
+    } else {
+        f *= WATER_EVAP_ROOFED;
+    }
+    return f;
+}
+
 static void WaterEvaporateSweep(void) {
+    if (waterEvapHours <= 0.0f) return;
+    float base = waterEvapInterval / waterEvapHours;   // chance per sweep at factor 1
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             FOR_X_IN_SPARSE_ROW(waterLayer, WaterCell, x, wp, y, z) {
-                if (wp->level != 1 || wp->isSource || wp->isFrozen) continue;
+                if (wp->level == 0 || wp->isSource || wp->isFrozen) continue;
                 if ((wp->isSea || wp->isSurf) && tideEnabled) continue;   // the tide's water
-                if (rand() % 100 >= 50) continue;
-                SetWaterLevel(x, y, z, 0);
-                WATER_MUT(x, y, z).hasPressure = false;
+                if (waterEdgeOutflow && z <= waterEdgeSeaZ) continue;    // the sea (the map edge refills it)
+                if (z + 1 < gridDepth && WATER(x, y, z + 1).level > 0) continue;   // not the surface
+                float chance = base * WaterEvapFactor(x, y, z);
+                if (chance <= 0.0f) continue;
+                if (chance < 1.0f && (float)rand() / ((float)RAND_MAX + 1.0f) >= chance) continue;
+                int level = wp->level - 1;
+                SetWaterLevel(x, y, z, level);
+                if (level == 0) WATER_MUT(x, y, z).hasPressure = false;
             }
         }
     }
