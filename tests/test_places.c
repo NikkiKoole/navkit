@@ -617,7 +617,7 @@ describe(places_home_life) {
     it("a need ends it at once; away from home nothing starts; with the rule off nothing starts") {
         int m, sofa;
         HomeLifeWorld(&m, &sofa);
-        HomeLifeRun(2 * TICK_RATE);
+        for (int t = 0; t < 20 * TICK_RATE && !AdvertBusy(m); t++) HomeLifeRun(1);   // until it is doing something
         bool busy = AdvertBusy(m);
         thirstEnabled = true;
         movers[m].thirst = 0.05f;                         // parched

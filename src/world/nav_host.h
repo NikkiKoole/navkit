@@ -110,8 +110,11 @@ static inline void NavOnChunkDirty(void* host, int x, int y, int z) {
     TreesNoteCellChanged(x, y, z);   // leaf decay checks near trunk/branch changes
 }
 
-// Not part of the library contract: used by the game-side random-cell helpers
+// Not part of the library contract: used by the game-side random-cell helpers (wander goals,
+// random spawn spots). Never a doorway: nobody goes to stand in one just because (user,
+// 2026-11-26: blocking a doorway is something to do on purpose, later, not by chance).
 static inline bool NavIsValidDestination(int x, int y, int z) {
+    if (CellIsDoor(GRID(x, y, z))) return false;
     return IsValidDestination(z, y, x);
 }
 

@@ -68,6 +68,10 @@ All construction uses `CreateRecipeBlueprint()` + `ConstructionRecipe` table.
 
 ## Gotchas
 
+- Random goals and spawn spots (`GetRandomWalkableCell*`, `GetRandomGoalNear`: wandering, spawning) never
+  pick a doorway (`NavIsValidDestination`): standing in one by chance is annoying (user). A deliberate
+  goal in a doorway (a guest's knock, the door chore) is fine. In test worlds whose ground is built wall
+  (not natural) there are no random goals at all without ramps: air over built wall is a "wall top"
 - After terrain generation, call `SyncMaterialsToTerrain()` or walls have `MAT_NONE`
 - `IsRampStillValid()` must be called after terrain changes (high side needs solid support)
 - `GetWallDropItem()` checks `wallSourceItem` grid to return correct item type on mining

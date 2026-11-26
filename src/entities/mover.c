@@ -1562,6 +1562,14 @@ static void AssignNewMoverGoal(Mover* m) {
                                      : GetRandomWalkableCellOnZ(cz);
         if (retry == 3 && !MayEnter((int)(m - movers), newGoal.x, newGoal.y, newGoal.z)) newGoal = (Point){cx, cy, cz};
     }
+    if (newGoal.x < 0 || newGoal.y < 0) {   // nowhere to wander to (the helpers found no cell): stay put
+        m->goal = (Point){cx, cy, cz};
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        moverRouteLen[m - movers] = 0;
+        m->needsRepath = false;
+        return;   // (the caller waits a while before trying again)
+    }
     m->goal = newGoal;
 
     int currentX = (int)(m->x / CELL_SIZE);
