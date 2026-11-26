@@ -79,6 +79,15 @@ then every use flushes. A lever can drive a drain valve (navkit-1e's mechanisms 
 `PIPE_VALVE_CLOSED` through `SetPipe`).
 **Saved (v126):** the pipe byte right after the soil moisture layer; `PipesAfterLoad` rebuilds
 the cell list and the network (older saves: no pipes). Valve links (v125) now survive a load.
+**Water pipes carry real water, DF style (2026-11-26, user: "1, the DF way"):** a water pipe
+(supply bits) END is an opening; `pipes.c` labels the water networks (a shut valve splits one)
+and `water.c` (hooks agreed with the soil-moisture session) lets water fall into a pipe to a
+lower opening (pressurised like falling when it ends full), spread through it to an opening on
+the same level, and pass through it in the pressure search (rises to source z - 1 at the far end,
+DF's U-bend). Scenario `basins`: a full basin drains into a lower pit when the valve opens.
+Console `pipe supply`. Next for the loop the user asked for (basin -> basin -> back up): a pump
+(lifts water only while worked: a hand pump as a chore first, mechanical power later), a
+`basins` variant with a lever on the valve and the pump back up; laying water pipes by movers.
 **Not in the spike:** the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
 rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
 pipe cells, so it never sweeps the map.
