@@ -13,6 +13,7 @@
 #include "../src/entities/furniture.h"
 #include "../src/entities/places.h"
 #include "../src/entities/visit.h"
+#include "../src/entities/talk.h"
 #include "../src/entities/chase.h"
 #include "../src/entities/activity.h"
 #include "../src/entities/relations.h"
@@ -218,14 +219,30 @@ static int VisitWorld(int* host, int* guest) {
     ClearVisits();
     visitStayMinHours = visitStayMaxHours = 0.2f;
     visitCloseChance = 1.0f;
+    talkEnabled = true;   // a game rule: the games with homes have it on
     return home;
 }
 
+// Ticks in which guest and host are in a visit's stay, and of those, how many they spent in
+// the same talk
+static int visitStayTicks, visitTalkTicks;
 static void VisitRun(int maxTicks, long* doneCounter) {
+    visitStayTicks = visitTalkTicks = 0;
     for (int t = 0; t < maxTicks && *doneCounter == 0; t++) {
         Tick();
+        TalkTick(TICK_DT);
         ChaseTick(TICK_DT);
         VisitTick(TICK_DT);
+        for (int i = 0; i < moverCount; i++) {
+            if (!MoverIsVisiting(i)) continue;
+            char what[96];
+            VisitDescribe(i, what, sizeof what);
+            if (!strstr(what, "staying")) continue;
+            visitStayTicks++;
+            int t2 = MoverTalk(i);
+            for (int j = 0; j < moverCount && t2 >= 0; j++)
+                if (j != i && MoverIsHosting(j) && MoverTalk(j) == t2) { visitTalkTicks++; break; }
+        }
     }
 }
 
@@ -242,7 +259,11 @@ describe(places_visit) {
         int gx = (int)(movers[guest].x / CELL_SIZE), gy = (int)(movers[guest].y / CELL_SIZE);
         expect(PlaceAt(gx, gy, 1) != home);                 // outside
         expect(RelationLike(guest, host) > 0.0f);           // they got on a little
+        if (test_verbose) printf("  stay ticks %d, of which talking %d\n", visitStayTicks, visitTalkTicks);
+        expect(visitStayTicks > 0 && visitTalkTicks >= visitStayTicks - 2);   // talking from the start of the stay
+        expect(MoverTalk(guest) < 0 && MoverTalk(host) < 0);
         visitCloseChance = 0.5f; visitStayMinHours = 1.0f; visitStayMaxHours = 2.5f;
+        talkEnabled = false;
     }
 
     it("nobody home: the guest knocks a while and gives up") {

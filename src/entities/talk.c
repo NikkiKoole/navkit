@@ -14,6 +14,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "places.h"
+#include "visit.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -238,10 +239,13 @@ static bool CanTalk(int i) {
     return true;
 }
 
-// Still free to stay in a talk (a job or a need takes it away)
+// Still free to stay in a talk (a job or a need takes it away). A guest and its host talk
+// during the visit (visit.c starts it), though the visit is an activity (FREETIME_PLAY).
 static bool CanStayInTalk(int i) {
     const Mover* m = &movers[i];
-    return m->active && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE && !m->isDrafted &&
+    bool free = m->freetimeState == FREETIME_NONE ||
+                (m->freetimeState == FREETIME_PLAY && (MoverIsVisiting(i) || MoverIsHosting(i)));
+    return m->active && m->currentJobId < 0 && free && !m->isDrafted &&
            m->transportState == TRANSPORT_NONE && !QueueSuspended(i);
 }
 
@@ -527,10 +531,10 @@ static bool TryWalk(int i) {
     return false;
 }
 
-void TalkStart(int a, int b) {
+int TalkStart(int a, int b) {
     int t = -1;
     for (int k = 0; k < MAX_TALKS; k++) if (!talks[k].active) { t = k; break; }
-    if (t < 0) return;
+    if (t < 0) return -1;
     Talk* tk = &talks[t];
     memset(tk, 0, sizeof(*tk));
     tk->active = true;
@@ -550,6 +554,20 @@ void TalkStart(int a, int b) {
     StopWalking(b);
     if (t + 1 > talkHigh) talkHigh = t + 1;
     talkStartedCount++;
+    return t;
+}
+
+void TalkLeave(int i) {
+    int t = MoverTalk(i);
+    if (t < 0) return;
+    for (int k = 0; k < talks[t].count; k++)
+        if (talks[t].members[k] == i) { LeaveTalk(t, k); break; }
+    if (talks[t].count >= 2) ArrangeSlots(t);   // (one left: TalkTick ends it)
+}
+
+void TalkSetTimeLeft(int i, float seconds) {
+    int t = MoverTalk(i);
+    if (t >= 0) talks[t].timeLeft = seconds;
 }
 
 void TalkJoin(int t, int i) {

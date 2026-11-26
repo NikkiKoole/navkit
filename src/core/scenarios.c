@@ -768,8 +768,8 @@ static void GalerijPrintStats(void) {
     }
     printf("Galerij: %d residents in %d flats; mover-ticks in someone else's home: %ld; steps into a closed door: %ld; "
            "hungry %d, thirsty %d\n", moverCount, GalerijFlatCount(), glrTrespassTicks, glrClosedDoorSteps, hungry, thirsty);
-    printf("Visits: %ld set off, %ld let in, %ld over, %ld cut short (a need), %ld gave up (nobody answered)\n",
-           visitStarted, visitAnswered, visitDone, visitCutShort, visitGivenUp);
+    printf("Visits: %ld set off, %ld let in, %ld talked, %ld over, %ld cut short (a need), %ld gave up (nobody answered)\n",
+           visitStarted, visitAnswered, visitTalks, visitDone, visitCutShort, visitGivenUp);
     for (int k = 0; k < glrTrespassLogged; k++) printf("  %s\n", glrTrespassLog[k]);
 }
 
@@ -812,6 +812,7 @@ static bool VisitingCheck(char* why, int whyLen) {
     if (!GalerijCheck(why, whyLen)) return false;
     if (visitAnswered == 0) { snprintf(why, (size_t)whyLen, "nobody was let in (%ld visits set off)", visitStarted); return false; }
     if (visitDone + visitCutShort == 0) { snprintf(why, (size_t)whyLen, "no visit ended"); return false; }
+    if (visitTalks == 0) { snprintf(why, (size_t)whyLen, "guest and host never talked (%ld let in)", visitAnswered); return false; }
     return true;
 }
 

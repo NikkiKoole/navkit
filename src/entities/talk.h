@@ -51,7 +51,9 @@ int MoverTalk(int moverIdx);             // talk index or -1
 bool MoverIsSpeaking(int moverIdx);
 bool TalkLookAt(int moverIdx, float* x, float* y);   // where a talking mover looks
 int TalkPartner(int moverIdx);           // another member (for describe), -1 if none
-void TalkStart(int a, int b);            // start a talk between two movers now (tests, scenarios)
+int  TalkStart(int a, int b);            // start a talk between two movers now (-1: no room); bypasses who may
+void TalkLeave(int moverIdx);            // take a mover out of its talk (a talk left with one ends)
+void TalkSetTimeLeft(int moverIdx, float seconds);   // how long its talk goes on (a visit: the whole stay)
 void TalkJoin(int t, int moverIdx);      // add a mover to talk t (room permitting)
 
 // --- Gatherings: onlookers in rings round something worth watching (a performer, later a fire,

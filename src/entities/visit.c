@@ -24,6 +24,7 @@ float visitStayMinHours = 1.0f, visitStayMaxHours = 2.5f;
 float visitCooldownHours = 8.0f;
 float visitCloseChance = 0.5f;
 long visitStarted, visitAnswered, visitGivenUp, visitDone, visitCutShort;
+long visitTalks;   // visits where guest and host got talking
 
 static float visitCooldown[MAX_MOVERS];   // sim seconds before it may visit again
 static bool visitGoHome[MAX_MOVERS];      // a visit ended: walk home (and lose the grant outside)
@@ -39,6 +40,7 @@ typedef struct {
     int phase;
     float timer;               // seconds in this phase
     float stay;                // seconds the stay lasts
+    bool talked;               // the stay's conversation has started (once)
     int outX, outY, inX, inY, z;   // the doorstep outside and the cell inside the front door
     int spotX, spotY;          // where the guest goes inside
 } VisitState;
@@ -192,6 +194,14 @@ static void VisitTickOne(int a, float dt) {
         }
         break;
     case VS_STAY:
+        // They talk from the moment the guest is in, for the whole stay (talk.c: turns, faces)
+        if (st->host >= 0 && talkEnabled && MoverTalk(g) < 0 && MoverTalk(st->host) < 0 && !st->talked) {
+            if (TalkStart(g, st->host) >= 0) {
+                TalkSetTimeLeft(g, st->stay - st->timer);
+                st->talked = true;
+                visitTalks++;
+            }
+        }
         if (st->host >= 0) {   // company: they like each other a little more for it
             RelationAdd(g, st->host, 0.5f * dt / GameHoursToGameSeconds(1.0f), 2.0f * dt / GameHoursToGameSeconds(1.0f));
             RelationAdd(st->host, g, 0.5f * dt / GameHoursToGameSeconds(1.0f), 2.0f * dt / GameHoursToGameSeconds(1.0f));
@@ -199,6 +209,7 @@ static void VisitTickOne(int a, float dt) {
         if (st->timer >= st->stay || st->host < 0) VisitPhaseTo(st, VS_LEAVE);
         break;
     case VS_LEAVE:
+        if (MoverTalk(g) >= 0) TalkLeave(g);   // goodbye (the host, left on its own, stops too)
         VisitGoTo(g, st->outX, st->outY, st->z);
         if (st->host >= 0) VisitGoTo(st->host, st->inX, st->inY, st->z);
         if (VisitAtCell(g, st->outX, st->outY, st->z)) {
@@ -269,6 +280,7 @@ void ClearVisits(void) {
     memset(visitCooldown, 0, sizeof(visitCooldown));
     memset(visitGoHome, 0, sizeof(visitGoHome));
     visitStarted = visitAnswered = visitGivenUp = visitDone = visitCutShort = 0;
+    visitTalks = 0;
 }
 
 // Free, idle, nothing pressing: may set off on a visit

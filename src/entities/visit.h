@@ -31,6 +31,7 @@ extern float visitCloseChance;   // a host who isn't Tidy closes the door behind
 
 extern long visitStarted, visitAnswered, visitGivenUp, visitDone;
 extern long visitCutShort;          // a need (or a job, a command) took the guest away
+extern long visitTalks;             // visits where guest and host got talking (from the start of the stay)
 
 void ClearVisits(void);
 void VisitTick(float dt);              // after ChaseTick: propose visits, walk former guests home
