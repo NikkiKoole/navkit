@@ -149,12 +149,33 @@ describe(drain_toilet) {
         expect(GetFloorDirt(6, 5, 1) == 0);
     }
 
+    it("a flush on a connected drain sends a pulse from the toilet along the drain to the outlet") {
+        SetupGround();
+        SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
+        LayFloorDrain(6, 5, 12, 8, 1);                        // east to 12, then south to 8
+        SetPipe(12, 8, 1, GetPipe(12, 8, 1) | PIPE_END);
+        int mi = SetupNeedyMover(5, 5);
+        UseToiletUntilDone(mi);
+        int k = -1;
+        for (int i = 0; i < PIPE_PULSE_MAX; i++) if (pipePulses[i].active) k = i;
+        expect(k >= 0);
+        if (k >= 0) {
+            const PipePulse* p = &pipePulses[k];
+            expect(p->len == 7 + 3);                          // (6..12, 5) then (12, 6..8)
+            expect(p->x[0] == 6 && p->y[0] == 5);
+            expect(p->x[p->len - 1] == 12 && p->y[p->len - 1] == 8);
+        }
+    }
+
     it("no drains anywhere: the old rules (mains water flushes)") {
         SetupGround();
         SpawnFurniture(6, 5, 1, FURNITURE_TOILET, MAT_OAK);
         int mi = SetupNeedyMover(5, 5);
         UseToiletUntilDone(mi);
         expect(GetFloorDirt(6, 5, 1) == 0);
+        bool anyPulse = false;   // nothing to run down
+        for (int i = 0; i < PIPE_PULSE_MAX; i++) if (pipePulses[i].active) anyPulse = true;
+        expect(!anyPulse);
     }
 }
 

@@ -1,6 +1,7 @@
 // pipes.c - the pipe layer and its network pass (see pipes.h)
 #include "pipes.h"
 #include "grid.h"
+#include "../core/time.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,6 +21,7 @@ void ClearPipes(void) {
     if (pipeConnGrid) CLEAR_GRID_LAYER(pipeConnGrid, 0);
     pipeCellCount = 0;
     drainCells = 0;
+    memset(pipePulses, 0, sizeof(pipePulses));
     pipesDirty = false;
 }
 
@@ -120,6 +122,67 @@ static int LayDrainCell(int x, int y, int z) {
     if (b & PIPE_FLOOR_DRAIN) return 0;
     SetPipe(x, y, z, b | PIPE_FLOOR_DRAIN);
     return 1;
+}
+
+// ---- Flush pulses (drawing only) ----
+PipePulse pipePulses[PIPE_PULSE_MAX];
+
+static int PipeListIndex(int x, int y, int z) {
+    for (int i = 0; i < pipeCellCount; i++)
+        if (pipeCells[i].x == x && pipeCells[i].y == y && pipeCells[i].z == z) return i;
+    return -1;
+}
+
+void PipeFlushPulse(int x, int y, int z) {
+    // The fixture's drain cell: its own floor drain, else a connected wall drain next to it
+    int sx = -1, sy = -1;
+    static const int dx[4] = {0, 1, 0, -1}, dy[4] = {-1, 0, 1, 0};
+    if ((GetPipe(x, y, z) & PIPE_FLOOR_DRAIN) && PipeDrainConnected(x, y, z)) { sx = x; sy = y; }
+    for (int d = 0; d < 4 && sx < 0; d++)
+        if ((GetPipe(x + dx[d], y + dy[d], z) & PIPE_WALL_DRAIN) && PipeDrainConnected(x + dx[d], y + dy[d], z)) { sx = x + dx[d]; sy = y + dy[d]; }
+    if (sx < 0 || pipeCellCount == 0) return;
+    // Breadth first over connected drain cells to the nearest outlet (level, or down a stack)
+    int n = pipeCellCount;
+    int* parent = (int*)malloc((size_t)n * sizeof(int));
+    int* queue = (int*)malloc((size_t)n * sizeof(int));
+    for (int i = 0; i < n; i++) parent[i] = -2;
+    int start = PipeListIndex(sx, sy, z), head = 0, tail = 0, goal = -1;
+    if (start >= 0) { parent[start] = -1; queue[tail++] = start; }
+    while (head < tail && goal < 0) {
+        int ci = queue[head++];
+        PipeCell c = pipeCells[ci];
+        uint8_t b = PIPE(c.x, c.y, c.z);
+        if (b & PIPE_END) { goal = ci; break; }
+        for (int d = 0; d < 5; d++) {
+            int nx = c.x, ny = c.y, nz = c.z;
+            if (d < 4) { nx += dx[d]; ny += dy[d]; }
+            else { if (!((b & PIPE_STACK) && (b & PIPE_WALL_DRAIN))) continue; nz = c.z - 1; }
+            if (!(GetPipe(nx, ny, nz) & PIPE_DRAIN) || !PipeDrainConnected(nx, ny, nz)) continue;
+            int ni = PipeListIndex(nx, ny, nz);
+            if (ni < 0 || parent[ni] != -2) continue;
+            parent[ni] = ci;
+            queue[tail++] = ni;
+        }
+    }
+    if (goal >= 0) {
+        int k = 0;   // a free slot, else the oldest
+        for (int i = 0; i < PIPE_PULSE_MAX; i++) {
+            if (!pipePulses[i].active) { k = i; break; }
+            if (pipePulses[i].start < pipePulses[k].start) k = i;
+        }
+        PipePulse* p = &pipePulses[k];
+        int len = 0;
+        for (int ci = goal; ci >= 0 && len < PIPE_PULSE_CELLS; ci = parent[ci]) len++;
+        p->len = len;
+        int i = len - 1;   // walked back from the outlet: fill from the end
+        for (int ci = goal; ci >= 0 && i >= 0; ci = parent[ci], i--) {
+            p->x[i] = pipeCells[ci].x; p->y[i] = pipeCells[ci].y; p->z[i] = pipeCells[ci].z;
+        }
+        p->start = gameTime;
+        p->active = true;
+    }
+    free(parent);
+    free(queue);
 }
 
 int LayFloorDrain(int x1, int y1, int x2, int y2, int z) {

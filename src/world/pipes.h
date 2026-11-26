@@ -39,6 +39,14 @@ bool PipeDrainConnected(int x, int y, int z);          // this pipe cell's drain
 // A fixture at (x, y, z) is on the drain if its own floor, or a wall cell next to it, carries a
 // drain that reaches an outlet
 bool PipeFixtureOnDrain(int x, int y, int z);
+// A flush seen running down the drain (drawing only): from the fixture at (x, y, z) along the
+// connected drain to the nearest outlet. A few at a time; old ones end by themselves.
+#define PIPE_PULSE_MAX 8
+#define PIPE_PULSE_CELLS 512
+#define PIPE_PULSE_SPEED 6.0f   // cells per game second
+typedef struct { int16_t x[PIPE_PULSE_CELLS], y[PIPE_PULSE_CELLS], z[PIPE_PULSE_CELLS]; int len; double start; bool active; } PipePulse;
+extern PipePulse pipePulses[PIPE_PULSE_MAX];
+void PipeFlushPulse(int x, int y, int z);
 // Lay a floor drain from (x1, y1) to (x2, y2) on level z: along x first, then along y (an L)
 int  LayFloorDrain(int x1, int y1, int x2, int y2, int z);
 

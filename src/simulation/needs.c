@@ -416,12 +416,21 @@ int toiletDryDirtPerUse = 15; // setting toiletDryDirt: a toilet nobody could fl
 // used up. False = nothing to flush with: a dry toilet.
 bool toiletsPlumbed = true;   // setting toiletsPlumbed: the world has mains water (city, dollhouse)
 
+static bool FlushToiletWater(int fi);
 static bool FlushToilet(int fi) {
     const Furniture* f = &furniture[fi];
     // A world with drain pipes (pipes.h, the drain spike): the flush must go somewhere. A toilet
     // whose drain doesn't reach an outlet can't flush (and uses no water). No drains in the
-    // world: as before (the rules below stand in).
-    if (PipeDrainCellCount() > 0 && !PipeFixtureOnDrain(f->x, f->y, f->z)) return false;
+    // world: as before (the water rules stand in).
+    bool drains = PipeDrainCellCount() > 0;
+    if (drains && !PipeFixtureOnDrain(f->x, f->y, f->z)) return false;
+    if (!FlushToiletWater(fi)) return false;
+    if (drains) PipeFlushPulse(f->x, f->y, f->z);   // drawn: the flush running down the drain
+    return true;
+}
+
+static bool FlushToiletWater(int fi) {
+    const Furniture* f = &furniture[fi];
     // A world with mains water: every toilet has its own cistern supply (until supply pipes
     // say which ones are connected)
     if (toiletsPlumbed) return true;

@@ -2938,8 +2938,9 @@ static void DrawStockpileItems(void) {
 }
 
 // Pipes (pipes.h, the drain spike): your pipe-* tiles in two layers. The pipe's walls in clay,
-// then the same shape's rail-* (which fills the pipe exactly) as what's inside: drain water
-// when that drain reaches an outlet, nothing when it doesn't. A pipe joins its N/E/S/W drain
+// then the same shape's rail-* (which fills the pipe exactly) as what's inside: murky drain
+// water when that drain reaches an outlet, nothing when it doesn't; a flush runs down it as a
+// bright blob. A pipe joins its N/E/S/W drain
 // neighbours like a railing. On bare ground pipes show; under a constructed floor only with
 // the pipeOverlay setting. An outlet gets a dark dot, a valve a square (green open, red shut).
 static int PipeSpriteFor(int mask, bool inner) {
@@ -2956,6 +2957,35 @@ static int PipeSpriteFor(int mask, bool inner) {
         [12] = SPRITE_rail_sw,   [13] = SPRITE_rail_nsw,  [14] = SPRITE_rail_esw,  [15] = SPRITE_rail_nesw,
     };
     return inner ? railSprites[mask & 15] : pipeSprites[mask & 15];
+}
+
+static int PipeDrainMask(int x, int y, int z) {
+    return ((GetPipe(x, y - 1, z) & PIPE_DRAIN) ? 1 : 0) | ((GetPipe(x + 1, y, z) & PIPE_DRAIN) ? 2 : 0)
+         | ((GetPipe(x, y + 1, z) & PIPE_DRAIN) ? 4 : 0) | ((GetPipe(x - 1, y, z) & PIPE_DRAIN) ? 8 : 0);
+}
+
+// Flushes running down the drain: a bright blob ~3 cells long moving from the fixture to the
+// outlet at PIPE_PULSE_SPEED, its tail fading (pipes.h, drawing only)
+static void DrawPipePulses(Color skyColor) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    const float tailCells = 3.0f;
+    for (int k = 0; k < PIPE_PULSE_MAX; k++) {
+        PipePulse* p = &pipePulses[k];
+        if (!p->active) continue;
+        float head = (float)(gameTime - p->start) * PIPE_PULSE_SPEED;
+        if (head > p->len + tailCells) { p->active = false; continue; }
+        for (int i = 0; i < p->len; i++) {
+            float behind = head - (float)i;
+            if (behind < 0.0f || behind > tailCells || p->z[i] != z) continue;
+            if (HAS_FLOOR(p->x[i], p->y[i], z) && !pipeOverlay) continue;
+            unsigned char a = (unsigned char)(255.0f * (1.0f - behind / tailCells));
+            Color c = MultiplyColor((Color){ 120, 190, 245, 255 }, GetLightColor(p->x[i], p->y[i], z, skyColor));
+            c.a = a;
+            Rectangle dest = { offset.x + p->x[i] * size, offset.y + p->y[i] * size, size, size };
+            FastSprite(atlas, SpriteGetRect(PipeSpriteFor(PipeDrainMask(p->x[i], p->y[i], z), true)), dest, c);
+        }
+    }
 }
 
 static void DrawPipes(void) {
@@ -2975,13 +3005,12 @@ static void DrawPipes(void) {
             uint8_t b = PIPE(x, y, z);
             if (!(b & PIPE_DRAIN)) continue;
             if (HAS_FLOOR(x, y, z) && !pipeOverlay) continue;   // laid in a floor: hidden
-            int mask = ((GetPipe(x, y - 1, z) & PIPE_DRAIN) ? 1 : 0) | ((GetPipe(x + 1, y, z) & PIPE_DRAIN) ? 2 : 0)
-                     | ((GetPipe(x, y + 1, z) & PIPE_DRAIN) ? 4 : 0) | ((GetPipe(x - 1, y, z) & PIPE_DRAIN) ? 8 : 0);
+            int mask = PipeDrainMask(x, y, z);
             Color light = GetLightColor(x, y, z, skyColor);
             Rectangle dest = { offset.x + x * size, offset.y + y * size, size, size };
             FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, false)), dest, MultiplyColor((Color){ 176, 112, 78, 255 }, light));
             if (PipeDrainConnected(x, y, z))
-                FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 92, 78, 46, 255 }, light));
+                FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 96, 128, 132, 255 }, light));   // murky drain water
             float cx = dest.x + size * 0.5f, cy = dest.y + size * 0.5f;
             if (b & PIPE_END) DrawCircleV((Vector2){ cx, cy }, size * 0.22f, (Color){ 30, 24, 18, 230 });
             if (b & PIPE_VALVE) {
@@ -2990,6 +3019,7 @@ static void DrawPipes(void) {
                 DrawRectangleRec((Rectangle){ cx - h, cy - h, 2 * h, 2 * h }, vc);
             }
         }
+    DrawPipePulses(skyColor);
 }
 
 static void DrawFurniture(void) {
