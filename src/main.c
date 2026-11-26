@@ -970,6 +970,15 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     ApplySetArgs(argc, argv);
     bool doProfile = false;
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--profile") == 0) doProfile = true;
+    // --trace-mover N [FROM [TO]]: one line per tick for mover N (from tick FROM to TO): where it
+    // is, the cell it is in, its goal, the next point of its path, its state
+    int traceMover = -1, traceFrom = 0, traceTo = 1 << 30;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--trace-mover") != 0 || i + 1 >= argc) continue;
+        traceMover = atoi(argv[++i]);
+        if (i + 1 < argc && argv[i + 1][0] != '-') traceFrom = atoi(argv[++i]);
+        if (i + 1 < argc && argv[i + 1][0] != '-') traceTo = atoi(argv[++i]);
+    }
     bool doDayBudget = false;   // --day-budget: where the movers' days go (src/core/day_budget.c)
     for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--day-budget") == 0) doDayBudget = true;
     // --validate N: check the sim activity counters against the grids every N ticks (the
@@ -1035,6 +1044,16 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
         }
         if (scenario && scenario->tickStats) scenario->tickStats();
         if (doDayBudget) DayBudgetTick();
+        if (traceMover >= 0 && traceMover < moverCount && t >= traceFrom && t <= traceTo) {
+            const Mover* tm = &movers[traceMover];
+            int cx = (int)(tm->x / CELL_SIZE), cy = (int)(tm->y / CELL_SIZE), cz = (int)tm->z;
+            Point next = (tm->pathIndex >= 0 && tm->pathIndex < tm->pathLength) ? moverPaths[traceMover][tm->pathIndex] : (Point){-1, -1, -1};
+            printf("trace %d: pos %.1f,%.1f cell %d,%d,%d %s goal %d,%d,%d path %d/%d next %d,%d,%d free %d job %d talk %d act %d%s\n",
+                   t, tm->x / CELL_SIZE, tm->y / CELL_SIZE, cx, cy, cz, CellTypeName(GRID(cx, cy, cz)),
+                   tm->goal.x, tm->goal.y, tm->goal.z, tm->pathIndex, tm->pathLength, next.x, next.y, next.z,
+                   tm->freetimeState, tm->currentJobId, MoverTalk(traceMover), MoverActivity(traceMover),
+                   tm->needsRepath ? " repath" : "");
+        }
         double tickTime = (GetTime() - tickStart) * 1000.0;
         if (tickTime > 100.0) {
             TraceLog(LOG_WARNING, "SLOW TICK %d: %.1fms", t, tickTime);
@@ -1471,7 +1490,7 @@ int main(int argc, char** argv) {
                 }
             }
             if (!headlessFile && !scenarioName && !gameName) {
-                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--events <logfile>] [--mover N] ...\n", argv[0]);
+                printf("Usage: %s --headless (--load <savefile> | --scenario <name> | --game <name>) [--ticks N] [--set <var> <value>] [--save <outfile>] [--events <logfile>] [--trace-mover N [from [to]]] [--mover N] ...\n", argv[0]);
                 return 1;
             }
             return RunHeadless(headlessFile, scenarioName, gameName, headlessTicks, argc, argv);

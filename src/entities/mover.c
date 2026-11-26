@@ -607,8 +607,11 @@ float MoverPatience(const Mover* m) {
 static void AssignNewMoverGoal(Mover* m);
 
 // Moving into another cell on the same level: not into or out of a one-way door the wrong way
+// Never into a door that is still closed: one on the way gets opened first (the door-ahead
+// step below), so this only stops a sideways push (polite passing, avoidance) into a doorway
 static inline bool MoverDoorStepOk(int fromX, int fromY, int toX, int toY, int z) {
     if (fromX == toX && fromY == toY) return true;
+    if (GRID(toX, toY, z) == CELL_DOOR) return false;
     return CanStepThroughDoors(fromX, fromY, toX, toY, z);
 }
 static void MaybeTakeTrain(int i);

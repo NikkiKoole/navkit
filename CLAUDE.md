@@ -292,6 +292,10 @@ hooks for headless runs (ladders uses them for queue length).
 
 `--events FILE` (any headless run) writes the event log to FILE after the run (what F8 does in game).
 
+`--trace-mover N [FROM [TO]]` (any headless run) prints one line per tick for mover N: position, cell
+and its type, goal, the next point of its path, free-time state, job, talk, activity. For "how did it
+get there" questions (a scenario's check log names the mover; its describe lines start with `#N`).
+
 `--validate [N]` (any headless run) checks the sim activity counters against the grids every N
 ticks (default 600; the windowed game does it every 60 s) and prints any drift. `--check` always
 validates once at the end and fails on drift, so `make scenarios-check` covers it.

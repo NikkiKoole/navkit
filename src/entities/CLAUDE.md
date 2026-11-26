@@ -132,7 +132,9 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
 - Spots and nudges outside the pathfinder: a place to stand and stay (talk slots, onlookers,
   hiding spots, a guest's spot) uses `IsCellStandableAt` (no doorways); a direct step (circles
   settling, walking together, follow the leader) uses `IsCellNudgeableAt` (no closed door).
-  `IsCellWalkableAt` says yes to a closed door: a nudge with it slips through one.
+  `IsCellWalkableAt` says yes to a closed door: a nudge with it slips through one. The movement
+  step's wall sliding refuses a step into a still-closed door (`MoverDoorStepOk`): a mover going
+  through one opens it first (the door-ahead step), so only sideways pushes are stopped.
 - Sideways drifts (polite passing, room round talks, round disliked movers) are summed in one
   block of the movement step and dropped when they point at a drop (walking into air = falling).
 - "Free to socialise" = `CanTalk` in talk.c: no job, `FREETIME_NONE`, not drafted / travelling,

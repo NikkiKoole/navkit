@@ -145,7 +145,10 @@ someone let in, a visit over, nobody trespassing). Four game days of galerij: 13
   stockpiles, 0 trespass; job assignment 0.6 ms a tick after bucketing the consolidate phase
   (it asked "which stockpile is this item in" for every item inside a loop over stockpiles).
   Mingling now checks the cell it walks to, not just the group's middle (a host in the doorway).
-  Still: the rare push into a closed door makes the 128 run's check fail (doors, not ownership).
+  The rare push into a closed door (polite passing / avoidance sliding a mover sideways into a
+  doorway along the gallery: wall sliding asked `IsCellWalkableAt`, which says yes to a door) is
+  fixed in `MoverDoorStepOk`; galerij-big at 128 passes its check (headless `--trace-mover N`
+  showed the drift). Test: test_notice "doors_and_drifts".
 - Home first: a resident at home (inside its household's home) looks at its home's furniture
   first for a bed, a tap or a toilet (`PlaceFurniture`, `NeedHomeFurniture` in needs.c), the
   whole world only if nothing there fits. Same choices in every scenario (all runs identical);

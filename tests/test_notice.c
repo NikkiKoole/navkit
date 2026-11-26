@@ -1686,6 +1686,42 @@ describe(social_need) {
     }
 }
 
+// Runs last: it moves movers, and the random draws that takes would shift the tests after it
+describe(doors_and_drifts) {
+    it("passing along a wall with a closed door in it: nobody is pushed into the doorway") {
+        SetupWorld();
+        politePassing = true;
+        talkEnabled = false;
+        for (int x = 0; x < W; x++) { GRID(x, 3, 1) = CELL_WALL; SetWallMaterial(x, 3, 1, MAT_BRICK); }
+        GRID(10, 3, 1) = CELL_DOOR;                    // closed, on the west-walkers' right
+        int doorSteps = 0, done = 0;
+        float savedDt = gameDeltaTime;
+        for (int round = 0; round < 6; round++) {      // a few meetings at different spots
+            ClearMovers();
+            int a = AddMover(3 + round, 4, 1), b = AddMover(17 - round, 4, 1);
+            movers[a].speed = movers[b].speed = MOVER_SPEED;
+            movers[a].goal = (Point){20, 4, 1};
+            movers[b].goal = (Point){1, 4, 1};
+            WalkToward(a, 20, 4);
+            WalkToward(b, 1, 4);
+            for (int t = 0; t < 8 * TICK_RATE; t++) {   // until both are through (then they'd wander off)
+                if ((int)(movers[a].x / CELL_SIZE) >= 19 && (int)(movers[b].x / CELL_SIZE) <= 2) break;
+                gameDeltaTime = TICK_DT;
+                Look();                                // notice the one coming (polite passing)
+                UpdateMovers();
+                for (int i = 0; i < moverCount; i++)
+                    if (GRID((int)(movers[i].x / CELL_SIZE), (int)(movers[i].y / CELL_SIZE), 1) == CELL_DOOR) doorSteps++;
+            }
+            if ((int)(movers[a].x / CELL_SIZE) >= 19 && (int)(movers[b].x / CELL_SIZE) <= 2) done++;
+        }
+        if (test_verbose) printf("  mover-ticks in the closed door: %d, meetings both got through: %d/6\n", doorSteps, done);
+        gameDeltaTime = savedDt;
+        ClearMovers();
+        expect(doorSteps == 0 && done == 6);
+        talkEnabled = true;
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
@@ -1713,5 +1749,6 @@ int main(int argc, char* argv[]) {
     test(social_need);
     test(games_by_themselves);
     test(joining_a_game);
+    test(doors_and_drifts);
     return summary();
 }
