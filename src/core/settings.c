@@ -41,6 +41,7 @@
 #include "../entities/throwing.h"
 #include "../entities/adverts.h"
 #include "../entities/visit.h"
+#include "../world/mechanisms.h"
 #include "../entities/town.h"
 #include <strings.h>
 
@@ -888,6 +889,10 @@ static const Setting settings[] = {
       "Master toggle for lighting. When off, all tiles render at full brightness (no light/dark cycle).", RelightAll),
     SET_BOOL("pipeOverlay", "Pipe overlay", "Rendering & Debug", pipeOverlay,
       "Draw pipes under constructed floors too (pipes on bare ground always show)."),
+    SET_BOOL("linksOverlay", "Links overlay", "Rendering & Debug", linksOverlay,
+      "Draw every lever / plate link as a line to its door or valve (mechanisms.h). Off: only the links of the mechanism under the mouse."),
+    SET_INT("plateWeight", "Pressure plate weight", "World/Mechanisms", plateWeight, 0.1f, 1, 50,
+      "Weight that holds a pressure plate down: a mover or an animal counts 1, an item its stack.", NULL),
     SET_BOOL("effects", "Blast & dust effects", "Rendering & Debug", effectsEnabled,
       "Dithered fireballs, flashes, dust, flying chunks and fuse sparks (core/effects.c, drawn by render/effects_draw.c). Off: none are made."),
     SET_BOOL("shaderEffects", "Shader Effects", "Rendering & Debug/Lighting", shaderEffects,

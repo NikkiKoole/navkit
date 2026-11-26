@@ -14,6 +14,7 @@ void RebuildPostLoadState(void);
 #include "../entities/town.h"
 #include "../entities/social.h"
 #include "../entities/places.h"
+#include "../world/mechanisms.h"
 #include "../entities/elevators.h"
 #include "../simulation/fire.h"
 #include "../simulation/tide.h"
@@ -659,6 +660,8 @@ bool SaveWorld(const char* filename) {
 
     // Weather state
     fwrite(&weatherState, sizeof(WeatherState), 1, f);
+    // v125+: levers, plates, links, doors waiting to lock (mechanisms.h)
+    MechanismsSave(f);
     
     // === END MARKER ===
     marker = MARKER_END;
@@ -1851,6 +1854,9 @@ bool LoadWorld(const char* filename) {
 
     // Weather state
     fread(&weatherState, sizeof(WeatherState), 1, f);
+    // Levers, plates, links (v125+); older saves: none
+    ClearMechanisms();
+    if (version >= V125_MECHANISMS) MechanismsLoad(f);
     
     // === END MARKER ===
     fread(&marker, sizeof(marker), 1, f);

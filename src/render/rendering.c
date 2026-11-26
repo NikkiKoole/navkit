@@ -27,6 +27,7 @@
 #include "../entities/elevators.h"
 #include "../simulation/balance.h"
 #include "../world/pipes.h"
+#include "../world/mechanisms.h"
 #include <math.h>
 
 #define MAX_VISIBLE_DEPTH    9
@@ -2999,6 +3000,46 @@ static void DrawPipePulses(Color skyColor) {
     }
 }
 
+// Levers and pressure plates on the viewed level (placeholder shapes until they have sprites),
+// and their links: every link with the linksOverlay setting, else those of the mechanism under
+// the mouse. A link is a line to its door or valve; a dashed end = told to lock, still waiting.
+static void DrawMechanisms(void) {
+    int z = currentViewZ;
+    float size = CELL_SIZE * zoom;
+    Vector2 g = ScreenToGrid(GetMousePosition());
+    int hover = MechanismAt((int)g.x, (int)g.y, z);
+    for (int i = 0; i < MAX_MECHANISMS; i++) {
+        Mechanism* m = &mechanisms[i];
+        if (m->kind == MECH_NONE || m->z != z) continue;
+        Rectangle r = { offset.x + m->x * size, offset.y + m->y * size, size, size };
+        float cx = r.x + size * 0.5f, cy = r.y + size * 0.5f;
+        if (m->kind == MECH_PLATE) {
+            float in = size * (m->on ? 0.2f : 0.14f);
+            Color c = m->on ? (Color){ 110, 105, 95, 255 } : (Color){ 160, 152, 136, 255 };
+            DrawRectangleRec((Rectangle){ r.x + in, r.y + in, size - 2 * in, size - 2 * in }, c);
+            DrawRectangleLinesEx((Rectangle){ r.x + in, r.y + in, size - 2 * in, size - 2 * in }, size * 0.06f, (Color){ 60, 56, 50, 255 });
+        } else {
+            DrawRectangleRec((Rectangle){ cx - size * 0.25f, cy + size * 0.12f, size * 0.5f, size * 0.18f }, (Color){ 70, 64, 58, 255 });
+            Vector2 tip = { cx + (m->on ? 0.28f : -0.28f) * size, cy - size * 0.32f };
+            DrawLineEx((Vector2){ cx, cy + size * 0.15f }, tip, size * 0.1f, (Color){ 120, 84, 50, 255 });
+            DrawCircleV(tip, size * 0.09f, m->on ? (Color){ 70, 190, 80, 255 } : (Color){ 200, 60, 50, 255 });
+        }
+    }
+    for (int l = 0; l < MAX_MECH_LINKS; l++) {
+        MechLink* k = &mechLinks[l];
+        if (k->src < 0) continue;
+        Mechanism* m = &mechanisms[k->src];
+        if (!linksOverlay && k->src != hover) continue;
+        if (m->z != z && k->z != z) continue;
+        Vector2 a = { offset.x + (m->x + 0.5f) * size, offset.y + (m->y + 0.5f) * size };
+        Vector2 b = { offset.x + (k->x + 0.5f) * size, offset.y + (k->y + 0.5f) * size };
+        Color c = k->invert ? (Color){ 230, 120, 230, 200 } : (Color){ 250, 220, 90, 200 };
+        DrawLineEx(a, b, size * 0.06f > 1.0f ? size * 0.06f : 1.0f, c);
+        DrawRectangleLinesEx((Rectangle){ b.x - size * 0.45f, b.y - size * 0.45f, size * 0.9f, size * 0.9f }, 2.0f,
+                             MechLockWaiting(k->x, k->y, k->z) ? (Color){ 230, 70, 50, 230 } : c);
+    }
+}
+
 static void DrawPipes(void) {
     if (PipeDrainCellCount() == 0) return;
     float size = CELL_SIZE * zoom;
@@ -3365,6 +3406,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_BLAST]          = {220, 40, 40, 200},
     [DESIGNATION_CLOSE_DOOR]     = {120, 200, 255, 200},
     [DESIGNATION_OPEN_DOOR]      = {255, 220, 120, 200},
+    [DESIGNATION_PULL_LEVER]     = {255, 160, 60, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -3390,6 +3432,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_BLAST]          = {255, 60, 30, 255},
     [DESIGNATION_CLOSE_DOOR]     = {90, 170, 240, 255},
     [DESIGNATION_OPEN_DOOR]      = {240, 200, 90, 255},
+    [DESIGNATION_PULL_LEVER]     = {240, 140, 40, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -3407,6 +3450,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_REMOVE_BELT]    = {230, 120, 60, 180},
     [JOBTYPE_BLAST]          = {220, 40, 40, 180},
     [JOBTYPE_DOOR]           = {160, 210, 255, 180},
+    [JOBTYPE_PULL_LEVER]     = {255, 170, 80, 180},
     [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 

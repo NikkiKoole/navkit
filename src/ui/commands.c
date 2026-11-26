@@ -44,6 +44,7 @@
 #include <stdio.h>
 #include "../entities/town.h"
 #include "../world/pipes.h"
+#include "../world/mechanisms.h"
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
@@ -394,6 +395,67 @@ static void RunDoor(const CmdValue* v) {
     if (c <= 1) SetDoorOpen(x, y, currentViewZ, c == 0);
     else SetDoorLocked(x, y, currentViewZ, c == 2);
     Say(GREEN, "Door at %d,%d: %s", x, y, (const char*[]){ "open", "closed", "locked", "unlocked" }[c]);
+}
+
+// ---- mech: levers, pressure plates, links (mechanisms.h), on the viewed level ----
+static const char* const mechChoices[] = { "lever", "plate", "remove", "link", "linkinv", "unlink", "pull", "order", "list" };
+static void RunMech(const CmdValue* v) {
+    int z = currentViewZ, c = v[0].choice;
+    if (c == 8) {
+        int n = 0;
+        for (int i = 0; i < MAX_MECHANISMS; i++) {
+            Mechanism* m = &mechanisms[i];
+            if (m->kind == MECH_NONE) continue;
+            Say(WHITE, "#%d %s at %d,%d,%d: %s, %d link%s", i, MechKindName(m->kind), m->x, m->y, m->z,
+                m->on ? "on" : "off", MechLinkCount(i), MechLinkCount(i) == 1 ? "" : "s");
+            for (int l = 0; l < MAX_MECH_LINKS; l++) {
+                MechLink* k = &mechLinks[l];
+                if (k->src != i) continue;
+                Say(WHITE, "    -> %d,%d,%d%s (reads %d%s)", k->x, k->y, k->z, k->invert ? " inverted" : "",
+                    MechRead(k->x, k->y, k->z), MechLockWaiting(k->x, k->y, k->z) ? ", waiting to lock" : "");
+            }
+            n++;
+        }
+        if (n == 0) Say(YELLOW, "No levers or plates");
+        return;
+    }
+    int x, y;
+    if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
+    else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) { Say(YELLOW, "%d,%d is off the map", x, y); return; }
+    if (c <= 1) {
+        int idx = PlaceMechanism(x, y, z, c == 0 ? MECH_LEVER : MECH_PLATE);
+        if (idx < 0) Say(YELLOW, "Can't place one at %d,%d (level %d): taken or full", x, y, z);
+        else Say(GREEN, "%s #%d at %d,%d (level %d)", MechKindName(mechanisms[idx].kind), idx, x, y, z);
+        return;
+    }
+    if (c == 2) {
+        if (RemoveMechanism(x, y, z)) Say(GREEN, "Removed the mechanism at %d,%d", x, y);
+        else Say(YELLOW, "No lever or plate at %d,%d (level %d)", x, y, z);
+        return;
+    }
+    int idx = MechanismAt(x, y, z);
+    if (idx < 0) { Say(YELLOW, "No lever or plate at %d,%d (level %d)", x, y, z); return; }
+    if (c >= 3 && c <= 5) {
+        if (!v[3].given || !v[4].given) { Say(YELLOW, "mech %s x y tx ty: the mechanism at x y, the door or valve at tx ty", mechChoices[c]); return; }
+        int tx = v[3].i, ty = v[4].i;
+        if (c == 5) {
+            if (UnlinkMechanism(idx, tx, ty, z)) Say(GREEN, "Unlinked %d,%d from %d,%d", tx, ty, x, y);
+            else Say(YELLOW, "%d,%d isn't linked to %d,%d", tx, ty, x, y);
+            return;
+        }
+        if (LinkMechanism(idx, tx, ty, z, c == 4) < 0) Say(YELLOW, "No door or valve at %d,%d (level %d), or no room for links", tx, ty, z);
+        else Say(GREEN, "%s at %d,%d now %s %d,%d", MechKindName(mechanisms[idx].kind), x, y, c == 4 ? "works inverted on" : "works", tx, ty);
+        return;
+    }
+    if (c == 6) {
+        if (mechanisms[idx].kind != MECH_LEVER) { Say(YELLOW, "Only a lever can be pulled"); return; }
+        PullLever(idx);
+        Say(GREEN, "Lever at %d,%d: %s", x, y, mechanisms[idx].on ? "on" : "off");
+        return;
+    }
+    if (DesignatePullLever(x, y, z)) Say(GREEN, "Lever at %d,%d marked: a worker will pull it", x, y);
+    else Say(YELLOW, "Can't mark %d,%d: not a lever, or already marked", x, y);
 }
 
 // ---- pipe: the drain spike (pipes.h), on the viewed level ----
@@ -811,6 +873,13 @@ static const CommandDef commandTable[] = {
            { .name = "x2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y2", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunPipe, NULL },
+    { "mech", "World/Mechanisms", "Levers and pressure plates: mech lever|plate|remove x y, mech link|linkinv|unlink x y tx ty (the mechanism at x y works the door or valve at tx ty; linkinv: on locks it), mech pull x y (now), mech order x y (a worker pulls it), mech list. A linked door: on = open, off = locked (it waits until nobody is in the doorway). On the viewed level; no x y = the mouse",
+      5, { ARG_CHOICE("what", mechChoices),
+           { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "tx", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
+           { .name = "ty", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
+      RunMech, NULL },
     { "rain", "Simulation/Water", "Start or stop rain (coverage in %)",
       1, { { .name = "amount", .type = CARG_CHOICE, .optional = true, .choices = rainChoices, .choiceCount = 4, .lo = 1, .hi = 100 } },
       RunRain, NULL },

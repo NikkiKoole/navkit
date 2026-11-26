@@ -1,7 +1,7 @@
 # Infrastructure: doors, locks, mechanisms, pipes (and what else is like them)
 
 > Status: step 1 mostly done (2026-11-26): doors open / closed / locked for everyone, the
-> open/close door chore (see "Where we are"). Otherwise a plan. Joins three older
+> open/close door chore; step 3 first slice: levers, plates, links (see "Where we are"). Otherwise a plan. Joins three older
 > plans into one: keys (`../pathfinding/one-way-and-doors.md` "Parked: keys"), mechanisms layer 1
 > (`../../vision/far future /mechanisms-and-signals.md`) and the pipe layer
 > (`../gameplay/survival-toilet.md` "The pipe layer"). Those stay as the detail; this is the
@@ -81,6 +81,31 @@ then every use flushes. A lever can drive a drain valve (navkit-1e's mechanisms 
 loaded game has no pipes and valve links point at nothing), the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
 rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
 pipe cells, so it never sweeps the map.
+
+**Step 3, levers, plates and links: first slice (2026-11-26):** `src/world/mechanisms.c/.h`.
+Sources (a lever, a pressure plate) in a table of up to 256, links (source -> target cell, an
+invert flag) in a table of 1024, both saved (v125, after the weather state). A source that
+changes writes a number to each linked target: on = 1, off = 0, flipped by invert.
+**User (2026-11-26): a linked door switches between open and locked**, never plain closed (so it
+is the DF floodgate too: no separate floodgate cell yet, a door in a channel does it). 1 = unlock
+and open, 0 = lock; when someone (mover or animal) stands in the doorway the lock waits and is
+retried each tick until it is clear (`MechLockWaiting`): what it was told and what it is differ,
+the read/write split of the signals model. A pipe valve is a target too (1 open, 0 shut).
+`MechRead` gives the number a target reports (door 0 locked / 1 closed / 2 open, valve 0 / 1).
+Plates: on while the weight on the cell is at least `plateWeight` (setting, 1): a mover or animal
+counts 1, an item its stack; the 1x1-stockpile trick works as planned. A lever is pulled by a
+mover by order: `DESIGNATION_PULL_LEVER` + `JOBTYPE_PULL_LEVER` (the door chore's work giver,
+adjacent). Per tick only the plates (while any exist) and the waiting locks. Drawn as placeholder
+shapes (no sprites yet): a lever leaning left (off, red knob) or right (on, green), a plate a
+raised / pressed square; links as lines (setting `linksOverlay`, else those of the mechanism
+under the mouse; a red end = waiting to lock). Console `mech lever|plate|remove|link|linkinv|unlink|
+pull|order|list`. Scenarios (in scenarios-check): `leverflood` (lever marked at tick 300, the
+worker pulls it at ~450, the reservoir runs down the channel) and `plategate` (the worker hauls a
+rock onto the plate's stockpile, the gate opens). Tests: `tests/test_links.c`.
+**Not yet:** building levers and plates (recipes, the Work bar), linking by clicking (select the
+lever, click targets, the workshop-link pattern), the inspector for them, sprites, a describe
+line, a separate floodgate look, an actuator cooldown (doors relock locally and cheaply; revisit
+if plates flicker in crowds).
 
 **Still open in step 1:** a small path cost for a closed door. Not `NAV_ENTER_EXTRA` (it must stay
 0 off ladder cells: graph edges only add it at entrances) and not the cell move cost (that is also

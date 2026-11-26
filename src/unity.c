@@ -100,6 +100,7 @@
 // Per-cell layer allocation (needs every layer header; before anything runs)
 #include "world/grid_layers.c"
 #include "world/pipes.c"
+#include "world/mechanisms.c"
 
 #include "core/scenarios.c"
 #include "core/games.c"

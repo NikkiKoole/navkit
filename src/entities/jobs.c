@@ -29,6 +29,7 @@
 #include <math.h>
 #include "town.h"
 #include "furniture.h"
+#include "../world/mechanisms.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -147,6 +148,8 @@ static AdjacentDesignationEntry closeDoorCache[MAX_DESIGNATION_CACHE];
 static int closeDoorCacheCount = 0;
 static AdjacentDesignationEntry openDoorCache[MAX_DESIGNATION_CACHE];
 static int openDoorCacheCount = 0;
+static AdjacentDesignationEntry pullLeverCache[MAX_DESIGNATION_CACHE];
+static int pullLeverCacheCount = 0;
 
 static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
 static int cleanCacheCount = 0;
@@ -184,6 +187,7 @@ static bool gatherReedsCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool closeDoorCacheDirty = true;
 static bool openDoorCacheDirty = true;
+static bool pullLeverCacheDirty = true;
 static bool cleanCacheDirty = true;
 static bool removeBeltCacheDirty = true;
 static bool blastCacheDirty = true;
@@ -306,6 +310,8 @@ static int WorkGiver_CloseDoor(int moverIdx);
 static int WorkGiver_OpenDoor(int moverIdx);
 static void RebuildCloseDoorDesignationCache(void);
 static void RebuildOpenDoorDesignationCache(void);
+static int WorkGiver_PullLever(int moverIdx);
+static void RebuildPullLeverDesignationCache(void);
 static int WorkGiver_HarvestBerry(int moverIdx);
 JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 static int WorkGiver_KnapDesignation(int moverIdx);
@@ -369,6 +375,8 @@ static DesignationJobSpec designationSpecs[] = {
      closeDoorCache, &closeDoorCacheCount, &closeDoorCacheDirty},
     {DESIGNATION_OPEN_DOOR, JOBTYPE_DOOR, RebuildOpenDoorDesignationCache, WorkGiver_OpenDoor,
      openDoorCache, &openDoorCacheCount, &openDoorCacheDirty},
+    {DESIGNATION_PULL_LEVER, JOBTYPE_PULL_LEVER, RebuildPullLeverDesignationCache, WorkGiver_PullLever,
+     pullLeverCache, &pullLeverCacheCount, &pullLeverCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -524,6 +532,12 @@ static void RebuildOpenDoorDesignationCache(void) {
     if (!openDoorCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_OPEN_DOOR, openDoorCache, &openDoorCacheCount, true);
     openDoorCacheDirty = false;
+}
+
+static void RebuildPullLeverDesignationCache(void) {
+    if (!pullLeverCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_PULL_LEVER, pullLeverCache, &pullLeverCacheCount, true);
+    pullLeverCacheDirty = false;
 }
 
 static void RebuildCleanDesignationCache(void) {
@@ -1631,6 +1645,23 @@ JobRunResult RunJob_Door(Job* job, void* moverPtr, float dt) {
         float t = doorOpenSeconds > 0.05f ? doorOpenSeconds : 0.05f;
         JobRunResult r = RunWorkProgress(job, d, mover, dt, t, true, 1.0f);
         if (r == JOBRUN_DONE) CompleteDoorDesignation(tx, ty, tz);
+        return r;
+    }
+    return JOBRUN_FAIL;
+}
+
+// Pull a lever: walk up next to it, pull it (a short operate step, doorOpenSeconds)
+JobRunResult RunJob_PullLever(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX, ty = job->targetMineY, tz = job->targetMineZ;
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_PULL_LEVER) return JOBRUN_FAIL;
+    if (MechanismAt(tx, ty, tz) < 0) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }   // the lever is gone
+    if (job->step == STEP_MOVING_TO_WORK) return RunWalkToAdjacentStep(job, mover);
+    if (job->step == STEP_WORKING) {
+        float t = doorOpenSeconds > 0.05f ? doorOpenSeconds : 0.05f;
+        JobRunResult r = RunWorkProgress(job, d, mover, dt, t, true, 1.0f);
+        if (r == JOBRUN_DONE) CompletePullLeverDesignation(tx, ty, tz);
         return r;
     }
     return JOBRUN_FAIL;
@@ -3900,6 +3931,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_THROW] = RunJob_Throw,
     [JOBTYPE_BLAST] = RunJob_Blast,
     [JOBTYPE_DOOR] = RunJob_Door,
+    [JOBTYPE_PULL_LEVER] = RunJob_PullLever,
     [JOBTYPE_REFUEL] = RunJob_Refuel,
 };
 
@@ -7268,6 +7300,7 @@ static int WorkGiver_RemoveBelt(int moverIdx) {
 
 // Open / close door: nearest door with that mark; anyone can do it
 static int WorkGiver_DoorFrom(int moverIdx, AdjacentDesignationEntry* cache, int cacheCount, DesignationType type) {
+    JobType jobType = type == DESIGNATION_PULL_LEVER ? JOBTYPE_PULL_LEVER : JOBTYPE_DOOR;
     Mover* m = &movers[moverIdx];
     int bestX = -1, bestY = -1, bestZ = -1, bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
@@ -7291,7 +7324,7 @@ static int WorkGiver_DoorFrom(int moverIdx, AdjacentDesignationEntry* cache, int
         if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
         return -1;
     }
-    int jobId = CreateJob(JOBTYPE_DOOR);
+    int jobId = CreateJob(jobType);
     if (jobId < 0) return -1;
     Job* job = GetJob(jobId);
     job->assignedMover = moverIdx;
@@ -7314,6 +7347,10 @@ static int WorkGiver_CloseDoor(int moverIdx) {
 }
 static int WorkGiver_OpenDoor(int moverIdx) {
     return WorkGiver_DoorFrom(moverIdx, openDoorCache, openDoorCacheCount, DESIGNATION_OPEN_DOOR);
+}
+// Pull a lever (mechanisms.h): same shape, nearest lever with the mark; anyone can do it
+static int WorkGiver_PullLever(int moverIdx) {
+    return WorkGiver_DoorFrom(moverIdx, pullLeverCache, pullLeverCacheCount, DESIGNATION_PULL_LEVER);
 }
 
 // WorkGiver_Blast: nearest blast designation + nearest gunpowder; miners do it

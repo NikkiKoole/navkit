@@ -43,6 +43,7 @@
 #include "../entities/adverts.h"
 #include "describe.h"
 #include "../world/pipes.h"
+#include "../world/mechanisms.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -888,6 +889,90 @@ static bool DoorLockCheck(char* why, int whyLen) {
     if (dlNorthBefore == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door before it was locked"); return false; }
     if (dlSouthLocked == 0) { snprintf(why, (size_t)whyLen, "nobody went round through the south door"); return false; }
     if (dlNorthAfter == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door after it was unlocked"); return false; }
+    return true;
+}
+
+// leverflood / plategate: levers, pressure plates and links (src/world/mechanisms.c,
+// docs/todo/world/infrastructure.md step 3). A walled reservoir full of water in the south-west,
+// shut by a locked gate (a door) into a dry channel running east. leverflood: a lever north of it
+// is linked to the gate; at lfPullAt the lever is marked and the one worker walks over and pulls
+// it: the gate opens (on = open) and the water runs down the channel. plategate: a pressure
+// plate instead of the lever, with a 1x1 stockpile on it that takes only rocks; the worker hauls
+// a rock onto it, its weight holds the plate down, the gate opens. Check: no water in the channel
+// before the gate opened, the gate opened, water reached the channel's far end.
+#define LF_GATE_X 8
+#define LF_GATE_Y 22
+#define LF_END_X 28
+#define LF_MECH_X 12
+#define LF_MECH_Y 10
+static const int lfPullAt = 300;
+static bool lfPlate;
+static int lfTicks, lfOpenedAt, lfEarlyWater, lfFarWater;
+
+static int LeverFloodChannelWater(int fromX) {
+    int n = 0;
+    for (int x = fromX; x <= LF_END_X; x++) n += WATER(x, LF_GATE_Y, 1).level;
+    return n;
+}
+
+static void SetupLeverFloodCommon(bool plate) {
+    lfPlate = plate;
+    lfTicks = lfEarlyWater = lfFarWater = 0;
+    lfOpenedAt = -1;
+    hungerEnabled = thirstEnabled = energyEnabled = bodyTempEnabled = bladderEnabled = false;
+    endlessMoverMode = false;
+    for (int x = 2; x <= 8; x++)
+        for (int y = 18; y <= 26; y++) {
+            bool edge = x == 2 || x == 8 || y == 18 || y == 26;
+            if (edge) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_GRANITE); }
+            else SetWaterLevel(x, y, 1, 7);
+        }
+    for (int x = 9; x <= LF_END_X + 1; x++) {
+        GRID(x, LF_GATE_Y - 1, 1) = CELL_WALL; SetWallMaterial(x, LF_GATE_Y - 1, 1, MAT_GRANITE);
+        GRID(x, LF_GATE_Y + 1, 1) = CELL_WALL; SetWallMaterial(x, LF_GATE_Y + 1, 1, MAT_GRANITE);
+    }
+    GRID(LF_END_X + 1, LF_GATE_Y, 1) = CELL_WALL; SetWallMaterial(LF_END_X + 1, LF_GATE_Y, 1, MAT_GRANITE);
+    GRID(LF_GATE_X, LF_GATE_Y, 1) = CELL_DOOR_LOCKED; SetWallMaterial(LF_GATE_X, LF_GATE_Y, 1, MAT_OAK);
+    int m = PlaceMechanism(LF_MECH_X, LF_MECH_Y, 1, plate ? MECH_PLATE : MECH_LEVER);
+    LinkMechanism(m, LF_GATE_X, LF_GATE_Y, 1, false);
+    if (plate) {
+        int sp = CreateStockpile(LF_MECH_X, LF_MECH_Y, 1, 1, 1);
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, (ItemType)t, t == ITEM_ROCK);
+        SpawnItem(22 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+    }
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    SpawnMoverAt(20, 8, 1);
+    currentViewZ = 1;
+    AddMessage(plate ? "Plate gate: a rock hauled onto the plate (1x1 stockpile) opens the reservoir gate (console mech list)"
+                     : "Lever flood: at tick 300 the lever is marked; the worker pulls it and the reservoir gate opens (console mech)", GREEN);
+}
+static void SetupLeverFlood(void) { SetupLeverFloodCommon(false); }
+static void SetupPlateGate(void) { SetupLeverFloodCommon(true); }
+
+static void LeverFloodLiveTick(void) {
+    lfTicks++;
+    if (!lfPlate && lfTicks == lfPullAt) DesignatePullLever(LF_MECH_X, LF_MECH_Y, 1);
+}
+
+static void LeverFloodTickStats(void) {
+    bool open = GRID(LF_GATE_X, LF_GATE_Y, 1) == CELL_DOOR_OPEN;
+    if (open && lfOpenedAt < 0) lfOpenedAt = lfTicks;
+    if (lfOpenedAt < 0) lfEarlyWater += LeverFloodChannelWater(LF_GATE_X + 1);
+    int far = WATER(LF_END_X, LF_GATE_Y, 1).level;
+    if (far > lfFarWater) lfFarWater = far;
+}
+
+static void LeverFloodPrintStats(void) {
+    printf("Gate opened at tick %d; channel water before that %d; most water at the far end %d; channel now %d\n",
+           lfOpenedAt, lfEarlyWater, lfFarWater, LeverFloodChannelWater(LF_GATE_X + 1));
+}
+
+static bool LeverFloodCheck(char* why, int whyLen) {
+    if (lfOpenedAt < 0) { snprintf(why, (size_t)whyLen, "the gate never opened (%s)", lfPlate ? "no rock on the plate" : "nobody pulled the lever"); return false; }
+    if (lfEarlyWater > 0) { snprintf(why, (size_t)whyLen, "water got through the locked gate (%d)", lfEarlyWater); return false; }
+    if (lfFarWater == 0) { snprintf(why, (size_t)whyLen, "the water never reached the end of the channel"); return false; }
     return true;
 }
 
@@ -6242,6 +6327,10 @@ static const Scenario scenarios[] = {
                    NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},
     {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",
                    NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
+    {"leverflood", "A reservoir behind a locked gate and a dry channel: at tick 300 the lever is marked, the worker pulls it, the gate opens and the water runs (console mech, setting linksOverlay)",
+                   NULL,        SetupLeverFlood, LeverFloodTickStats, LeverFloodPrintStats, LeverFloodCheck, 0, 0, LeverFloodLiveTick},
+    {"plategate",  "The leverflood reservoir with a pressure plate instead of the lever: the worker hauls a rock onto the plate's 1x1 stockpile, its weight opens the gate",
+                   NULL,        SetupPlateGate, LeverFloodTickStats, LeverFloodPrintStats, LeverFloodCheck, 0, 0, LeverFloodLiveTick},
     {"drain",      "Drain spike: a toilet whose floor drain ends nowhere is a dry toilet (floor dirt); at tick 1200 the drain's end becomes an outlet and it flushes clean (console pipe, setting pipeOverlay)",
                    NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0, DrainLiveTick},
     {"drain-build", "Two people lay a brick drain from a toilet to an outlet (Work > Build > Pipe drain / Outlet blueprints, 1 brick per cell, 2 for the outlet); once it's in, the toilet flushes",
