@@ -37,6 +37,26 @@ crops (a plant can be dead dry, very wet, anything in between).
 - Vegetation ignores it: grass grows back from wear only; reeds grow next to water.
 - `cellFlags` is full (8 of 8 bits used), so finer moisture needs its own layer.
 
+## Measured (scenario `soak`, 2026-11-26)
+
+`./build/bin/path --headless --scenario soak --ticks 21700` (6 game days, no rain): six walled
+4x4 basins, one row with a puddle (level 1, 16 units), one with a pond (level 4, 64 units).
+
+```
+puddle  GH   grass     dirt      sand      clay      concrete  roofed      (units / wetness 0-3)
+         0   16 / 0.0  16 / 0.0  16 / 0.0  16 / 0.0  16 / 0.0  16 / 0.0
+         4    8 / 0.8   7 / 0.5   9 / 0.7   6 / 0.9   4 / 0.0   6 / 0.0
+         8    3 / 0.3   4 / 0.4   3 / 0.4   3 / 0.7   3 / 0.0   4 / 0.0
+        16    0 / 0.2   3 / 0.3   0 / 0.1   2 / 0.2   1 / 0.0   2 / 0.0
+        32    0 / 0.0   0 / 0.0   0 / 0.0   0 / 0.0   0 / 0.0   0 / 0.0
+pond     0   64 / 0.0 ... 
+       144   64 / 3.0  64 / 3.0  64 / 3.0  64 / 3.0  64 / 0.0  64 / 0.0   (never changes)
+```
+
+- A puddle halves in 4 GH and is gone in ~1 game day, on every ground alike, roofed included.
+- The soil under it only gets damp (avg <= 0.9) and is dry again ~1 day later.
+- A pond of level 4 loses nothing in 6 days, on soil or concrete; the soil under it stays soaked.
+
 ## Proposal: moisture as a store
 
 One number per soil surface cell, `moisture` 0-255, that holds real water.
@@ -124,8 +144,7 @@ makes watering, irrigation ditches and drainage real jobs.
 
 ## Suggested order
 
-1. Measure first: a scenario `soak` with the same puddle on grass, sand, clay, concrete, roofed
-   and open; headless print of water units + moisture over 3 game days. Gives the before.
+1. ~~Measure first~~ done: scenario `soak` (see Measured).
 2. Evaporation per surface and depth (2): fixes "too fast on grass, never in a basin" alone,
    no new layer.
 3. Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5).

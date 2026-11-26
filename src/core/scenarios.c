@@ -4288,6 +4288,95 @@ static bool TideIsIslet(int x, int y) {
 static bool TideIsChannel(int x, int y) { return x >= 34 && x <= 37 && !(y >= 30 && y <= 34); }
 
 // ---- drift: logs and sticks dropped in the island's rivers go with the current (ItemsDriftTick) ----
+// ---------------------------------------------------------------------------
+// soak: the same water in walled basins on different ground (docs/todo/world/soil-moisture.md).
+// Six basins of 4x4 cells, two rows: a puddle (level 1) and a pond (level 4). Grounds: grass on
+// dirt, bare dirt, sand, clay, concrete under the sky, concrete under a roof. Prints the water
+// units left and the soil wetness every few game hours: the "before" for soaking/evaporation work.
+#define SOAK_PLOTS 6
+#define SOAK_ROWS 2
+#define SOAK_IN 4                      // basin inside, cells
+#define SOAK_SAMPLES 64
+static const char* soakNames[SOAK_PLOTS] = {"grass", "dirt", "sand", "clay", "concrete", "roofed"};
+static const int soakFill[SOAK_ROWS] = {1, 4};
+static int soakX0[SOAK_PLOTS], soakY0[SOAK_ROWS];
+static int soakUnits[SOAK_SAMPLES][SOAK_ROWS][SOAK_PLOTS];
+static float soakWet[SOAK_SAMPLES][SOAK_ROWS][SOAK_PLOTS];
+static int soakSampleCount;
+static double soakNextSample;
+static float soakSampleGH = 4.0f;      // game hours between samples
+
+static void SetupSoak(void) {
+    waterEnabled = true;
+    waterEvaporationEnabled = true;
+    groundWearEnabled = true;
+    weatherEnabled = false;            // no rain: only what the ground and the air do
+    soakSampleCount = 0;
+    soakNextSample = gameTime;
+    for (int p = 0; p < SOAK_PLOTS; p++) soakX0[p] = 3 + p * (SOAK_IN + 3);
+    for (int r = 0; r < SOAK_ROWS; r++) soakY0[r] = 3 + r * (SOAK_IN + 3);
+    for (int r = 0; r < SOAK_ROWS; r++)
+        for (int p = 0; p < SOAK_PLOTS; p++) {
+            int x0 = soakX0[p], y0 = soakY0[r];
+            for (int y = y0 - 1; y <= y0 + SOAK_IN; y++)
+                for (int x = x0 - 1; x <= x0 + SOAK_IN; x++) {
+                    bool inside = x >= x0 && x < x0 + SOAK_IN && y >= y0 && y < y0 + SOAK_IN;
+                    if (!inside) {         // the basin's rim: a granite wall one high
+                        GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_GRANITE); ClearWallNatural(x, y, 1);
+                        if (p == 5) SET_FLOOR(x, y, 2);
+                        continue;
+                    }
+                    MaterialType mat = MAT_DIRT;
+                    if (p == 2) mat = MAT_SAND;
+                    if (p == 3) mat = MAT_CLAY;
+                    if (p >= 4) mat = MAT_CONCRETE;
+                    SetWallMaterial(x, y, 0, mat);
+                    if (p >= 4) ClearWallNatural(x, y, 0);
+                    SetVegetation(x, y, 0, p == 0 ? VEG_GRASS_TALLER : VEG_NONE);
+                    SET_CELL_WETNESS(x, y, 0, 0);
+                    if (p == 5) SET_FLOOR(x, y, 2);   // the roof
+                    SetWaterLevel(x, y, 1, soakFill[r]);
+                }
+        }
+    BuildEntrances(); BuildGraph();
+}
+
+static void SoakTickStats(void) {
+    if (gameTime < soakNextSample || soakSampleCount >= SOAK_SAMPLES) return;
+    soakNextSample += GameHoursToGameSeconds(soakSampleGH);
+    for (int r = 0; r < SOAK_ROWS; r++)
+        for (int p = 0; p < SOAK_PLOTS; p++) {
+            int units = 0, wet = 0;
+            for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
+                for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) {
+                    units += WATER(x, y, 1).level;
+                    wet += GET_CELL_WETNESS(x, y, 0);
+                }
+            soakUnits[soakSampleCount][r][p] = units;
+            soakWet[soakSampleCount][r][p] = wet / (float)(SOAK_IN * SOAK_IN);
+        }
+    soakSampleCount++;
+}
+
+static void SoakPrintStats(void) {
+    for (int r = 0; r < SOAK_ROWS; r++) {
+        printf("\nBasins filled to level %d (%d units each): water units left / avg soil wetness 0-3\n",
+               soakFill[r], soakFill[r] * SOAK_IN * SOAK_IN);
+        printf("%6s", "GH");
+        for (int p = 0; p < SOAK_PLOTS; p++) printf(" %12s", soakNames[p]);
+        printf("\n");
+        for (int s = 0; s < soakSampleCount; s++) {
+            // only rows where something changed (and the last one)
+            if (s > 0 && s < soakSampleCount - 1 &&
+                !memcmp(soakUnits[s][r], soakUnits[s - 1][r], sizeof soakUnits[s][r]) &&
+                !memcmp(soakWet[s][r], soakWet[s - 1][r], sizeof soakWet[s][r])) continue;
+            printf("%6.0f", s * soakSampleGH);
+            for (int p = 0; p < SOAK_PLOTS; p++) printf("    %4d / %.1f", soakUnits[s][r][p], soakWet[s][r][p]);
+            printf("\n");
+        }
+    }
+}
+
 #define DRIFT_SPOTS 60
 static int driftItem[DRIFT_SPOTS * 2], driftCount = 0;
 static ItemType driftType[DRIFT_SPOTS * 2];
@@ -6137,6 +6226,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupThrowScare, ThrowScareTickStats, ThrowScarePrintStats, ThrowScareCheck, 40, 32},
     {"throwhunt",  "Hunting deer that outrun people: a hunter with stones dazes them from a distance, one without can only chase",
                    NULL,        SetupThrowHunt, ThrowHuntTickStats, ThrowHuntPrintStats, ThrowHuntCheck, 40, 32},
+    {"soak",       "Six walled basins with a puddle and a pond on grass, dirt, sand, clay, concrete, roofed concrete, no rain: how fast the water goes (soil-moisture.md)",
+                   NULL,        SetupSoak, SoakTickStats, SoakPrintStats, NULL, 48, 20},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
                    "Island",    SetupDrift, NULL, DriftPrintStats, DriftCheck, 256, 256},
     {"tide",       "Tide experiment: mud flats fall dry twice a day, logs on an islet reachable at low tide, a channel with a ford, 4 movers",
