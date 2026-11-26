@@ -85,9 +85,20 @@ and `water.c` (hooks agreed with the soil-moisture session) lets water fall into
 lower opening (pressurised like falling when it ends full), spread through it to an opening on
 the same level, and pass through it in the pressure search (rises to source z - 1 at the far end,
 DF's U-bend). Scenario `basins`: a full basin drains into a lower pit when the valve opens.
-Console `pipe supply`. Next for the loop the user asked for (basin -> basin -> back up): a pump
-(lifts water only while worked: a hand pump as a chore first, mechanical power later), a
-`basins` variant with a lever on the valve and the pump back up; laying water pipes by movers.
+Console `pipe supply`.
+**Pumps (2026-11-26, user: "the pump sounds interesting"):** `src/world/pumps.c`, a DF-style screw
+pump on water CELLS (so for channels, basins and pipe openings alike): over water, it lifts from
+the cell below to the cell beside it (its facing), one level up, only while a settler works it
+(`DESIGNATION_WORK_PUMP` -> `JOBTYPE_WORK_PUMP`, the door/lever chore; settings `pumpRate` 6
+units per game second, `pumpWorkHours` 1). The pump cell is a wooden block, so lifted water
+can't run back over it. Console `pump place|remove|order|list`. Scenario `pumploop`: a basin
+drains through the valved pipe into a pit beside it, a worker pumps it back, round again (a
+little stays behind as puddles each round). Not saved yet (a table: v127 when it is).
+Next: a lever on the valve in `pumploop` (navkit-1e's links), building pumps (recipe), mechanical
+power (a water wheel or windmill turning it: DF's perpetual-motion loop), pump sprite.
+**User doubt (2026-11-26):** pipes vs dug channels overlap; suggested split (not decided yet):
+pipes for buildings (walls and floors: drains, supply), channels + levers outdoors, the pump
+on water cells for both.
 **Not in the spike:** the play bar tools, wall pipes from the console, a cesspit that fills, supply pipes, dirty water into
 rivers, flecks, end / valve / vertical sprites, a pipe overlay mode. The pass keeps a list of
 pipe cells, so it never sweeps the map.
@@ -112,10 +123,18 @@ under the mouse; a red end = waiting to lock). Console `mech lever|plate|remove|
 pull|order|list`. Scenarios (in scenarios-check): `leverflood` (lever marked at tick 300, the
 worker pulls it at ~450, the reservoir runs down the channel) and `plategate` (the worker hauls a
 rock onto the plate's stockpile, the gate opens). Tests: `tests/test_links.c`.
-**Not yet:** building levers and plates (recipes, the Work bar), linking by clicking (select the
-lever, click targets, the workshop-link pattern), the inspector for them, sprites, a describe
-line, a separate floodgate look, an actuator cooldown (doors relock locally and cheaply; revisit
-if plates flicker in crowds).
+**Built and linked in play (2026-11-26):** recipes `CONSTRUCTION_LEVER` (2 sticks + 1 rock) and
+`CONSTRUCTION_PRESSURE_PLATE` (2 rocks) in the furniture category (Work > Build > Furniture, R
+cycles; completing places the mechanism). A click selects a lever or plate (`SEL_MECHANISM`, before
+a stockpile: a plate often has a 1x1 one on it); the inspector shows `DescribeMechanism` (state,
+each link with its target's state, "waiting to lock") and buttons Pull (by order), Link, Pull now
+(dev), Remove, plus per link Normal / Inverted and Unlink. Link starts a link mode
+(`SUBMODE_LINKING_MECHANISM`): click a door or valve to link it, again to unlink; the target under
+the mouse is outlined (green link, red unlink); ESC or L ends it. The selected / linking
+mechanism's links are always drawn.
+**Not yet:** sprites (user may draw: lever off / on, plate up / pressed), a separate floodgate
+look, an actuator cooldown (doors relock locally and cheaply; revisit if plates flicker in
+crowds), play-HUD (Huisje) buttons for lever and plate.
 
 **Still open in step 1:** a small path cost for a closed door. Not `NAV_ENTER_EXTRA` (it must stay
 0 off ladder cells: graph edges only add it at entrances) and not the cell move cost (that is also
