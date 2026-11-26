@@ -668,6 +668,7 @@ static void StartSandbox(void) {
 // rocks, ground moisture; relief flat or gentle, water none / ponds / a stream (settings
 // fieldRelief, fieldWater). Sandbox rules: every tool, nobody dies.
 static void StartField(void) {
+    if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);   // a new field each start
     StartSandbox();
     ScenarioResetWorldSized(NULL, 64, 64);
     GenerateField();
