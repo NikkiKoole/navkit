@@ -54,6 +54,8 @@ void ClearGroundWear(void);
 
 // Called when a mover steps on a tile - increases wear
 void TrampleGround(int x, int y, int z);
+// Parched ground thins its grass (moisture.c): wear added on natural dirt at (x, y, z)
+void DroughtWear(int x, int y, int z, int amount);
 
 // Update wear decay and grass/dirt conversion (call from main tick)
 void UpdateGroundWear(void);

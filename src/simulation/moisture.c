@@ -17,6 +17,7 @@ bool soilMoistureEnabled = true;
 float moistureDryHours = 36.0f;
 float moistureSoakSpeed = 1.0f;
 float moistureSweepInterval = 2.0f;
+int droughtWearPerSweep = 12;   // parched dirt: grass thins to bare in ~3-4 days of parched (wearGrassToDirt 1000)
 
 long soilSoakedUnits = 0;
 static float moistureSweepAccum = 0.0f;
@@ -208,6 +209,13 @@ void SoilMoistureInitNow(void) {
 }
 
 void SoilMoistureMarkLoaded(void) { moistureWorld = gridGeneration; }
+bool SoilMoistureReady(void) { return moistureWorld == gridGeneration; }
+
+bool SoilTooDryToGrow(int x, int y, int z) {
+    if (!soilMoistureEnabled || !IsSoilSurface(x, y, z)) return false;   // buried soil holds no moisture
+    EnsureMoistureWorld();
+    return MOISTURE(x, y, z) < MOISTURE_NORMAL;
+}
 
 // Rows of the sweep due after `accum` of the interval: big maps spread the sweep (like ground wear)
 static int MoistureRowsDue(float accum, float interval) {
@@ -218,9 +226,31 @@ static int MoistureRowsDue(float accum, float interval) {
     return due < 0 ? 0 : due > total ? total : due;
 }
 
+// Plants follow the moisture: parched dirt loses its grass (DroughtWear; dry ground just doesn't
+// regrow, groundwear.c), soil that stays soaked grows reeds, reeds on soil drying out turn to grass
+static void VegetationByMoisture(int x, int y, int z) {
+    int m = MOISTURE(x, y, z);
+    VegetationType veg = GetVegetation(x, y, z);
+    if (m < MOISTURE_DRY) {
+        if (veg != VEG_NONE) DroughtWear(x, y, z, droughtWearPerSweep);
+        return;
+    }
+    if (m >= MOISTURE_SOAKED) {
+        if (veg == VEG_REEDS || GetWallMaterial(x, y, z) != MAT_DIRT) return;
+        if (z + 1 < gridDepth && WATER(x, y, z + 1).level > 0) return;   // river beds: banks get reeds (groundwear.c)
+        if (veg >= VEG_GRASS_TALL || (veg == VEG_NONE && GetGroundWear(x, y, z) == 0))
+            if (Rand01() < 0.02f) SetVegetation(x, y, z, VEG_REEDS);   // soaked for days, not a shower
+        return;
+    }
+    if (veg == VEG_REEDS && m < MOISTURE_MOIST && Rand01() < 0.1f) SetVegetation(x, y, z, VEG_GRASS_TALL);
+}
+
 static void DryRow(int y, int z, float hours) {
     for (int x = 0; x < gridWidth; x++)
-        if (IsSoilSurface(x, y, z)) DryCell(x, y, z, hours);
+        if (IsSoilSurface(x, y, z)) {
+            DryCell(x, y, z, hours);
+            VegetationByMoisture(x, y, z);
+        }
 }
 
 void UpdateSoilMoisture(void) {

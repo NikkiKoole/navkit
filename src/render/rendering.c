@@ -920,20 +920,6 @@ void DrawRampOverlay(void) {
     }
 }
 
-// Grass on dry ground turns straw, on parched ground brown (moisture.h); normal or wetter ground
-// keeps the biome's tint unchanged
-static Color GrassTintAt(int x, int y, int zSoil) {
-    Color base = biomePresets[selectedBiome].grassTint;
-    int m = MOISTURE(x, y, zSoil);
-    if (m >= MOISTURE_NORMAL) return base;
-    float t = (float)(MOISTURE_NORMAL - m) / (float)MOISTURE_NORMAL;   // 0 at normal, 1 bone dry
-    Color dry = { 255, (unsigned char)(235 - 40 * t), (unsigned char)(160 - 70 * t), 255 };
-    Color mixed = { (unsigned char)(base.r + (dry.r - base.r) * t * 0.5f + 0.5f),
-                    (unsigned char)(base.g + (dry.g - base.g) * (0.4f + 0.6f * t)),
-                    (unsigned char)(base.b + (dry.b - base.b) * (0.4f + 0.6f * t)), 255 };
-    return mixed;
-}
-
 static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -966,7 +952,7 @@ static void DrawGrassOverlay(void) {
                 // Grass is on top of solid, lit from the air above (zDepth+1)
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
-                else tint = MultiplyColor(tint, GrassTintAt(x, y, zDepth));
+                else tint = MultiplyColor(tint, biomePresets[selectedBiome].grassTint);
                 FastSprite(atlas, src, dest, tint);
             }
         }
@@ -1001,7 +987,7 @@ static void DrawGrassOverlay(void) {
                 Rectangle src = SpriteGetRect(sprite);
                 Color lightTint = GetLightColor(x, y, z, skyColor);
                 if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
-                else lightTint = MultiplyColor(lightTint, GrassTintAt(x, y, zBelow));
+                else lightTint = MultiplyColor(lightTint, biomePresets[selectedBiome].grassTint);
                 FastSprite(atlas, src, dest, lightTint);
             }
         }
@@ -1053,6 +1039,22 @@ static void DrawPlantOverlay(void) {
     }
 }
 
+// The ground's moisture over the grass (moisture.h): wet and soaked soil is mud (brown), dry and
+// parched soil a pale straw veil, the stronger the drier. Normal or moist ground: nothing.
+static bool GroundMoistureColor(int x, int y, int zSoil, Color* out) {
+    if (IsMuddy(x, y, zSoil)) {
+        int wetness = GET_CELL_WETNESS(x, y, zSoil);
+        *out = (Color){80, 60, 30, (unsigned char)((wetness == 2) ? 80 : 120)};
+        return true;
+    }
+    if (!soilMoistureEnabled || !SoilMoistureReady()) return false;   // a new world before its first tick
+    int m = MOISTURE(x, y, zSoil);
+    if (m >= MOISTURE_NORMAL || !IsSoilSurface(x, y, zSoil)) return false;
+    int alpha = 30 + 90 * (MOISTURE_NORMAL - m) / MOISTURE_NORMAL;   // dry ~30-75, parched up to 120
+    *out = (Color){215, 185, 110, (unsigned char)alpha};
+    return true;
+}
+
 static void DrawMud(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -1067,11 +1069,8 @@ static void DrawMud(void) {
         for (int x = minX; x < maxX; x++) {
             for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
                 Color depthTint = GetDepthTint(zDepth, z);
-                if (!IsMuddy(x, y, zDepth)) continue;
-
-                int wetness = GET_CELL_WETNESS(x, y, zDepth);
-                unsigned char alpha = (wetness == 2) ? 80 : 120;
-                Color mudColor = {80, 60, 30, alpha};
+                Color mudColor;
+                if (!GroundMoistureColor(x, y, zDepth, &mudColor)) continue;
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 mudColor = MultiplyColor(mudColor, tint);
 
@@ -1086,14 +1085,11 @@ static void DrawMud(void) {
     int zBelow = z - 1;
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            if (!IsMuddy(x, y, zBelow)) continue;
+            Color mudColor;
+            if (!GroundMoistureColor(x, y, zBelow, &mudColor)) continue;
             CellType cellHere = GRID(x, y, z);
             if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
             if (HAS_FLOOR(x, y, z)) continue;
-
-            int wetness = GET_CELL_WETNESS(x, y, zBelow);
-            unsigned char alpha = (wetness == 2) ? 80 : 120;
-            Color mudColor = {80, 60, 30, alpha};
             Color lightTint = GetLightColor(x, y, z, skyColor);
             mudColor = MultiplyColor(mudColor, lightTint);
 
@@ -4044,7 +4040,7 @@ static void DrawFrontView(void) {
                 Color grassLight = GetLightColor(x, worldY, zBelow, skyColor);
                 Color grassTint = MultiplyColor(layerTint, grassLight);
                 if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
-                else grassTint = MultiplyColor(grassTint, GrassTintAt(x, worldY, zBelow));
+                else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
                 FastSprite(atlas, SpriteGetRect(grassSprite), grassDest, grassTint);
             }
         }

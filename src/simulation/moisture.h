@@ -30,6 +30,7 @@ extern bool soilMoistureEnabled;   // off: water doesn't soak in, soil doesn't d
 extern float moistureDryHours;     // game hours for open bare dirt at 20 C to lose half of what it holds above "normal"
 extern float moistureSoakSpeed;    // multiplier on every soil's soaking speed
 extern float moistureSweepInterval;   // game hours between drying sweeps
+extern int droughtWearPerSweep;       // wear parched dirt adds to its grass per sweep (groundwear.c thresholds)
 
 SoilState SoilMoistureState(int m);
 const char* SoilStateName(SoilState s);
@@ -58,6 +59,10 @@ void UpdateSoilMoisture(void);
 // water after it wants dry ground under that water). Loading a save with moisture: MarkLoaded.
 void SoilMoistureInitNow(void);
 void SoilMoistureMarkLoaded(void);
+// Moisture belongs to this world (set up or loaded): readers that mustn't set it up (drawing) check it
+bool SoilMoistureReady(void);
+// Below normal: grass doesn't grow back (groundwear.c)
+bool SoilTooDryToGrow(int x, int y, int z);
 float GetMoistureSweepAccum(void);
 void SetMoistureSweepAccum(float v);
 

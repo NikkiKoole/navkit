@@ -256,6 +256,63 @@ describe(wetness_drying) {
     }
 }
 
+describe(grass_and_moisture) {
+    // moisture.c VegetationByMoisture + groundwear.c: parched dirt wears its grass away, dry
+    // ground doesn't regrow, ground that stays soaked grows reeds
+    it("should thin grass to bare dirt on parched ground") {
+        SetupDirtGrid();
+        InitTemperature();
+        int savedS = seasonalAmplitude, savedD = diurnalAmplitude, savedA = ambientSurfaceTemp;
+        seasonalAmplitude = 0; diurnalAmplitude = 0; SetAmbientSurfaceTemp(36);   // heat: no floor
+        SoilMoistureInitNow();
+        SetVegetation(3, 2, 0, VEG_GRASS_TALLER);
+        SetSoilMoisture(3, 2, 0, 10);   // parched
+        RunMoistureHours(240.0f);
+        expect(GetVegetation(3, 2, 0) == VEG_NONE);
+        expect(SoilMoistureState(MOISTURE(3, 2, 0)) == SOIL_PARCHED);
+        seasonalAmplitude = savedS; diurnalAmplitude = savedD; SetAmbientSurfaceTemp(savedA);
+    }
+
+    it("should not let grass grow back on dry ground, but on normal ground") {
+        for (int k = 0; k < 2; k++) {
+            SetupDirtGrid();
+            SoilMoistureInitNow();
+            SetVegetation(3, 2, 0, VEG_GRASS_SHORT);
+            WEAR(3, 2, 0) = 300;   // trampled short grass, recovering
+            wearActiveCells = 1;
+            SetSoilMoisture(3, 2, 0, k == 0 ? 40 : MOISTURE_BASELINE);   // dry, then normal
+            float total = GameHoursToGameSeconds(200.0f), elapsed = 0;
+            while (elapsed < total) {
+                gameDeltaTime = TICK_DT;
+                if (k == 0) SetSoilMoisture(3, 2, 0, 40);   // keep it dry (no drying sweep here)
+                UpdateGroundWear();
+                elapsed += TICK_DT;
+            }
+            if (k == 0) { expect(GetVegetation(3, 2, 0) == VEG_GRASS_SHORT); }
+            else { expect(GetVegetation(3, 2, 0) > VEG_GRASS_SHORT); }
+        }
+    }
+
+    it("should grow reeds where the ground stays soaked, not under standing water") {
+        SetupDirtGrid();
+        InitTemperature();
+        SoilMoistureInitNow();
+        SetVegetation(3, 2, 0, VEG_GRASS_TALL);
+        SetVegetation(5, 2, 0, VEG_GRASS_TALL);
+        SetWaterLevel(5, 2, 1, 1);   // a puddle on the second cell
+        float total = GameHoursToGameSeconds(600.0f), elapsed = 0;
+        while (elapsed < total) {
+            gameDeltaTime = TICK_DT;
+            SetSoilMoisture(3, 2, 0, MOISTURE_FULL);   // a marsh: kept soaked
+            SetSoilMoisture(5, 2, 0, MOISTURE_FULL);
+            UpdateSoilMoisture();
+            elapsed += TICK_DT;
+        }
+        expect(GetVegetation(3, 2, 0) == VEG_REEDS);
+        expect(GetVegetation(5, 2, 0) == VEG_GRASS_TALL);
+    }
+}
+
 describe(soil_soaking) {
     it("should soak a puddle into dirt, not into stone") {
         SetupDirtGrid();
@@ -353,6 +410,7 @@ int main(int argc, char** argv) {
     test(muddy_detection);
     test(water_wetness_sync);
     test(wetness_drying);
+    test(grass_and_moisture);
     test(soil_soaking);
     test(mud_dirt_tracking);
     

@@ -1,6 +1,6 @@
 # Soil moisture: water soaks into the ground, plants and sun take it out
 
-Research 2026-11-26. Status: partial. Steps 1-3 built (measuring scenario, evaporation per surface, the moisture layer) and rain falls as water; next: grass and crops react. Pairs with "Soaking" in `water-ideas.md`
+Research 2026-11-26. Status: partial. Steps 1-4 built (measuring scenario, evaporation per surface, the moisture layer, grass reacts) and rain falls as water; next: crops (step 5). Pairs with "Soaking" in `water-ideas.md`
 and the open "soaking sink" in `water.md`.
 
 The user's ask: water on grass / open ground disappears too fast. Let the top soil absorb it,
@@ -147,7 +147,7 @@ makes watering, irrigation ditches and drainage real jobs.
 1. ~~Measure first~~ done: scenario `soak` (see Measured).
 2. ~~Evaporation per surface and depth (2)~~ done 2026-11-26, see "Step 2 built".
 3. ~~Moisture layer + soaking + drying, wetness derived from it (1, 3, 4, 5)~~ done 2026-11-26, see "Step 3 built".
-4. Grass reacts to moisture (6, grass part).
+4. ~~Grass reacts to moisture (6, grass part)~~ done 2026-11-26, see "Step 4 built".
 5. Crops: curve, health, wilting/rot; watering job adds moisture (6, crops part).
 
 ## Step 2 built (2026-11-26): evaporation per surface, any depth
@@ -265,4 +265,40 @@ lowland (z4) water, units:
 The flats flood in a long wet spell and dry within ~2 days after. Weather is still off in every
 game (only scenarios `island-winter` and `heat` turn it on); tick cost with heavy rain on the
 island 0.53 -> 0.57 ms.
+
+## Step 4 built (2026-11-26): grass follows the moisture
+
+- **Parched dirt loses its grass** (`VegetationByMoisture` in the drying sweep): below "dry" (26)
+  each sweep adds `droughtWearPerSweep` (12) wear through the ground-wear system (`DroughtWear`,
+  `groundwear.c`), so grass steps down taller -> tall -> short -> bare like a trodden path and keeps
+  `HAD_VEGETATION`, so it comes back.
+- **No regrowth on dry ground**: ground wear's recovery is off while the soil is below normal (64).
+- **Reeds**: dirt that stays soaked (>= 230) with no water standing on it (a marsh, not a river
+  bed: banks next to water keep the old rule) turns tall grass or bare dirt to reeds, 2% a sweep
+  (days, not a shower); reeds on soil drying below moist turn back to tall grass.
+- **What you see**: the mud overlay became a ground-moisture overlay (`DrawMud`,
+  `GroundMoistureColor`): wet/soaked soil mud as before, dry and parched soil a pale straw veil,
+  the stronger the drier. Normal or moist ground draws as before. (A grass tint alone can't do
+  it: the grass sprite has almost no red, a multiply only darkens it toward olive.)
+- Scenarios now set a steady temperature through `ambientSurfaceTemp` (with both swings 0 the
+  game uses it, not `baseSurfaceTemp`: soak was only 20 C by that default), restored like the
+  other climate settings.
+
+Scenario `drought` (32x32 tall grass, 6 days at 36 C without rain, then 20 C and rain; dayLength 60):
+
+```
+  GH  temp  moist   bare  short  tall  taller
+   0   36C    39%      0      0     0    1024
+  24   36C    15%      0      0     0    1024
+  48   36C     6%      0     15  1009       0
+  72   36C     2%      0   1024     0       0
+ 120   36C     0%    170    854     0       0
+ 144   20C     0%   1024      0     0       0   (the rain starts)
+ 192   20C    40%    504    520     0       0
+ 240   20C    62%    230    668   126       0
+```
+
+At 36 C the soil is parched in ~1.5 days, the grass is short after ~3 and bare after ~6; rain
+brings it back over the next days. At 28 C the floor is ~46 (dry, not parched): straw-coloured
+ground and no regrowth, but no dieback.
 

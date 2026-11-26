@@ -7,6 +7,7 @@
 #include "../core/time.h"
 #include "fire.h"
 #include "water.h"
+#include "moisture.h"
 #include "trees.h"
 #include "../entities/items.h"
 #include <string.h>
@@ -102,6 +103,20 @@ static void UpdateSurfaceFromWear(int x, int y, int z, bool recovering) {
             SetVegetation(x, y, z, target);
         }
     }
+}
+
+// Drought (moisture.c): parched ground wears its grass down like feet do, one threshold at a
+// time (taller -> tall -> grass -> trampled -> bare dirt; HAD_VEGETATION lets it come back)
+void DroughtWear(int x, int y, int z, int amount) {
+    if (!groundWearEnabled || amount <= 0) return;
+    if (!IsWallNatural(x, y, z) || GetWallMaterial(x, y, z) != MAT_DIRT) return;
+    int oldWear = WEAR(x, y, z);
+    int newWear = oldWear + amount;
+    if (newWear > WearCap()) newWear = WearCap();
+    if (newWear == oldWear) return;
+    WEAR(x, y, z) = newWear;
+    if (oldWear == 0) wearActiveCells++;
+    UpdateSurfaceFromWear(x, y, z, false);
 }
 
 // Check if there's a tree or sapling within distance
@@ -225,8 +240,10 @@ static void UpdateGroundWearRow(int y, int z, float vegRate) {
             if (fireRun && HasFire(x, y, z)) continue;
         
             if (isDirt) {
-                // Decay wear (modulated by seasonal vegetation growth)
+                // Decay wear (modulated by seasonal vegetation growth); grass doesn't grow back
+                // on dry or parched ground (moisture.c)
                 int effectiveDecay = (int)(wearDecayRate * vegRate);
+                if (SoilTooDryToGrow(x, y, z)) effectiveDecay = 0;
                 int oldWear = WEAR(x, y, z);
                 if (effectiveDecay > 0 && oldWear > effectiveDecay) {
                     WEAR(x, y, z) = oldWear - effectiveDecay;

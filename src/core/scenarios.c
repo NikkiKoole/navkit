@@ -57,6 +57,7 @@ typedef struct {
     bool support;
     float animalFlee; bool huntThrow, animalRespawn;
     int baseTemp, seasonAmp, dayAmp;   // climate (town sets a mild one)
+    int ambientTemp;                   // the surface temperature when both swings are 0 (soak, drought)
     bool weather;
     float visitsPerDay, visitStayMin, visitStayMax;   // visit.h (scenario visiting)
 } ScenarioSettings;
@@ -86,7 +87,7 @@ static void SnapshotOrRestoreSettings(void) {
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
                                            animalRespawnEnabled,
-                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, weatherEnabled,
+                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, ambientSurfaceTemp, weatherEnabled,
                                            visitsPerDay, visitStayMinHours, visitStayMaxHours};
         haveSavedSettings = true;
         return;
@@ -114,6 +115,7 @@ static void SnapshotOrRestoreSettings(void) {
     baseSurfaceTemp = savedSettings.baseTemp;
     seasonalAmplitude = savedSettings.seasonAmp;
     diurnalAmplitude = savedSettings.dayAmp;
+    if (ambientSurfaceTemp != savedSettings.ambientTemp) SetAmbientSurfaceTemp(savedSettings.ambientTemp);
     weatherEnabled = savedSettings.weather;
     visitsPerDay = savedSettings.visitsPerDay;
     visitStayMinHours = savedSettings.visitStayMin;
@@ -4678,9 +4680,9 @@ static void SetupSoakWorld(bool rain) {
     waterEvaporationEnabled = true;
     groundWearEnabled = true;
     weatherEnabled = rain;             // soak: no rain, only what the ground and the air do
-    baseSurfaceTemp = 20;              // a steady 20 C: the rates' reference (restored by the next scenario)
-    seasonalAmplitude = 0;
-    diurnalAmplitude = 0;
+    seasonalAmplitude = 0;             // a steady 20 C, the rates' reference: with no swings the surface
+    diurnalAmplitude = 0;              // is ambientSurfaceTemp (restored by the next scenario)
+    SetAmbientSurfaceTemp(20);
     soakSampleCount = 0;
     soakNextSample = gameTime;
     soilMoistureEnabled = true;
@@ -4772,6 +4774,75 @@ static void SoakPrintStats(void) {
             for (int p = 0; p < SOAK_PLOTS; p++) printf("    %4d / %3.0f", soakUnits[s][r][p], soakWet[s][r][p]);
             printf("\n");
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// drought: a tall-grass field in a hot spell (36 C, no rain) for 6 days, then 20 C and rain:
+// the soil dries out, the grass browns and thins to dirt, the rain brings it back (moisture.c,
+// docs/todo/world/soil-moisture.md step 4). Prints moisture and grass every 12 game hours.
+#define DROUGHT_DAYS 6
+#define DROUGHT_SAMPLES 40
+static double droughtStart, droughtNextSample;
+static bool droughtBroken;
+static int droughtSampleCount;
+static int droughtMoist[DROUGHT_SAMPLES], droughtTemp[DROUGHT_SAMPLES], droughtVeg[DROUGHT_SAMPLES][6];   // none, short, grass, tall, taller, reeds
+
+static void SetupDrought(void) {
+    waterEnabled = true;
+    waterEvaporationEnabled = true;
+    groundWearEnabled = true;
+    soilMoistureEnabled = true;
+    weatherEnabled = true;
+    weatherState.current = WEATHER_CLEAR;
+    weatherState.intensity = 1.0f;
+    weatherState.transitionTimer = 1e9f;   // no weather changes: DroughtLiveTick decides
+    seasonalAmplitude = 0;                 // a steady hot spell: with no swings the surface is
+    diurnalAmplitude = 0;                  // ambientSurfaceTemp (restored by the next scenario)
+    SetAmbientSurfaceTemp(36);
+    SoilMoistureInitNow();
+    droughtStart = gameTime;
+    droughtNextSample = gameTime;
+    droughtBroken = false;
+    droughtSampleCount = 0;
+}
+
+static void DroughtLiveTick(void) {
+    if (!droughtBroken && gameTime >= droughtStart + GameHoursToGameSeconds(24.0f * DROUGHT_DAYS)) {
+        droughtBroken = true;              // the weather breaks: mild, and it rains
+        SetAmbientSurfaceTemp(20);
+        weatherState.current = WEATHER_RAIN;
+        weatherState.intensity = 1.0f;
+        weatherState.transitionTimer = 1e9f;
+    }
+}
+
+static void DroughtTickStats(void) {
+    if (gameTime < droughtNextSample || droughtSampleCount >= DROUGHT_SAMPLES) return;
+    droughtNextSample += GameHoursToGameSeconds(12.0f);
+    long m = 0; int n = 0;
+    int* v = droughtVeg[droughtSampleCount];
+    for (int k = 0; k < 6; k++) v[k] = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            if (!IsSoilSurface(x, y, 0)) continue;
+            m += MOISTURE(x, y, 0); n++;
+            VegetationType veg = GetVegetation(x, y, 0);
+            int k = veg == VEG_REEDS ? 5 : veg >= VEG_GRASS_TALLER ? 4 : veg >= VEG_GRASS_TALL ? 3 :
+                    veg >= VEG_GRASS ? 2 : veg >= VEG_GRASS_SHORT ? 1 : 0;
+            v[k]++;
+        }
+    droughtMoist[droughtSampleCount] = n ? (int)(100 * m / ((long)n * MOISTURE_FULL)) : 0;
+    droughtTemp[droughtSampleCount] = GetTemperature(gridWidth / 2, gridHeight / 2, 1);
+    droughtSampleCount++;
+}
+
+static void DroughtPrintStats(void) {
+    printf("\nDrought: %d days at 36 C without rain, then 20 C and rain. Soil moisture %% and grass cells\n", DROUGHT_DAYS);
+    printf("%6s %5s %6s %6s %6s %6s %6s %7s %6s\n", "GH", "temp", "moist", "bare", "short", "grass", "tall", "taller", "reeds");
+    for (int s = 0; s < droughtSampleCount; s++) {
+        int* v = droughtVeg[s];
+        printf("%6d %4dC %5d%% %6d %6d %6d %6d %7d %6d\n", s * 12, droughtTemp[s], droughtMoist[s], v[0], v[1], v[2], v[3], v[4], v[5]);
     }
 }
 
@@ -6636,6 +6707,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupThrowHunt, ThrowHuntTickStats, ThrowHuntPrintStats, ThrowHuntCheck, 40, 32},
     {"soak",       "Six walled basins with a puddle and a pond on grass, dirt, sand, clay, concrete, roofed concrete, no rain: how fast the water goes (soil-moisture.md)",
                    NULL,        SetupSoak, SoakTickStats, SoakPrintStats, NULL, 48, 20},
+    {"drought",    "A tall-grass field: 6 days at 36 C without rain (soil dries out, grass browns and thins to dirt), then 20 C and rain (it grows back) (soil-moisture.md)",
+                   NULL,        SetupDrought, DroughtTickStats, DroughtPrintStats, NULL, 32, 32, DroughtLiveTick},
     {"rainfall",   "The soak basins without water: a day of steady rain, then dry weather: what soaks in, what stands, how it dries (rainWater, soil-moisture.md)",
                    NULL,        SetupRainfall, SoakTickStats, SoakPrintStats, NULL, 48, 20, SoakLiveTick},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",
