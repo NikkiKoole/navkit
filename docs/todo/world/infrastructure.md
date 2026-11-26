@@ -152,6 +152,16 @@ Every piece costs items and a mover's work (blueprints, like walls and belts). E
 what it does: an open door stands open, a pulled lever leans over, supplied pipes are tinted,
 water flecks run along a pipe when a toilet flushes.
 
+**Pipe sprites (drawn by the user, in the atlas since 2026-11-26):** `pipe-*` in
+`assets/worksheet8x8.ase`, the same 11 shapes and names as `rail-*` (ns, ew, ne, es, sw, nw, nes,
+esw, nsw, new, nesw), so a pipe picks its sprite from its N/E/S/W neighbours like
+`RailingSpriteAt` (`rendering.c`). A pipe is a hollow tube and each `rail-*` fills its `pipe-*`
+exactly, so a pipe draws in two layers: `pipe-*` tinted by material (iron, clay, copper), then the
+same shape's `rail-*` tinted by what's inside (clean water, dirty water; nothing when empty), and
+flecks can run along that inner bar. Not drawn yet: end pieces (`pipe-n/e/s/w`, capped or open at
+an outlet), a lone pipe, a valve (open / closed), a vertical piece (the stack bit: a pipe going up
+or down a level).
+
 **Links are seen in an overlay (user, 2026-11-26).** Not drawn all the time (a busy base would be
 a web of lines), but there must always be a way to see them: a links overlay that shows every
 link (source to targets), and the selected lever / plate / door showing its own links. The same
