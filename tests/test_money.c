@@ -242,6 +242,27 @@ describe(shops) {
         expect(items[snack].stackCount == 5 && items[snack].reservedBy == -1);
     }
 
+    // City 1999 money step 4: the Scavenger's old stand-in "takes no stockpile food" is gone;
+    // like anyone it buys when it can pay and can't when broke
+    it("a scavenger with money buys at the shop; with an empty purse it can't") {
+        Setup();
+        hungerEnabled = true;
+        int snack = StockShop(ITEM_SNACK, 5);
+        movers[0].traits[0] = TRAIT_SCAVENGER; movers[0].traits[1] = TRAIT_NONE;
+        movers[0].hunger = 0.2f;
+        bool wentForIt = false;
+        for (int t = 0; t < 6000; t++) {
+            Tick(); NeedsTick(); ProcessFreetimeNeeds();
+            if (movers[0].freetimeState == FREETIME_SEEKING_FOOD && movers[0].needTarget == snack) wentForIt = true;
+        }
+        expect(!wentForIt);
+        expect(items[snack].stackCount == 5 && stockpileTill[shop] == 0);
+        MoverAddCoins(0, 10);
+        expect(RunUntilAte(0, 20000));
+        expect(MoverCoins(0) == 7 && stockpileTill[shop] == 3);
+        expect(RunStateAudit(test_verbose) == 0);
+    }
+
     it("a thirsty mover pays for a soda") {
         Setup();
         thirstEnabled = true;

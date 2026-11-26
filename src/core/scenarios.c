@@ -4683,7 +4683,7 @@ static bool InventoryCheck(char* why, int whyLen) {
 // scrounge: hunger-driven bin searching (docs/vision/city-1999.md "Scrounging"). The trash
 // street, but the stand sells burgers (a big portion) and sodas. 10 NPCs eat when hungry;
 // whoever isn't starving can't finish a burger and throws the leftovers in a bin with the
-// wrapper. Two Scavengers (no money: they take nothing from the stand) live off the bins:
+// wrapper. Two Scavengers (empty purses: they can't pay at the stand) live off the bins:
 // search, eat the best, keep the rest in a pocket jacket (scavenger 0) or a hand (1).
 // Stats: bin searches and meals per scavenger, their lowest hunger, leftovers in bins.
 static int scrScav[2], scrSearches[2], scrMeals[2], scrPrevState[2];

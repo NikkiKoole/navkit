@@ -279,11 +279,11 @@ static void StartFoodSearch(Mover* m, int moverIdx) { PROFILE_ACCUM_BEGIN(FoodSe
 static void StartFoodSearchBody(Mover* m, int moverIdx) {
     // Food the mover carries (pockets, backpack, a bag, a hand) comes first
     if (EatFromInventory(m, moverIdx)) return;
-    // Then stockpiles, then the ground. A scavenger has no money (for now: no coins yet), so
-    // the food in stockpiles (shops, stands) is not for it.
+    // Then stockpiles, then the ground. Shop food only if the mover can pay, and only what it
+    // may take (both inside the search): a scavenger with an empty purse gets nothing from a stand.
     int itemIdx = -1;
     PROFILE_ACCUM_BEGIN(FoodInStockpile);
-    if (!MoverHasTrait(m, TRAIT_SCAVENGER)) itemIdx = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z);
+    itemIdx = FindNearestEdibleInStockpile(moverIdx, m->x, m->y, (int)m->z);
     PROFILE_ACCUM_END(FoodInStockpile);
     if (itemIdx < 0) {
         PROFILE_ACCUM_BEGIN(FoodOnGround);

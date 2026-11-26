@@ -79,8 +79,8 @@ typedef enum {
     TRAIT_TIDY,         // Walks twice as far to put trash in a bin; dirt bothers them more.
     TRAIT_SLOB,         // Drops trash where they stand unless a bin is right there; ignores dirt.
     // Not rolled at random (TRAIT_ROLLED_COUNT): set by a game or scenario
-    TRAIT_SCAVENGER,    // Lives off bins: searches them when hungry, keeps leftovers. For now
-                        // also "no money": takes no food from stockpiles (until coins exist).
+    TRAIT_SCAVENGER,    // Lives off bins: searches them when hungry (before starving), keeps
+                        // leftovers. Buys like anyone else: shops are "can't pay" when broke.
     TRAIT_COUNT
 } TraitType;
 #define TRAIT_ROLLED_COUNT TRAIT_SCAVENGER   // AssignRandomTraits picks from traits below this

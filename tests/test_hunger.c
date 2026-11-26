@@ -15,6 +15,7 @@
 #include "../src/entities/furniture.h"
 #include "../src/entities/action_queue.h"
 #include "../src/entities/inventory.h"
+#include "../src/entities/money.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/water.h"
@@ -1934,12 +1935,22 @@ describe(scrounging) {
         expect(CountType(ITEM_LEFTOVERS, bin) == 0);
     }
 
-    it("a scavenger takes no food from a stockpile (no money)") {
+    // City 1999 money step 4: no more "a scavenger takes no stockpile food"; money decides
+    // (shop food needs coins, free food is free; tests/test_money.c has the buying side)
+    it("a scavenger with an empty purse leaves shop food alone; free stockpile food it takes") {
         SetupClean();
         int mi = ScroungeDiner();
         movers[mi].traits[0] = TRAIT_SCAVENGER;
+        int sp = -1;
+        expect(IsPositionInStockpile(5.5f * CELL_SIZE, 5.5f * CELL_SIZE, 1, &sp) && sp >= 0);
+        ShopSetForSale(sp, true);
         ProcessFreetimeNeeds();
         expect(movers[mi].freetimeState != FREETIME_SEEKING_FOOD);
+        ShopSetForSale(sp, false);
+        movers[mi].freetimeState = FREETIME_NONE;
+        movers[mi].needSearchCooldown = 0.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_FOOD);
     }
 
     it("a hungry scavenger walks to a bin with food, rummages, eats one, stows the rest") {
