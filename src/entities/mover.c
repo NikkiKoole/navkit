@@ -45,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "visit.h"
+#include "places.h"
 
 // Fast inverse square root (Quake III algorithm)
 // Uses memcpy to avoid undefined behavior from type-punning
@@ -1549,6 +1550,12 @@ static void AssignNewMoverGoal(Mover* m) {
     for (int retry = 0; retry < 3 && NoticeGoalNearDisliked((int)(m - movers), newGoal.x, newGoal.y, newGoal.z); retry++) {
         if (MoverWanderLocal()) newGoal = GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius, false);
         else newGoal = GetRandomWalkableCellOnZ(cz);
+    }
+    // Not in a home that isn't its own (places.h): another random goal, else stay put
+    for (int retry = 0; retry < 4 && !MayEnter((int)(m - movers), newGoal.x, newGoal.y, newGoal.z); retry++) {
+        newGoal = MoverWanderLocal() ? GetRandomGoalNear((Point){cx, cy, cz}, moverWanderRadius, false)
+                                     : GetRandomWalkableCellOnZ(cz);
+        if (retry == 3 && !MayEnter((int)(m - movers), newGoal.x, newGoal.y, newGoal.z)) newGoal = (Point){cx, cy, cz};
     }
     m->goal = newGoal;
 

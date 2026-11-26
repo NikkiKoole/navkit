@@ -25,6 +25,7 @@
 #define MAX_PLACES        1024
 #define MAX_MOVER_GROUPS  4
 #define PLACE_NAME_LEN    24
+#define PLACE_MAX_DEPTH   32     // places inside places: PlaceCreate refuses a deeper one
 
 typedef enum {
     GROUP_PUBLIC = 0,     // group 0: everyone

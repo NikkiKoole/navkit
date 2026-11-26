@@ -597,6 +597,7 @@ bench_pathfinding_SRC := tests/bench_pathfinding.c
 bench_astar_heap_SRC := tests/bench_astar_heap.c
 bench_nav_terrains_SRC := tests/bench_nav_terrains.c
 bench_nav_update_SRC := tests/bench_nav_update.c
+bench_places_SRC := tests/bench_places.c
 
 # Job system benchmark
 bench_jobs: $(TEST_UNITY_OBJ)
@@ -628,6 +629,11 @@ scenarios-check: path
 bench_nav_terrains: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_nav_terrains_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_nav_terrains
+
+# Ownership and access (places.c): query cost by nesting depth, HomeOfGroup, food scan, VisitTick
+bench_places: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_places_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/bench_places
 
 # Incremental HPA* graph update cost on 512x512x16 (+ incremental == full build check)
 bench_nav_update: $(TEST_UNITY_OBJ)
@@ -836,4 +842,4 @@ cscope:
 nav: tags cscope
 	@echo "Updated tags + cscope.out"
 
-.PHONY: all clean clean-raylib clean-atlas nav test test_inventory test_commands test_find test_action_queue test_money test_places test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update scenarios-check windows
+.PHONY: all clean clean-raylib clean-atlas nav test test_inventory test_commands test_find test_action_queue test_money test_places test_reset_failures test_layer_access test_nav_standalone test_nav_fuzz test-tap test-legacy test-both daw-fast test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance test_fog test_thirst test_mud_cob test_reeds test_loop_closers test_namegen test_action_registry test_describe test_biome_presets test_trains test_tide test_mood test_rooms test_toilet test_notice test_explosion test_throwing test_support test_town path steer crowd flow flow-big flow3d mechanisms sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed chop-flip path8 path16 path-sound bench bench_jobs bench_items bench_pathfinding bench_astar_heap bench_nav_terrains bench_nav_update bench_places scenarios-check windows

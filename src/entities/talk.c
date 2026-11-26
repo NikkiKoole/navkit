@@ -13,6 +13,7 @@
 #include "mover.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "places.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -304,7 +305,8 @@ static void ArrangeSlots(int t) {
         float a = start + 6.2831853f * (float)s / (float)n;
         float x = tk->centerX + cosf(a) * r, y = tk->centerY + sinf(a) * r;
         int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
-        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt((int)m->z, gy, gx)) {
+        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt((int)m->z, gy, gx) ||
+            !MayEnter(tk->members[k], gx, gy, (int)m->z)) {   // not in a home not its own (places.h)
             x = m->x; y = m->y;
         }
         tk->slotX[k] = x;
@@ -349,6 +351,7 @@ static int WatchPickSpot(const Talk* tk, const Mover* m) {
             WatchSpotPos(tk, spot, &x, &y);
             int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
             if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt(tk->z, gy, gx)) continue;
+            if (!MayEnter((int)(m - movers), gx, gy, tk->z)) continue;   // not in a home not its own (places.h)
             float ringR = WATCH_RING0 + WATCH_RING_STEP * ring;   // how far round the ring (cells) ...
             float d = fabsf(remainderf(6.2831853f * (float)k / (float)cap - from, 6.2831853f)) * ringR;
             d -= SpotPreference((int)(m - movers), x, y, tk->z);   // ... less: who'd be next to it
@@ -450,7 +453,7 @@ static bool WalkPickLeg(int leader) {
         float a = RandRange(0.0f, 6.2831853f), d = RandRange(6.0f, 14.0f);
         int gx = cx + (int)(cosf(a) * d), gy = cy + (int)(sinf(a) * d);
         if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt(z, gy, gx)) continue;
-        if (!IsExposedToSky(gx, gy, z)) continue;   // a walk goes outdoors
+        if (!IsExposedToSky(gx, gy, z) || !MayEnter(leader, gx, gy, z)) continue;   // a walk goes outdoors
         Point goal = {gx, gy, z};
         m->goal = goal;
         if (MoverPlanPath(leader, (Point){cx, cy, z}, goal) > 0) { m->needsRepath = false; return true; }
@@ -750,6 +753,13 @@ void TalkTick(float dt) {
     }
 }
 
+// A direct step (no path) for mover i into the cell at world position (wx, wy): no closed door,
+// and not into a home not its own (places.h)
+static bool TalkNudgeable(int i, int z, float wy, float wx) {
+    int cx = (int)(wx / CELL_SIZE), cy = (int)(wy / CELL_SIZE);
+    return IsCellNudgeableAt(z, cy, cx) && MayEnter(i, cx, cy, z);
+}
+
 bool TalkMoverTick(int i, float dt) {
     int t = MoverTalk(i);
     if (t < 0) return false;
@@ -778,9 +788,9 @@ bool TalkMoverTick(int i, float dt) {
             float step = m->speed * (60.0f / dayLength) * walkPace * WALK_CATCH_UP * dt;
             if (step > d) step = d;
             float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
-            if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
-            else if (IsCellNudgeableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;   // slide
-            else if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
+            if (TalkNudgeable(i, z, ny, nx)) { m->x = nx; m->y = ny; }
+            else if (TalkNudgeable(i, z, m->y, nx)) m->x = nx;   // slide
+            else if (TalkNudgeable(i, z, ny, m->x)) m->y = ny;
         }
         m->timeWithoutProgress = 0.0f;
         m->lastX = m->x;
@@ -796,7 +806,7 @@ bool TalkMoverTick(int i, float dt) {
         float step = m->speed * (60.0f / dayLength) * (tk->kind == TALK_WATCH ? WATCH_APPROACH : TALK_APPROACH) * dt;
         if (step > d) step = d;
         float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
-        if (IsCellNudgeableAt((int)m->z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+        if (TalkNudgeable(i, (int)m->z, ny, nx)) { m->x = nx; m->y = ny; }
     }
     m->timeWithoutProgress = 0.0f;   // standing in a conversation is not being stuck
     m->lastX = m->x;
@@ -1008,6 +1018,7 @@ static int BestOtherGroup(int i, float* appeal) {
         if (t == cur || !talks[t].active) continue;
         float dx = talks[t].centerX - movers[i].x, dy = talks[t].centerY - movers[i].y;
         if (dx * dx + dy * dy > r * r) continue;
+        if (!MayEnter(i, (int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z)) continue;   // in a home not its own
         float a = GroupAppeal(i, t);
         if (a > bestA) { bestA = a; best = t; }
     }

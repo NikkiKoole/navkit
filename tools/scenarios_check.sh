@@ -47,6 +47,7 @@ done <<'EOF'
 227 | 0 | --scenario doorlock
 0   | 0 | --scenario galerij
 0   | 0 | --scenario visiting
+0   | 0 | --set scenarioSize 64 --scenario galerij-big
 160 | 0 | --scenario gathering
 75  | 0 | --scenario social-ties
 40  | 0 | --scenario garden-party

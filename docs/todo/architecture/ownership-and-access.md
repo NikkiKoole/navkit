@@ -109,5 +109,30 @@ over". Scenarios `galerij` (visits on) and `visiting` (often and short; in scena
 someone let in, a visit over, nobody trespassing). Four game days of galerij: 13 visits, 9 let in,
 2 given up, 0 trespass. Tests in `test_places` "places_visit".
 
+**Stress test and benchmark (2026-11-26):**
+- `test_places` "places_stress": full tables, bad ids and coordinates, a mover's group slots,
+  deep nesting, a random world of 600 nested places checked against plainly written rules
+  (2.4M answers), save/load of a full world, a new map size.
+- Fixed: `PlaceCreate` took a dead owner or parent (cycles possible); past 32 levels the
+  queries stopped walking up and a private place read as open to all. Now: a live owner and
+  parent, at most `PLACE_MAX_DEPTH` (32) deep.
+- `make bench_places` (this machine, -O2): `MayEnter` 2-7 ns a cell, 20 ns 8 deep, 85 ns
+  32 deep; `HomeOfGroup` was a scan of the table (up to 490 ns), now cached (1.6 ns), so
+  `VisitTick` with 2000 movers at home went from 8.4 to 0.15 ms a tick; the food scan pays about
+  3 ns an item for `MayTake` (it runs after the cheaper filters in needs.c).
+- Scenario `galerij-big` (scenarioSize, default 128; in scenarios-check at 64): rows of galerij
+  blocks, 96 flats and 144 residents at 64, light fit-out. First long run: 47k mover-ticks in
+  homes not theirs. Four more searches didn't ask yet and now do: sit-to-eat's seat
+  (`action_queue.c`), wander goals and "walk near a friend" (`mover.c`, `notice.c`), talks
+  (slots, gathering spots, walks, mingling, nudges: `talk.c`, `TalkNudgeable`); and a guest whose
+  visit was cut short in the doorway kept walking its old path in (`VisitDropGrantOutside` stops
+  a walk headed somewhere it may no longer go). Now 0 over 5 game days, and at 8 visits a day.
+- Left: chase games (tag, hide and seek) don't ask `MayEnter` for their spots and nudges yet
+  (`chase.c`; games are off in the galerij); `StartScrounging`'s bins don't ask `MayTake`; jobs
+  ignore ownership (haulers, builders: by design for now). A mover is very rarely pushed one cell
+  sideways into a closed door it walks past (1 step in two game days at 128, doors, not
+  ownership). Scale caps outside places: `MAX_FURNITURE` 512 and `MAX_STOCKPILES` 64 hold a
+  fully furnished galerij to ~56 flats; `MAX_ACTIVITIES` 64 caps visits + games at once.
+
 **Next:** Town's beds, City 1999's shops (order above). Hoped-for behaviours that build on this
 (showing an unwelcome guest out): `../../vision/hoped-for-behaviours.md`.

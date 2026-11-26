@@ -39,6 +39,7 @@
 #include "../entities/throwing.h"
 #include "../entities/places.h"
 #include "../entities/visit.h"
+#include "describe.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -509,16 +510,22 @@ static bool DoorSmokeCheck(char* why, int whyLen) {
 // sofa, a tap, a toilet, a fridge with bread and meat. Households of two and one; a few friends
 // between flats (visits come next). Check: nobody spends time in a home that isn't theirs,
 // every flat's doorstep reaches every other, nobody goes hungry or thirsty.
-#define GLR_FLATS 4                 // per floor
 #define GLR_X0 8                    // west wall of the first flat
-#define GLR_Y0 3                    // north wall of the flats
+#define GLR_Y0 3                    // north wall of the flats (first block)
 #define GLR_W 7                     // flat width incl. walls (neighbours share a wall)
 #define GLR_D 6                     // flat depth incl. walls (front wall at GLR_Y0 + 5)
-static int glrHome[2][GLR_FLATS];   // place per flat
+#define GLR_STRIDE 10               // block to block (galerij-big): flats, gallery, railing, a path
+#define GLR_MAX_FLATS 128
+static int glrFlats = 4;            // per floor per block
+static int glrBlocks = 1;
+static bool glrLight;               // galerij-big: bed, tap, toilet, chair; food on the counter
+static int glrHome[GLR_MAX_FLATS];  // place per flat: block, floor, then flat along the gallery
 static long glrTrespassTicks, glrTicks;
 static long glrClosedDoorSteps;     // steps into a door that was still closed (a nudge slipping through)
 
 static int GalerijFlatX(int k) { return GLR_X0 + k * (GLR_W - 1); }
+static int GalerijBlockY(int b) { return GLR_Y0 + b * GLR_STRIDE; }
+static int GalerijFlatCount(void) { return 2 * glrFlats * glrBlocks; }
 
 static void GalerijWall(int x, int y, int z) {
     GRID(x, y, z) = CELL_WALL;
@@ -526,8 +533,8 @@ static void GalerijWall(int x, int y, int z) {
     ClearWallNatural(x, y, z);
 }
 
-static void GalerijFlat(int k, int z, int household, const char* name) {
-    int ox = GalerijFlatX(k), oy = GLR_Y0;
+static void GalerijFlat(int f, int k, int oy, int z, int household, const char* name) {
+    int ox = GalerijFlatX(k);
     for (int dy = 0; dy < GLR_D; dy++)
         for (int dx = 0; dx < GLR_W; dx++) {
             int x = ox + dx, y = oy + dy;
@@ -550,21 +557,25 @@ static void GalerijFlat(int k, int z, int household, const char* name) {
     PlaceFillRect(home, ox, oy, ox + GLR_W - 1, oy + GLR_D - 1, z);
     PlaceFillRect(0, doorX, doorY, doorX, doorY, z);   // the threshold is public: a visitor may stand in the doorway
     PlaceSetDoor(home, doorX, doorY, z);
-    glrHome[z - 1][k] = home;
+    glrHome[f] = home;
 }
 
-static void GalerijFurnish(int k, int z) {
-    int ox = GalerijFlatX(k), oy = GLR_Y0;
+static void GalerijFurnish(int k, int oy, int z) {
+    int ox = GalerijFlatX(k);
     SpawnFurniture(ox + 1, oy + 1, z, FURNITURE_DOUBLE_BED, MAT_OAK);
     SpawnFurniture(ox + 3, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);
-    SpawnFurniture(ox + 4, oy + 1, z, FURNITURE_TABLE, MAT_OAK);
-    SpawnFurniture(ox + 5, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);
+    if (!glrLight) {
+        SpawnFurniture(ox + 4, oy + 1, z, FURNITURE_TABLE, MAT_OAK);
+        SpawnFurniture(ox + 5, oy + 1, z, FURNITURE_CHAIR, MAT_OAK);
+    }
     SpawnFurniture(ox + 1, oy + 3, z, FURNITURE_TAP, MAT_GRANITE);
     SpawnFurniture(ox + 1, oy + 4, z, FURNITURE_TOILET, MAT_GRANITE);
-    SpawnFurniture(ox + 3, oy + 4, z, FURNITURE_SOFA, MAT_OAK);
-    SpawnFurniture(ox + 4, oy + 4, z, FURNITURE_SOFA, MAT_OAK);
-    SpawnFurniture(ox + 5, oy + 2, z, FURNITURE_FRIDGE, MAT_IRON);
-    int sp = CreateStockpile(ox + 5, oy + 2, z, 1, 2);
+    if (!glrLight) {
+        SpawnFurniture(ox + 3, oy + 4, z, FURNITURE_SOFA, MAT_OAK);
+        SpawnFurniture(ox + 4, oy + 4, z, FURNITURE_SOFA, MAT_OAK);
+        SpawnFurniture(ox + 5, oy + 2, z, FURNITURE_FRIDGE, MAT_IRON);
+    }
+    int sp = glrLight ? -1 : CreateStockpile(ox + 5, oy + 2, z, 1, 2);
     struct { int dy, type, n; } food[2] = { {2, ITEM_COOKED_MEAT, 8}, {3, ITEM_BREAD, 10} };
     for (int f = 0; f < 2; f++) {
         int it = SpawnItem((ox + 5) * CELL_SIZE + CELL_SIZE * 0.5f, (oy + food[f].dy) * CELL_SIZE + CELL_SIZE * 0.5f,
@@ -575,13 +586,12 @@ static void GalerijFurnish(int k, int z) {
     }
 }
 
-static void SetupGalerij(void) {
-    glrTrespassTicks = glrTicks = glrClosedDoorSteps = 0;
-    balance.baseMoverSpeed = 900.0f;   // dollhouse pace: a 6-minute day, walking 3x (set before spawning)
+// One block: the gallery in front of its two floors of flats (y = oy .. oy + 8)
+static void GalerijGallery(int oy) {
     // The gallery: ground floor pavement (z=1 on the ground), first floor a concrete walkway
-    // with a railing (z=2), from x=5 to x=35, two cells deep in front of the flats
-    int gy0 = GLR_Y0 + GLR_D, gy1 = gy0 + 1;
-    int gx0 = 5, gx1 = GalerijFlatX(GLR_FLATS - 1) + GLR_W - 1 + 3;
+    // with a railing (z=2), two cells deep in front of the flats
+    int gy0 = oy + GLR_D, gy1 = gy0 + 1;
+    int gx0 = 5, gx1 = GalerijFlatX(glrFlats - 1) + GLR_W - 1 + 3;
     for (int y = gy0; y <= gy1; y++)
         for (int x = gx0 - 1; x <= gx1 + 1; x++) {
             SET_FLOOR(x, y, 1); FLOOR_MAT(x, y, 1) = MAT_CONCRETE; ClearFloorNatural(x, y, 1);   // pavement
@@ -600,42 +610,61 @@ static void SetupGalerij(void) {
     GRID(gx1 + 1, gy1, 1) = CELL_RAMP_W; SetWallMaterial(gx1 + 1, gy1, 1, MAT_CONCRETE);
     GalerijWall(gx1, gy1, 1);
     GRID(gx0 - 1, gy1, 2) = CELL_AIR; GRID(gx1 + 1, gy1, 2) = CELL_AIR;   // headroom over the ramps
+}
 
-    // Flats and households: sizes 2, 1, 2, 1 ... ; the ground floor first
-    int household[2][GLR_FLATS];
-    for (int z = 1; z <= 2; z++)
-        for (int k = 0; k < GLR_FLATS; k++) {
-            char name[PLACE_NAME_LEN];
-            snprintf(name, sizeof name, "Flat %d", (z - 1) * GLR_FLATS + k + 1);
-            household[z - 1][k] = GroupCreate(GROUP_HOUSEHOLD, name);
-            GalerijFlat(k, z, household[z - 1][k], name);
-        }
+static void BuildGalerij(void) {
+    glrTrespassTicks = glrTicks = glrClosedDoorSteps = 0;
+    balance.baseMoverSpeed = 900.0f;   // dollhouse pace: a 6-minute day, walking 3x (set before spawning)
+    for (int b = 0; b < glrBlocks; b++) GalerijGallery(GalerijBlockY(b));
+
+    // Flats and households: sizes 2, 1, 2, 1 ... ; per block the ground floor first
+    static int household[GLR_MAX_FLATS];
+    for (int b = 0; b < glrBlocks; b++)
+        for (int z = 1; z <= 2; z++)
+            for (int k = 0; k < glrFlats; k++) {
+                int f = (b * 2 + z - 1) * glrFlats + k;
+                char name[PLACE_NAME_LEN];
+                snprintf(name, sizeof name, "Flat %d", f + 1);
+                household[f] = GroupCreate(GROUP_HOUSEHOLD, name);
+                GalerijFlat(f, k, GalerijBlockY(b), z, household[f], name);
+            }
     BuildEntrances();
     BuildGraph();
     InvalidateLighting();
-    for (int z = 1; z <= 2; z++)
-        for (int k = 0; k < GLR_FLATS; k++) GalerijFurnish(k, z);
+    for (int b = 0; b < glrBlocks; b++)
+        for (int z = 1; z <= 2; z++)
+            for (int k = 0; k < glrFlats; k++) GalerijFurnish(k, GalerijBlockY(b), z);
 
-    int firstOf[2][GLR_FLATS];
-    for (int z = 1; z <= 2; z++)
-        for (int k = 0; k < GLR_FLATS; k++) {
-            int n = ((z - 1) * GLR_FLATS + k) % 2 == 0 ? 2 : 1;
-            int ox = GalerijFlatX(k);
-            firstOf[z - 1][k] = moverCount;
-            for (int i = 0; i < n; i++) {
-                int before = moverCount;
-                SpawnMoverAt(ox + 2 + i, GLR_Y0 + 2, z);
-                if (moverCount == before) continue;
-                MoverJoinGroup(moverCount - 1, household[z - 1][k]);
+    static int firstOf[GLR_MAX_FLATS];
+    for (int b = 0; b < glrBlocks; b++)
+        for (int z = 1; z <= 2; z++)
+            for (int k = 0; k < glrFlats; k++) {
+                int f = (b * 2 + z - 1) * glrFlats + k;
+                int n = f % 2 == 0 ? 2 : 1;
+                int ox = GalerijFlatX(k);
+                firstOf[f] = moverCount;
+                for (int i = 0; i < n; i++) {
+                    int before = moverCount;
+                    SpawnMoverAt(ox + 2 + i, GalerijBlockY(b) + 2, z);
+                    if (moverCount == before) continue;
+                    MoverJoinGroup(moverCount - 1, household[f]);
+                }
+                if (n == 2 && moverCount - firstOf[f] == 2)
+                    RelationSetPair(moverCount - 2, moverCount - 1, 60.0f, 100.0f);   // partners
             }
-            if (n == 2 && moverCount - firstOf[z - 1][k] == 2)
-                RelationSetPair(moverCount - 2, moverCount - 1, 60.0f, 100.0f);   // partners
+    // Friends between flats. The galerij: ground 1 - first floor 2, ground 2 - ground 4,
+    // first floor 1 - first floor 3, ground 3 - first floor 4. Bigger: each flat with the next
+    // one along and the one above or below it.
+    if (glrBlocks == 1 && glrFlats == 4) {
+        int pairs[4][2] = { {0, 5}, {1, 3}, {4, 6}, {2, 7} };
+        for (int p = 0; p < 4; p++) RelationSetPair(firstOf[pairs[p][0]], firstOf[pairs[p][1]], 45.0f, 60.0f);
+    } else {
+        int F = GalerijFlatCount();
+        for (int f = 0; f < F; f++) {
+            RelationSetPair(firstOf[f], firstOf[(f + 1) % F], 45.0f, 60.0f);
+            RelationSetPair(firstOf[f], firstOf[(f + glrFlats) % F], 45.0f, 60.0f);
         }
-    // Friends between flats (visits come next): ground 1 - first floor 2, ground 2 - ground 4,
-    // first floor 1 - first floor 3, ground 3 - first floor 4
-    int pairs[4][4] = { {0, 0, 1, 1}, {0, 1, 0, 3}, {1, 0, 1, 2}, {0, 2, 1, 3} };
-    for (int p = 0; p < 4; p++)
-        RelationSetPair(firstOf[pairs[p][0]][pairs[p][1]], firstOf[pairs[p][2]][pairs[p][3]], 45.0f, 60.0f);
+    }
 
     // Dollhouse rules
     hungerEnabled = thirstEnabled = energyEnabled = bladderEnabled = true;
@@ -649,24 +678,82 @@ static void SetupGalerij(void) {
     endlessMoverMode = false;
     dayLength = 360.0f;
     currentViewZ = 2;
+}
+
+static void SetupGalerij(void) {
+    glrFlats = 4; glrBlocks = 1; glrLight = false;
+    BuildGalerij();
     AddMessage(TextFormat("Galerij: %d flats, %d residents (two floors off an outdoor gallery)",
-                          2 * GLR_FLATS, moverCount), GREEN);
+                          GalerijFlatCount(), moverCount), GREEN);
+}
+
+// galerij-big: the galerij as a load and stress test for ownership and visits. Rows of blocks
+// fill the map (scenarioSize, default 128), as many flats as the furniture table holds (light
+// fit-out: bed, chair, tap, toilet; food on the counter, no fridge stockpile: stockpiles are
+// capped at MAX_STOCKPILES). Same check as the galerij. Use with --profile.
+static void SetupGalerijBig(void) {
+    glrLight = true;
+    glrFlats = (gridWidth - 13) / (GLR_W - 1);
+    glrBlocks = (gridHeight - 2) / GLR_STRIDE;
+    if (glrFlats < 1) glrFlats = 1;
+    if (glrBlocks < 1) glrBlocks = 1;
+    int maxFlats = MAX_FURNITURE / 5;                  // 4 pieces a flat, some room to spare
+    if (maxFlats > GLR_MAX_FLATS) maxFlats = GLR_MAX_FLATS;
+    if (2 * glrFlats > maxFlats) glrFlats = maxFlats / 2;
+    while (glrBlocks > 1 && GalerijFlatCount() > maxFlats) glrBlocks--;
+    BuildGalerij();
+    AddMessage(TextFormat("Galerij big: %d blocks of %d flats, %d residents", glrBlocks, 2 * glrFlats, moverCount), GREEN);
 }
 
 static int glrPrevX[MAX_MOVERS], glrPrevY[MAX_MOVERS];
+// The first few trespasses and steps into a closed door, as the debug description of the mover at that tick (printed with the stats)
+#define GLR_TRESPASS_LOG 4
+static char glrTrespassLog[GLR_TRESPASS_LOG][1024];
+static int glrTrespassLogged;
+static bool glrWasTrespassing[MAX_MOVERS];
+static Point glrGoal[MAX_MOVERS];          // goal last tick, and when / in what state it last changed
+static long glrGoalTick[MAX_MOVERS];
+static int glrGoalState[MAX_MOVERS], glrGoalJob[MAX_MOVERS];
+static void GalerijLogTrespass(int i, int x, int y, int z, const char* what) {
+    if (glrTrespassLogged >= GLR_TRESPASS_LOG) return;
+    char* out = glrTrespassLog[glrTrespassLogged++];
+    int n = snprintf(out, 1024, "%s tick %ld: %s (lives in %s) at %d,%d,%d in %s; grant %s",
+                     what, glrTicks, MoverDisplayName(i), PlaceName(HomeOfGroup(MoverHousehold(i))), x, y, z,
+                     PlaceName(PlaceAt(x, y, z)), MoverGrant(i) > 0 ? PlaceName(MoverGrant(i)) : "none");
+    n += snprintf(out + n, (size_t)(1024 - n), "; goal set at tick %ld (freetime %d, job %d then)",
+                  glrGoalTick[i], glrGoalState[i], glrGoalJob[i]);
+    int act = MoverActivity(i);
+    n += snprintf(out + n, (size_t)(1024 - n), "; freetime %d, activity %s, talk %d, goal %d,%d,%d",
+                  movers[i].freetimeState, act >= 0 ? ActivityDefOf(activities[act].kind)->name : "none", MoverTalk(i),
+                  movers[i].goal.x, movers[i].goal.y, movers[i].goal.z);
+    DescLines d = {0};
+    DescribeMover(i, DESC_DEBUG, &d);
+    for (int k = 0; k < d.count && n > 0 && n < 1000; k++) n += snprintf(out + n, (size_t)(1024 - n), "\n        %s", d.lines[k].text);
+}
 static void GalerijTickStats(void) {
     glrTicks++;
+    if (glrTicks == 1) { glrTrespassLogged = 0; memset(glrWasTrespassing, 0, sizeof(glrWasTrespassing)); }
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
-        if (glrTicks > 1 && (x != glrPrevX[i] || y != glrPrevY[i]) && GRID(x, y, z) == CELL_DOOR) glrClosedDoorSteps++;
+        if (glrTicks > 1 && (x != glrPrevX[i] || y != glrPrevY[i]) && GRID(x, y, z) == CELL_DOOR) {
+            glrClosedDoorSteps++;
+            GalerijLogTrespass(i, x, y, z, "Closed door");
+        }
         glrPrevX[i] = x; glrPrevY[i] = y;
+        if (m->goal.x != glrGoal[i].x || m->goal.y != glrGoal[i].y || m->goal.z != glrGoal[i].z) {
+            glrGoal[i] = m->goal; glrGoalTick[i] = glrTicks;
+            glrGoalState[i] = m->freetimeState; glrGoalJob[i] = m->currentJobId;
+        }
     }
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         if (!m->active) continue;
         int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
-        if (!MayEnter(i, x, y, z)) glrTrespassTicks++;
+        bool trespass = !MayEnter(i, x, y, z);
+        if (trespass) glrTrespassTicks++;
+        if (trespass && !glrWasTrespassing[i]) GalerijLogTrespass(i, x, y, z, "Trespass");   // as it walks in
+        glrWasTrespassing[i] = trespass;
     }
 }
 
@@ -678,26 +765,26 @@ static void GalerijPrintStats(void) {
         if (movers[i].thirst < 0.1f) thirsty++;
     }
     printf("Galerij: %d residents in %d flats; mover-ticks in someone else's home: %ld; steps into a closed door: %ld; "
-           "hungry %d, thirsty %d\n", moverCount, 2 * GLR_FLATS, glrTrespassTicks, glrClosedDoorSteps, hungry, thirsty);
+           "hungry %d, thirsty %d\n", moverCount, GalerijFlatCount(), glrTrespassTicks, glrClosedDoorSteps, hungry, thirsty);
     printf("Visits: %ld set off, %ld let in, %ld over, %ld cut short (a need), %ld gave up (nobody answered)\n",
            visitStarted, visitAnswered, visitDone, visitCutShort, visitGivenUp);
+    for (int k = 0; k < glrTrespassLogged; k++) printf("  %s\n", glrTrespassLog[k]);
 }
 
 static bool GalerijCheck(char* why, int whyLen) {
     if (glrTrespassTicks > 0) { snprintf(why, (size_t)whyLen, "someone was in a home not theirs (%ld mover-ticks)", glrTrespassTicks); return false; }
     if (glrClosedDoorSteps > 0) { snprintf(why, (size_t)whyLen, "someone stepped into a closed door (%ld times)", glrClosedDoorSteps); return false; }
-    // Every doorstep reaches every other (the ramps connect the floors)
-    for (int a = 0; a < 2 * GLR_FLATS; a++)
-        for (int b = a + 1; b < 2 * GLR_FLATS; b++) {
-            const PlaceInfo* pa = &places[glrHome[a / GLR_FLATS][a % GLR_FLATS]];
-            const PlaceInfo* pb = &places[glrHome[b / GLR_FLATS][b % GLR_FLATS]];
-            Point s = { pa->doorX, pa->doorY + 1, pa->doorZ }, g = { pb->doorX, pb->doorY + 1, pb->doorZ };
-            static Point glrPath[4096];
-            if (FindPath(PATH_ALGO_ASTAR, s, g, glrPath, 4096) <= 0) {
-                snprintf(why, (size_t)whyLen, "no way from %s's doorstep to %s's", pa->name, pb->name);
-                return false;
-            }
+    // Every doorstep reaches the first flat's (the ramps connect the floors; paths go both ways)
+    const PlaceInfo* p0 = &places[glrHome[0]];
+    for (int a = 1; a < GalerijFlatCount(); a++) {
+        const PlaceInfo* pa = &places[glrHome[a]];
+        Point s = { pa->doorX, pa->doorY + 1, pa->doorZ }, g = { p0->doorX, p0->doorY + 1, p0->doorZ };
+        static Point glrPath[4096];
+        if (FindPath(PATH_ALGO_ASTAR, s, g, glrPath, 4096) <= 0) {
+            snprintf(why, (size_t)whyLen, "no way from %s's doorstep to %s's", pa->name, p0->name);
+            return false;
         }
+    }
     for (int i = 0; i < moverCount; i++) {
         if (!movers[i].active) { snprintf(why, (size_t)whyLen, "a resident died"); return false; }
         if (movers[i].hunger < 0.05f || movers[i].thirst < 0.05f) {
@@ -5896,6 +5983,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"galerij",    "A block of flats off an outdoor gallery: 8 households (places, places.h), dollhouse rules; nobody uses a home that isn't theirs",
                    NULL,        SetupGalerij, GalerijTickStats, GalerijPrintStats, GalerijCheck, 41, 16},
+    {"galerij-big", "Rows of galerij blocks filling the map (scenarioSize, default 128): ~100 households, ~170 residents, visits; ownership load test (--profile)",
+                   NULL,        SetupGalerijBig, GalerijTickStats, GalerijPrintStats, GalerijCheck, 128, 128},
     {"visiting",   "The galerij with frequent short visits: knock, get let in, stay, leave; stats for visits let in, over, cut short, given up (settings visit*)",
                    NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},
     {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",

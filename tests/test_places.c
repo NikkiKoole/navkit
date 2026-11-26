@@ -266,11 +266,219 @@ describe(places_visit) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stress: full tables, bad input, deep and broken parent chains, a random world checked
+// against a plain reference, save/load of a full world
+// ---------------------------------------------------------------------------
+
+static unsigned int stressSeed = 12345u;
+static int StressRand(int n) {
+    stressSeed = stressSeed * 1103515245u + 12345u;
+    return (int)((stressSeed >> 8) % (unsigned)n);
+}
+
+// The rules written out plainly: walk up from the innermost place, the first that decides the
+// rule says yes (open) or members / grant holders only. No depth guard: the test worlds are trees.
+static bool RefGrantCovers(int mover, int p) {
+    int g = moverGrant[mover];
+    for (int q = p; q > 0; q = places[q].parent) if (g > 0 && q == g) return true;
+    return false;
+}
+static bool RefAllows(int mover, int x, int y, int z, uint8_t rule) {
+    if (x < 0 || y < 0 || z < 0 || x >= gridWidth || y >= gridHeight || z >= gridDepth) return true;
+    for (int p = PLACE_AT(x, y, z); p > 0; p = places[p].parent) {
+        if (!(places[p].rulesSet & rule)) continue;
+        if (!(places[p].rules & rule)) return true;
+        bool member = places[p].owner == 0;
+        for (int k = 0; k < MAX_MOVER_GROUPS; k++) if (moverGroups[mover][k] == places[p].owner) member = true;
+        return member || RefGrantCovers(mover, p);
+    }
+    return true;
+}
+
+describe(places_stress) {
+    it("full tables say no (-1) and nothing breaks; bad ids and coordinates are refused") {
+        Setup();
+        int made = 0;
+        while (GroupCreate(GROUP_HOUSEHOLD, "g") > 0) made++;
+        expect(made == MAX_GROUPS - 1);
+        expect(GroupCreate(GROUP_PERSON, "one more") == -1);
+        int placesMade = 0;
+        while (PlaceCreate(1, 0, PLACE_RULES_HOME, "p") > 0) placesMade++;
+        expect(placesMade == MAX_PLACES - 1);
+        expect(PlaceCreate(1, 0, PLACE_RULES_HOME, "one more") == -1);
+        expect(PlaceCreate(-1, 0, 0, "bad owner") == -1);
+        expect(PlaceCreate(MAX_GROUPS, 0, 0, "bad owner") == -1);
+        expect(PlaceCreate(1, MAX_PLACES, 0, "bad parent") == -1);
+        // Off the map / out of range: no crash, nothing written, the answer is "anyone may"
+        PlaceFillRect(1, -5, -5, 20, 20, 1);          // clipped to the map
+        PlaceFillRect(1, 0, 0, 3, 3, -1);
+        PlaceFillRect(1, 0, 0, 3, 3, gridDepth);
+        PlaceFillRect(MAX_PLACES, 0, 0, 3, 3, 1);
+        expect(PlaceAt(0, 0, 1) == 1 && PlaceAt(9, 9, 1) == 1);
+        expect(PlaceAt(-1, 0, 1) == 0 && PlaceAt(10, 0, 1) == 0 && PlaceAt(0, 0, gridDepth) == 0);
+        expect(MayEnter(0, -1, -1, 1) && MayTake(0, 99, 99, 1));
+        // A mover index out of range is nobody: kept out of private places, no crash
+        expect(!MayEnter(-1, 2, 2, 1) && !MayEnter(MAX_MOVERS, 2, 2, 1));
+        expect(!MoverJoinGroup(-1, 1) && !MoverJoinGroup(0, 0) && !MoverJoinGroup(0, MAX_GROUPS));
+        GrantPlace(-1, 1); GrantPlace(MAX_MOVERS, 1); GrantPlace(0, MAX_PLACES);
+        expect(MoverHousehold(-1) == 0 && MoverHousehold(MAX_MOVERS) == 0);
+        expect(strcmp(PlaceName(MAX_PLACES), "") == 0 && strcmp(GroupName(-3), "") == 0);
+    }
+
+    it("a mover is in at most MAX_MOVER_GROUPS groups; leaving frees a slot") {
+        Setup();
+        int a = AddMover(1, 1);
+        int g[MAX_MOVER_GROUPS + 1];
+        for (int k = 0; k <= MAX_MOVER_GROUPS; k++) g[k] = GroupCreate(GROUP_BUSINESS, "biz");
+        bool joined = true;
+        for (int k = 0; k < MAX_MOVER_GROUPS; k++) joined = MoverJoinGroup(a, g[k]) && joined;
+        expect(joined);
+        expect(MoverJoinGroup(a, g[0]));                      // already in: fine
+        expect(!MoverJoinGroup(a, g[MAX_MOVER_GROUPS]));      // full
+        MoverLeaveGroup(a, g[1]);
+        expect(MoverJoinGroup(a, g[MAX_MOVER_GROUPS]) && MoverInGroup(a, g[MAX_MOVER_GROUPS]));
+        expect(!MoverInGroup(a, g[1]));
+    }
+
+    it("a place needs a live owner and a live parent (no cycles through a not-yet-made parent)") {
+        Setup();
+        int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat");
+        expect(PlaceCreate(hh + 1, 0, PLACE_RULES_HOME, "nobody's") == -1);   // no such group
+        int a = PlaceCreate(hh, 2, PLACE_RULES_HOME, "inside a place that isn't there");
+        expect(a == -1);
+        int outer = PlaceCreate(hh, 0, PLACE_RULES_HOME, "outer");
+        int inner = PlaceCreate(hh, outer, 0, "inner");
+        expect(outer > 0 && inner > 0 && places[inner].parent == outer);
+    }
+
+    it("deep nesting: a private rule far up the chain still holds") {
+        Setup();
+        int a = AddMover(1, 1), b = AddMover(2, 1);
+        int hh = GroupCreate(GROUP_HOUSEHOLD, "Deep");
+        MoverJoinGroup(a, hh);
+        int p = PlaceCreate(hh, 0, PLACE_RULES_HOME, "root");
+        int depth = 1, made;
+        while ((made = PlaceCreate(0, p, 0, "room")) > 0) { p = made; depth++; if (depth >= 200) break; }
+        PlaceFillRect(p, 5, 5, 5, 5, 1);
+        // Either the chain was cut off at a depth the queries walk in full, or the rule holds
+        expect(MayEnter(a, 5, 5, 1));
+        expect(!MayEnter(b, 5, 5, 1));
+        expect(OwnerAt(5, 5, 1) == hh);
+        GrantPlace(b, places[p].parent > 0 ? 1 : p);         // a grant for the root covers the whole chain
+        expect(MayEnter(b, 5, 5, 1));
+    }
+
+    it("a random world of nested places agrees with the plain rules everywhere") {
+        Setup();
+        InitTestGrid(64, 64);
+        ClearMovers(); ClearPlaces();
+        stressSeed = 777u;
+        int nGroups = 40;
+        for (int g = 0; g < nGroups; g++) GroupCreate((GroupKind)(1 + StressRand(GROUP_KIND_COUNT - 1)), "g");
+        int nMovers = 200;
+        for (int i = 0; i < nMovers; i++) {
+            moverCount = i + 1;
+            PlacesResetMover(i);
+            int joins = StressRand(MAX_MOVER_GROUPS + 1);
+            for (int k = 0; k < joins; k++) MoverJoinGroup(i, 1 + StressRand(nGroups));
+        }
+        // 600 places: each a rect inside its parent's rect (or anywhere for a root), random rules
+        int badIds = 0;
+        static int px0[MAX_PLACES], py0[MAX_PLACES], px1[MAX_PLACES], py1[MAX_PLACES];
+        for (int n = 0; n < 600; n++) {
+            int parent = (n > 0 && StressRand(3) > 0) ? 1 + StressRand(n) : 0;
+            int x0, y0, x1, y1;
+            if (parent > 0) {
+                int w = px1[parent] - px0[parent] + 1, h = py1[parent] - py0[parent] + 1;
+                x0 = px0[parent] + StressRand(w); y0 = py0[parent] + StressRand(h);
+                x1 = x0 + StressRand(px1[parent] - x0 + 1); y1 = y0 + StressRand(py1[parent] - y0 + 1);
+            } else {
+                x0 = StressRand(60); y0 = StressRand(60); x1 = x0 + StressRand(20); y1 = y0 + StressRand(20);
+                if (x1 > 63) x1 = 63;
+                if (y1 > 63) y1 = 63;
+            }
+            int owner = StressRand(4) == 0 ? 0 : 1 + StressRand(nGroups);
+            int p = PlaceCreate(owner, parent, (uint8_t)StressRand(8), "p");
+            if (p != n + 1) badIds++;
+            places[p].rulesSet = (uint8_t)(places[p].rules | StressRand(8));   // some rules decided open
+            px0[p] = x0; py0[p] = y0; px1[p] = x1; py1[p] = y1;
+            // Paint only where the parent is (a child never sticks out of its parent) or anywhere for a root
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++) {
+                    int here = PlaceAt(x, y, 1);
+                    bool inParent = parent == 0 || here == parent;
+                    for (int q = here; !inParent && q > 0; q = places[q].parent) if (q == parent) inParent = true;
+                    if (inParent && (parent > 0 || here == 0)) PLACE_AT_MUT(x, y, 1) = (uint16_t)p;
+                }
+        }
+        for (int i = 0; i < nMovers; i++) if (StressRand(4) == 0) GrantPlace(i, 1 + StressRand(600));
+        long checked = 0, mismatches = 0;
+        static const uint8_t rules[3] = { PLACE_RULE_ENTER, PLACE_RULE_USE, PLACE_RULE_TAKE };
+        for (int i = 0; i < nMovers; i += 3)
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                    for (int r = 0; r < 3; r++) {
+                        bool want = RefAllows(i, x, y, 1, rules[r]);
+                        bool got = r == 0 ? MayEnter(i, x, y, 1) : r == 1 ? MayUse(i, x, y, 1) : MayTake(i, x, y, 1);
+                        checked++;
+                        if (want != got) mismatches++;
+                    }
+        if (test_verbose) printf("  random world: %ld answers checked, %ld mismatches\n", checked, mismatches);
+        expect(mismatches == 0 && badIds == 0);
+    }
+
+    it("a full world (every group and place, 1000 members, a 128x128 layer) survives save/load") {
+        Setup();
+        InitTestGrid(128, 128);
+        ClearMovers(); ClearPlaces();
+        int badIds = 0;
+        for (int g = 1; g < MAX_GROUPS; g++) GroupCreate(GROUP_HOUSEHOLD, "household with a long name to clip");
+        for (int p = 1; p < MAX_PLACES; p++) {
+            if (PlaceCreate(1 + (p % (MAX_GROUPS - 1)), p > 1 && p % 4 ? p - 1 : 0, PLACE_RULES_HOME, "p") != p) badIds++;
+            PlaceFillRect(p, (p * 7) % 128, (p * 13) % 128, (p * 7) % 128, (p * 13) % 128, 1 + p % 2);
+        }
+        for (int i = 0; i < 1000; i++) {
+            Point goal = {1, 1, 1};
+            InitMover(&movers[i], 1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 1.0f, goal, 100.0f);
+            moverCount = i + 1;
+            MoverJoinGroup(i, 1 + i % (MAX_GROUPS - 1));
+            MoverJoinGroup(i, 1 + (i * 31) % (MAX_GROUPS - 1));
+        }
+        static bool before[1000][3];
+        for (int i = 0; i < 1000; i++) {
+            int p = 1 + i % (MAX_PLACES - 1), x = (p * 7) % 128, y = (p * 13) % 128, z = 1 + p % 2;
+            before[i][0] = MayEnter(i, x, y, z); before[i][1] = MayUse(i, x, y, z); before[i][2] = OwnerAt(x, y, z) > 0;
+        }
+        expect(SaveWorld("/tmp/test_places_full.bin"));
+        ClearPlaces();
+        expect(LoadWorld("/tmp/test_places_full.bin"));
+        int diffs = 0;
+        for (int i = 0; i < 1000; i++) {
+            int p = 1 + i % (MAX_PLACES - 1), x = (p * 7) % 128, y = (p * 13) % 128, z = 1 + p % 2;
+            if (before[i][0] != MayEnter(i, x, y, z) || before[i][1] != MayUse(i, x, y, z) || before[i][2] != (OwnerAt(x, y, z) > 0)) diffs++;
+        }
+        expect(diffs == 0 && badIds == 0);
+        expect(GroupCreate(GROUP_PERSON, "x") == -1 && PlaceCreate(0, 0, 0, "x") == -1);   // still full
+        expect(strlen(GroupName(1)) == PLACE_NAME_LEN - 1);
+    }
+
+    it("a new map size clears the layer") {
+        Setup();
+        int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat");
+        int home = PlaceCreate(hh, 0, PLACE_RULES_HOME, "Flat");
+        PlaceFillRect(home, 0, 0, 9, 9, 1);
+        InitTestGrid(40, 20);
+        expect(PlaceAt(5, 5, 1) == 0 && PlaceAt(39, 19, 1) == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     test(places_rules);
     test(places_needs);
     test(places_save);
     test(places_visit);
+    test(places_stress);
     return summary();
 }

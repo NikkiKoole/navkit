@@ -7,6 +7,7 @@
 #include "furniture.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "places.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -381,7 +382,7 @@ bool NoticeSocialWanderGoal(int i, int* gx, int* gy, int* gz) {
     for (int tries = 0; tries < 8; tries++) {   // a free walkable cell 1-2 cells from them
         int x = bx + GetRandomValue(-2, 2), y = by + GetRandomValue(-2, 2);
         if ((x == bx && y == by) || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
-        if (!IsCellStandableAt(z, y, x)) continue;
+        if (!IsCellStandableAt(z, y, x) || !MayEnter(i, x, y, z)) continue;   // not in a home not its own
         *gx = x; *gy = y; *gz = z;
         return true;
     }

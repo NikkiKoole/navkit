@@ -112,16 +112,26 @@ static void VisitPhaseTo(VisitState* st, int phase) {
 // Inside the home (or a place within it)?
 static bool VisitInside(int i, int home) {
     const Mover* m = &movers[i];
-    for (int p = PlaceAt((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z), guard = 0; p > 0 && guard < 32;
+    for (int p = PlaceAt((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z), guard = 0; p > 0 && guard < PLACE_MAX_DEPTH;
          p = places[p].parent, guard++)
         if (p == home) return true;
     return false;
 }
 
 // A guest outside the home it was let into loses the grant at once (so a need that comes up on
-// the doormat doesn't send it back in to the host's toilet)
+// the doormat doesn't send it back in to the host's toilet).
+// A walk still headed inside (the guest's spot: a visit cut short in the doorway) stops there.
 static void VisitDropGrantOutside(int i) {
-    if (i >= 0 && MoverGrant(i) > 0 && !VisitInside(i, MoverGrant(i))) GrantPlace(i, 0);
+    if (i < 0 || MoverGrant(i) <= 0 || VisitInside(i, MoverGrant(i))) return;
+    GrantPlace(i, 0);
+    Mover* m = &movers[i];
+    if (!MayEnter(i, m->goal.x, m->goal.y, m->goal.z)) {
+        m->goal = (Point){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        m->needsRepath = false;
+        moverRouteLen[i] = 0;
+    }
 }
 
 static void VisitFinish(int a, VisitState* st, bool gaveUp) {

@@ -17,6 +17,7 @@
 #include "jobs.h"
 #include "namegen.h"
 #include "containers.h"
+#include "places.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -660,6 +661,7 @@ static int QFindSeatNear(const Mover* m) {
         if (!furniture[f].active || furniture[f].z != mz) continue;
         if (!(GetFurnitureDef(furniture[f].type)->capabilities & CAP_SEATING)) continue;
         if (!FurnitureHasRoom(f)) continue;
+        if (!MayUse((int)(m - movers), furniture[f].x, furniture[f].y, furniture[f].z)) continue;   // someone else's (places.h)
         float dx = (float)(furniture[f].x - mx), dy = (float)(furniture[f].y - my);
         float d = dx * dx + dy * dy;
         if (d > (float)(SIT_TO_EAT_RADIUS * SIT_TO_EAT_RADIUS) + 0.5f) continue;
