@@ -104,8 +104,8 @@ would fire for everyone every night. Or limit it to indoors.
 
 - [ ] **Overworked** (-1, 4h) — mover worked N game-hours without rest break
 - [ ] **Idle too long** (-1, 4h) — mover had no job for extended period
-- [ ] **Company** (+0.5, 2h) — other movers within N cells while resting/eating (spatial grid query)
-- [ ] **Alone** (-0.5, 2h) — no other mover within N cells for extended time
+- [x] **Company** — built differently (2026-11-25): the social need (`social.c`) rises in company (talk, gathering, walk, table talk, game), moodlet **Good company** (+1, 2h); setting `socialNeed`, off for now
+- [x] **Alone** — same: **Lonely** (-1) / **Very lonely** (-2) while the social need is low
 
 ### Phase 8: Room quality moodlets — superseded by Phase 3b (Nice/Ugly room built there)
 

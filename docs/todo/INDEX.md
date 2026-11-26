@@ -84,15 +84,15 @@ Older history: `git log --since=YYYY-MM-DD --format="%ad %s" --date=short` (and 
 
 ## Partial (code exists, more to build)
 
-- `world/tide.md` — Tide (parked): sea rises and falls twice a day, mud flats fall dry, surf as real water on flats and beach, island game option `islandTide`. Next: food on the flats, dikes, tide on by default, save the wave/surf settings
-- `mood-moodlets-personality.md` — Mood on in every game (`moodEnabled` defaults on; the doc's "default false" is stale), traits incl. Patient/Impatient/Tidy/Slob; left: more moodlets (snow, diet variety, company/alone), skills-related traits. Doc partly out of date against code
+- `world/tide.md` — Tide (parked): sea rises and falls twice a day, mud flats fall dry, surf as real water on flats and beach, island game option `islandTide`. Next: food on the flats, dikes, tide on by default (wave/surf settings saved since v116)
+- `mood-moodlets-personality.md` — Mood on in every game (`moodEnabled` defaults on), 9 traits incl. Patient/Impatient/Tidy/Slob; company moodlets come from the social need (Lonely / Very lonely / Good company, `socialNeed` off for now); left: snow, diet variety, Social/Loner traits, skills-related traits
 - `dollhouse-domestic-life.md` — Dollhouse vertical slice: 2 movers, kitchen, bathroom, domestic routines; phases 1-3 done, 4-5 next
 - `10-personality-and-skills.md` — Names, skill progression (8 types), moods — the "character" layer (names + mood done, skills not started)
-- `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel (small next: shake next to `TriggerLightningFlash()`)
+- `juice-effects.md` — Screen shake, sprite tweens, particles, screen flashes for game feel (shake built, incl. thunder; small next: mining / construction shake, sprite tweens)
 - `world/island.md` — Finite island grown from a seed (drainage, rivers, cover, loose items); terrain, scenario and game `island`; lived-in island measured (11-23); open: 128 islands mostly cut off, seed 4 at `rampDensity 1`
 - `world/water-ideas.md` — Parked ideas: spring size by catchment + soaking, sea current, showcases (hot spring, volcano, waterfall mist), rafts (piers, rafts as vehicles), flecks redesign
-- `world/water.md` — Water simulation: settled water rests, map edge as outlet (v101), edge-fed rivers, wading out, fair update order, trickling springs (v103); open: soaking sink, `--inspect` says deep water is walkable, flaky connectivity test
-- `world/trains.md` — Track, stations, boarding, coloured lines, transfers, subway, freight/cargo (v97), settings saved (v99). Its "what trains don't do yet" list is stale (lines + freight exist); not buildable by players yet (dev Draw track only)
+- `world/water.md` — Water simulation: settled water rests, map edge as outlet (v101), edge-fed rivers, wading out, fair update order, trickling springs (v103); open: soaking sink (the --inspect mismatch and the flaky connectivity test are fixed)
+- `world/trains.md` — Track, stations, boarding, coloured lines, transfers, subway, freight/cargo (v97), settings saved (v99). Not buildable by players yet (dev Draw track only); no timetables
 - `world/elevators.md` — Passenger elevator as a pathfinder link, waiting line, built from blueprints, play HUD tool, saved (v100); left: shaft sprite, freight elevator
 - `world/conveyors.md` — Belts: items + crates, lifts and chutes, built from blueprints, play HUD tool, saved (v98), feeds a workshop hopper; next: power for lifts, train cargo
 - `social/noticing.md` — Agents notice each other: people side built (steering, talks, gatherings, relations, walks, games); animals and the cat next
