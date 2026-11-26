@@ -193,7 +193,9 @@ console changes (mover balance rows recalc derived rates; base speed rescales mo
 Types: bool, int, float, choice (int index into option names). Every dev sidebar section
 draws its tunables from the table; spawn counts, editor tool/terrain pickers, buttons and
 readouts stay hand-written. Saved settings are still a separate list
-(`SETTINGS_TABLE` in `saveload.c`).
+(`SETTINGS_TABLE` in `saveload.c`). The console holds `CON_MAX_VARS` variables (512,
+`src/ui/console.h`): past it rows stop being console variables (`--set` says "unknown
+variable"; at 256 the last ~60 rows were, silently) - raise it when the table nears it.
 
 ## Commands (dev / cheat commands)
 

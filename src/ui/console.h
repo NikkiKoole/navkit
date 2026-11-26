@@ -11,7 +11,7 @@ typedef struct Color Color;
 #define CON_MAX_LINE       256
 #define CON_MAX_HISTORY    32
 #define CON_MAX_COMMANDS   64
-#define CON_MAX_VARS       256
+#define CON_MAX_VARS       512   // (the settings table alone has ~320 rows: past 256 the last ones were silently not console variables)
 
 void Console_Init(void);
 void Console_Toggle(void);
