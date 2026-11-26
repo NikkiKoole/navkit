@@ -88,9 +88,32 @@ static Color FireLevelColor(int level) {
     return (Color){r, g, b, alpha};
 }
 
-// A full-height wall for the cutaway fill: blocks walking, but a railing is waist high
+// A full-height wall for the cutaway fill: blocks walking, but a railing is waist high and a
+// window shows its glass (the window sprite) rather than a cut wall top
 static bool IsCutawayWall(CellType c) {
-    return CellBlocksMovement(c) && c != CELL_RAILING;
+    return CellBlocksMovement(c) && c != CELL_RAILING && c != CELL_WINDOW;
+}
+
+// What a cut wall joins up to (no edge drawn on that side): walls, and windows set in them
+static bool CutawayJoins(CellType c) {
+    return IsCutawayWall(c) || c == CELL_WINDOW;
+}
+
+// A door is solid, so no light reaches its own cell: under a roof it would draw black. It takes
+// the light of the brightest open cell beside it (the room it leads into).
+static Color DoorLightColor(int x, int y, int z, Color skyColor) {
+    Color best = GetLightColor(x, y, z, skyColor);
+    int bestSum = best.r + best.g + best.b;
+    static const int dx[4] = {0, 1, 0, -1}, dy[4] = {-1, 0, 1, 0};
+    for (int i = 0; i < 4; i++) {
+        int nx = x + dx[i], ny = y + dy[i];
+        if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
+        if (CellIsSolid(GRID(nx, ny, z))) continue;
+        Color c = GetLightColor(nx, ny, z, skyColor);
+        int sum = c.r + c.g + c.b;
+        if (sum > bestSum) { best = c; bestSum = sum; }
+    }
+    return best;
 }
 
 static Color FloorDarkenTint(Color base) {
@@ -361,8 +384,27 @@ static int RailingSpriteAt(int x, int y, int z) {
     return railSprites[mask];
 }
 
+// A door turns to fit the wall it sits in, named after the walls it hangs between: walls north
+// and south (a vertical wall line) draw door-ns, walls west and east door-ew. No wall: the plain door.
+static bool DoorWallAt(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    CellType c = GRID(x, y, z);
+    return CellBlocksMovement(c) || c == CELL_DOOR;
+}
+
+static int DoorSpriteAt(int x, int y, int z) {
+    bool we = DoorWallAt(x - 1, y, z) && DoorWallAt(x + 1, y, z);
+    bool ns = DoorWallAt(x, y - 1, z) && DoorWallAt(x, y + 1, z);
+    if (ns && !we) return SPRITE_door_ns;
+    if (we && !ns) return SPRITE_door_ew;
+    if (DoorWallAt(x, y - 1, z) || DoorWallAt(x, y + 1, z)) return SPRITE_door_ns;
+    if (DoorWallAt(x - 1, y, z) || DoorWallAt(x + 1, y, z)) return SPRITE_door_ew;
+    return SPRITE_door;
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_PLATFORM) return SPRITE_dark_shade;
+    if (cell == CELL_DOOR) return DoorSpriteAt(x, y, z);
     if (cell == CELL_RAILING) return RailingSpriteAt(x, y, z);   // never a material's wall sprite
     if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
@@ -507,9 +549,6 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                         Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
                         if ((cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) || cellAtDepth == CELL_DOOR || cellAtDepth == CELL_WINDOW) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
-                        }
-                        if (cellAtDepth == CELL_WINDOW) {
-                            tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
                         }
                         if (CellIsRamp(cellAtDepth)) {
                             MaterialType rampMat = GetWallMaterial(x, y, zDepth);
@@ -720,15 +759,12 @@ static void DrawCellGrid(void) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             int sprite = GetWallSpriteAt(x, y, z, cell);
             Rectangle src = SpriteGetRect(sprite);
-            Color lightTint = GetLightColor(x, y, z, skyColor);
+            Color lightTint = cell == CELL_DOOR ? DoorLightColor(x, y, z, skyColor) : GetLightColor(x, y, z, skyColor);
             Color tint = lightTint;
             if ((cell == CELL_WALL && !IsWallNatural(x, y, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
             if (cell == CELL_RAILING) tint = MultiplyColor(tint, RailingTint(GetWallMaterial(x, y, z)));
-            if (cell == CELL_WINDOW) {
-                tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
-            }
             if (CellIsRamp(cell)) {
                 MaterialType rampMat = GetWallMaterial(x, y, z);
                 if (rampMat != MAT_NONE) {
@@ -764,10 +800,10 @@ static void DrawCellGrid(void) {
                 float py = offset.y + y * size;
 
                 // Check which sides border non-walls (those show the wall edge)
-                bool wallNorth = (y > 0) && IsCutawayWall(GRID(x, y-1, z));
-                bool wallSouth = (y < gridHeight-1) && IsCutawayWall(GRID(x, y+1, z));
-                bool wallWest = (x > 0) && IsCutawayWall(GRID(x-1, y, z));
-                bool wallEast = (x < gridWidth-1) && IsCutawayWall(GRID(x+1, y, z));
+                bool wallNorth = (y > 0) && CutawayJoins(GRID(x, y-1, z));
+                bool wallSouth = (y < gridHeight-1) && CutawayJoins(GRID(x, y+1, z));
+                bool wallWest = (x > 0) && CutawayJoins(GRID(x-1, y, z));
+                bool wallEast = (x < gridWidth-1) && CutawayJoins(GRID(x+1, y, z));
 
                 // Calculate inset for dark fill - leave edge visible where no adjacent wall
                 float insetN = wallNorth ? 0 : edgeWidth;
@@ -3744,9 +3780,6 @@ static void DrawFrontView(void) {
                     Color tint = baseTint;
                     if ((cell == CELL_WALL && !IsWallNatural(x, worldY, z)) || cell == CELL_DOOR || cell == CELL_WINDOW) {
                         tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, worldY, z)));
-                    }
-                    if (cell == CELL_WINDOW) {
-                        tint = MultiplyColor(tint, (Color){180, 220, 255, 200});
                     }
                     FastSprite(atlas, SpriteGetRect(sprite), dest, tint);
                 }

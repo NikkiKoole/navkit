@@ -44,6 +44,7 @@
     #define SPRITE_tree_planks_pine SPRITE8X8_tree_planks_pine
     #define SPRITE_dirt SPRITE8X8_dirt
     #define SPRITE_car_frame_1x1_front SPRITE8X8_car_frame_1x1_front
+    #define SPRITE_door_open_ew SPRITE8X8_door_open_ew
     #define SPRITE_dark_shade SPRITE8X8_dark_shade
     #define SPRITE_rail_es SPRITE8X8_rail_es
     #define SPRITE_rail_ns SPRITE8X8_rail_ns
@@ -80,6 +81,7 @@
     #define SPRITE_head_front_close SPRITE8X8_head_front_close
     #define SPRITE_triangle_w SPRITE8X8_triangle_w
     #define SPRITE_head_front_smile SPRITE8X8_head_front_smile
+    #define SPRITE_door_open_ns SPRITE8X8_door_open_ns
     #define SPRITE_head_front_small SPRITE8X8_head_front_small
     #define SPRITE_finish_rough SPRITE8X8_finish_rough
     #define SPRITE_ladder SPRITE8X8_ladder
@@ -98,6 +100,7 @@
     #define SPRITE_small_triangle SPRITE8X8_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
     #define SPRITE_chair SPRITE8X8_chair
+    #define SPRITE_window SPRITE8X8_window
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
     #define SPRITE_medium_shade SPRITE8X8_medium_shade
     #define SPRITE_tilled SPRITE8X8_tilled
@@ -118,6 +121,7 @@
     #define SPRITE_cordage SPRITE8X8_cordage
     #define SPRITE_wall_wood SPRITE8X8_wall_wood
     #define SPRITE_floor SPRITE8X8_floor
+    #define SPRITE_door_ns SPRITE8X8_door_ns
     #define SPRITE_light_shade SPRITE8X8_light_shade
     #define SPRITE_tree_leaves_pine SPRITE8X8_tree_leaves_pine
     #define SPRITE_floor_wood SPRITE8X8_floor_wood
@@ -129,6 +133,7 @@
     #define SPRITE_track_sw SPRITE8X8_track_sw
     #define SPRITE_toilet SPRITE8X8_toilet
     #define SPRITE_tree_trunk_birch SPRITE8X8_tree_trunk_birch
+    #define SPRITE_glass SPRITE8X8_glass
     #define SPRITE_sand SPRITE8X8_sand
     #define SPRITE_rail_esw SPRITE8X8_rail_esw
     #define SPRITE_at_sign SPRITE8X8_at_sign
@@ -148,6 +153,7 @@
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_head_front_open SPRITE8X8_head_front_open
     #define SPRITE_crate_red SPRITE8X8_crate_red
+    #define SPRITE_door_ew SPRITE8X8_door_ew
     #define SPRITE_rail_sw SPRITE8X8_rail_sw
     #define SPRITE_weedy SPRITE8X8_weedy
     #define SPRITE_track_nsw SPRITE8X8_track_nsw
@@ -187,6 +193,7 @@
     #define SPRITE_tree_planks_pine SPRITE16X16_tree_planks_pine
     #define SPRITE_dirt SPRITE16X16_dirt
     #define SPRITE_car_frame_1x1_front SPRITE16X16_car_frame_1x1_front
+    #define SPRITE_door_open_ew SPRITE16X16_door_open_ew
     #define SPRITE_dark_shade SPRITE16X16_dark_shade
     #define SPRITE_rail_es SPRITE16X16_rail_es
     #define SPRITE_rail_ns SPRITE16X16_rail_ns
@@ -223,6 +230,7 @@
     #define SPRITE_head_front_close SPRITE16X16_head_front_close
     #define SPRITE_triangle_w SPRITE16X16_triangle_w
     #define SPRITE_head_front_smile SPRITE16X16_head_front_smile
+    #define SPRITE_door_open_ns SPRITE16X16_door_open_ns
     #define SPRITE_head_front_small SPRITE16X16_head_front_small
     #define SPRITE_finish_rough SPRITE16X16_finish_rough
     #define SPRITE_ladder SPRITE16X16_ladder
@@ -241,6 +249,7 @@
     #define SPRITE_small_triangle SPRITE16X16_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak
     #define SPRITE_chair SPRITE16X16_chair
+    #define SPRITE_window SPRITE16X16_window
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
     #define SPRITE_medium_shade SPRITE16X16_medium_shade
     #define SPRITE_tilled SPRITE16X16_tilled
@@ -261,6 +270,7 @@
     #define SPRITE_cordage SPRITE16X16_cordage
     #define SPRITE_wall_wood SPRITE16X16_wall_wood
     #define SPRITE_floor SPRITE16X16_floor
+    #define SPRITE_door_ns SPRITE16X16_door_ns
     #define SPRITE_light_shade SPRITE16X16_light_shade
     #define SPRITE_tree_leaves_pine SPRITE16X16_tree_leaves_pine
     #define SPRITE_floor_wood SPRITE16X16_floor_wood
@@ -272,6 +282,7 @@
     #define SPRITE_track_sw SPRITE16X16_track_sw
     #define SPRITE_toilet SPRITE16X16_toilet
     #define SPRITE_tree_trunk_birch SPRITE16X16_tree_trunk_birch
+    #define SPRITE_glass SPRITE16X16_glass
     #define SPRITE_sand SPRITE16X16_sand
     #define SPRITE_rail_esw SPRITE16X16_rail_esw
     #define SPRITE_at_sign SPRITE16X16_at_sign
@@ -291,6 +302,7 @@
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_head_front_open SPRITE16X16_head_front_open
     #define SPRITE_crate_red SPRITE16X16_crate_red
+    #define SPRITE_door_ew SPRITE16X16_door_ew
     #define SPRITE_rail_sw SPRITE16X16_rail_sw
     #define SPRITE_weedy SPRITE16X16_weedy
     #define SPRITE_track_nsw SPRITE16X16_track_nsw

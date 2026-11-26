@@ -122,7 +122,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_REEDS]          = { "Reeds",         SPRITE_grass_taller,   IF_STACKABLE, 20, MAT_NONE, 0.5f, 0.0f, 0.0f },
     [ITEM_REED_MAT]       = { "Reed Mat",      SPRITE_grass_taller,   IF_STACKABLE | IF_BUILDING_MAT, 10, MAT_NONE, 1.0f, 0.0f, 0.0f },
     // Glass, lye, mortar (loop closers)
-    [ITEM_GLASS]          = { "Glass",        SPRITE_door,           IF_STACKABLE | IF_BUILDING_MAT, 10, MAT_NONE, 5.0f, 0.0f, 0.0f },
+    [ITEM_GLASS]          = { "Glass",        SPRITE_glass,          IF_STACKABLE | IF_BUILDING_MAT, 10, MAT_NONE, 5.0f, 0.0f, 0.0f },
     [ITEM_LYE]            = { "Lye",          SPRITE_clay,           IF_STACKABLE, 20, MAT_NONE, 1.0f, 0.0f, 0.0f },
     [ITEM_MORTAR]         = { "Mortar",       SPRITE_clay,           IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_NONE, 2.0f, 0.0f, 0.0f },
     [ITEM_BOILED_WATER]   = { "Boiled Water", SPRITE_division,       IF_STACKABLE | IF_DRINKABLE, 5, MAT_NONE, 0.5f, 0.0f, 0.0f },
