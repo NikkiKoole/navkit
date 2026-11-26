@@ -3,7 +3,9 @@
 ## Structure
 
 - `docs/todo/` — All planned work. Each doc has a status line (`spec`, `partial`, `idea`, etc.)
-- `docs/todo/INDEX.md` — **Start here.** "Recently active" at the top (what is being worked on
+- `docs/NOW.md` — **Read first.** What the project is today, the lenses (games) and their
+  state, the next focus, standing decisions. Short; rewrite it, don't append
+- `docs/todo/INDEX.md` — **Then here.** "Recently active" at the top (what is being worked on
   now, newest first), then every todo doc grouped by status, then `docs/research/`
 - `docs/todo/architecture/` — Optimization research, structural plans (reference, not active tasks unless explicitly picked)
 - `docs/done/` — Completed features

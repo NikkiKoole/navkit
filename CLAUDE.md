@@ -2,6 +2,9 @@
 
 3D grid-based colony simulation framework in C with raylib. Pathfinding (A*, HPA*), jobs, movers, items, stockpiles, workshops, and cellular automata (water, fire, smoke).
 
+**What we're making right now** (the lenses, their state, the next focus, the user's standing
+decisions): `docs/NOW.md`. Read it first.
+
 ## Build & Run
 
 ```bash
