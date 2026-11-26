@@ -116,6 +116,7 @@ extern int cellIndexTabY[MAX_GRID_HEIGHT + 1];
 // unchanged), rebuild the index tables, and fill fresh layers with their empty value.
 // InitGridWithDimensions calls it; anything else that sets gridWidth/gridHeight must too.
 void AllocGridLayers(void);
+extern unsigned gridGeneration;   // +1 per new world (InitGridWithDimensions)
 size_t GridLayersBytes(void);   // world arena size (all layers)
 bool GridLayerZeroFast(void* layer, size_t bytes);   // zero via fresh pages (grid_layers.c)
 void GridLayersReport(void);   // per-layer resident MB (headless --profile)

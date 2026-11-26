@@ -61,6 +61,7 @@ typedef struct {
 static ScenarioSettings savedSettings;
 static bool haveSavedSettings = false;
 static const Scenario* currentScenario = NULL;
+static unsigned currentScenarioGen = 0;   // gridGeneration of its world: liveTick runs only there
 
 // Mover count override for scenarios that support it (0 = the scenario's default).
 // Console/--set var scenarioMovers, e.g. --set scenarioMovers 96 --scenario ladder-choice
@@ -917,11 +918,16 @@ static void SetupDrain(void) {
     AddMessage("Drain spike: the toilet's drain ends nowhere until tick 1200 (console pipe outlet 20 14)", GREEN);
 }
 
-static void DrainTickStats(void) {
+// The scenario's events: in the window too (DrainTickStats below only counts, headless)
+static void DrainLiveTick(void) {
     drainTicks++;
     if (drainTicks == drainOutletAt) SetPipe(DRAIN_END_X, DRAIN_END_Y, 1, GetPipe(DRAIN_END_X, DRAIN_END_Y, 1) | PIPE_END);
     Mover* m = &movers[0];
-    if (drainTicks % drainNeedEvery == 0 && m->freetimeState == FREETIME_NONE) m->bladder = 0.05f;
+    if (m->active && drainTicks % drainNeedEvery == 0 && m->freetimeState == FREETIME_NONE) m->bladder = 0.05f;
+}
+
+static void DrainTickStats(void) {
+    Mover* m = &movers[0];
     int dirt = GetFloorDirt(DRAIN_TOILET_X, DRAIN_TOILET_Y, 1);
     if (drainPrevState == FREETIME_USING_TOILET && m->freetimeState != FREETIME_USING_TOILET) {
         bool dry = dirt > drainPrevDirt;
@@ -6152,7 +6158,7 @@ static const Scenario scenarios[] = {
     {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",
                    NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
     {"drain",      "Drain spike: a toilet whose floor drain ends nowhere is a dry toilet (floor dirt); at tick 1200 the drain's end becomes an outlet and it flushes clean (console pipe, setting pipeOverlay)",
-                   NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0},
+                   NULL,        SetupDrain,    DrainTickStats, DrainPrintStats, DrainCheck, 0, 0, DrainLiveTick},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",
@@ -6284,6 +6290,10 @@ const char** ScenarioNames(void) {
 
 const Scenario* ScenarioCurrent(void) { return currentScenario; }
 
+void ScenarioLiveTick(void) {
+    if (currentScenario && currentScenario->liveTick && currentScenarioGen == gridGeneration) currentScenario->liveTick();
+}
+
 void ScenarioPrintList(void) {
     printf("Scenarios:\n");
     for (int i = 0; i < SCENARIO_COUNT; i++)
@@ -6304,6 +6314,7 @@ bool RunScenario(const char* name) {
     ScenarioResetWorldSized(s->terrain, w, h);
     s->setup();
     currentScenario = s;
+    currentScenarioGen = gridGeneration;
     // Centre the camera on the new map (no-op without a window)
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;

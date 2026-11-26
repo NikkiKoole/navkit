@@ -20,10 +20,13 @@ typedef struct {
     void (*printStats)(void);  // optional: printed at the end of a headless run
     bool (*check)(char* why, int whyLen);   // optional: headless --check, false = fail (fill why)
     int gridW, gridH;          // optional map size (0 = keep the current size)
+    void (*liveTick)(void);    // optional: the scenario's own events, every tick in the window AND
+                               // headless (tickStats is headless only); stops once another world is made
 } Scenario;
 
 int ScenarioCount(void);
 const Scenario* ScenarioAt(int index);
+void ScenarioLiveTick(void);   // after every sim tick, window and headless: the running scenario's liveTick
 const Scenario* ScenarioFind(const char* name);   // case-insensitive, NULL if unknown
 const char** ScenarioNames(void);                 // ScenarioCount() names, for autocomplete
 const Scenario* ScenarioCurrent(void);            // last scenario started, or NULL

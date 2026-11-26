@@ -1042,6 +1042,7 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
                 arrivals++;
             lastGoal[i] = mv->goal;
         }
+        ScenarioLiveTick();   // the scenario's own events (also in the window, below)
         if (scenario && scenario->tickStats) scenario->tickStats();
         if (doDayBudget) DayBudgetTick();
         if (traceMover >= 0 && traceMover < moverCount && t >= traceFrom && t <= traceTo) {
@@ -1628,7 +1629,7 @@ int main(int argc, char** argv) {
         for (int i = 1; i + 1 < argc; i++) {
             if (strcmp(argv[i], "--screenshot-ticks") != 0) continue;
             int n = atoi(argv[i + 1]);
-            for (int t = 0; t < n; t++) SimStep(TICK_DT);
+            for (int t = 0; t < n; t++) { SimStep(TICK_DT); ScenarioLiveTick(); }
             if (n > 0) ApplyExecArgs(argc, argv);   // the view settings again (the game may have moved the camera)
         }
         paused = true;
@@ -1812,6 +1813,7 @@ int main(int argc, char** argv) {
             
             if (shouldTick) {
                 SimStep(tickDt);   // every system, in order (src/core/sim_step.c)
+                ScenarioLiveTick();   // the running scenario's own events (scenarios.h liveTick)
 
                 // Periodically validate simulation activity counters (every 60 seconds)
                 static float simValidationTimer = 0.0f;

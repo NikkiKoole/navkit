@@ -99,6 +99,8 @@ void FillGridLayer(void* layer, size_t elemSize, const void* pattern) {
     for (size_t i = 0; i < gridLayerCells; i++) memcpy(base + i * elemSize, pattern, elemSize);
 }
 
+unsigned gridGeneration = 0;   // counts the worlds made (InitGridWithDimensions)
+
 void InitGridWithDimensions(int width, int height, int depth, int chunkW, int chunkH) {
     // Clamp to max dimensions
     if (depth > MAX_GRID_DEPTH) depth = MAX_GRID_DEPTH;
@@ -122,6 +124,7 @@ void InitGridWithDimensions(int width, int height, int depth, int chunkW, int ch
     chunksX = (gridWidth + chunkWidth - 1) / chunkWidth;   // ceiling division
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
     rampCount = 0;
+    gridGeneration++;    // a new world (scenarios.c: a scenario's live hook stops with its world)
     AllocGridLayers();   // layers sized to this map (no-op when the size is unchanged)
 
     // Clear the grid (all z-levels), cell flags, vegetation, and materials
