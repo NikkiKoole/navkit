@@ -379,15 +379,19 @@ static void RunOneWay(const CmdValue* v) {
     Say(GREEN, "Ladder at %d,%d: %s (%d pieces)", x, y, oneWayChoices[v[0].choice], n);
 }
 
-static const char* const doorChoices[] = { "open", "close" };
-// Open or close the door at the mouse (or x y) on the viewed level
+static const char* const doorChoices[] = { "open", "close", "lock", "unlock" };
+// Open, close, lock or unlock the door at the mouse (or x y) on the viewed level
 static void RunDoor(const CmdValue* v) {
     int x, y;
     if (v[1].given && v[2].given) { x = v[1].i; y = v[2].i; }
     else { Vector2 g = ScreenToGrid(GetMousePosition()); x = (int)g.x; y = (int)g.y; }
-    bool open = v[0].choice == 0;
-    if (!SetDoorOpen(x, y, currentViewZ, open)) { Say(YELLOW, "No door at %d,%d (level %d)", x, y, currentViewZ); return; }
-    Say(GREEN, "Door at %d,%d: %s", x, y, open ? "open" : "closed");
+    int c = v[0].choice;
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || currentViewZ < 0 || currentViewZ >= gridDepth ||
+        !CellIsDoor(GRID(x, y, currentViewZ))) { Say(YELLOW, "No door at %d,%d (level %d)", x, y, currentViewZ); return; }
+    if (c == 0 && GRID(x, y, currentViewZ) == CELL_DOOR_LOCKED) { Say(YELLOW, "That door is locked: door unlock first"); return; }
+    if (c <= 1) SetDoorOpen(x, y, currentViewZ, c == 0);
+    else SetDoorLocked(x, y, currentViewZ, c == 2);
+    Say(GREEN, "Door at %d,%d: %s", x, y, (const char*[]){ "open", "closed", "locked", "unlocked" }[c]);
 }
 
 // ---- time: speed, daylength ----
@@ -751,7 +755,7 @@ static const CommandDef commandTable[] = {
       3, { ARG_CHOICE("dir", oneWayChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunOneWay, NULL },
-    { "door", "World/Doors", "Open or close the door at the mouse or x y (on the viewed level)",
+    { "door", "World/Doors", "Open, close, lock or unlock the door at the mouse or x y (on the viewed level). Locked: nobody passes",
       3, { ARG_CHOICE("state", doorChoices), { .name = "x", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 },
            { .name = "y", .type = CARG_INT, .optional = true, .lo = 0, .hi = 4095 } },
       RunDoor, NULL },

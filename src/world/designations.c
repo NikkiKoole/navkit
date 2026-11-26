@@ -3009,7 +3009,7 @@ bool HasBlastDesignation(int x, int y, int z) {
 bool DesignateDoor(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     CellType c = GRID(x, y, z);
-    if (!CellIsDoor(c)) return false;
+    if (c != CELL_DOOR && c != CELL_DOOR_OPEN) return false;   // not a door, or locked
     if (DESIGNATION(x, y, z).type != DESIGNATION_NONE) return false;
     DesignationType t = c == CELL_DOOR_OPEN ? DESIGNATION_CLOSE_DOOR : DESIGNATION_OPEN_DOOR;
     DESIGNATION_MUT(x, y, z).type = t;

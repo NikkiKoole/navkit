@@ -62,7 +62,7 @@ extern CellDef cellDefs[];
 #define CellIsShaft(c)          CellHasFlag(c, CF_SHAFT)
 #define CellBlocksFluids(c)     CellHasFlag(c, CF_BLOCKS_FLUIDS)
 #define CellIsSolid(c)          CellHasFlag(c, CF_SOLID)
-#define CellIsDoor(c)           ((c) == CELL_DOOR || (c) == CELL_DOOR_OPEN)   // closed or open
+#define CellIsDoor(c)           ((c) == CELL_DOOR || (c) == CELL_DOOR_OPEN || (c) == CELL_DOOR_LOCKED)
 
 // Field accessors
 #define CellName(c)             (cellDefs[c].name)
@@ -116,8 +116,8 @@ static inline bool IsCellWalkableAtEx(int z, int y, int x, bool ignoreWater) {
     // Ramps are always walkable (special case)
     if (CellIsRamp(cellHere)) return true;
     
-    // Doors are walkable (solid for support, but passable)
-    if (CellIsDoor(cellHere)) return true;
+    // Doors are walkable (solid for support, but passable), unless locked
+    if (cellHere == CELL_DOOR || cellHere == CELL_DOOR_OPEN) return true;
     
     // Can't walk inside solid blocks (dirt, walls, etc.)
     if (CellIsSolid(cellHere)) return false;

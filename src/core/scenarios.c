@@ -494,6 +494,65 @@ static bool DoorSmokeCheck(char* why, int whyLen) {
     return true;
 }
 
+// doorlock: two rooms split by a wall with two doors (north and south), 16 movers wandering both.
+// At tick 600 the north door is locked (nobody passes: a wall to the pathfinder), at 1800 it is
+// unlocked again. Check: the north door is used before the lock, nobody is ever in it while it
+// is locked (paths through it replanned), the south door carries the traffic meanwhile, and the
+// north door is used again after the unlock.
+static const int dlWallX = 16, dlNorthY = 9, dlSouthY = 23, dlLockAt = 600, dlUnlockAt = 1800;
+static int dlTicks, dlNorthBefore, dlNorthLocked, dlNorthAfter, dlSouthLocked;
+
+static void SetupDoorLock(void) {
+    dlTicks = dlNorthBefore = dlNorthLocked = dlNorthAfter = dlSouthLocked = 0;
+    for (int y = 0; y < gridHeight; y++) {
+        GRID(dlWallX, y, 1) = CELL_WALL;
+        SetWallMaterial(dlWallX, y, 1, MAT_GRANITE);
+    }
+    GRID(dlWallX, dlNorthY, 1) = CELL_DOOR; SetWallMaterial(dlWallX, dlNorthY, 1, MAT_OAK);
+    GRID(dlWallX, dlSouthY, 1) = CELL_DOOR; SetWallMaterial(dlWallX, dlSouthY, 1, MAT_OAK);
+    BuildEntrances();
+    BuildGraph();
+    InvalidateLighting();
+    endlessMoverMode = true;
+    int n = scenarioMovers > 0 ? scenarioMovers : 16;
+    for (int i = 0; i < n; i++) SpawnMoverAt(i % 2 ? 20 + (i / 2) % 8 : 4 + (i / 2) % 8, 4 + (i / 2) * 3 % 24, 1);
+    currentViewZ = 1;
+    AddMessage("Door lock: two rooms, two doors; console 'door lock' / 'door unlock' on the north door", GREEN);
+}
+
+static void DoorLockTickStats(void) {
+    dlTicks++;
+    if (dlTicks == dlLockAt) SetDoorLocked(dlWallX, dlNorthY, 1, true);
+    if (dlTicks == dlUnlockAt) SetDoorLocked(dlWallX, dlNorthY, 1, false);
+    bool locked = dlTicks >= dlLockAt && dlTicks < dlUnlockAt;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        if (!m->active || (int)m->z != 1) continue;
+        int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE);
+        if (x != dlWallX) continue;
+        if (y == dlNorthY) {
+            if (dlTicks < dlLockAt) dlNorthBefore++;
+            else if (locked) dlNorthLocked++;
+            else dlNorthAfter++;
+        }
+        if (y == dlSouthY && locked) dlSouthLocked++;
+    }
+}
+
+static void DoorLockPrintStats(void) {
+    printf("Mover-ticks in the north door: before the lock %d, while locked %d, after the unlock %d; "
+           "in the south door while the north was locked: %d\n", dlNorthBefore, dlNorthLocked, dlNorthAfter, dlSouthLocked);
+}
+
+static bool DoorLockCheck(char* why, int whyLen) {
+    if (dlTicks < dlUnlockAt + 600) { snprintf(why, (size_t)whyLen, "run at least %d ticks", dlUnlockAt + 600); return false; }
+    if (dlNorthLocked > 0) { snprintf(why, (size_t)whyLen, "someone was in the locked door (%d mover-ticks)", dlNorthLocked); return false; }
+    if (dlNorthBefore == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door before it was locked"); return false; }
+    if (dlSouthLocked == 0) { snprintf(why, (size_t)whyLen, "nobody went round through the south door"); return false; }
+    if (dlNorthAfter == 0) { snprintf(why, (size_t)whyLen, "nobody used the north door after it was unlocked"); return false; }
+    return true;
+}
+
 static void DoorwayTickStats(void) {
     doorwayTicks++;
     float r = CELL_SIZE * 0.5f;
@@ -5603,6 +5662,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupGathering, GatheringTickStats, GatheringPrintStats, GatheringCheck, 0, 0},
     {"doorway",    "Two rooms, one door, 16 movers wandering both: waiting at the door (setting yieldLetPass)",
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
+    {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",
+                   NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",
                    NULL,        SetupDoorSmoke, DoorSmokeTickStats, DoorSmokePrintStats, DoorSmokeCheck, 0, 0},
     {"hallway",    "12 movers wandering a 3-wide corridor: two-way traffic (compare setting politePassing)",

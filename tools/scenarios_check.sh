@@ -44,6 +44,7 @@ done <<'EOF'
 300 | 0 | --scenario hallway
 216 | 0 | --scenario doorway
 0   | 0 | --scenario doorsmoke
+227 | 0 | --scenario doorlock
 160 | 0 | --scenario gathering
 75  | 0 | --scenario social-ties
 40  | 0 | --scenario garden-party

@@ -285,6 +285,7 @@ bool SetDoorOpen(int x, int y, int z, bool open) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     CellType c = GRID(x, y, z);
     if (!CellIsDoor(c)) return false;
+    if (c == CELL_DOOR_LOCKED) return !open;   // locked: shut already, can't be opened
     CellType want = open ? CELL_DOOR_OPEN : CELL_DOOR;
     if (c == want) return true;
     GRID(x, y, z) = want;
@@ -295,6 +296,27 @@ bool SetDoorOpen(int x, int y, int z, bool open) {
     DestabilizeTemperature(x, y, z);
     InvalidateLightingAt(x, y, z);
     EventLog("Door %d,%d,%d %s", x, y, z, open ? "opened" : "closed");
+    return true;
+}
+
+extern void PushMoversOutOfCell(int x, int y, int z);        // mover.c
+extern void InvalidatePathsThroughCell(int x, int y, int z); // mover.c
+
+bool SetDoorLocked(int x, int y, int z, bool locked) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    CellType c = GRID(x, y, z);
+    if (!CellIsDoor(c)) return false;
+    if ((c == CELL_DOOR_LOCKED) == locked) return true;
+    if (locked) {
+        SetDoorOpen(x, y, z, false);           // shut first (wakes the sims if it was open)
+        GRID(x, y, z) = CELL_DOOR_LOCKED;
+        PushMoversOutOfCell(x, y, z);
+    } else {
+        GRID(x, y, z) = CELL_DOOR;
+    }
+    MarkChunkDirty(x, y, z);                   // walkable <-> not: a local rebuild, like a wall
+    InvalidatePathsThroughCell(x, y, z);
+    EventLog("Door %d,%d,%d %s", x, y, z, locked ? "locked" : "unlocked");
     return true;
 }
 

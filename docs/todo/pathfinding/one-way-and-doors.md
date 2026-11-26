@@ -46,6 +46,8 @@ Asked for 2026-11-24: ladders with a direction (one way), keys and doors, maybe 
 
 > Now part of the joint plan `../world/infrastructure.md` (doors, locks, mechanisms, pipes): door
 > states first, then household front doors and visiting (step 2), the rest of keys in step 5.
+> Built 2026-11-26: doors open / closed / **locked for everyone** (`CELL_DOOR_LOCKED`, a wall to the
+> nav, `SetDoorLocked` = local rebuild + replan). Per-mover access (below) is still open.
 
 Decided so far: **keys are real items**, carried around (dropped, picked up, lost).
 Open points, from the first look:

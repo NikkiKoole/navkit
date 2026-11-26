@@ -1,7 +1,7 @@
 # Infrastructure: doors, locks, mechanisms, pipes (and what else is like them)
 
-> Status: step 1 mostly done (2026-11-26): doors open and closed, the open/close door chore.
-> Locked doors are next (see "Where we are"). Otherwise a plan. Joins three older
+> Status: step 1 mostly done (2026-11-26): doors open / closed / locked for everyone, the
+> open/close door chore (see "Where we are"). Otherwise a plan. Joins three older
 > plans into one: keys (`../pathfinding/one-way-and-doors.md` "Parked: keys"), mechanisms layer 1
 > (`../../vision/far future /mechanisms-and-signals.md`) and the pipe layer
 > (`../gameplay/survival-toilet.md` "The pipe layer"). Those stay as the detail; this is the
@@ -31,7 +31,19 @@ it; work time `doorOpenSeconds`). The mark keeps the wanted state, so a passer-b
 meanwhile doesn't flip it; already that way on arrival: the mark just clears. `doorsmoke` now
 marks the door once everyone is out and checks one walks back and shuts it.
 
-**Next in step 1:** locked-for-everyone (impassable: a local rebuild like placing a wall); a small path cost for a
+**Locked for everyone (2026-11-26):** a third door cell type, `CELL_DOOR_LOCKED` (`CF_WALL`: blocks
+walking, fluids, light; `CellIsDoor` still true, so rooms keep it as a door). Walkability lists
+only `CELL_DOOR` / `CELL_DOOR_OPEN`, so to the pathfinder a locked door is a wall.
+`SetDoorLocked(x, y, z, locked)` (`grid.c`): locking shuts an open door, pushes anyone in the doorway
+out, then `MarkChunkDirty` (a local HPA* rebuild, like placing a wall) and
+`InvalidatePathsThroughCell` (paths through it are replanned); unlocking leaves it closed. A locked
+door can't be opened (`SetDoorOpen` refuses, movers only open `CELL_DOOR`) or marked by the door
+chore. Console `door lock|unlock`, describe "Locked: nobody gets through", drawn as the closed door
+with a darker tint (until a `door-locked` sprite). Scenario `doorlock` (in scenarios-check): two
+rooms, two doors, 16 wanderers; the north door locked at tick 600, unlocked at 1800; nobody in it
+while locked, the south door takes the traffic, the north is used again after.
+
+**Next in step 1:** a small path cost for a
 closed door (`NAV_ENTER_EXTRA`); the cold-snap and locked-door scenarios. Animals don't open doors
 yet (they walk through closed ones).
 

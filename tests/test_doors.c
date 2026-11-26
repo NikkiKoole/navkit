@@ -321,6 +321,28 @@ describe(door_states) {
         expect(!HasDoorDesignation(3, 3, 1) && !HasDoorDesignation(5, 3, 1));
     }
 
+    it("a locked door is a wall to walking, still a door, and can't be opened or marked") {
+        InitTestGrid(8, 8);
+        InitDesignations();
+        GRID(3, 3, 0) = CELL_WALL;
+        GRID(3, 3, 1) = CELL_DOOR_OPEN;
+        expect(SetDoorLocked(3, 3, 1, true));
+        expect(GRID(3, 3, 1) == CELL_DOOR_LOCKED);       // locking shuts it
+        expect(CellIsDoor(CELL_DOOR_LOCKED));
+        expect(CellBlocksMovement(CELL_DOOR_LOCKED) != 0);
+        expect(CellBlocksFluids(CELL_DOOR_LOCKED) != 0);
+        expect(IsCellWalkableAt(1, 3, 3) == false);
+        expect(!SetDoorOpen(3, 3, 1, true));             // locked: won't open
+        expect(SetDoorOpen(3, 3, 1, false));             // asking it to be shut: it is
+        expect(GRID(3, 3, 1) == CELL_DOOR_LOCKED);
+        expect(!DesignateDoor(3, 3, 1));
+        expect(SetDoorLocked(3, 3, 1, false));
+        expect(GRID(3, 3, 1) == CELL_DOOR);              // unlocked: closed, not open
+        expect(IsCellWalkableAt(1, 3, 3) == true);
+        GRID(4, 3, 1) = CELL_WALL;
+        expect(!SetDoorLocked(4, 3, 1, true));
+    }
+
     it("a close mark stays a close mark when someone opens the door meanwhile") {
         InitTestGrid(8, 8);
         InitDesignations();

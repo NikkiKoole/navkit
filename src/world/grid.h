@@ -59,6 +59,7 @@ typedef enum {
     CELL_ELEVATOR,     // Elevator shaft - one cell per level; a car carries movers between levels (elevators.c)
     CELL_RAILING,      // Railing/balustrade - blocks walking only: light, sight, air and water pass; not solid
     CELL_DOOR_OPEN,    // Open door - walkable, lets water/smoke/light/heat through, solid for support (CellIsDoor)
+    CELL_DOOR_LOCKED,  // Locked door - nobody passes (a wall to the pathfinder), blocks fluids/light (CellIsDoor)
     CELL_TYPE_COUNT
 } CellType;
 
@@ -67,7 +68,7 @@ static inline const char* CellTypeName(int type) {
         "WALL", "AIR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH",
         "RAMP_N", "RAMP_E", "RAMP_S", "RAMP_W",
         "SAPLING", "TREE_TRUNK", "TREE_BRANCH", "TREE_ROOT", "TREE_FELLED", "TREE_LEAVES",
-        "BUSH", "TRACK", "PLATFORM", "DOOR", "WINDOW", "ELEVATOR", "RAILING", "DOOR_OPEN"
+        "BUSH", "TRACK", "PLATFORM", "DOOR", "WINDOW", "ELEVATOR", "RAILING", "DOOR_OPEN", "DOOR_LOCKED"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == CELL_TYPE_COUNT,
                    "CellTypeName out of sync with CellType enum");
@@ -331,6 +332,10 @@ bool SetDoorOneWay(int x, int y, int z, OneWay dir);
 // the pathfinder is not told; the sims (water, smoke, steam, heat) and lighting around it are
 // woken. False if (x, y, z) is not a door; true (nothing to do) if it already is that way.
 bool SetDoorOpen(int x, int y, int z, bool open);
+// Lock or unlock a door for everyone (CELL_DOOR_LOCKED <-> CELL_DOOR). Locking shuts an open door,
+// pushes anyone standing in the doorway out, and tells the pathfinder (a local rebuild, like
+// placing a wall); paths through it are replanned. Unlocking leaves it closed. False if not a door.
+bool SetDoorLocked(int x, int y, int z, bool locked);
 extern float doorOpenSeconds;   // how long a mover stops at a closed door to open it (setting)
 
 // Row sweep over a sparse layer in plain x order: FOR_X_IN_SPARSE_ROW(layer, T, x, p, y, z) { ... }

@@ -88,10 +88,10 @@ static Color FireLevelColor(int level) {
     return (Color){r, g, b, alpha};
 }
 
-// A full-height wall for the cutaway fill: blocks walking, but a railing is waist high and a
-// window shows its glass (the window sprite) rather than a cut wall top
+// A full-height wall for the cutaway fill: blocks walking, but a railing is waist high, a
+// window shows its glass (the window sprite) and a locked door its door rather than a cut wall top
 static bool IsCutawayWall(CellType c) {
-    return CellBlocksMovement(c) && c != CELL_RAILING && c != CELL_WINDOW;
+    return CellBlocksMovement(c) && c != CELL_RAILING && c != CELL_WINDOW && !CellIsDoor(c);
 }
 
 // What a cut wall joins up to (no edge drawn on that side): walls, and windows set in them
@@ -768,6 +768,7 @@ static void DrawCellGrid(void) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
             if (cell == CELL_RAILING) tint = MultiplyColor(tint, RailingTint(GetWallMaterial(x, y, z)));
+            if (cell == CELL_DOOR_LOCKED) tint = MultiplyColor(tint, (Color){150, 135, 135, 255});   // until a door-locked sprite
             if (CellIsRamp(cell)) {
                 MaterialType rampMat = GetWallMaterial(x, y, z);
                 if (rampMat != MAT_NONE) {

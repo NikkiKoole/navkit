@@ -1617,6 +1617,10 @@ JobRunResult RunJob_Door(Job* job, void* moverPtr, float dt) {
     if (!d || (d->type != DESIGNATION_CLOSE_DOOR && d->type != DESIGNATION_OPEN_DOOR)) return JOBRUN_FAIL;
     CellType c = GRID(tx, ty, tz);
     if (!CellIsDoor(c)) { CancelDesignation(tx, ty, tz); return JOBRUN_FAIL; }            // the door is gone
+    if (c == CELL_DOOR_LOCKED && d->type == DESIGNATION_OPEN_DOOR) {                       // locked meanwhile
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
     if ((c == CELL_DOOR_OPEN) == (d->type == DESIGNATION_OPEN_DOOR)) {                    // already as wanted
         CompleteDoorDesignation(tx, ty, tz);
         return JOBRUN_DONE;
