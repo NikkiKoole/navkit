@@ -1924,7 +1924,6 @@ int main(int argc, char** argv) {
         }
         DrawStockpileTiles();
         DrawPipes();          // under workshops and furniture (pipes.h, drain spike)
-        DrawPumps();          // pumps (pumps.h)
         DrawMechanisms();     // levers, pressure plates, links (mechanisms.h)
         DrawWorkshops();
         DrawFurniture();
@@ -1933,6 +1932,7 @@ int main(int argc, char** argv) {
         DrawHaulDestinations();
         DrawStockpileItems();
         DrawMiningDesignations();
+        DrawPumps();          // pumps (pumps.h): over their "work the pump" mark, so the tile shows
         DrawOneWayLadders();
         DrawBlueprints();
         DrawPipeBlueprints();   // the planned pipe's shape over its blueprint tiles (pipes.h)

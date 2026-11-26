@@ -2956,6 +2956,14 @@ static void DrawStockpileItems(void) {
 // bright blob. A pipe joins its N/E/S/W drain
 // neighbours like a railing. On bare ground pipes show; under a constructed floor only with
 // the pipeOverlay setting. An outlet gets a dark dot, a valve a square (green open, red shut).
+// An atlas sprite centred in a cell, turned 90 degrees when asked (for tiles drawn along N-S:
+// the pump, valves); the user's tiles (2026-11-26)
+static void DrawCellSpriteTurned(int sprite, Rectangle cell, bool turn90, Color tint) {
+    Rectangle src = SpriteGetRect(sprite);
+    Rectangle dest = { cell.x + cell.width * 0.5f, cell.y + cell.height * 0.5f, cell.width, cell.height };
+    DrawTexturePro(atlas, src, dest, (Vector2){ cell.width * 0.5f, cell.height * 0.5f }, turn90 ? 90.0f : 0.0f, tint);
+}
+
 static int PipeSpriteFor(int mask, bool inner) {
     static const int pipeSprites[16] = {   // bit 1 N, 2 E, 4 S, 8 W
         [0]  = SPRITE_pipe_ew,   [1]  = SPRITE_pipe_ns,   [2]  = SPRITE_pipe_ew,   [3]  = SPRITE_pipe_ne,
@@ -3037,11 +3045,8 @@ static void DrawMechanisms(void) {
         if (m->kind == MECH_NONE || m->z != z) continue;
         Rectangle r = { offset.x + m->x * size, offset.y + m->y * size, size, size };
         float cx = r.x + size * 0.5f, cy = r.y + size * 0.5f;
-        if (m->kind == MECH_PLATE) {
-            float in = size * (m->on ? 0.2f : 0.14f);
-            Color c = m->on ? (Color){ 110, 105, 95, 255 } : (Color){ 160, 152, 136, 255 };
-            DrawRectangleRec((Rectangle){ r.x + in, r.y + in, size - 2 * in, size - 2 * in }, c);
-            DrawRectangleLinesEx((Rectangle){ r.x + in, r.y + in, size - 2 * in, size - 2 * in }, size * 0.06f, (Color){ 60, 56, 50, 255 });
+        if (m->kind == MECH_PLATE) {   // the user's tiles: raised, or pressed down
+            FastSprite(atlas, SpriteGetRect(m->on ? SPRITE_plate_pressed : SPRITE_plate_up), r, WHITE);
         } else {
             DrawRectangleRec((Rectangle){ cx - size * 0.25f, cy + size * 0.12f, size * 0.5f, size * 0.18f }, (Color){ 70, 64, 58, 255 });
             Vector2 tip = { cx + (m->on ? 0.28f : -0.28f) * size, cy - size * 0.32f };
@@ -3092,10 +3097,12 @@ static void DrawPipes(void) {
                 FastSprite(atlas, SpriteGetRect(PipeSpriteFor(mask, true)), dest, MultiplyColor((Color){ 80, 150, 220, 255 }, light));
             float cx = dest.x + size * 0.5f, cy = dest.y + size * 0.5f;
             if (b & PIPE_END) DrawCircleV((Vector2){ cx, cy }, size * 0.22f, (Color){ 30, 24, 18, 230 });
-            if (b & PIPE_VALVE) {
-                Color vc = (b & PIPE_VALVE_CLOSED) ? (Color){ 200, 50, 40, 255 } : (Color){ 60, 170, 70, 255 };
-                float h = size * 0.16f;
-                DrawRectangleRec((Rectangle){ cx - h, cy - h, 2 * h, 2 * h }, vc);
+            if (b & PIPE_STACK)   // goes on up / down a level
+                FastSprite(atlas, SpriteGetRect(SPRITE_pipe_stack), dest, MultiplyColor((Color){ 176, 112, 78, 255 }, light));
+            if (b & PIPE_VALVE) {   // open: the ring, shut: the X; turned along an east-west pipe
+                bool eastWest = (mask & (2 | 8)) && !(mask & (1 | 4));
+                DrawCellSpriteTurned((b & PIPE_VALVE_CLOSED) ? SPRITE_valve_shut : SPRITE_valve_open, dest, eastWest,
+                                     MultiplyColor((Color){ 214, 170, 74, 255 }, light));
             }
         }
     DrawPipePulses(skyColor);
@@ -3119,8 +3126,8 @@ static void DrawPipeBlueprints(void) {
     }
 }
 
-// Pumps (pumps.h): a disc over the pump block with an arrow to its output; the arrow pulses
-// while it is being worked (placeholder until a sprite)
+// Pumps (pumps.h): the user's pump tile over the pump block, turned along its direction, and a
+// small arrow at its output edge that pulses while it is being worked
 static void DrawPumps(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -3129,15 +3136,15 @@ static void DrawPumps(void) {
         if (!p->active || p->z != z) continue;
         float cx = offset.x + (p->x + 0.5f) * size, cy = offset.y + (p->y + 0.5f) * size;
         if (cx < -size || cy < -size || cx > GetScreenWidth() + size || cy > GetScreenHeight() + size) continue;
-        DrawCircleV((Vector2){ cx, cy }, size * 0.42f, (Color){ 120, 84, 50, 255 });
-        DrawCircleLinesV((Vector2){ cx, cy }, size * 0.42f, (Color){ 60, 40, 24, 255 });
+        // The user's pump tile (drawn along N-S): turned along the pump's direction, in oak
+        Rectangle cell = { cx - size * 0.5f, cy - size * 0.5f, size, size };
+        DrawCellSpriteTurned(SPRITE_pump, cell, p->dx != 0, (Color){ 156, 110, 64, 255 });
         bool working = p->workedAgo < 0.25f;
         float pulse = working ? 0.5f + 0.5f * sinf((float)GetTime() * 14.0f) : 0.0f;
         Color arrow = working ? (Color){ (unsigned char)(90 + 60 * pulse), (unsigned char)(160 + 60 * pulse), 240, 255 } : (Color){ 200, 180, 140, 255 };
-        Vector2 tip = { cx + p->dx * size * 0.34f, cy + p->dy * size * 0.34f };
-        Vector2 tail = { cx - p->dx * size * 0.2f, cy - p->dy * size * 0.2f };
+        // A small arrow at the output edge: which way the water goes out (pulses while worked)
+        Vector2 tip = { cx + p->dx * size * 0.5f, cy + p->dy * size * 0.5f };
         float px = (float)-p->dy, py = (float)p->dx;
-        DrawLineEx(tail, tip, fmaxf(1.0f, size * 0.1f), arrow);
         DrawTriangle(tip, (Vector2){ tip.x - p->dx * size * 0.18f + px * size * 0.14f, tip.y - p->dy * size * 0.18f + py * size * 0.14f },
                      (Vector2){ tip.x - p->dx * size * 0.18f - px * size * 0.14f, tip.y - p->dy * size * 0.18f - py * size * 0.14f }, arrow);
         DrawTriangle(tip, (Vector2){ tip.x - p->dx * size * 0.18f - px * size * 0.14f, tip.y - p->dy * size * 0.18f - py * size * 0.14f },
