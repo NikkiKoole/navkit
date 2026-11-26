@@ -58,6 +58,7 @@ typedef struct {
     float animalFlee; bool huntThrow, animalRespawn;
     int baseTemp, seasonAmp, dayAmp;   // climate (town sets a mild one)
     int ambientTemp;                   // the surface temperature when both swings are 0 (soak, drought)
+    bool cloudRain;                    // rain only under clouds (rainfall turns it off)
     bool weather;
     float visitsPerDay, visitStayMin, visitStayMax;   // visit.h (scenario visiting)
 } ScenarioSettings;
@@ -87,7 +88,7 @@ static void SnapshotOrRestoreSettings(void) {
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
                                            animalRespawnEnabled,
-                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, ambientSurfaceTemp, weatherEnabled,
+                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, ambientSurfaceTemp, cloudRain, weatherEnabled,
                                            visitsPerDay, visitStayMinHours, visitStayMaxHours};
         haveSavedSettings = true;
         return;
@@ -116,6 +117,7 @@ static void SnapshotOrRestoreSettings(void) {
     seasonalAmplitude = savedSettings.seasonAmp;
     diurnalAmplitude = savedSettings.dayAmp;
     if (ambientSurfaceTemp != savedSettings.ambientTemp) SetAmbientSurfaceTemp(savedSettings.ambientTemp);
+    cloudRain = savedSettings.cloudRain;
     weatherEnabled = savedSettings.weather;
     visitsPerDay = savedSettings.visitsPerDay;
     visitStayMinHours = savedSettings.visitStayMin;
@@ -4716,7 +4718,8 @@ static void SetupSoakWorld(bool rain) {
             for (int p = 0; p < SOAK_PLOTS; p++)
                 for (int y = soakY0[r]; y < soakY0[r] + SOAK_IN; y++)
                     for (int x = soakX0[p]; x < soakX0[p] + SOAK_IN; x++) SetWaterLevel(x, y, 1, soakFill[r]);
-    if (rain) {   // steady rain for a day (SoakLiveTick ends it)
+    if (rain) {   // steady rain for a day (SoakLiveTick ends it), evenly: this measures the soil, not the clouds
+        cloudRain = false;
         weatherState.current = WEATHER_RAIN;
         weatherState.intensity = 1.0f;
         weatherState.transitionTimer = 1e9f;
@@ -4843,6 +4846,72 @@ static void DroughtPrintStats(void) {
     for (int s = 0; s < droughtSampleCount; s++) {
         int* v = droughtVeg[s];
         printf("%6d %4dC %5d%% %6d %6d %6d %6d %7d %6d\n", s * 12, droughtTemp[s], droughtMoist[s], v[0], v[1], v[2], v[3], v[4], v[5]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// clouds: a grass field under steady rain with the cloud map on (cloudRain): showers drift
+// across with the wind and leave wet trails. Prints the cloud density and the soil moisture as
+// small maps (a character per 4x4 cells) every 3 game hours for two days.
+#define CLOUDS_CELL 4
+static double cloudsNext;
+static int cloudsPrinted;
+static char cloudsLog[16][2][16][24];   // sample, (clouds, soil), row, columns
+
+static void SetupClouds(void) {
+    waterEnabled = true;
+    waterEvaporationEnabled = true;
+    groundWearEnabled = true;
+    soilMoistureEnabled = true;
+    weatherEnabled = true;
+    cloudRain = true;
+    seasonalAmplitude = 0;
+    diurnalAmplitude = 0;
+    SetAmbientSurfaceTemp(20);
+    weatherState.current = WEATHER_RAIN;
+    weatherState.intensity = 1.0f;
+    weatherState.transitionTimer = 1e9f;   // it keeps raining (somewhere)
+    weatherState.windDirX = 1.0f;          // from the west
+    weatherState.windDirY = 0.0f;
+    SoilMoistureInitNow();
+    cloudsNext = gameTime;
+    cloudsPrinted = 0;
+}
+
+static void CloudsTickStats(void) {
+    if (gameTime < cloudsNext || cloudsPrinted >= 16) return;
+    cloudsNext += GameHoursToGameSeconds(3.0f);
+    static const char ramp[] = " .:-=+*#";
+    int rows = gridHeight / CLOUDS_CELL, cols = gridWidth / CLOUDS_CELL;
+    if (rows > 16) rows = 16;
+    if (cols > 23) cols = 23;
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            float d = 0.0f; long m = 0;
+            for (int y = r * CLOUDS_CELL; y < (r + 1) * CLOUDS_CELL; y++)
+                for (int x = c * CLOUDS_CELL; x < (c + 1) * CLOUDS_CELL; x++) {
+                    d += GetCloudDensity(x, y);
+                    m += MOISTURE(x, y, 0);
+                }
+            d /= CLOUDS_CELL * CLOUDS_CELL;
+            float mf = (float)m / (CLOUDS_CELL * CLOUDS_CELL * MOISTURE_FULL);
+            int di = (int)(d * 7.99f), mi = (int)(mf * 7.99f);
+            cloudsLog[cloudsPrinted][0][r][c] = ramp[di];
+            cloudsLog[cloudsPrinted][1][r][c] = ramp[mi];
+        }
+        cloudsLog[cloudsPrinted][0][r][cols] = 0;
+        cloudsLog[cloudsPrinted][1][r][cols] = 0;
+    }
+    cloudsPrinted++;
+}
+
+static void CloudsPrintStats(void) {
+    int rows = gridHeight / CLOUDS_CELL;
+    if (rows > 16) rows = 16;
+    printf("\nClouds: steady rain, wind from the west. Left: cloud density, right: soil moisture (normal '-' .. soaked '#'), every 3 GH\n");
+    for (int s = 0; s < cloudsPrinted; s++) {
+        printf("GH %d\n", s * 3);
+        for (int r = 0; r < rows; r++) printf("  |%s|   |%s|\n", cloudsLog[s][0][r], cloudsLog[s][1][r]);
     }
 }
 
@@ -6709,6 +6778,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupSoak, SoakTickStats, SoakPrintStats, NULL, 48, 20},
     {"drought",    "A tall-grass field: 6 days at 36 C without rain (soil dries out, grass browns and thins to dirt), then 20 C and rain (it grows back) (soil-moisture.md)",
                    NULL,        SetupDrought, DroughtTickStats, DroughtPrintStats, NULL, 32, 32, DroughtLiveTick},
+    {"clouds",     "A grass field under steady rain with the cloud map on: showers drift across with the wind and leave wet trails (cloudRain, cloudSize, cloudSpeed; soil-moisture.md)",
+                   NULL,        SetupClouds, CloudsTickStats, CloudsPrintStats, NULL, 92, 64},
     {"rainfall",   "The soak basins without water: a day of steady rain, then dry weather: what soaks in, what stands, how it dries (rainWater, soil-moisture.md)",
                    NULL,        SetupRainfall, SoakTickStats, SoakPrintStats, NULL, 48, 20, SoakLiveTick},
     {"drift",      "The island with a log and a bundle of sticks on 60 spots in its rivers, no settlers: where does the current take them?",

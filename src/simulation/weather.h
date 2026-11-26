@@ -128,9 +128,15 @@ extern float snowMeltingRate;           // How fast snow melts above freezing (d
 // CLOUD SHADOWS (Phase 4)
 // =============================================================================
 
-// Returns shadow intensity [0.0, 1.0] for a given cell and time
-// 0.0 = no shadow (full brightness), 1.0 = maximum shadow (darkest)
-// time parameter is game time (gameTime) for scrolling effect
+// The cloud map: density 0..1 at a cell (0 in clear weather), drifting with the wind
+float GetCloudDensity(int x, int y);
+// Rain under the clouds there: 0 (none, a cloud's thin edge or no cloud) .. 1 (its core); 1 everywhere when !cloudRain
+float GetCloudRain(int x, int y);
+extern float cloudSize;    // cells across a typical cloud
+extern float cloudSpeed;   // cells per game hour the clouds drift at wind strength 1
+extern bool cloudRain;     // rain only under clouds (off: evenly everywhere)
+// Returns shadow intensity [0.0, 1.0] for a given cell: the cloud density times how dark this
+// weather's clouds are. (time is unused: the clouds move by their drift, UpdateClouds.)
 float GetCloudShadow(int x, int y, float time);
 
 // =============================================================================

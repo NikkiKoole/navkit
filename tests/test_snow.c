@@ -445,61 +445,49 @@ describe(snow_fire_interaction) {
 
 // ========== Cloud Shadows ==========
 describe(cloud_shadow) {
+    // Shadows are the cloud map's density (weather.c GetCloudDensity) times how dark the weather's
+    // clouds are; the clouds move by drifting with the wind (UpdateWeather), not with the clock
     it("varies intensity by weather type") {
-        InitTestGrid(10, 10);
+        InitTestGrid(64, 64);
         InitWeather();
-        
-        // Clear weather - no shadows
-        weatherState.current = WEATHER_CLEAR;
-        float clearShadow = GetCloudShadow(5, 5, 0.0f);
-        expect(clearShadow == 0.0f);
-        
-        // Cloudy - some shadows
-        weatherState.current = WEATHER_CLOUDY;
-        float cloudyShadow = GetCloudShadow(5, 5, 0.0f);
-        expect(cloudyShadow > 0.0f);
-        
-        // Rain - darker shadows
-        weatherState.current = WEATHER_RAIN;
-        float rainShadow = GetCloudShadow(5, 5, 0.0f);
-        expect(rainShadow >= cloudyShadow);
+        float most[3] = {0};
+        static const WeatherType w[3] = { WEATHER_CLEAR, WEATHER_CLOUDY, WEATHER_RAIN };
+        for (int k = 0; k < 3; k++) {
+            weatherState.current = w[k];
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++) if (GetCloudShadow(x, y, 0.0f) > most[k]) most[k] = GetCloudShadow(x, y, 0.0f);
+        }
+        expect(most[0] == 0.0f);         // clear: no shadows
+        expect(most[1] > 0.0f);          // cloudy: some
+        expect(most[2] >= most[1]);      // rain: darker
     }
-    
+
     it("varies by position") {
         InitTestGrid(128, 128);
         InitWeather();
-        
         weatherState.current = WEATHER_CLOUDY;
-        
-        float shadow1 = GetCloudShadow(0, 0, 0.0f);
-        float shadow2 = GetCloudShadow(50, 50, 0.0f);
-        float shadow3 = GetCloudShadow(100, 100, 0.0f);
-        
-        // At least some should differ (patch-based shadows)
-        int allSame = (shadow1 == shadow2 && shadow2 == shadow3);
-        expect(!allSame);
+        int shaded = 0, open = 0;
+        for (int y = 0; y < 128; y += 4)
+            for (int x = 0; x < 128; x += 4) {
+                if (GetCloudShadow(x, y, 0.0f) > 0.0f) shaded++; else open++;
+            }
+        expect(shaded > 0);
+        expect(open > 0);
     }
-    
+
     it("moves with wind over time") {
         InitTestGrid(128, 128);
         InitWeather();
-        
         weatherState.current = WEATHER_CLOUDY;
+        weatherState.transitionTimer = 1e9f;
         weatherState.windDirX = 1.0f;
         weatherState.windDirY = 0.0f;
         weatherState.windStrength = 2.0f;
-        
-        // Sample many points — at least one should see shadow change
-        // as patches drift with wind over a large time delta
+        float before[16];
+        for (int i = 0; i < 16; i++) before[i] = GetCloudShadow(i * 8, 64, 0.0f);
+        for (int t = 0; t < 600; t++) { gameDeltaTime = TICK_DT; UpdateWeather(); }
         int anyDiffers = 0;
-        for (int x = 0; x < 128; x += 8) {
-            for (int y = 0; y < 128; y += 8) {
-                float s1 = GetCloudShadow(x, y, 0.0f);
-                float s2 = GetCloudShadow(x, y, 100.0f);
-                if (s1 != s2) { anyDiffers = 1; break; }
-            }
-            if (anyDiffers) break;
-        }
+        for (int i = 0; i < 16; i++) if (GetCloudShadow(i * 8, 64, 0.0f) != before[i]) anyDiffers = 1;
         expect(anyDiffers);
     }
 }

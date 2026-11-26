@@ -34,6 +34,7 @@ static void SetupWeatherGrid(void) {
     daysPerSeason = 7;
     baseSurfaceTemp = 15;
     seasonalAmplitude = 20;
+    cloudRain = false;   // rain evenly: these tests measure amounts (cloud_rain below turns it on)
 }
 
 // Helper: force weather to a specific type for deterministic testing
@@ -374,6 +375,66 @@ describe(rain_wetness) {
 }
 
 // =============================================================================
+// Rain under the clouds (the cloud map, weather.c)
+// =============================================================================
+
+describe(cloud_rain) {
+    it("should rain only under the clouds") {
+        InitTestGrid(64, 64);
+        FillGroundLevel();
+        InitWater();
+        InitTemperature();
+        InitTime();
+        InitWeather();
+        ForceWeather(WEATHER_RAIN);
+        float savedSpeed = cloudSpeed, savedRain = rainWater;
+        cloudRain = true;
+        cloudSpeed = 0.0f;              // clouds stand still: the same cells rain all along
+        rainWater = 400.0f;
+        rainWetnessInterval = 0.2f;
+        SoilMoistureInitNow();
+        int dry = 0, under = 0, dryChanged = 0, underWetted = 0;
+        for (int i = 0; i < 300; i++) { gameDeltaTime = TICK_DT; UpdateWeather(); }
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++) {
+                float r = GetCloudRain(x, y);
+                bool wetted = MOISTURE(x, y, 0) != MOISTURE_BASELINE || GetWaterLevel(x, y, 1) > 0;
+                if (r == 0.0f) { dry++; if (wetted) dryChanged++; }
+                if (r > 0.5f) { under++; if (wetted) underWetted++; }
+            }
+        cloudSpeed = savedSpeed; rainWater = savedRain; cloudRain = false;
+        expect(dry > 0);                   // some sky without raining cloud
+        expect(under > 0);                 // and some raining cores
+        expect(dryChanged == 0);           // nothing fell outside the clouds
+        expect(underWetted > under / 2);   // most cores got rain
+    }
+
+    it("should drift the clouds with the wind") {
+        InitTestGrid(64, 64);
+        InitWeather();
+        ForceWeather(WEATHER_RAIN);
+        weatherState.windDirX = 1.0f;
+        weatherState.windDirY = 0.0f;
+        float before[64];
+        for (int x = 0; x < 64; x++) before[x] = GetCloudDensity(x, 32);
+        for (int i = 0; i < 600; i++) { gameDeltaTime = TICK_DT; UpdateWeather(); }
+        int changed = 0;
+        for (int x = 0; x < 64; x++) if (GetCloudDensity(x, 32) != before[x]) changed++;
+        expect(changed > 0);
+    }
+
+    it("should have no clouds in clear weather") {
+        InitTestGrid(64, 64);
+        InitWeather();
+        ForceWeather(WEATHER_CLEAR);
+        float most = 0.0f;
+        for (int y = 0; y < 64; y++)
+            for (int x = 0; x < 64; x++) if (GetCloudDensity(x, y) > most) most = GetCloudDensity(x, y);
+        expect(most == 0.0f);
+    }
+}
+
+// =============================================================================
 // Weather-Driven Rain Spawning
 // =============================================================================
 
@@ -481,6 +542,7 @@ int main(int argc, char** argv) {
     test(weather_intensity);
     test(roof_detection);
     test(rain_wetness);
+    test(cloud_rain);
     test(rain_water_spawning);
     test(weather_wind_basics);
     test(weather_display);

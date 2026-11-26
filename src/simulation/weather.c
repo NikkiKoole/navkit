@@ -317,9 +317,10 @@ static int rainSweepRow = 0;
 // with room it soaks in where it lands (at that soil's speed: clay lets most of it stand); on
 // full soil, natural rock or water it lands as water and runs off downhill like any other.
 // Built ground and roofs catch nothing (gutters), the sea neither.
-float rainWater = 0.5f;
-float heavyRainWater = 1.5f;
+float rainWater = 1.5f;        // under a raining cloud's core (cloudRain): less at its edge, none outside
+float heavyRainWater = 4.5f;
 static float rainChance = 0.0f;   // per column, this sweep
+static void UpdateClouds(void);   // the cloud map drifts (below)
 // Its own random numbers: a roll per column per sweep must not shift rand()'s sequence (the
 // weather itself, fire, everything else would change with the map size)
 static uint32_t rainRng = 0x9E3779B9u;
@@ -330,7 +331,9 @@ static float RainRand01(void) {
 
 static void RainWetnessRow(int y) {
         for (int x = 0; x < gridWidth; x++) {
-            if (RainRand01() >= rainChance) continue;
+            float roll = RainRand01();
+            if (roll >= rainChance) continue;
+            if (cloudRain && roll >= rainChance * GetCloudRain(x, y)) continue;   // not under a raining cloud
             // Find the ground z (topmost solid cell; water and floors in air cells don't count)
             for (int z = gridDepth - 1; z >= 0; z--) {
                 CellType cell = GRID(x, y, z);
@@ -450,6 +453,7 @@ void UpdateWeather(void) {
 
     // Update wind
     UpdateWind();
+    UpdateClouds();
 
     // Rain wetness on exposed cells
     ApplyRainWetness();
@@ -669,73 +673,99 @@ float GetSnowSpeedMultiplier(int x, int y, int z) {
 // CLOUD SHADOWS (Phase 4)
 // =============================================================================
 
-// Simple drifting rectangular shadow patches.
-// Placeholder approach: a handful of fixed-size rectangles that scroll with
-// the wind.  Looks intentionally placeholder but reads clearly as "clouds".
+// The cloud map (docs/todo/world/soil-moisture.md "Clouds"): one invisible field of cloud
+// density, 0..1 per cell, that drifts with the wind and slowly changes shape. The weather state
+// sets how much of the sky it covers; rain falls only under the dense part of a cloud (cloudRain)
+// and the cloud shadows are drawn from it, so you see a cloud by its shadow and by the wet
+// ground it leaves. Value noise from a hash (no shared state with the terrain's Perlin), three
+// layers, each drifting a little differently so the shapes change as they go.
+float cloudSize = 40.0f;    // cells across a typical cloud
+float cloudSpeed = 4.0f;    // cells per game hour at wind strength 1 (a calm day still drifts)
+bool cloudRain = true;      // off: rain falls everywhere evenly
+static float cloudOffX[3], cloudOffY[3];   // each layer's drift, cells
 
-#define CLOUD_PATCH_COUNT 6
+static float CloudHash(int x, int y, int layer) {
+    uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u + (uint32_t)layer * 2246822519u + (uint32_t)worldSeed * 3266489917u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= h >> 16;
+    return (float)(h & 0xFFFFFF) / 16777216.0f;
+}
 
-typedef struct {
-    float cx, cy;   // base center in world-cell coords
-    float hw, hh;   // half-width / half-height in cells
-} CloudPatch;
+static float CloudValueNoise(float x, float y, int layer) {
+    float fx = floorf(x), fy = floorf(y);
+    int ix = (int)fx, iy = (int)fy;
+    float tx = x - fx, ty = y - fy;
+    tx = tx * tx * (3.0f - 2.0f * tx);
+    ty = ty * ty * (3.0f - 2.0f * ty);
+    float a = CloudHash(ix, iy, layer), b = CloudHash(ix + 1, iy, layer);
+    float c = CloudHash(ix, iy + 1, layer), d = CloudHash(ix + 1, iy + 1, layer);
+    return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
+}
 
-// Deterministic patches seeded from grid size
-static const CloudPatch cloudPatches[CLOUD_PATCH_COUNT] = {
-    {  20.0f,  15.0f, 12.0f,  8.0f },
-    {  70.0f,  45.0f, 10.0f, 14.0f },
-    {  40.0f,  80.0f, 15.0f,  9.0f },
-    { 110.0f,  25.0f,  8.0f, 11.0f },
-    {  85.0f,  90.0f, 13.0f,  7.0f },
-    {  55.0f,  55.0f,  9.0f, 12.0f },
-};
+// How much of the sky this weather covers (0 = none)
+static float CloudCover(WeatherType w) {
+    switch (w) {
+        case WEATHER_CLOUDY:       return 0.55f;
+        case WEATHER_RAIN:         return 0.6f;
+        case WEATHER_HEAVY_RAIN:   return 0.75f;
+        case WEATHER_THUNDERSTORM: return 0.7f;
+        case WEATHER_SNOW:         return 0.6f;
+        case WEATHER_MIST:         return 0.35f;
+        default:                   return 0.0f;
+    }
+}
+
+float GetCloudDensity(int x, int y) {
+    float cover = CloudCover(weatherState.current);
+    if (cover <= 0.0f) return 0.0f;
+    float s = cloudSize > 1.0f ? cloudSize : 1.0f;
+    float n = 0.55f * CloudValueNoise((x + cloudOffX[0]) / s, (y + cloudOffY[0]) / s, 0)
+            + 0.30f * CloudValueNoise((x + cloudOffX[1]) * 2.0f / s, (y + cloudOffY[1]) * 2.0f / s, 1)
+            + 0.15f * CloudValueNoise((x + cloudOffX[2]) * 4.0f / s, (y + cloudOffY[2]) * 4.0f / s, 2);
+    float t0 = 0.75f - 0.5f * cover;   // the more cover, the lower the noise a cloud needs
+    float d = (n - t0) / 0.2f;
+    return d < 0.0f ? 0.0f : d > 1.0f ? 1.0f : d;
+}
+
+// Rain under a cloud: none at its thin edge, full at its dense core
+float GetCloudRain(int x, int y) {
+    if (!cloudRain) return 1.0f;
+    float d = GetCloudDensity(x, y);
+    float r = (d - 0.4f) / 0.6f;
+    return r < 0.0f ? 0.0f : r;
+}
+
+// The layers drift with the wind, each at its own speed and a little off its direction
+static void UpdateClouds(void) {
+    float wind = 0.3f + weatherState.windStrength;
+    float cellsPerSec = cloudSpeed * wind / GameHoursToGameSeconds(1.0f);
+    static const float rate[3] = { 1.0f, 1.3f, 1.7f }, skew[3] = { 0.0f, 0.35f, -0.5f };
+    for (int i = 0; i < 3; i++) {
+        float dx = weatherState.windDirX - skew[i] * weatherState.windDirY;
+        float dy = weatherState.windDirY + skew[i] * weatherState.windDirX;
+        // move the noise against the wind: what is upwind now arrives here later
+        cloudOffX[i] -= dx * cellsPerSec * rate[i] * gameDeltaTime;
+        cloudOffY[i] -= dy * cellsPerSec * rate[i] * gameDeltaTime;
+        if (fabsf(cloudOffX[i]) > 1.0e6f) cloudOffX[i] = 0.0f;   // keep floats precise
+        if (fabsf(cloudOffY[i]) > 1.0e6f) cloudOffY[i] = 0.0f;
+    }
+}
 
 float GetCloudShadow(int x, int y, float time) {
-    WeatherType w = weatherState.current;
-
-    // Base intensity by weather type
-    float baseIntensity = 0.0f;
-    switch (w) {
-        case WEATHER_CLEAR:         baseIntensity = 0.0f; break;
-        case WEATHER_CLOUDY:        baseIntensity = 0.3f; break;
-        case WEATHER_RAIN:          baseIntensity = 0.5f; break;
-        case WEATHER_HEAVY_RAIN:    baseIntensity = 0.6f; break;
-        case WEATHER_THUNDERSTORM:  baseIntensity = 0.7f; break;
-        case WEATHER_SNOW:          baseIntensity = 0.4f; break;
-        case WEATHER_MIST:          baseIntensity = 0.2f; break;
-        default:                    baseIntensity = 0.0f; break;
+    (void)time;   // the clouds' position is their drift (UpdateClouds), not the clock
+    float d = GetCloudDensity(x, y);
+    if (d <= 0.0f) return 0.0f;
+    float darkest;
+    switch (weatherState.current) {
+        case WEATHER_CLOUDY:        darkest = 0.4f; break;
+        case WEATHER_RAIN:          darkest = 0.6f; break;
+        case WEATHER_HEAVY_RAIN:    darkest = 0.7f; break;
+        case WEATHER_THUNDERSTORM:  darkest = 0.8f; break;
+        case WEATHER_SNOW:          darkest = 0.5f; break;
+        case WEATHER_MIST:          darkest = 0.25f; break;
+        default:                    darkest = 0.0f; break;
     }
-
-    if (baseIntensity < 0.01f) return 0.0f;
-
-    // Scroll with wind
-    float scrollX = time * weatherState.windDirX * weatherState.windStrength * 0.5f;
-    float scrollY = time * weatherState.windDirY * weatherState.windStrength * 0.5f;
-
-    float maxShadow = 0.0f;
-    float fx = (float)x;
-    float fy = (float)y;
-
-    for (int i = 0; i < CLOUD_PATCH_COUNT; i++) {
-        const CloudPatch* p = &cloudPatches[i];
-
-        // Each patch drifts at a slightly different rate for variety
-        float rate = 1.0f + (float)i * 0.15f;
-        float pcx = fmodf(p->cx + scrollX * rate, (float)gridWidth  + p->hw * 4.0f) - p->hw * 2.0f;
-        float pcy = fmodf(p->cy + scrollY * rate, (float)gridHeight + p->hh * 4.0f) - p->hh * 2.0f;
-
-        // Soft-edged rectangle: full shadow inside, linear falloff at edges
-        float dx = fabsf(fx - pcx) - p->hw;
-        float dy = fabsf(fy - pcy) - p->hh;
-        if (dx > 4.0f || dy > 4.0f) continue;  // 4-cell soft edge
-
-        float sx = dx < 0.0f ? 1.0f : 1.0f - dx / 4.0f;
-        float sy = dy < 0.0f ? 1.0f : 1.0f - dy / 4.0f;
-        float s = sx * sy;
-        if (s > maxShadow) maxShadow = s;
-    }
-
-    return maxShadow * baseIntensity;
+    return d * darkest;
 }
 
 // =============================================================================

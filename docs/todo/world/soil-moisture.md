@@ -1,6 +1,6 @@
 # Soil moisture: water soaks into the ground, plants and sun take it out
 
-Research 2026-11-26. Status: partial. Steps 1-4 built (measuring scenario, evaporation per surface, the moisture layer, grass reacts) and rain falls as water; next: crops (step 5). Pairs with "Soaking" in `water-ideas.md`
+Research 2026-11-26. Status: partial. Steps 1-4 built (measuring scenario, evaporation per surface, the moisture layer, grass reacts), rain falls as water under drifting clouds; next: crops (step 5), a rain shadow behind hills. Pairs with "Soaking" in `water-ideas.md`
 and the open "soaking sink" in `water.md`.
 
 The user's ask: water on grass / open ground disappears too fast. Let the top soil absorb it,
@@ -301,4 +301,38 @@ Scenario `drought` (32x32 tall grass, 6 days at 36 C without rain, then 20 C and
 At 36 C the soil is parched in ~1.5 days, the grass is short after ~3 and bare after ~6; rain
 brings it back over the next days. At 28 C the floor is ~46 (dry, not parched): straw-coloured
 ground and no regrowth, but no dieback.
+
+## Clouds: rain where the clouds are (2026-11-26)
+
+Talked through with the user: one invisible cloud map; you see a cloud only by its shadow and the
+wet ground it leaves. User agreed to all of it: the global weather keeps saying how much cloud and
+rain there is, the cloud map says where; shadows plus wet ground only (no rain drawn); showers
+crossing a 256 island in a few game hours; rain shadow behind hills later (it doesn't follow from
+a noise field by itself: it needs density raised on windward slopes and lowered behind ridges).
+
+`weather.c`: `GetCloudDensity(x, y)` 0..1, value noise from a hash (seeded by `worldSeed`, no shared
+state with the terrain's Perlin), three layers drifting with the wind at slightly different speeds
+and directions so the shapes change (`UpdateClouds`, `cloudSpeed` 4 cells/GH x (0.3 + wind)).
+The weather sets the cover (cloudy 0.55, rain 0.6, heavy 0.75, storm 0.7, snow 0.6, mist 0.35,
+clear 0). Rain falls only under the dense part of a cloud (`GetCloudRain`: 0 below density 0.4,
+1 at the core), `rainWater` (1.5) / `heavyRainWater` (4.5) units per day under a core; setting
+`cloudRain` off = evenly everywhere (scenario `rainfall` does that to measure the soil). The cloud
+shadows (`GetCloudShadow`) are now this density times how dark the weather's clouds are (the
+six fixed rectangles are gone). The drift isn't saved: after a load the clouds start elsewhere.
+Snow still falls evenly.
+
+Scenario `clouds` (92x64 grass, steady rain, wind from the west): prints the cloud density and the
+soil moisture as small maps every 3 game hours; the clouds move 20-30 cells per 3 hours and change
+shape, and the soil gets wet in the bands they cross.
+
+Island seed 1, weather on starting with heavy rain (then 4 days of rain), lowland (z4) water:
+
+| | day 2 | day 4 | day 6 |
+|---|---|---|---|
+| even rain 0.5 / 1.5 | 63k | 46k | 9.7k |
+| clouds, cores 2 / 6 | 68k | 78k | 25k |
+| clouds, cores 1.5 / 4.5 (default) | 8.3k | 15k | 34k |
+
+Below about 2 per day under a core most rain soaks in where it falls; above, the spots that stay
+under a cloud fill up and run off.
 
