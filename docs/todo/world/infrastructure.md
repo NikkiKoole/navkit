@@ -47,9 +47,18 @@ while locked, the south door takes the traffic, the north is used again after.
 core, and visiting (`visit.c`): knock, answer, a grant, stay, leave, the door closed or not;
 scenarios `galerij` and `visiting` (`../architecture/ownership-and-access.md` "Where we are").
 
-**Still open in step 1:** a small path cost for a
-closed door (`NAV_ENTER_EXTRA`); the cold-snap and locked-door scenarios. Animals don't open doors
-yet (they walk through closed ones).
+**Animals and doors (2026-11-26):** animals don't open doors: a closed door stops them like a
+wall (`AnimalCellBlocked` in `animals.c`), an open one lets them through. Steering animals
+couldn't pass any one-cell gap before (open door or a hole in a wall: the context steering's wall
+danger rays need them lined up within 0.1 cell); now one whose grass is out of sight walks a small
+grid route cell by cell (`AnimalRouteStep`, 13x13 box) with only the hard wall collision. Simple
+grazers still walk straight at grass through walls (older, separate). Test: `test_doors`
+"animals_and_doors".
+
+**Still open in step 1:** a small path cost for a closed door. Not `NAV_ENTER_EXTRA` (it must stay
+0 off ladder cells: graph edges only add it at entrances) and not the cell move cost (that is also
+walking speed, and a door's state changes without telling the pathfinder): it needs a path-only
+cost plus a graph update when a door opens or closes. The cold-snap scenario.
 
 ## Why one plan
 

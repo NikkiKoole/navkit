@@ -9,6 +9,8 @@
 #include "../src/entities/workshops.h"
 #include "../src/world/designations.h"
 #include "test_helpers.h"
+#include "../src/entities/mover.h"
+#include "../src/entities/animals.h"
 #include <string.h>
 
 static bool test_verbose = false;
@@ -359,6 +361,51 @@ describe(door_states) {
 // Main
 // =============================================================================
 
+// =============================================================================
+// Animals and doors: they don't open doors (a closed door stops them like a wall)
+// =============================================================================
+
+// A 4x4 room (x 1-4, y 1-4) at z 1 with a door in its east wall at (5, 2); grass outside.
+// One steering grazer (what games spawn) in the middle of the room.
+static void AnimalRoom(CellType door) {
+    InitTestGrid(16, 8);
+    for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 16; x++) {
+            GRID(x, y, 0) = CELL_WALL;
+            GRID(x, y, 1) = CELL_AIR;
+            if (x >= 7) SetVegetation(x, y, 1, VEG_GRASS_TALL);
+        }
+    for (int i = 0; i <= 5; i++) {
+        GRID(i, 0, 1) = CELL_WALL; GRID(i, 5, 1) = CELL_WALL;
+        GRID(0, i, 1) = CELL_WALL; GRID(5, i, 1) = CELL_WALL;
+    }
+    GRID(5, 2, 1) = door;
+    ClearAnimals();
+    animalRespawnEnabled = false;
+    SpawnAnimalAt(ANIMAL_GRAZER, BEHAVIOR_STEERING_GRAZER, 2, 2, 1);
+}
+
+// Furthest east the animal got (in cells) over the given game seconds
+static float AnimalRunMaxX(float seconds) {
+    float maxX = 0.0f;
+    for (float t = 0.0f; t < seconds; t += 1.0f / 60.0f) {
+        AnimalsTick(1.0f / 60.0f);
+        float x = animals[0].x / CELL_SIZE;
+        if (x > maxX) maxX = x;
+    }
+    return maxX;
+}
+
+describe(animals_and_doors) {
+    it("a closed door keeps an animal in; an open one lets it out to the grass") {
+        AnimalRoom(CELL_DOOR);
+        expect(animals[0].active);
+        expect(AnimalRunMaxX(600.0f) < 5.0f);   // never reached the door cell (x 5)
+        AnimalRoom(CELL_DOOR_OPEN);
+        expect(AnimalRunMaxX(600.0f) >= 6.0f);  // went through to the grass
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
 
@@ -370,6 +417,7 @@ int main(int argc, char* argv[]) {
     test(workshop_ground_fire);
     test(door_blueprint_placement);
     test(door_states);
+    test(animals_and_doors);
 
     return summary();
 }

@@ -206,6 +206,13 @@ int GetAnimalAtGrid(int x, int y, int z) {
     return -1;
 }
 
+// Animals don't open doors: a closed door (CELL_DOOR) stops them like a wall. Open doors let
+// them through; a locked door is a wall anyway (docs/todo/world/infrastructure.md step 1).
+static bool AnimalCellBlocked(int x, int y, int z) {
+    CellType cell = GRID(x, y, z);
+    return CellBlocksMovement(cell) || cell == CELL_DOOR || (CELL_FLAGS(x, y, z) & CELL_FLAG_WORKSHOP_BLOCK);
+}
+
 // Scan nearby cells for highest vegetation walkable cell
 // Returns true if found, sets outX/outY
 static bool ScanForGrass(int cx, int cy, int cz, int radius, int* outX, int* outY) {
@@ -217,7 +224,7 @@ static bool ScanForGrass(int cx, int cy, int cz, int radius, int* outX, int* out
             int nx = cx + dx;
             int ny = cy + dy;
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (!IsCellWalkableAt(cz, ny, nx)) continue;
+            if (!IsCellNudgeableAt(cz, ny, nx)) continue;   // walkable, no closed door
             if (GetWaterLevel(nx, ny, cz) > 0) continue;
 
             int veg = (int)GetVegetation(nx, ny, cz);
@@ -240,7 +247,7 @@ static bool ScanForGrass(int cx, int cy, int cz, int radius, int* outX, int* out
 // Check if the target cell is still valid for walking to
 static bool IsTargetValid(int tx, int ty, int tz) {
     if (tx < 0 || tx >= gridWidth || ty < 0 || ty >= gridHeight) return false;
-    if (!IsCellWalkableAt(tz, ty, tx)) return false;
+    if (!IsCellNudgeableAt(tz, ty, tx)) return false;   // walkable, no closed door
     if (GetWaterLevel(tx, ty, tz) > 0) return false;
     return true;
 }
@@ -445,8 +452,7 @@ static int SampleNearbyWalls(Animal* a, Wall* outWalls, int maxWalls) {
             int ny = cy + dy;
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
 
-            CellType cell = GRID(nx, ny, cz);
-            bool blocked = CellBlocksMovement(cell) || (CELL_FLAGS(nx, ny, cz) & CELL_FLAG_WORKSHOP_BLOCK);
+            bool blocked = AnimalCellBlocked(nx, ny, cz);
             bool hasWater = GetWaterLevel(nx, ny, cz) > 0;
             if (!blocked && !hasWater) continue;
             {
@@ -470,6 +476,68 @@ static int SampleNearbyWalls(Animal* a, Wall* outWalls, int maxWalls) {
         }
     }
     return count;
+}
+
+// Can an animal walk on (x, y, z): walkable, no closed door, no water
+static bool AnimalCellOpen(int x, int y, int z) {
+    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return false;
+    return IsCellNudgeableAt(z, y, x) && !AnimalCellBlocked(x, y, z) && GetWaterLevel(x, y, z) == 0;
+}
+
+// Straight line from (fx, fy) (pixels) to the centre of cell (tx, ty) over open cells only
+static bool AnimalLineClear(float fx, float fy, int tx, int ty, int z) {
+    float gx = (tx + 0.5f) * CELL_SIZE, gy = (ty + 0.5f) * CELL_SIZE;
+    float dx = gx - fx, dy = gy - fy;
+    int steps = (int)(sqrtf(dx * dx + dy * dy) / (CELL_SIZE * 0.25f)) + 1;
+    for (int i = 1; i <= steps; i++) {
+        float t = (float)i / steps;
+        if (!AnimalCellOpen((int)((fx + dx * t) / CELL_SIZE), (int)((fy + dy * t) / CELL_SIZE), z)) return false;
+    }
+    return true;
+}
+
+// First cell of a 4-connected route from (cx, cy) to (tx, ty) over open cells, searched in a
+// small box round the animal. Context steering alone can't get through a one-cell gap (its
+// wall danger rays need the animal almost exactly lined up), so an animal whose goal is out of
+// sight walks the route cell by cell, as a mover walks its path. False if there is none.
+#define ANIMAL_ROUTE_R (ANIMAL_SCAN_RADIUS + 2)
+#define ANIMAL_ROUTE_W (2 * ANIMAL_ROUTE_R + 1)
+static bool AnimalRouteStep(int cx, int cy, int z, int tx, int ty, int* outX, int* outY) {
+    if (abs(tx - cx) > ANIMAL_ROUTE_R || abs(ty - cy) > ANIMAL_ROUTE_R) return false;
+    signed char from[ANIMAL_ROUTE_W * ANIMAL_ROUTE_W];   // direction taken into each cell, -1 unseen
+    short queue[ANIMAL_ROUTE_W * ANIMAL_ROUTE_W];
+    memset(from, -1, sizeof(from));
+    static const int ddx[4] = {0, 1, 0, -1}, ddy[4] = {-1, 0, 1, 0};
+    int ox = cx - ANIMAL_ROUTE_R, oy = cy - ANIMAL_ROUTE_R;
+    int start = (cy - oy) * ANIMAL_ROUTE_W + (cx - ox), goal = (ty - oy) * ANIMAL_ROUTE_W + (tx - ox);
+    int head = 0, tail = 0;
+    from[start] = 4;
+    queue[tail++] = (short)start;
+    while (head < tail) {
+        int c = queue[head++];
+        if (c == goal) break;
+        int lx = c % ANIMAL_ROUTE_W, ly = c / ANIMAL_ROUTE_W;
+        for (int d = 0; d < 4; d++) {
+            int nx = lx + ddx[d], ny = ly + ddy[d];
+            if (nx < 0 || ny < 0 || nx >= ANIMAL_ROUTE_W || ny >= ANIMAL_ROUTE_W) continue;
+            int n = ny * ANIMAL_ROUTE_W + nx;
+            if (from[n] >= 0 || !AnimalCellOpen(ox + nx, oy + ny, z)) continue;
+            from[n] = (signed char)d;
+            queue[tail++] = (short)n;
+        }
+    }
+    if (from[goal] < 0 || goal == start) return false;
+    int c = goal;   // walk back to the cell right after the start
+    for (;;) {
+        int d = from[c];
+        int px = c % ANIMAL_ROUTE_W - ddx[d], py = c / ANIMAL_ROUTE_W - ddy[d];
+        int p = py * ANIMAL_ROUTE_W + px;
+        if (p == start) break;
+        c = p;
+    }
+    *outX = ox + c % ANIMAL_ROUTE_W;
+    *outY = oy + c / ANIMAL_ROUTE_W;
+    return true;
 }
 
 static void BehaviorSteeringGrazer(Animal* a, float dt) {
@@ -542,11 +610,18 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
     ctx_clear(&steeringCtx);
 
     // --- Interest: seek grass (suppressed when panicked) ---
+    bool followingRoute = false;   // walking a grid route (through a doorway): no wall danger rays
     if (!panicked) {
         int grassX, grassY;
         bool foundGrass = ScanForGrass(cx, cy, cz, ANIMAL_SCAN_RADIUS, &grassX, &grassY);
         if (foundGrass) {
             Vector2 grassPos = { (grassX + 0.5f) * CELL_SIZE, (grassY + 0.5f) * CELL_SIZE };
+            int stepX, stepY;
+            if (!AnimalLineClear(a->x, a->y, grassX, grassY, cz) &&
+                AnimalRouteStep(cx, cy, cz, grassX, grassY, &stepX, &stepY)) {
+                grassPos = (Vector2){ (stepX + 0.5f) * CELL_SIZE, (stepY + 0.5f) * CELL_SIZE };
+                followingRoute = true;
+            }
             ctx_interest_seek(&steeringCtx, boid.pos, grassPos, 1.0f);
         } else {
             SteeringOutput wanderOut = steering_wander(&boid, 15.0f, 30.0f, 3.0f, &a->wanderAngle);
@@ -565,7 +640,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
     // --- Danger: walls ---
     Wall walls[STEERING_MAX_WALLS];
     int wallCount = SampleNearbyWalls(a, walls, STEERING_MAX_WALLS);
-    if (wallCount > 0) {
+    if (wallCount > 0 && !followingRoute) {   // on a route the hard collision below keeps it off walls
         ctx_danger_walls(&steeringCtx, boid.pos, CELL_SIZE * 0.4f, walls, wallCount, STEERING_WALL_LOOKAHEAD);
     }
 
@@ -673,8 +748,7 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
         int newCx = (int)(a->x / CELL_SIZE);
         int newCy = (int)(a->y / CELL_SIZE);
         if (newCx >= 0 && newCx < gridWidth && newCy >= 0 && newCy < gridHeight) {
-            CellType cell = GRID(newCx, newCy, cz);
-            if (CellBlocksMovement(cell) || (CELL_FLAGS(newCx, newCy, cz) & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
+            if (AnimalCellBlocked(newCx, newCy, cz) || GetWaterLevel(newCx, newCy, cz) > 0) {
                 // Revert to previous cell center
                 a->x = (cx + 0.5f) * CELL_SIZE;
                 a->y = (cy + 0.5f) * CELL_SIZE;
@@ -851,8 +925,7 @@ static void BehaviorPredator(Animal* a, float dt) {
         int newCx = (int)(a->x / CELL_SIZE);
         int newCy = (int)(a->y / CELL_SIZE);
         if (newCx >= 0 && newCx < gridWidth && newCy >= 0 && newCy < gridHeight) {
-            CellType cell = GRID(newCx, newCy, cz);
-            if (CellBlocksMovement(cell) || (CELL_FLAGS(newCx, newCy, cz) & CELL_FLAG_WORKSHOP_BLOCK) || GetWaterLevel(newCx, newCy, cz) > 0) {
+            if (AnimalCellBlocked(newCx, newCy, cz) || GetWaterLevel(newCx, newCy, cz) > 0) {
                 a->x = (cx + 0.5f) * CELL_SIZE;
                 a->y = (cy + 0.5f) * CELL_SIZE;
                 a->velX = 0.0f;
