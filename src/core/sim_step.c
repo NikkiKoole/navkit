@@ -20,6 +20,7 @@
 #include "../simulation/vapour.h"
 #include "../world/support.h"
 #include "effects.h"
+#include "../entities/visit.h"
 
 void SimStep(float dt) {
     // Time, cell simulations, lighting, rooms, plants, spatial grids, movement
@@ -42,6 +43,7 @@ void SimStep(float dt) {
     NoticeTick();
     TalkTick(dt);
     ChaseTick(dt);
+    VisitTick(dt);  // visits: setting off, former guests walking home (visit.h)
     SocialTick();   // company: up in talks and games, down alone (social.h)
     PROFILE_END(Notice);
 

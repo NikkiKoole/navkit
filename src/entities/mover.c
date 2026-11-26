@@ -44,6 +44,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "visit.h"
 
 // Fast inverse square root (Quake III algorithm)
 // Uses memcpy to avoid undefined behavior from type-punning
@@ -1189,6 +1190,7 @@ void ClearMovers(void) {
     ClearTalks();
     ClearRelations();
     ClearChase();
+    ClearVisits();
     ClearExplosions();   // knocked movers, fuses, flying items (indices go stale)
     memset(moverRouteLen, 0, sizeof(moverRouteLen));
     memset(moverRouteNext, 0, sizeof(moverRouteNext));

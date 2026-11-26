@@ -38,6 +38,7 @@
 #include "../entities/relations.h"
 #include "../entities/chase.h"
 #include "../entities/throwing.h"
+#include "../entities/visit.h"
 #include "../entities/town.h"
 #include <strings.h>
 
@@ -649,6 +650,22 @@ static const Setting settings[] = {
       "Walkers steer round a conversation's circle instead of through it."),
     SET_FLOAT("talkRadius", "Talk: start (cells)", "Entities/Movers/Noticing", talkStartRadius, 0.1f, 1.0f, 8.0f,
       "How close two idle movers must be to start talking.", NULL),
+    SET_BOOL("autoVisits", "Visits: on", "Entities/Movers/Noticing", autoVisits,
+      "Residents visit friends at home by themselves: knock, get let in, stay a while (visit.c; galerij)."),
+    SET_FLOAT("visitsPerDay", "Visits: per day", "Entities/Movers/Noticing", visitsPerDay, 0.1f, 0.0f, 20.0f,
+      "How often a free resident at home sets off to visit, per day (a chance spread over the day).", NULL),
+    SET_FLOAT("visitMinLike", "Visits: min like", "Entities/Movers/Noticing", visitMinLike, 1.0f, 0.0f, 100.0f,
+      "How much it must like someone in another household to visit them.", NULL),
+    SET_FLOAT("visitWaitHours", "Visits: knock (h)", "Entities/Movers/Noticing", visitWaitHours, 0.1f, 0.1f, 6.0f,
+      "Game hours a visitor knocks before giving up (nobody home, asleep or busy).", NULL),
+    SET_FLOAT("visitStayMin", "Visits: stay min (h)", "Entities/Movers/Noticing", visitStayMinHours, 0.1f, 0.1f, 12.0f,
+      "Shortest stay, game hours.", NULL),
+    SET_FLOAT("visitStayMax", "Visits: stay max (h)", "Entities/Movers/Noticing", visitStayMaxHours, 0.1f, 0.1f, 12.0f,
+      "Longest stay, game hours.", NULL),
+    SET_FLOAT("visitCooldown", "Visits: cooldown (h)", "Entities/Movers/Noticing", visitCooldownHours, 0.5f, 0.0f, 72.0f,
+      "Game hours before a resident visits again.", NULL),
+    SET_FLOAT("visitCloseChance", "Visits: host closes door", "Entities/Movers/Noticing", visitCloseChance, 0.05f, 0.0f, 1.0f,
+      "Chance a host who isn't Tidy closes the door behind a leaving guest (Tidy hosts always do).", NULL),
     SET_FLOAT("talkChance", "Talk: chance", "Entities/Movers/Noticing", talkChance, 0.01f, 0.0f, 1.0f,
       "Chance per check (each mover checks about 4 times a second) that a talk starts.", NULL),
     SET_FLOAT("talkMin", "Talk: min (s)", "Entities/Movers/Noticing", talkMinSeconds, 0.5f, 1.0f, 120.0f,

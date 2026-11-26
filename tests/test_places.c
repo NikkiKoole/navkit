@@ -12,6 +12,10 @@
 #include "../src/entities/workshops.h"
 #include "../src/entities/furniture.h"
 #include "../src/entities/places.h"
+#include "../src/entities/visit.h"
+#include "../src/entities/chase.h"
+#include "../src/entities/activity.h"
+#include "../src/entities/relations.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
 #include "../src/simulation/balance.h"
@@ -192,10 +196,81 @@ describe(places_save) {
     }
 }
 
+// A walled home (x 0..4, y 0..4) with its front door at (2,4) opening south; its household has
+// one member inside. Returns the home place; *host, *guest are set (the guest stands outside).
+static int VisitWorld(int* host, int* guest) {
+    Setup();
+    hungerEnabled = false; thirstEnabled = false; energyEnabled = false; bladderEnabled = false;
+    for (int y = 0; y <= 4; y++)
+        for (int x = 0; x <= 4; x++)
+            if (x == 0 || x == 4 || y == 0 || y == 4) { GRID(x, y, 1) = CELL_WALL; SetWallMaterial(x, y, 1, MAT_BRICK); }
+    GRID(2, 4, 1) = CELL_DOOR;
+    BuildEntrances(); BuildGraph();
+    int hh = GroupCreate(GROUP_HOUSEHOLD, "Flat B");
+    int home = PlaceCreate(hh, 0, PLACE_RULES_HOME, "Flat B");
+    PlaceFillRect(home, 0, 0, 4, 4, 1);
+    PlaceFillRect(0, 2, 4, 2, 4, 1);          // the threshold is public
+    PlaceSetDoor(home, 2, 4, 1);
+    *host = AddMover(2, 2);
+    *guest = AddMover(7, 8);
+    movers[*host].speed = movers[*guest].speed = MOVER_SPEED;
+    MoverJoinGroup(*host, hh);
+    ClearVisits();
+    visitStayMinHours = visitStayMaxHours = 0.2f;
+    visitCloseChance = 1.0f;
+    return home;
+}
+
+static void VisitRun(int maxTicks, long* doneCounter) {
+    for (int t = 0; t < maxTicks && *doneCounter == 0; t++) {
+        Tick();
+        ChaseTick(TICK_DT);
+        VisitTick(TICK_DT);
+    }
+}
+
+describe(places_visit) {
+    it("a guest knocks, is let in (a grant), stays, leaves; the door is shut behind it, the grant gone") {
+        int host, guest;
+        int home = VisitWorld(&host, &guest);
+        expect(VisitStart(guest, host) >= 0);
+        expect(MoverIsVisiting(guest));
+        VisitRun(20000, &visitDone);
+        expect(visitAnswered == 1 && visitDone == 1 && visitGivenUp == 0);
+        expect(GRID(2, 4, 1) == CELL_DOOR);                 // closed behind it (visitCloseChance 1)
+        expect(MoverGrant(guest) == 0);
+        int gx = (int)(movers[guest].x / CELL_SIZE), gy = (int)(movers[guest].y / CELL_SIZE);
+        expect(PlaceAt(gx, gy, 1) != home);                 // outside
+        expect(RelationLike(guest, host) > 0.0f);           // they got on a little
+        visitCloseChance = 0.5f; visitStayMinHours = 1.0f; visitStayMaxHours = 2.5f;
+    }
+
+    it("nobody home: the guest knocks a while and gives up") {
+        int host, guest;
+        VisitWorld(&host, &guest);
+        movers[host].x = 8.5f * CELL_SIZE; movers[host].y = 1.5f * CELL_SIZE;   // out
+        expect(VisitStart(guest, host) >= 0);
+        VisitRun(40000, &visitGivenUp);
+        expect(visitGivenUp == 1 && visitAnswered == 0);
+        expect(MoverGrant(guest) == 0 && !MoverIsVisiting(guest));
+        visitCloseChance = 0.5f; visitStayMinHours = 1.0f; visitStayMaxHours = 2.5f;
+    }
+
+    it("no visit to one's own household or a household without a home") {
+        int host, guest;
+        VisitWorld(&host, &guest);
+        int other = AddMover(8, 2);
+        expect(VisitStart(guest, other) < 0);               // other has no household
+        MoverJoinGroup(guest, MoverHousehold(host));
+        expect(VisitStart(guest, host) < 0);                // same household
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
     test(places_rules);
     test(places_needs);
     test(places_save);
+    test(places_visit);
     return summary();
 }

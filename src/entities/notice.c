@@ -381,7 +381,7 @@ bool NoticeSocialWanderGoal(int i, int* gx, int* gy, int* gz) {
     for (int tries = 0; tries < 8; tries++) {   // a free walkable cell 1-2 cells from them
         int x = bx + GetRandomValue(-2, 2), y = by + GetRandomValue(-2, 2);
         if ((x == bx && y == by) || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
-        if (!IsCellWalkableAt(z, y, x)) continue;
+        if (!IsCellStandableAt(z, y, x)) continue;
         *gx = x; *gy = y; *gz = z;
         return true;
     }

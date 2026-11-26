@@ -38,6 +38,7 @@
 #include "../entities/action_queue.h"
 #include "../entities/throwing.h"
 #include "../entities/places.h"
+#include "../entities/visit.h"
 
 // ---------------------------------------------------------------------------
 // Settings scenarios change. Snapshotted before the first scenario runs and
@@ -51,6 +52,7 @@ typedef struct {
     float animalFlee; bool huntThrow, animalRespawn;
     int baseTemp, seasonAmp, dayAmp;   // climate (town sets a mild one)
     bool weather;
+    float visitsPerDay, visitStayMin, visitStayMax;   // visit.h (scenario visiting)
 } ScenarioSettings;
 
 static ScenarioSettings savedSettings;
@@ -77,7 +79,8 @@ static void SnapshotOrRestoreSettings(void) {
                                            moverWanderPause, dayLength, balance.baseMoverSpeed, jobDistanceWeight,
                                            trainSpeed, supportEnabled, animalFleeSpeed, huntThrowStones,
                                            animalRespawnEnabled,
-                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, weatherEnabled};
+                                           baseSurfaceTemp, seasonalAmplitude, diurnalAmplitude, weatherEnabled,
+                                           visitsPerDay, visitStayMinHours, visitStayMaxHours};
         haveSavedSettings = true;
         return;
     }
@@ -90,6 +93,7 @@ static void SnapshotOrRestoreSettings(void) {
     talkEnabled = savedSettings.talk;
     autoGatherings = savedSettings.autoGather;
     autoGames = false;   // movers starting games by themselves: a scenario that wants it sets it
+    autoVisits = false;  // residents visiting friends by themselves: likewise
     moverWanderPause = savedSettings.wanderPause;
     dayLength = savedSettings.dayLength;
     balance.baseMoverSpeed = savedSettings.baseMoverSpeed;
@@ -103,6 +107,9 @@ static void SnapshotOrRestoreSettings(void) {
     seasonalAmplitude = savedSettings.seasonAmp;
     diurnalAmplitude = savedSettings.dayAmp;
     weatherEnabled = savedSettings.weather;
+    visitsPerDay = savedSettings.visitsPerDay;
+    visitStayMinHours = savedSettings.visitStayMin;
+    visitStayMaxHours = savedSettings.visitStayMax;
 }
 
 // The startup map: 32x32x16, z=0 natural dirt with tall grass, air above (walk on z=1).
@@ -509,6 +516,7 @@ static bool DoorSmokeCheck(char* why, int whyLen) {
 #define GLR_D 6                     // flat depth incl. walls (front wall at GLR_Y0 + 5)
 static int glrHome[2][GLR_FLATS];   // place per flat
 static long glrTrespassTicks, glrTicks;
+static long glrClosedDoorSteps;     // steps into a door that was still closed (a nudge slipping through)
 
 static int GalerijFlatX(int k) { return GLR_X0 + k * (GLR_W - 1); }
 
@@ -540,6 +548,7 @@ static void GalerijFlat(int k, int z, int household, const char* name) {
     }
     int home = PlaceCreate(household, 0, PLACE_RULES_HOME, name);
     PlaceFillRect(home, ox, oy, ox + GLR_W - 1, oy + GLR_D - 1, z);
+    PlaceFillRect(0, doorX, doorY, doorX, doorY, z);   // the threshold is public: a visitor may stand in the doorway
     PlaceSetDoor(home, doorX, doorY, z);
     glrHome[z - 1][k] = home;
 }
@@ -567,7 +576,8 @@ static void GalerijFurnish(int k, int z) {
 }
 
 static void SetupGalerij(void) {
-    glrTrespassTicks = glrTicks = 0;
+    glrTrespassTicks = glrTicks = glrClosedDoorSteps = 0;
+    balance.baseMoverSpeed = 900.0f;   // dollhouse pace: a 6-minute day, walking 3x (set before spawning)
     // The gallery: ground floor pavement (z=1 on the ground), first floor a concrete walkway
     // with a railing (z=2), from x=5 to x=35, two cells deep in front of the flats
     int gy0 = GLR_Y0 + GLR_D, gy1 = gy0 + 1;
@@ -635,6 +645,7 @@ static void SetupGalerij(void) {
     talkEnabled = true;
     autoGatherings = true;
     autoGames = false;
+    autoVisits = true;        // friends between flats visit each other (visit.c)
     endlessMoverMode = false;
     dayLength = 360.0f;
     currentViewZ = 2;
@@ -642,8 +653,15 @@ static void SetupGalerij(void) {
                           2 * GLR_FLATS, moverCount), GREEN);
 }
 
+static int glrPrevX[MAX_MOVERS], glrPrevY[MAX_MOVERS];
 static void GalerijTickStats(void) {
     glrTicks++;
+    for (int i = 0; i < moverCount; i++) {
+        const Mover* m = &movers[i];
+        int x = (int)(m->x / CELL_SIZE), y = (int)(m->y / CELL_SIZE), z = (int)m->z;
+        if (glrTicks > 1 && (x != glrPrevX[i] || y != glrPrevY[i]) && GRID(x, y, z) == CELL_DOOR) glrClosedDoorSteps++;
+        glrPrevX[i] = x; glrPrevY[i] = y;
+    }
     for (int i = 0; i < moverCount; i++) {
         const Mover* m = &movers[i];
         if (!m->active) continue;
@@ -659,12 +677,15 @@ static void GalerijPrintStats(void) {
         if (movers[i].hunger < 0.1f) hungry++;
         if (movers[i].thirst < 0.1f) thirsty++;
     }
-    printf("Galerij: %d residents in %d flats; mover-ticks in someone else's home: %ld; hungry %d, thirsty %d\n",
-           moverCount, 2 * GLR_FLATS, glrTrespassTicks, hungry, thirsty);
+    printf("Galerij: %d residents in %d flats; mover-ticks in someone else's home: %ld; steps into a closed door: %ld; "
+           "hungry %d, thirsty %d\n", moverCount, 2 * GLR_FLATS, glrTrespassTicks, glrClosedDoorSteps, hungry, thirsty);
+    printf("Visits: %ld set off, %ld let in, %ld over, %ld cut short (a need), %ld gave up (nobody answered)\n",
+           visitStarted, visitAnswered, visitDone, visitCutShort, visitGivenUp);
 }
 
 static bool GalerijCheck(char* why, int whyLen) {
     if (glrTrespassTicks > 0) { snprintf(why, (size_t)whyLen, "someone was in a home not theirs (%ld mover-ticks)", glrTrespassTicks); return false; }
+    if (glrClosedDoorSteps > 0) { snprintf(why, (size_t)whyLen, "someone stepped into a closed door (%ld times)", glrClosedDoorSteps); return false; }
     // Every doorstep reaches every other (the ramps connect the floors)
     for (int a = 0; a < 2 * GLR_FLATS; a++)
         for (int b = a + 1; b < 2 * GLR_FLATS; b++) {
@@ -684,6 +705,24 @@ static bool GalerijCheck(char* why, int whyLen) {
             return false;
         }
     }
+    return true;
+}
+
+// visiting: the galerij with visits often and short (visitsPerDay 8, stays of 0.5-1 game hour),
+// so a short run sees whole visits. Check (besides the galerij's): someone was let in, a visit
+// ended with the guest leaving, and nobody is left a guest anywhere they aren't.
+static void SetupVisiting(void) {
+    SetupGalerij();
+    visitsPerDay = 8.0f;
+    visitStayMinHours = 0.5f;
+    visitStayMaxHours = 1.0f;
+    AddMessage("Visiting: the galerij, friends visit each other often (visitsPerDay 8)", GREEN);
+}
+
+static bool VisitingCheck(char* why, int whyLen) {
+    if (!GalerijCheck(why, whyLen)) return false;
+    if (visitAnswered == 0) { snprintf(why, (size_t)whyLen, "nobody was let in (%ld visits set off)", visitStarted); return false; }
+    if (visitDone + visitCutShort == 0) { snprintf(why, (size_t)whyLen, "no visit ended"); return false; }
     return true;
 }
 
@@ -5857,6 +5896,8 @@ static const Scenario scenarios[] = {
                    NULL,        SetupDoorway,  DoorwayTickStats, DoorwayPrintStats, NULL, 0, 0},
     {"galerij",    "A block of flats off an outdoor gallery: 8 households (places, places.h), dollhouse rules; nobody uses a home that isn't theirs",
                    NULL,        SetupGalerij, GalerijTickStats, GalerijPrintStats, GalerijCheck, 41, 16},
+    {"visiting",   "The galerij with frequent short visits: knock, get let in, stay, leave; stats for visits let in, over, cut short, given up (settings visit*)",
+                   NULL,        SetupVisiting, GalerijTickStats, GalerijPrintStats, VisitingCheck, 41, 16},
     {"doorlock",   "Two rooms, two doors, 16 movers wandering: the north door is locked at tick 600 (they go round by the south door) and unlocked at 1800 (console door lock|unlock)",
                    NULL,        SetupDoorLock, DoorLockTickStats, DoorLockPrintStats, DoorLockCheck, 0, 0},
     {"doorsmoke",  "Three people walk out of a smoke-filled room: the first opens the door, it stays open and the smoke follows them out; then the door is marked and one walks back to shut it (setting doorOpenSeconds)",

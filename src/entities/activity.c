@@ -1,5 +1,6 @@
 // activity.c - joint activities: the pool, membership, the sweep (see activity.h)
 #include "activity.h"
+#include "visit.h"
 #include "chase.h"
 #include "mover.h"
 #include "action_queue.h"
@@ -40,6 +41,7 @@ const ActivityDef* ActivityDefOf(int kind) {
         case ACT_HIDE_SEEK:     return &hideSeekActivityDef;
         case ACT_FOLLOW_LEADER: return &followLeaderActivityDef;
         case ACT_PACK_HUNT:     return &packHuntActivityDef;
+        case ACT_VISIT:         return &visitActivityDef;
         default:                return NULL;
     }
 }

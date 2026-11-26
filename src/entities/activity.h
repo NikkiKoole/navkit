@@ -20,6 +20,7 @@ typedef enum {
     ACT_HIDE_SEEK,
     ACT_FOLLOW_LEADER,
     ACT_PACK_HUNT,
+    ACT_VISIT,          // a friend's home: knock, come in, stay, leave (visit.c)
     ACT_KIND_COUNT
 } ActivityKind;
 

@@ -97,5 +97,17 @@ gallery (ramps at both ends), each a household's home with a front door; 12 resi
 and friends between flats, dollhouse rules. Two game days: nobody in a home not theirs, everyone
 eats, drinks, sleeps and uses the toilet at home.
 
-**Next:** the visit (infrastructure step 2): knock, answer, a grant, host, leave. Then Town's beds,
-City 1999's shops (order above).
+**The visit (2026-11-26):** `src/entities/visit.c`, a joint activity (`ACT_VISIT`). The guest walks
+to the friend's doorstep and knocks; a household member at home and free comes to the door,
+opens it and grants the guest the home; they stay (company, liking grows), the guest leaves, the
+host closes the door or not (Tidy always, else `visitCloseChance`). Nobody answers: it gives up
+after `visitWaitHours`. A guest whose visit ends walks home; the grant goes the moment it is
+outside (so a need on the doormat can't send it back to the host's toilet). The door cell is a
+public threshold, not part of the home. Movers visit by themselves with `autoVisits` (settings
+visit*, console `visit <guest> <friend>`), describe "Visiting Go at Flat 3: staying" / "Has Leig
+over". Scenarios `galerij` (visits on) and `visiting` (often and short; in scenarios-check:
+someone let in, a visit over, nobody trespassing). Four game days of galerij: 13 visits, 9 let in,
+2 given up, 0 trespass. Tests in `test_places` "places_visit".
+
+**Next:** Town's beds, City 1999's shops (order above). Hoped-for behaviours that build on this
+(showing an unwelcome guest out): `../../vision/hoped-for-behaviours.md`.

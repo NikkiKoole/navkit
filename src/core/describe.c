@@ -43,6 +43,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include "../entities/visit.h"
 
 void DescAdd(DescLines* d, DescTone tone, const char* fmt, ...) {
     if (d->count >= DESC_MAX_LINES) return;
@@ -501,9 +502,11 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (detail == DESC_DEBUG) DescAdd(out, DESC_MUTED, "Talk %d: %.0f s left, %s", t, talks[t].timeLeft,
                                           MoverIsSpeaking(idx) ? "speaking" : "listening");
     }
-    {   // its part in a game (chase.c)
+    {   // a visit (visit.c), or its part in a game (chase.c)
         char g[80];
-        if (ChaseDescribe(idx, g, sizeof(g))) {
+        if (VisitDescribe(idx, g, sizeof(g))) {
+            DescAdd(out, DESC_INFO, "%s", g);
+        } else if (ChaseDescribe(idx, g, sizeof(g))) {
             DescAdd(out, DESC_INFO, "%s", g);
             int a = MoverActivity(idx);
             if (detail == DESC_DEBUG && a >= 0)

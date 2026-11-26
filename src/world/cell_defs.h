@@ -142,6 +142,21 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     return IsCellWalkableAtEx(z, y, x, false);
 }
 
+// A spot to stand and stay (talk circles, onlookers, meeting spots, hiding spots, a guest's spot):
+// walkable and not a doorway. A door is a passage: nobody lingers in one, open or closed.
+static inline bool IsCellStandableAt(int z, int y, int x) {
+    if (!IsCellWalkableAt(z, y, x)) return false;
+    return !CellIsDoor(GRID(x, y, z));
+}
+
+// A direct step outside the pathfinder (a talk circle settling, walking together, follow the
+// leader): walkable and not a closed door. Walking a path opens doors (mover.c); a nudge
+// doesn't, so it mustn't slip through one.
+static inline bool IsCellNudgeableAt(int z, int y, int x) {
+    if (!IsCellWalkableAt(z, y, x)) return false;
+    return GRID(x, y, z) != CELL_DOOR;
+}
+
 // =============================================================================
 // Pathfinder-agnostic helpers (allow pathfinder extraction without DF knowledge)
 // =============================================================================

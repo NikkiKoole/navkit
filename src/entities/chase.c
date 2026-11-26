@@ -147,7 +147,7 @@ static bool Heading(int j, float* hx, float* hy) {
 
 static bool PathTo(int i, int gx, int gy, int gz) {
     Mover* m = &movers[i];
-    if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt(gz, gy, gx)) return false;
+    if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt(gz, gy, gx)) return false;
     Point start = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     Point goal = {gx, gy, gz};
     m->goal = goal;
@@ -216,7 +216,7 @@ static void FleeRunFrom(int i, const int* threats, int n) {
     for (int c = 0; c < FLEE_CANDIDATES; c++) {
         float a = base + ChaseRandRange(-1.75f, 1.75f), d = ChaseRandRange(FLEE_MIN, FLEE_MAX);
         int cx = (int)((m->x + cosf(a) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(a) * d * CELL_SIZE) / CELL_SIZE);
-        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellStandableAt(z, cy, cx)) continue;
         if (!HasLineOfSight((int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), cx, cy, z)) continue;   // a straight run
         float px = (cx + 0.5f) * CELL_SIZE, py = (cy + 0.5f) * CELL_SIZE;
         float nearest = 1e9f, pass = 1e9f;
@@ -483,7 +483,7 @@ static bool PickHidingSpot(int a, int i) {
     for (int c = 0; c < HS_CANDIDATES; c++) {
         float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(HS_MIN, HS_MAX);
         int cx = (int)((m->x + cosf(an) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(an) * d * CELL_SIZE) / CELL_SIZE);
-        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellStandableAt(z, cy, cx)) continue;
         float score = 0.0f;
         if (hideSmart) {
             bool seen = CanSeeCell(hs->home.x, hs->home.y, cx, cy, z);   // from home (crouched behind cover: not)
@@ -560,7 +560,7 @@ static void SeekerLook(HideState* hs, int s) {
         for (int dx = -HS_LOOK_RADIUS; dx <= HS_LOOK_RADIUS; dx++) {
             int x = sx + dx, y = sy + dy;
             if (x < 0 || y < 0 || x >= hs->seenW || y >= hs->seenH || dx * dx + dy * dy > HS_LOOK_RADIUS * HS_LOOK_RADIUS) continue;
-            if (hs->seen[y * hs->seenW + x] || !IsCellWalkableAt(z, y, x)) continue;
+            if (hs->seen[y * hs->seenW + x] || !IsCellStandableAt(z, y, x)) continue;
             if (!CanSeeCell(sx, sy, x, y, z)) continue;
             // behind low cover from here: someone could be crouching there, it has to go and look
             if (coverEnabled && dx * dx + dy * dy > 4 && CoverBetween(sx, sy, x, y, z)) continue;
@@ -575,7 +575,7 @@ static void SeekerGo(const HideState* hs, int s) {
     for (int c = 0; c < 30; c++) {   // an unlooked-at cell, not too far
         float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(3.0f, 12.0f);
         int cx = (int)((m->x + cosf(an) * d * CELL_SIZE) / CELL_SIZE), cy = (int)((m->y + sinf(an) * d * CELL_SIZE) / CELL_SIZE);
-        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellWalkableAt(z, cy, cx)) continue;
+        if (cx < 0 || cy < 0 || cx >= gridWidth || cy >= gridHeight || !IsCellStandableAt(z, cy, cx)) continue;
         int unseen = 0;   // how much unlooked-at ground round it
         for (int oy = -2; oy <= 2; oy++)
             for (int ox = -2; ox <= 2; ox++)
@@ -844,9 +844,9 @@ static bool FollowMoverTick(int a, int i, float dt) {
             if (step > d) step = d;
             float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
             int z = (int)m->z;
-            if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
-            else if (IsCellWalkableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;
-            else if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
+            if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+            else if (IsCellNudgeableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;
+            else if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
         }
     }
     ChaseHoldStill(i);
@@ -1016,7 +1016,7 @@ static bool NearWalkable(float x, float y, int z, int* ox, int* oy) {
             for (int dx = -r; dx <= r; dx++) {
                 if (abs(dx) != r && abs(dy) != r) continue;
                 int x2 = cx + dx, y2 = cy + dy;
-                if (x2 < 0 || y2 < 0 || x2 >= gridWidth || y2 >= gridHeight || !IsCellWalkableAt(z, y2, x2)) continue;
+                if (x2 < 0 || y2 < 0 || x2 >= gridWidth || y2 >= gridHeight || !IsCellStandableAt(z, y2, x2)) continue;
                 *ox = x2; *oy = y2;
                 return true;
             }
@@ -1050,7 +1050,7 @@ static void PackRespawn(PackState* pk, int tgt) {
     pk->time = 0.0f;
     for (int tries = 0; tries < 60; tries++) {
         int x = GetRandomValue(1, gridWidth - 2), y = GetRandomValue(1, gridHeight - 2), z = (int)T->z;
-        if (!IsCellWalkableAt(z, y, x)) continue;
+        if (!IsCellStandableAt(z, y, x)) continue;
         bool far = true;
         for (int q = 0; q < pk->n; q++) {
             float dx = (x + 0.5f) * CELL_SIZE - movers[pk->hunters[q]].x, dy = (y + 0.5f) * CELL_SIZE - movers[pk->hunters[q]].y;
@@ -1097,7 +1097,7 @@ static bool RunnerDuck(const PackState* pk, int tgt) {
         for (int dx = -r; dx <= r; dx++) {
             int x = tx + dx, y = ty + dy;
             if (dx * dx + dy * dy > r * r || x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) continue;
-            if (!IsCellWalkableAt(z, y, x)) continue;
+            if (!IsCellStandableAt(z, y, x)) continue;
             bool cover = GRID(x, y, z) == CELL_BUSH;
             for (int oy = -1; oy <= 1 && !cover; oy++)
                 for (int ox = -1; ox <= 1 && !cover; ox++) if ((ox || oy) && IsLowCover(x + ox, y + oy, z)) cover = true;
@@ -1148,7 +1148,7 @@ static void HunterSearch(const PackState* pk, int k) {
     for (int c = 0; c < 24; c++) {
         float an = ChaseRandRange(0.0f, 6.2831853f), d = ChaseRandRange(0.0f, radius);
         int x = lx + (int)(cosf(an) * d), y = ly + (int)(sinf(an) * d);
-        if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || !IsCellWalkableAt(z, y, x)) continue;
+        if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight || !IsCellStandableAt(z, y, x)) continue;
         float score = ChaseRandRange(0.0f, 1.0f);
         if (GRID(x, y, z) == CELL_BUSH) score += 3.0f;
         for (int oy = -1; oy <= 1; oy++)

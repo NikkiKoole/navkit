@@ -121,6 +121,10 @@ Overview, settings and scenarios: `docs/todo/social/noticing.md` (table "Built")
 - Ticks: `NoticeTick` → `TalkTick` → `ChaseTick` in `sim_step.c` after movement. The mover loop
   hands a mover over at its top while it's in a talk/gathering/walk (`TalkMoverTick`) or a game
   (`ChaseMoverTick`), like the elevator hooks. Walking pace: `TalkWalkSpeedScale * ChaseSpeedScale`.
+- Spots and nudges outside the pathfinder: a place to stand and stay (talk slots, onlookers,
+  hiding spots, a guest's spot) uses `IsCellStandableAt` (no doorways); a direct step (circles
+  settling, walking together, follow the leader) uses `IsCellNudgeableAt` (no closed door).
+  `IsCellWalkableAt` says yes to a closed door: a nudge with it slips through one.
 - Sideways drifts (polite passing, room round talks, round disliked movers) are summed in one
   block of the movement step and dropped when they point at a drop (walking into air = falling).
 - "Free to socialise" = `CanTalk` in talk.c: no job, `FREETIME_NONE`, not drafted / travelling,

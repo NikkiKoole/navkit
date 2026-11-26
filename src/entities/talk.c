@@ -304,7 +304,7 @@ static void ArrangeSlots(int t) {
         float a = start + 6.2831853f * (float)s / (float)n;
         float x = tk->centerX + cosf(a) * r, y = tk->centerY + sinf(a) * r;
         int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
-        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt((int)m->z, gy, gx)) {
+        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt((int)m->z, gy, gx)) {
             x = m->x; y = m->y;
         }
         tk->slotX[k] = x;
@@ -348,7 +348,7 @@ static int WatchPickSpot(const Talk* tk, const Mover* m) {
             float x, y;
             WatchSpotPos(tk, spot, &x, &y);
             int gx = (int)(x / CELL_SIZE), gy = (int)(y / CELL_SIZE);
-            if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt(tk->z, gy, gx)) continue;
+            if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt(tk->z, gy, gx)) continue;
             float ringR = WATCH_RING0 + WATCH_RING_STEP * ring;   // how far round the ring (cells) ...
             float d = fabsf(remainderf(6.2831853f * (float)k / (float)cap - from, 6.2831853f)) * ringR;
             d -= SpotPreference((int)(m - movers), x, y, tk->z);   // ... less: who'd be next to it
@@ -411,10 +411,10 @@ static void WatchJoin(int t, int i) {
 static bool CanSeeGathering(const Mover* m, const Talk* tk) {
     int mx = (int)(m->x / CELL_SIZE), my = (int)(m->y / CELL_SIZE);
     int cx = (int)(tk->centerX / CELL_SIZE), cy = (int)(tk->centerY / CELL_SIZE);
-    if (IsCellWalkableAt(tk->z, cy, cx)) return CanSeeCell(mx, my, cx, cy, tk->z);
+    if (IsCellStandableAt(tk->z, cy, cx)) return CanSeeCell(mx, my, cx, cy, tk->z);
     static const int nx[4] = {1, -1, 0, 0}, ny[4] = {0, 0, 1, -1};
     for (int d = 0; d < 4; d++)
-        if (IsCellWalkableAt(tk->z, cy + ny[d], cx + nx[d]) && CanSeeCell(mx, my, cx + nx[d], cy + ny[d], tk->z)) return true;
+        if (IsCellStandableAt(tk->z, cy + ny[d], cx + nx[d]) && CanSeeCell(mx, my, cx + nx[d], cy + ny[d], tk->z)) return true;
     return false;
 }
 
@@ -449,7 +449,7 @@ static bool WalkPickLeg(int leader) {
     for (int tries = 0; tries < 12; tries++) {
         float a = RandRange(0.0f, 6.2831853f), d = RandRange(6.0f, 14.0f);
         int gx = cx + (int)(cosf(a) * d), gy = cy + (int)(sinf(a) * d);
-        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellWalkableAt(z, gy, gx)) continue;
+        if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight || !IsCellStandableAt(z, gy, gx)) continue;
         if (!IsExposedToSky(gx, gy, z)) continue;   // a walk goes outdoors
         Point goal = {gx, gy, z};
         m->goal = goal;
@@ -778,9 +778,9 @@ bool TalkMoverTick(int i, float dt) {
             float step = m->speed * (60.0f / dayLength) * walkPace * WALK_CATCH_UP * dt;
             if (step > d) step = d;
             float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
-            if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
-            else if (IsCellWalkableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;   // slide
-            else if (IsCellWalkableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
+            if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+            else if (IsCellNudgeableAt(z, (int)(m->y / CELL_SIZE), (int)(nx / CELL_SIZE))) m->x = nx;   // slide
+            else if (IsCellNudgeableAt(z, (int)(ny / CELL_SIZE), (int)(m->x / CELL_SIZE))) m->y = ny;
         }
         m->timeWithoutProgress = 0.0f;
         m->lastX = m->x;
@@ -796,7 +796,7 @@ bool TalkMoverTick(int i, float dt) {
         float step = m->speed * (60.0f / dayLength) * (tk->kind == TALK_WATCH ? WATCH_APPROACH : TALK_APPROACH) * dt;
         if (step > d) step = d;
         float nx = m->x + dx / d * step, ny = m->y + dy / d * step;
-        if (IsCellWalkableAt((int)m->z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
+        if (IsCellNudgeableAt((int)m->z, (int)(ny / CELL_SIZE), (int)(nx / CELL_SIZE))) { m->x = nx; m->y = ny; }
     }
     m->timeWithoutProgress = 0.0f;   // standing in a conversation is not being stuck
     m->lastX = m->x;
@@ -922,7 +922,7 @@ static bool WalkSlot(const Talk* tk, int k, float* tx, float* ty) {
     float x = L->x + (hx * slotFwd[k] + rx * right) * CELL_SIZE;
     float y = L->y + (hy * slotFwd[k] + ry * right) * CELL_SIZE;
     int z = (int)L->z;
-    if (!IsCellWalkableAt(z, (int)(y / CELL_SIZE), (int)(x / CELL_SIZE))) {   // single file
+    if (!IsCellNudgeableAt(z, (int)(y / CELL_SIZE), (int)(x / CELL_SIZE))) {   // single file
         const Mover* ahead = &movers[tk->members[k - 1]];
         x = ahead->x - hx * WALK_BEHIND * CELL_SIZE;
         y = ahead->y - hy * WALK_BEHIND * CELL_SIZE;
@@ -1020,7 +1020,7 @@ static void MingleTo(int i, int t) {
     Mover* m = &movers[i];
     Point start = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
     Point goal = {(int)(talks[t].centerX / CELL_SIZE), (int)(talks[t].centerY / CELL_SIZE), talks[t].z};
-    if (!IsCellWalkableAt(goal.z, goal.y, goal.x)) goal = (Point){(int)(talks[t].slotX[0] / CELL_SIZE), (int)(talks[t].slotY[0] / CELL_SIZE), talks[t].z};
+    if (!IsCellStandableAt(goal.z, goal.y, goal.x)) goal = (Point){(int)(talks[t].slotX[0] / CELL_SIZE), (int)(talks[t].slotY[0] / CELL_SIZE), talks[t].z};
     m->goal = goal;
     if (MoverPlanPath(i, start, goal) <= 0) return;
     m->needsRepath = false;
