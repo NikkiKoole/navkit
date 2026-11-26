@@ -1,3 +1,72 @@
+# Gates and processors
+
+## Decisions so far (2026-11-26)
+
+> The user's calls from a second brainstorm, plus a review against the engine. Everything
+> below the line further down is the original brainstorm transcript, kept as raw material.
+> Status: far future. Nothing here comes before levers / plates / links (step 3 of
+> `../../todo/world/infrastructure.md`); the processor stays a toy until then.
+
+**The loop.** sensor -> number -> logic -> number -> actuator -> the world decides the effect
+(a door takes time, a mover in the doorway keeps it open, a valve change re-runs the pipe pass).
+Fixed order each tick: read all sensors, run all logic, apply all actuators.
+
+**Numbers only.** Ports and wires carry numbers; 0 = off, anything else = on, so gates,
+sensors and processors all plug into each other.
+- Devices translate themselves (door: 0 closed / 1 open / 2 locked; valve 0 / 1; belt cell: item type).
+- Sensor blocks translate world state that lives in cells or nowhere (water gauge, thermometer,
+  pressure plate, clock, weather vane).
+- Anything ambiguous gets a setting on the device (a stockpile connector reports total / free / count of X).
+- Registers, memory, ports: 16-bit signed, clamp on overflow (friendlier than wrap). Wires may stay
+  a byte layer and clamp to 0..255. Whole numbers only; scale instead (water 0-7, percent 0-100).
+
+**Write and read are separate values.** Each side is two lanes: a command out, a state back.
+They may differ (said close, still open: someone is in the doorway), and the program can see it.
+This matters before any processor: a lever-driven door has the same problem.
+
+**Sides, not menus (user: more tangible).** The processor connects through its six sides
+N E S W + up / down; what it controls is what touches it. Wires carry reach, two-lane so one
+wire to a door can read and write. Wireless channels only late, so invisible links feel earned.
+Underneath, a side or wire just creates a row in the links table (levers keep their
+select-and-click links and the links overlay). Multi-tile things (stockpile, workshop,
+elevator) get a small connector block on their edge.
+
+**Card-asm (user's name: card + cardinal).** A program is a physical card: written at a
+workshop, carried to the reader, slotted in. Cards are items: stored, copied (a job), traded,
+lost in a fire; swapping behaviour = swapping cards (siege card / peace card). Prebuilt blocks
+are a processor with a standard card in it, so one simulation, and a player can open one,
+read it, copy it.
+
+**No typing (user).** Every token is picked from a list; only numbers are dialled. A line is an
+opcode + a few slot values, which is exactly what a card stores. Slots offer only what fits
+(a door on E: `OUT E` offers OPEN / CLOSED / LOCKED). Sides show the icon of what is attached
+instead of `.alias`. Jump targets are a fixed set of marks (runes / symbols) placed on lines.
+
+**Gates too (user likes tangible gates).** Not in conflict: gates (+ comparator, timer,
+counter, latch) for small machines you can walk along; a card when it would take a room of
+gates. Progression: levers -> gates -> the card reader feels like an invention.
+
+**Proposed for the language (not yet agreed):**
+- Run the whole card top to bottom whenever one of its sides changes (a PLC scan), instead of
+  `ON` / `SLEEP` / `RET` handlers. Free while nothing changes; most labels vanish. `WAIT n` for
+  sequences (airlock).
+- Skip-next conditionals (DCPU-16 style: `IF> A 6` guards the next line) instead of `CMP` + a
+  hidden flag + jumps: in a pick-from-list editor every line stands on its own.
+- Keep the layers few: stockpile rules where they already exist, gates, cards. No separate
+  "prebuilt block" engine and no Factorio multi-signal wires (pick the item in the device setting).
+
+**Carry into step 3 now (cheap):**
+- every switchable part has a number you write and a number you read;
+- an actuator cooldown on anything that triggers a rebuild (locked door -> nav, valve -> pipe pass);
+- valve state saved.
+
+Example cards from the brainstorm: night gate (clock + plate + door), cistern keeper (gauge +
+valve, dead band 3..5 so the valve doesn't flap), belt switch (reads the cell before the junction).
+More ideas: tide gate, flood lockdown, airlock, animal pen, fire doors, smoke vent, elevator
+caller, station dispatcher, smart forge, pantry watcher, doorbell, lighthouse.
+
+---
+
 User
 So crazy idea, I’m developing a game survival colony game think dwarf fortress cataclysm dda, from primitive technology all the way to wind, water steam and more technology then I figured what if we add a simple processor emulator? What possibilities would that open ?
 
