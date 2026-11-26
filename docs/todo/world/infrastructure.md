@@ -123,18 +123,10 @@ under the mouse; a red end = waiting to lock). Console `mech lever|plate|remove|
 pull|order|list`. Scenarios (in scenarios-check): `leverflood` (lever marked at tick 300, the
 worker pulls it at ~450, the reservoir runs down the channel) and `plategate` (the worker hauls a
 rock onto the plate's stockpile, the gate opens). Tests: `tests/test_links.c`.
-**Built and linked in play (2026-11-26):** recipes `CONSTRUCTION_LEVER` (2 sticks + 1 rock) and
-`CONSTRUCTION_PRESSURE_PLATE` (2 rocks) in the furniture category (Work > Build > Furniture, R
-cycles; completing places the mechanism). A click selects a lever or plate (`SEL_MECHANISM`, before
-a stockpile: a plate often has a 1x1 one on it); the inspector shows `DescribeMechanism` (state,
-each link with its target's state, "waiting to lock") and buttons Pull (by order), Link, Pull now
-(dev), Remove, plus per link Normal / Inverted and Unlink. Link starts a link mode
-(`SUBMODE_LINKING_MECHANISM`): click a door or valve to link it, again to unlink; the target under
-the mouse is outlined (green link, red unlink); ESC or L ends it. The selected / linking
-mechanism's links are always drawn.
-**Not yet:** sprites (user may draw: lever off / on, plate up / pressed), a separate floodgate
-look, an actuator cooldown (doors relock locally and cheaply; revisit if plates flicker in
-crowds), play-HUD (Huisje) buttons for lever and plate.
+**Not yet:** building levers and plates (recipes, the Work bar), linking by clicking (select the
+lever, click targets, the workshop-link pattern), the inspector for them, sprites, a describe
+line, a separate floodgate look, an actuator cooldown (doors relock locally and cheaply; revisit
+if plates flicker in crowds).
 
 **Still open in step 1:** a small path cost for a closed door. Not `NAV_ENTER_EXTRA` (it must stay
 0 off ladder cells: graph edges only add it at entrances) and not the cell move cost (that is also
