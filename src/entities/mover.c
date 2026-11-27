@@ -2707,17 +2707,17 @@ void TickWithDt(float dt) {
 
     // Tree growth
     PROFILE_BEGIN(Trees);
-    TreesTick(dt);
+    TreesTick(gameDeltaTime);   // game time: grows faster at 2x..10x like the clock
     PROFILE_END(Trees);
     
     // Plant growth (berry bushes, future crops)
     PROFILE_BEGIN(Plants);
-    PlantsTick(dt);
+    PlantsTick(gameDeltaTime);   // game time: grows faster at 2x..10x like the clock
     PROFILE_END(Plants);
 
     // Farm tick (weed accumulation)
     PROFILE_BEGIN(Farm);
-    FarmTick(dt);
+    FarmTick(gameDeltaTime);   // game time: grows faster at 2x..10x like the clock
     PROFILE_END(Farm);
 
     PROFILE_BEGIN(Grid);

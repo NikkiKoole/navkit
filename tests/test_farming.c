@@ -1338,6 +1338,18 @@ describe(crop_moisture) {
         expect(GetFarmCell(5, 5, 1)->stress == 0);
     }
 
+    it("crops grow on game time: at 10x a crop grows as far per game hour as at 1x") {
+        // Was: the tick handed farms the real tick (1/60 s) at any speed, so at 10x the seasons
+        // flew by while wheat grew at 1x: the town's fields were killed by winter, never ripe.
+        GrowOnSoil(CROP_WHEAT, 150, 0.0f);
+        float savedSpeed = gameSpeed;
+        gameSpeed = 10.0f;
+        int ticks = (int)(GameHoursToGameSeconds(30.0f) / (TICK_DT * gameSpeed));   // 30 game hours
+        for (int i = 0; i < ticks; i++) { SetSoilMoisture(5, 5, 0, 150); TickWithDt(TICK_DT); }
+        gameSpeed = savedSpeed;
+        expect(GetFarmCell(5, 5, 1)->growthStage >= CROP_STAGE_GROWING);   // a stage is ~21 game hours here
+    }
+
     it("lets stress fade again on good soil") {
         GrowOnSoil(CROP_WHEAT, 10, 12.0f);          // half a day of drought
         int stressed = GetFarmCell(5, 5, 1)->stress;

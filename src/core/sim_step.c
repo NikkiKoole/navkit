@@ -30,9 +30,13 @@ void SimStep(float dt) {
     PROFILE_BEGIN(TickWithDt);
     TickWithDt(dt);
     PROFILE_END(TickWithDt);
+    // dt is one real tick; game time (dt * gameSpeed, 0 when paused) is what the slow clocks need:
+    // spoilage, the town's housekeeping and imports, moodlets. They ran at 1x at any game speed,
+    // so at 10x a season went by while food spoiled, towns restocked and crops grew 10x too slow.
+    float gameDt = gameDeltaTime;
 
     PROFILE_BEGIN(Items);
-    ItemsTick(dt);
+    ItemsTick(gameDt);
     ThrowsTick(dt);
     ExplosionsTick(dt);
     VapourTick(dt);
@@ -64,7 +68,7 @@ void SimStep(float dt) {
     PROFILE_END(Belts);
 
     PROFILE_BEGIN(Town);
-    TownTick(dt);
+    TownTick(gameDt);
     PROFILE_END(Town);
 
     PROFILE_BEGIN(Designations);
@@ -77,7 +81,7 @@ void SimStep(float dt) {
     PROFILE_BEGIN(Needs);
     PROFILE_BEGIN(NeedsTick); NeedsTick(); PROFILE_END(NeedsTick);
     PROFILE_BEGIN(Freetime); ProcessFreetimeNeeds(); PROFILE_END(Freetime);
-    PROFILE_BEGIN(Mood); MoodTick(dt); PROFILE_END(Mood);
+    PROFILE_BEGIN(Mood); MoodTick(gameDt); PROFILE_END(Mood);
     PROFILE_END(Needs);
 
     PROFILE_BEGIN(Jobs);

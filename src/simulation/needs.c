@@ -807,6 +807,22 @@ static bool IsGoodDrink(ItemType type) {
 // whose output is food (baking, cooking). Interrupting them locked a town for good: starving
 // bakers dropped their 2-hour bake every 15 minutes (the food search found nothing, the job came
 // back, the next search took it again), so no bread was ever baked again.
+// An ingredient of food: some recipe turns it into something edible (wheat -> flour -> bread).
+// Grinding flour counts too: a town's starving millers dropped their grind every search, so no
+// flour reached the bakery and the town starved with 500 wheat in store.
+static bool ItemFeedsFood(ItemType t) {
+    if (t == ITEM_NONE) return false;
+    if (ItemIsEdible(t)) return true;
+    for (int w = 0; w < WORKSHOP_TYPE_COUNT; w++) {
+        int n;
+        const Recipe* rs = GetRecipesForWorkshop((WorkshopType)w, &n);
+        for (int i = 0; rs && i < n; i++)
+            if (ItemIsEdible(rs[i].outputType) &&
+                (rs[i].inputType == t || rs[i].inputType2 == t || rs[i].inputType3 == t)) return true;
+    }
+    return false;
+}
+
 static bool JobProducesFood(const Job* job) {
     if (job->type == JOBTYPE_HARVEST_BERRY) return true;
     if (job->type != JOBTYPE_CRAFT || job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS) return false;
@@ -815,7 +831,7 @@ static bool JobProducesFood(const Job* job) {
     int recipeCount;
     const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
     int r = ws->bills[job->targetBillIdx].recipeIdx;
-    return r >= 0 && r < recipeCount && ItemIsEdible(recipes[r].outputType);
+    return r >= 0 && r < recipeCount && ItemFeedsFood(recipes[r].outputType);
 }
 
 // A critical need takes the mover off its job only when it looks for help right now.

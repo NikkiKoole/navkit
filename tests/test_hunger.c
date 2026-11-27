@@ -1157,15 +1157,19 @@ describe(eating_starving_unassigns_job) {
         expect(movers[mi].currentJobId == 0);
     }
 
-    it("starving mover does NOT unassign a craft job that makes food (baking), but does a non-food craft") {
-        for (int food = 1; food >= 0; food--) {
+    it("starving mover does NOT unassign a craft job that makes food or its ingredient, but does a non-food craft") {
+        // kind 2: stove "Cook Meat" (food); 1: quern "Grind Wheat" (flour goes into bread: a town's
+        // starving millers dropped every grind and the town starved with its wheat in store);
+        // 0: sawmill (planks, nothing to eat)
+        for (int kind = 2; kind >= 0; kind--) {
+            bool food = kind > 0;
             SetupClean();
             ClearWorkshops();
             int mi = SetupMover(1, 1);
             movers[mi].hunger = 0.05f;
-            int ws = CreateWorkshop(5, 5, 1, food ? WORKSHOP_STOVE : WORKSHOP_QUERN);
+            int ws = CreateWorkshop(5, 5, 1, kind == 2 ? WORKSHOP_STOVE : kind == 1 ? WORKSHOP_QUERN : WORKSHOP_SAWMILL);
             expect(ws >= 0);
-            AddBill(ws, 0, BILL_DO_FOREVER, 0);   // stove 0: Cook Meat (food); quern 0: Grind Wheat (flour, not edible)
+            AddBill(ws, 0, BILL_DO_FOREVER, 0);
             ClearJobs();
             Job* j = &jobs[0];
             j->active = true;
@@ -1187,8 +1191,8 @@ describe(eating_starving_unassigns_job) {
             jobHighWaterMark = 1;
             activeJobCount = 1;
             ProcessFreetimeNeeds();
-            if (food) { expect(movers[mi].currentJobId == 0); }    // keeps cooking: it is the food
-            else      { expect(movers[mi].currentJobId == -1); }   // grinding flour gives way to hunger
+            if (food) { expect(movers[mi].currentJobId == 0); }    // keeps cooking / grinding: it is the food
+            else      { expect(movers[mi].currentJobId == -1); }   // sawing planks gives way to hunger
         }
     }
 
