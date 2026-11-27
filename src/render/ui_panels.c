@@ -219,7 +219,9 @@ static void DrawPlayerHUD(void) {
     bx += CommandButtonInline(bx, y, paused ? ">>" : "||", "speed toggle") + 4;
     bx += CommandButtonInline(bx, y, "1x", "speed 1") + 4;
     bx += CommandButtonInline(bx, y, "2x", "speed 2") + 4;
-    CommandButtonInline(bx, y, "3x", "speed 3");
+    bx += CommandButtonInline(bx, y, "3x", "speed 3") + 4;
+    bx += CommandButtonInline(bx, y, "5x", "speed 5") + 4;
+    CommandButtonInline(bx, y, "10x", "speed 10");
     y += 22;
 
     // Tools and the mover roster: tab bar bottom left (src/render/play_hud.c)
