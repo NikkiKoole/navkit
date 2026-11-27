@@ -270,6 +270,31 @@ describe(goal_arrival) {
         expect((int)(m->y / CELL_SIZE) == 1 && (int)(m->x / CELL_SIZE) == 1);
         m->freetimeState = FREETIME_NONE;
     }
+
+    it("waiting for a path counts job stuck time in ticks, not game time (10x speed)") {
+        // Was: at 10x a tick is 1/6 game second, so a job's 3 s stuck limit ran out in 18 ticks
+        // of waiting in the repath queue: a town's tillers failed before taking a step.
+        InitTestGridFromAscii(
+            "....\n"
+            "....\n");
+        BuildEntrances();
+        BuildGraph();
+        ClearMovers();
+        Mover* m = &movers[0];
+        InitMover(m, 0.5f * CELL_SIZE, 0.5f * CELL_SIZE, 0.0f, (Point){3, 1, 0}, 100.0f);
+        moverCount = 1;
+        m->currentJobId = 0;                     // has a job, path not planned yet
+        m->needsRepath = true;
+        m->repathCooldown = 1000;                // the queue doesn't get to it
+        m->timeWithoutProgress = 0.0f;
+        float savedDt = gameDeltaTime;
+        gameDeltaTime = TICK_DT * 10.0f;
+        for (int t = 0; t < 30; t++) UpdateMovers();
+        gameDeltaTime = savedDt;
+        expect(fabsf(m->timeWithoutProgress - 30 * TICK_DT) < 0.001f);
+        m->currentJobId = -1;
+        m->needsRepath = false;
+    }
 }
 
 describe(wading_out_of_water) {

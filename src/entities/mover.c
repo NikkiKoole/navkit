@@ -1807,10 +1807,13 @@ void UpdateMovers(void) {
         }
         
         // Don't move movers that are waiting for a repath - they'd walk on stale paths
-        // But still accumulate stuck time for job stuck detection
+        // But still accumulate stuck time for job stuck detection. Counted in ticks, not game
+        // time: the repath queue serves a few movers per tick whatever the game speed, so at
+        // 10x a fresh job's first path could take longer than JOB_STUCK_TIME of game time and
+        // the job failed before the mover took a step (a town's farms were never tilled).
         if (m->needsRepath) {
             if (m->currentJobId >= 0 && m->pathLength == 0) {
-                m->timeWithoutProgress += dt;
+                m->timeWithoutProgress += TICK_DT;
             }
             continue;
         }
