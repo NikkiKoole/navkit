@@ -291,7 +291,7 @@ void RebuildStockpileFreeSlotCounts(void) {
                 if (def && items[sp->slots[s]].contentCount + sp->reservedBy[s] < def->maxContents) {
                     freeCount++;
                 }
-            } else if (sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize) {
+            } else if (sp->slotCounts[s] + sp->reservedBy[s] < StockpileSlotCapacity(sp, s)) {
                 freeCount++;
             }
         }
@@ -648,6 +648,17 @@ static int SlotIndex(Stockpile* sp, int localX, int localY) {
     return localY * sp->width + localX;
 }
 
+int StockpileTypeCapacity(const Stockpile* sp, ItemType type) {
+    int cap = sp->maxStackSize;
+    if (type >= 0 && type < ITEM_TYPE_COUNT && ItemMaxStack(type) > 0 && ItemMaxStack(type) < cap)
+        cap = ItemMaxStack(type);
+    return cap;
+}
+
+int StockpileSlotCapacity(const Stockpile* sp, int slotIdx) {
+    return StockpileTypeCapacity(sp, sp->slotTypes[slotIdx]);
+}
+
 bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, int* outX, int* outY) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
     Stockpile* sp = &stockpiles[stockpileIdx];
@@ -697,7 +708,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
             if (sp->slotTypes[idx] == type &&
                 sp->slotMaterials[idx] == mat &&
                 sp->slotCounts[idx] > 0 &&
-                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                sp->slotCounts[idx] + sp->reservedBy[idx] < StockpileTypeCapacity(sp, type)) {
                 // Found partial stack of same type with room
                 *outX = worldX;
                 *outY = worldY;
@@ -721,7 +732,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
             
             if (sp->slotTypes[idx] == type &&
                 sp->slotMaterials[idx] == mat &&
-                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                sp->slotCounts[idx] + sp->reservedBy[idx] < StockpileTypeCapacity(sp, type)) {
                 *outX = worldX;
                 *outY = worldY;
                 return true;
@@ -767,7 +778,7 @@ bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx, 
     int idx = SlotIndex(sp, lx, ly);
     
     // Can reserve if slot has room for another item (counting existing + pending)
-    if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) return false;
+    if (sp->slotCounts[idx] + sp->reservedBy[idx] >= StockpileTypeCapacity(sp, type)) return false;
     
     MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
     
@@ -972,6 +983,7 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
         MergeItemIntoStack(sp->slots[idx], itemIdx);
         sp->slotCounts[idx] = items[sp->slots[idx]].stackCount;
         DropUnplacedItem(itemIdx, sp->z, "slot full");   // what didn't merge (incoming deleted if all did)
+        if (items[itemIdx].active) return;               // (part of) it went on the ground: not placed
     } else {
         // First item in slot
         items[itemIdx].state = ITEM_IN_STOCKPILE;
@@ -1012,7 +1024,7 @@ static bool SlotCountsAsFree(const Stockpile* sp, int s) {
         const ContainerDef* def = GetContainerDef(items[sp->slots[s]].type);
         return def && items[sp->slots[s]].contentCount + sp->reservedBy[s] < def->maxContents;
     }
-    return sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize;
+    return sp->slotCounts[s] + sp->reservedBy[s] < StockpileSlotCapacity(sp, s);
 }
 
 void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
@@ -1391,7 +1403,7 @@ bool FindConsolidationTarget(int stockpileIdx, int srcSlotX, int srcSlotY, int* 
     
     int srcIdx = SlotIndex(sp, srcLx, srcLy);
     if (sp->slotCounts[srcIdx] <= 0) return false;
-    if (sp->slotCounts[srcIdx] >= sp->maxStackSize) return false;  // source is full, nothing to consolidate
+    if (sp->slotCounts[srcIdx] >= StockpileSlotCapacity(sp, srcIdx)) return false;  // source is full, nothing to consolidate
     
     ItemType type = sp->slotTypes[srcIdx];
     uint8_t mat = sp->slotMaterials[srcIdx];
@@ -1408,7 +1420,7 @@ bool FindConsolidationTarget(int stockpileIdx, int srcSlotX, int srcSlotY, int* 
             if (sp->slotTypes[idx] == type &&
                 sp->slotMaterials[idx] == mat &&
                 sp->slotCounts[idx] > srcCount &&  // dest must be LARGER than source
-                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                sp->slotCounts[idx] + sp->reservedBy[idx] < StockpileTypeCapacity(sp, type)) {
                 *outDestSlotX = sp->x + lx;
                 *outDestSlotY = sp->y + ly;
                 return true;

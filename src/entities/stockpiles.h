@@ -171,6 +171,10 @@ void SetStockpileSlotCount(int stockpileIdx, int localX, int localY, ItemType ty
 int GetStockpileSlotCount(int stockpileIdx, int slotX, int slotY);
 void SetStockpileMaxStackSize(int stockpileIdx, int maxSize);  // allows overfull slots
 int GetStockpileMaxStackSize(int stockpileIdx);
+// How many units of `type` one bare slot holds: the stockpile's stack size, capped by the item's own
+// max stack (a carcass stacks to 1). SlotCapacity: the same for what the slot holds now.
+int StockpileTypeCapacity(const Stockpile* sp, ItemType type);
+int StockpileSlotCapacity(const Stockpile* sp, int slotIdx);
 bool IsSlotOverfull(int stockpileIdx, int slotX, int slotY);   // slot has more than maxStackSize
 int FindStockpileForOverfullItem(int itemIdx, int currentStockpileIdx, int* outSlotX, int* outSlotY);
 

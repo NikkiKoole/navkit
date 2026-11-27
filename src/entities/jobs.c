@@ -4713,7 +4713,7 @@ static void AssignJobs_P1_StockpileMaintenance(void) {
             int lx = slotX - sp->x;
             int ly = slotY - sp->y;
             int idx = ly * sp->width + lx;
-            if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
+            if (sp->slotCounts[idx] + sp->reservedBy[idx] >= StockpileSlotCapacity(sp, idx)) {
                 absorb = false;
                 spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
                 if (spIdx < 0) safeDrop = true;
@@ -7820,7 +7820,7 @@ int WorkGiver_StockpileMaintenance(int moverIdx) {
         int lx = slotX - sp->x;
         int ly = slotY - sp->y;
         int idx = ly * sp->width + lx;
-        if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
+        if (sp->slotCounts[idx] + sp->reservedBy[idx] >= StockpileSlotCapacity(sp, idx)) {
             absorb = false;
             spIdx = FindStockpileForItem(item->type, item->material, &slotX, &slotY);
             if (spIdx < 0) {

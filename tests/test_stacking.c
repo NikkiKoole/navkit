@@ -302,6 +302,24 @@ describe(stockpile_stacking) {
         expect(items[b].state == ITEM_ON_GROUND);
     }
 
+    it("a slot holding one carcass (max stack 1) is full, though the stockpile stacks to 10") {
+        // Was: the slot counted as having room up to the stockpile's stack size, so a second
+        // carcass was hauled to it, didn't merge, went on the ground, and was hauled back forever.
+        Setup();
+        int sp = CreateStockpile(1, 1, 0, 2, 1);
+        int a = SpawnItem(1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0, ITEM_CARCASS);
+        items[a].state = ITEM_CARRIED;
+        PlaceItemInStockpile(sp, 1, 1, a);
+        expect(items[a].state == ITEM_IN_STOCKPILE);
+
+        int fx = -1, fy = -1;
+        expect(FindFreeStockpileSlot(sp, ITEM_CARCASS, MAT_NONE, &fx, &fy));
+        expect(fx == 2 && fy == 1);                      // the empty slot, not the carcass's
+        expect(!ReserveStockpileSlot(sp, 1, 1, 0, ITEM_CARCASS, MAT_NONE));
+        RebuildStockpileFreeSlotCounts();
+        expect(stockpiles[sp].freeSlotCount == 1);
+    }
+
     it("should report overfull when slot exceeds max") {
         Setup();
         int sp = CreateStockpile(1, 1, 0, 1, 1);

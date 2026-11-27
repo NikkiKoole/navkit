@@ -428,7 +428,7 @@ int AuditStockpileFreeSlotCounts(bool verbose) {
                         computed++;
                     }
                 }
-            } else if (sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+            } else if (sp->slotCounts[idx] + sp->reservedBy[idx] < StockpileSlotCapacity(sp, idx)) {
                 computed++;
             }
         }
