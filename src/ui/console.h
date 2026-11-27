@@ -19,6 +19,7 @@ bool Console_IsOpen(void);
 void Console_Update(void);   // Handle text input, keys (call when console is open)
 void Console_Draw(void);     // Render overlay (call every frame)
 
+extern bool consoleEcho;   // Console_Print also prints to stdout (headless --exec-end)
 void Console_Print(const char* text, Color color);
 void Console_Printf(Color color, const char* fmt, ...);
 

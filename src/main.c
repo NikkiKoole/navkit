@@ -1087,6 +1087,10 @@ static int RunHeadless(const char* loadFile, const char* scenarioName, const cha
     for (int i = 1; i + 1 < argc; i++)
         if (strcmp(argv[i], "--dump-events") == 0) EventLogDump(argv[i + 1]);
 
+    // --exec-end "<console command>" (repeatable): run after the run, e.g. --exec-end "town list"
+    for (int i = 1; i + 1 < argc; i++)
+        if (strcmp(argv[i], "--exec-end") == 0) { consoleEcho = true; Console_Execute(argv[i + 1]); consoleEcho = false; i++; }
+
     // --describe-mover N|all: the mover as the game describes it (same lines as
     // the hover tooltip, src/core/describe.c), after the run. --ticks 0 = as loaded.
     for (int i = 1; i + 1 < argc; i++) {

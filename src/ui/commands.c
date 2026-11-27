@@ -191,8 +191,20 @@ static void RunTown(const CmdValue* v) {
         for (int i = 0; i < townLotHighWater; i++) {
             const TownLot* L = &townLots[i];
             if (!L->active) continue;
-            Say(WHITE, "lot %d: %s %d,%d-%d,%d door %d,%d %s %d", i, TownLotKindName(L->kind), L->x1, L->y1, L->x2, L->y2,
-                L->doorX, L->doorY, TownIsResidence(L->kind) ? "beds" : "jobs", L->beds);
+            Say(WHITE, "lot %d: %s %d,%d-%d,%d door %d,%d %s %d; wheat %d flour %d bread %d", i, TownLotKindName(L->kind),
+                L->x1, L->y1, L->x2, L->y2, L->doorX, L->doorY, TownIsResidence(L->kind) ? "beds" : "jobs", L->beds,
+                TownLotStock(i, ITEM_WHEAT), TownLotStock(i, ITEM_FLOUR), TownLotStock(i, ITEM_BREAD));
+            // the stacks of flour and wheat lying there (a bake takes 4 flour from one stack)
+            char stacks[160]; int len = 0; stacks[0] = '\0';
+            for (int it = 0; it < itemHighWaterMark && len < (int)sizeof(stacks) - 16; it++) {
+                const Item* item = &items[it];
+                if (!item->active || (item->type != ITEM_FLOUR && item->type != ITEM_WHEAT)) continue;
+                int cx = (int)(item->x / CELL_SIZE), cy = (int)(item->y / CELL_SIZE);
+                if (cx < L->x1 || cx > L->x2 || cy < L->y1 || cy > L->y2 || (int)item->z != L->z) continue;
+                len += snprintf(stacks + len, sizeof(stacks) - len, " %c%d%s", item->type == ITEM_FLOUR ? 'f' : 'w',
+                                item->stackCount, item->reservedBy >= 0 ? "r" : "");
+            }
+            if (len > 0) Say(WHITE, "   stacks:%s", stacks);
         }
         return;
     }

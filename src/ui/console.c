@@ -175,7 +175,10 @@ bool Console_IsOpen(void) {
 // ---------------------------------------------------------------------------
 // Scrollback
 // ---------------------------------------------------------------------------
+bool consoleEcho = false;   // also print to stdout (headless --exec-end)
+
 void Console_Print(const char* text, Color color) {
+    if (consoleEcho) printf("%s\n", text);
     // Handle multi-line text (split on newlines)
     const char* start = text;
     while (*start) {
