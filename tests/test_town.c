@@ -234,7 +234,7 @@ describe(town_residents) {
         expect(beds == townLots[lot].beds);
         expect(beds > 6);                      // more than a home's most
         expect(toilets == 0);
-        expect(taps == 1);
+        expect(taps >= 2 && taps * 10 >= beds);   // a tap per ~8 beds: one tap for a dormitory was a queue
         expect(townLots[lot].stockpile >= 0);  // the fridge pantry
         expect(TownFreeBeds() == beds);
         townArrivalGH = 0.05f;

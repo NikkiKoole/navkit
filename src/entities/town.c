@@ -326,13 +326,22 @@ static void TownFurnishHome(TownLot* L) {
 
 // A barracks: a dormitory. Tap and fridge by the door, an aisle from the door to the back
 // wall, and beds in pairs of rows with an aisle row between (beds slow walking, they don't
-// block it). As many beds as fit (TOWN_MAX_LOT_FURN less the tap and fridge); no toilet.
+// block it). As many beds as fit (TOWN_MAX_LOT_FURN less the taps and fridge); no toilet.
 static void TownFurnishBarracks(TownLot* L) {
     int w, d;
     TownInsideSize(L, &w, &d);
     int doorU = w / 2;
     TownLotFurn(L, doorU - 1 >= 0 ? doorU - 1 : w - 1, 0, FURNITURE_TAP, MAT_GRANITE);
     TownLotFurn(L, doorU + 1 < w ? doorU + 1 : 0, 0, FURNITURE_FRIDGE, MAT_IRON);
+    // More taps along the front wall, one per ~8 beds: with one tap for 62 people the line at it
+    // kept the dormitory thirsty (a drink takes a while)
+    int wantTaps = (w - 1) * (d - 1) * 2 / 3 / 8;
+    for (int u = 0, taps = 1; u < w && taps < wantTaps; u += 2) {
+        if (u >= doorU - 1 && u <= doorU + 1) continue;
+        int before = L->furnCount;
+        TownLotFurn(L, u, 0, FURNITURE_TAP, MAT_GRANITE);
+        taps += L->furnCount > before;
+    }
     int placed = 0;
     for (int v = d - 1; v >= 1; v--) {
         if ((d - 1 - v) % 3 == 2) continue;   // aisle row after every two bed rows

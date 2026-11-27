@@ -631,11 +631,18 @@ static bool FindNearestWaterCell(float x, float y, int z, int* outWaterX, int* o
 }
 
 // Is there anything to drink for this mover (a stored drink, any tap on its level, natural water)?
+// Something to drink the drink search would send the mover to now: a busy tap doesn't count
+// (the search waits for it). Counting it woke thirsty sleepers in a 62-bed barracks with one
+// tap every cooldown: tap busy, back to bed, woken again, never rested; exhausted, they dropped
+// every harvest and the field rotted ripe.
 static bool DrinkAvailable(const Mover* m) {
-    if (FindBestDrinkableItem((int)(m - movers), m->x, m->y, (int)m->z) >= 0) return true;
+    int mi = (int)(m - movers);
+    if (FindBestDrinkableItem(mi, m->x, m->y, (int)m->z) >= 0) return true;
+    bool anyTap = false;
     for (int i = 0; i < furnitureHighWater; i++)
         if (furniture[i].active && furniture[i].type == FURNITURE_TAP && furniture[i].z == (int)m->z &&
-            NeedMayUseFurniture((int)(m - movers), i)) return true;
+            NeedMayUseFurniture(mi, i)) anyTap = true;
+    if (anyTap) return FindNearestFreeFurniture(mi, FURNITURE_TAP, m->x, m->y, (int)m->z) >= 0;
     int wx, wy, wz, sx, sy, sz;
     return FindNearestWaterCell(m->x, m->y, (int)m->z, &wx, &wy, &wz, &sx, &sy, &sz);
 }

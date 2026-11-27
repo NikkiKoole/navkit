@@ -595,6 +595,29 @@ describe(tap_water) {
         expect(!HasMoodlet(&movers[mi], MOODLET_DRANK_DIRTY_WATER));
     }
 
+    it("a dehydrating sleeper is not woken for a tap someone else is using") {
+        // Was: the wake check counted any tap, the search only a free one: a 62-bed barracks
+        // with one tap woke its sleepers every cooldown, sent them back to bed, never rested
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        bool wasEnergy = energyEnabled;
+        energyEnabled = true;
+        int tap = SpawnFurniture(4, 4, 1, FURNITURE_TAP, MAT_GRANITE);
+        movers[mi].freetimeState = FREETIME_RESTING;
+        movers[mi].needTarget = -1;
+        movers[mi].energy = 0.2f;
+        movers[mi].thirst = balance.thirstCriticalThreshold - 0.01f;
+        movers[mi].needSearchCooldown = 0.0f;
+        furniture[tap].occupant = 99;            // someone else drinking
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_RESTING);
+        furniture[tap].occupant = -1;            // free again: now it wakes to drink
+        movers[mi].needSearchCooldown = 0.0f;
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState != FREETIME_RESTING);
+        energyEnabled = wasEnergy;
+    }
+
     it("a tap in use is not taken by a second mover") {
         SetupClean();
         int a = SetupMover(1, 1);
