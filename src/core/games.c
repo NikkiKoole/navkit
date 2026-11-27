@@ -581,11 +581,43 @@ static void StartDollhouse(void) {
 
 #define TOWN_SIZE 128
 
+// The town on a field (setting townTerrain field): the field generator at the town's size, soils
+// from causes, flat (lots and roads sit on one level), ponds (a stream would cut the town in two); nothing built: the player draws the
+// street. Returns the walking level of the highest ground (the view level).
+static int TownFieldGround(void) {
+    if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+    ScenarioResetWorldSized(NULL, TOWN_SIZE, TOWN_SIZE);
+    int keepSoils = fieldSoils, keepWater = fieldWater, keepRelief = fieldRelief;
+    fieldSoils = FIELD_SOILS_CAUSES;
+    fieldWater = FIELD_WATER_PONDS;
+    fieldRelief = FIELD_RELIEF_FLAT;   // lots and roads sit on one level
+    GenerateField();
+    fieldSoils = keepSoils;
+    fieldWater = keepWater;
+    fieldRelief = keepRelief;
+    SyncMaterialsToTerrain();
+    RebuildSimActivityCounts();
+    InvalidateLighting();
+    BuildEntrances();
+    BuildGraph();
+    int highest = 0;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            for (int z = gridDepth - 1; z > highest; z--)
+                if (GRID(x, y, z) == CELL_WALL && IsWallNatural(x, y, z)) { highest = z; break; }
+    return highest + 1;
+}
+
 static void StartTown(void) {
+    int midY = TOWN_SIZE / 2;
+    int viewZ = 1;
+    if (townTerrain == 1) {
+        viewZ = TownFieldGround();
+        ResetTime();
+    } else {
     ScenarioResetWorldSized(NULL, TOWN_SIZE, TOWN_SIZE);   // flat grass, walking level z=1
     ResetTime();
     // A main street in from the west edge: where newcomers will arrive
-    int midY = TOWN_SIZE / 2;
     TownAddRoad(0, midY - 1, TOWN_SIZE / 2 + 34, midY + 1, 1, NULL);
     // Starter homes (setting townStarter): 7x6 lots along the street, alternating sides
     for (int i = 0; i < townStarter; i++) {
@@ -605,6 +637,7 @@ static void StartTown(void) {
     }
     BuildEntrances();
     BuildGraph();
+    }
 
     dayLength = 360.0f;               // 6-minute day, walking 3x: as the dollhouse
     balance.baseMoverSpeed = 900.0f;
@@ -629,7 +662,7 @@ static void StartTown(void) {
     toolRequirementsEnabled = false;
     jobDistanceWeight = 0.2f;
     gameOverTriggered = false;
-    currentViewZ = 1;
+    currentViewZ = viewZ;
     followMoverIdx = -1;
     zoom = 1.0f;
     offset.x = GetScreenWidth() / 2.0f - (TOWN_SIZE / 2) * CELL_SIZE * zoom;

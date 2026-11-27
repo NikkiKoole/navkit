@@ -101,6 +101,8 @@ extern int townCloseHour;        // ... and close at this one
 extern int townFlourDelivery;    // flour a bakery imports when it has run out (setting; 0 = never)
 extern int townWheatDelivery;    // wheat a mill imports when it has run out (setting; 0 = never)
 extern int townStarter;          // homes already standing when the town game starts (setting)
+extern int townTerrain;          // 0 flat grass, 1 the field (soils, grass, trees, ponds; empty: draw your street)
+extern const char* const townTerrainNames[2];
 
 extern void (*townSpawnMover)(int x, int y, int z);   // main.c: SpawnMoverAt
 

@@ -800,6 +800,8 @@ static const Setting settings[] = {
       "Floor dirt a pit latrine's cell gets each time it is used. Filthy from 80, cleaners come from 30.", NULL),
     SET_FLOAT("townArrivalGH", "Newcomer every (game hours)", "Town", townArrivalGH, 0.05f, 0.05f, 24.0f,
       "Town: while a home has a free bed, a newcomer arrives on the road at the map edge this often and walks to their new home.", NULL),
+    SET_CHOICE("townTerrain", "Town terrain", "Town", townTerrain, townTerrainNames, 2,
+      "Town: the ground it starts on. flat = flat grass with the main street (and starter homes); field = a flat field the town's size (soils from causes, mixed grass, trees, ponds) with nothing built: draw the street to the map edge, newcomers arrive there. Used when the town starts. Not saved.", NULL),
     SET_INT("townStarter", "Starter homes", "Town", townStarter, 0.2f, 0, 12,
       "Town: homes already standing on the main street when the game starts (0 = an empty street).", NULL),
     SET_INT("townGroceries", "Newcomer's groceries", "Town", townGroceries, 0.1f, 0, 10,

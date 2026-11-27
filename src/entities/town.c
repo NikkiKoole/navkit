@@ -29,6 +29,8 @@ int townWasted[ITEM_TYPE_COUNT];
 int townSeedKept = 0;   // wheat set aside as seed (not saved)
 int townWheatDelivery = 20;
 int townStarter = 0;
+int townTerrain = 0;
+const char* const townTerrainNames[2] = { "flat", "field" };
 int townGroceries = 2;
 int townBreadPerHome = 8;
 int townFlourTarget = 40;
