@@ -9,6 +9,7 @@
 #include "../core/time.h"
 #include "../simulation/vapour.h"
 #include "../simulation/moisture.h"
+#include "../world/soil_mix.h"
 #include "../entities/notice.h"
 #include "../entities/talk.h"
 #include "../entities/chase.h"
@@ -928,6 +929,60 @@ void DrawRampOverlay(void) {
     }
 }
 
+// Grass is drawn quiet (ground ranks lowest in what the eye should notice): a muted ground
+// colour under the blades, blades faded toward it by grassContrast. The ground colour tells the
+// soil's moisture (olive when dry, deeper green when moist; the dry / mud veils of DrawMud go on
+// top) and, faintly, the soil under it: more of it the shorter the grass.
+// Trampled grass keeps the bare soil but fades its few blades the same way.
+static Color GrassGroundColor(int x, int y, int zSoil, int sprite) {
+    // moisture: dry olive .. normal .. moist deep green
+    static const float DRY[3] = {58, 66, 48}, NORMAL[3] = {38, 66, 56}, MOIST[3] = {30, 70, 52};
+    int m = MOISTURE_BASELINE;
+    if (soilMoistureEnabled && SoilMoistureReady()) m = MOISTURE(x, y, zSoil);
+    float g[3];
+    for (int i = 0; i < 3; i++) {
+        if (m < MOISTURE_BASELINE) {
+            float t = (float)(MOISTURE_BASELINE - m) / MOISTURE_BASELINE;
+            g[i] = NORMAL[i] + t * (DRY[i] - NORMAL[i]);
+        } else {
+            float t = (float)(m - MOISTURE_BASELINE) / (MOISTURE_WET - MOISTURE_BASELINE);
+            if (t > 1.0f) t = 1.0f;
+            g[i] = NORMAL[i] + t * (MOIST[i] - NORMAL[i]);
+        }
+    }
+    // the soil showing through: a hint under tall grass, more under short grass
+    Color hint = soilMixDefs[SoilMixOrDefault(x, y, zSoil)].hint;   // soil_mix.c
+    float soil[3] = {hint.r, hint.g, hint.b};
+    float show = (sprite == SPRITE_grass) ? 0.35f : (sprite == SPRITE_grass_tall) ? 0.2f : 0.12f;
+    Color c = {0, 0, 0, 255};
+    c.r = (unsigned char)(g[0] + show * (soil[0] - g[0]));
+    c.g = (unsigned char)(g[1] + show * (soil[1] - g[1]));
+    c.b = (unsigned char)(g[2] + show * (soil[2] - g[2]));
+    return c;
+}
+
+static void DrawGrassSprite(int sprite, Rectangle dest, Color tint, int x, int y, int zSoil) {
+    static const float BLADE[3] = {55, 148, 110};   // grass sprites' blade colour
+    float c = grassContrast;
+    if (c >= 1.0f) { FastSprite(atlas, SpriteGetRect(sprite), dest, tint); return; }
+    if (c < 0.0f) c = 0.0f;
+    bool trampled = (sprite == SPRITE_grass_trampled);
+    float ground[3] = {40, 40, 40};   // trampled: blades fade toward a dark bare-soil grey
+    if (!trampled) {
+        Color g = GrassGroundColor(x, y, zSoil, sprite);
+        ground[0] = g.r; ground[1] = g.g; ground[2] = g.b;
+        FastRect(dest, MultiplyColor(tint, g));
+    }
+    // multiplier k so blade*k = lerp(ground, blade, c)
+    unsigned char k[3];
+    for (int i = 0; i < 3; i++) {
+        float target = ground[i] + c * (BLADE[i] - ground[i]);
+        float mk = target / BLADE[i] * 255.0f;
+        k[i] = (unsigned char)(mk > 255.0f ? 255.0f : mk);
+    }
+    FastSprite(atlas, SpriteGetRect(sprite), dest, MultiplyColor(tint, (Color){k[0], k[1], k[2], 255}));
+}
+
 static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -942,7 +997,7 @@ static void DrawGrassOverlay(void) {
         for (int x = minX; x < maxX; x++) {
             for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
                 Color depthTint = GetDepthTint(zDepth, z);
-                if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
+                if (!IsWallNatural(x, y, zDepth) || !IsSoilMaterial(GetWallMaterial(x, y, zDepth))) continue;
                 
                 VegetationType veg = GetVegetation(x, y, zDepth);
                 int surface = GET_CELL_SURFACE(x, y, zDepth);
@@ -956,12 +1011,11 @@ static void DrawGrassOverlay(void) {
                 else continue;
 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(sprite);
                 // Grass is on top of solid, lit from the air above (zDepth+1)
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 if (isReeds) tint = MultiplyColor(tint, (Color){120, 200, 180, 255});
                 else tint = MultiplyColor(tint, biomePresets[selectedBiome].grassTint);
-                FastSprite(atlas, src, dest, tint);
+                DrawGrassSprite(sprite, dest, tint, x, y, zDepth);
             }
         }
     }
@@ -973,7 +1027,7 @@ static void DrawGrassOverlay(void) {
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
-                if (!IsWallNatural(x, y, zBelow) || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
+                if (!IsWallNatural(x, y, zBelow) || !IsSoilMaterial(GetWallMaterial(x, y, zBelow))) continue;
                 CellType cellHere = GRID(x, y, z);
                 // Allow grass under air only, skip walls/ladders/ramps/etc.
                 if (cellHere != CELL_AIR) continue;
@@ -992,11 +1046,10 @@ static void DrawGrassOverlay(void) {
                 else continue;
 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(sprite);
                 Color lightTint = GetLightColor(x, y, z, skyColor);
                 if (isReeds2) lightTint = MultiplyColor(lightTint, (Color){120, 200, 180, 255});
                 else lightTint = MultiplyColor(lightTint, biomePresets[selectedBiome].grassTint);
-                FastSprite(atlas, src, dest, lightTint);
+                DrawGrassSprite(sprite, dest, lightTint, x, y, zBelow);
             }
         }
 }
@@ -1061,6 +1114,54 @@ static bool GroundMoistureColor(int x, int y, int zSoil, Color* out) {
     int alpha = 30 + 90 * (MOISTURE_NORMAL - m) / MOISTURE_NORMAL;   // dry ~30-75, parched up to 120
     *out = (Color){215, 185, 110, (unsigned char)alpha};
     return true;
+}
+
+// Soil mixes (soil_mix.h). Bare ground with a mix other than its material's plain one gets a faint
+// veil of the mix's colour (grass shows it in its ground colour already). The soil view (setting
+// soilView) colours every soil surface clearly by its mix: the farming question "what is here".
+static void DrawSoilMixCell(int x, int y, int zSoil, Rectangle dest, Color light) {
+    if (!IsWallNatural(x, y, zSoil) || !IsSoilMaterial(GetWallMaterial(x, y, zSoil))) return;
+    if (soilView) {
+        Color c = soilMixDefs[SoilMixOrDefault(x, y, zSoil)].view;
+        c = MultiplyColor(c, light);
+        c.a = 210;
+        FastRect(dest, c);
+        return;
+    }
+    SoilMix m = SoilMixAt(x, y, zSoil);
+    if (m == SOILMIX_NONE || m == SoilMixDefault(GetWallMaterial(x, y, zSoil))) return;
+    VegetationType veg = GetVegetation(x, y, zSoil);
+    if (veg >= VEG_GRASS_SHORT || veg == VEG_REEDS) return;   // the grass ground shows it
+    Color c = MultiplyColor(soilMixDefs[m].hint, light);
+    c.a = 110;
+    FastRect(dest, c);
+}
+
+static void DrawSoilMixes(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    if (soilView) {   // deeper levels too (hillsides below the view level)
+        int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
+        for (int y = minY; y < maxY; y++)
+            for (int x = minX; x < maxX; x++)
+                for (int zDepth = VisLowest(x, y, zStart, true); zDepth <= z - 2; zDepth++) {
+                    if (GRID(x, y, zDepth + 1) != CELL_AIR) continue;
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Color light = MultiplyColor(GetDepthTint(zDepth, z), GetLightColor(x, y, zDepth + 1, skyColor));
+                    DrawSoilMixCell(x, y, zDepth, dest, light);
+                }
+    }
+    if (z <= 0) return;
+    int zBelow = z - 1;
+    for (int y = minY; y < maxY; y++)
+        for (int x = minX; x < maxX; x++) {
+            if (GRID(x, y, z) != CELL_AIR || HAS_FLOOR(x, y, z)) continue;
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawSoilMixCell(x, y, zBelow, dest, GetLightColor(x, y, z, skyColor));
+        }
 }
 
 static void DrawMud(void) {
@@ -4031,7 +4132,7 @@ static void DrawFrontView(void) {
             float screenY = offset.y + (gridDepth - 1 - z) * size - layerOffsetY;
 
             for (int x = minX; x < maxX; x++) {
-                if (!IsWallNatural(x, worldY, zBelow) || GetWallMaterial(x, worldY, zBelow) != MAT_DIRT) continue;
+                if (!IsWallNatural(x, worldY, zBelow) || !IsSoilMaterial(GetWallMaterial(x, worldY, zBelow))) continue;
                 CellType cellHere = GRID(x, worldY, z);
                 if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, worldY, z)) continue;
@@ -4053,7 +4154,7 @@ static void DrawFrontView(void) {
                 Color grassTint = MultiplyColor(layerTint, grassLight);
                 if (isReeds) grassTint = MultiplyColor(grassTint, (Color){120, 200, 180, 255});
                 else grassTint = MultiplyColor(grassTint, biomePresets[selectedBiome].grassTint);
-                FastSprite(atlas, SpriteGetRect(grassSprite), grassDest, grassTint);
+                DrawGrassSprite(grassSprite, grassDest, grassTint, x, worldY, zBelow);
             }
         }
 

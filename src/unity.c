@@ -17,6 +17,7 @@
 #include "world/biome.c"
 #include "world/terrain.c"
 #include "world/island_gen.c"     // uses terrain.c statics
+#include "world/soil_mix.c"       // soil mixes (sandy clay, silt loam ...)
 #include "world/field_gen.c"      // the field game's map (uses terrain.c statics)
 // nav library (algorithms) + game host contract, then the game-side layer
 #define NAV_HOST_HEADER "../src/world/nav_host.h"

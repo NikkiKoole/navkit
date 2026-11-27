@@ -21,6 +21,7 @@ extern bool skyLightEnabled;       // Toggle sky light computation
 extern bool blockLightEnabled;     // Toggle block light computation
 extern bool shaderEffects;         // Experimental shader effects in the world batch (water ripples, fire flicker)
 extern bool forceDaylight;         // Override sky color to WHITE (full brightness, ignores time of day)
+extern float grassContrast;       // Grass blades vs the grass ground under them: 1 = the old bright blades on bare dirt
 extern int  lightAmbientR;         // Ambient minimum red (0-255, prevents pitch black)
 extern int  lightAmbientG;         // Ambient minimum green
 extern int  lightAmbientB;         // Ambient minimum blue

@@ -5,6 +5,7 @@
 #include "../simulation/water.h"
 #include "../simulation/moisture.h"
 #include "../world/field_gen.h"
+#include "../world/soil_mix.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -581,6 +582,8 @@ static const Setting settings[] = {
       "The field game's ground: flat, or gentle (a few levels, ramps between). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("fieldSize", "Field size", "World/Field", fieldSize, fieldSizeNames, FIELD_SIZE_COUNT,
       "The field game's map: 64, 128 (double) or 256 (4x) cells square; bigger fields get more of everything (ponds, patches, trees; two streams at 256). Used when the field starts. Not saved.", NULL),
+    SET_CHOICE("fieldSoils", "Field soils", "World/Field", fieldSoils, fieldSoilsNames, FIELD_SOILS_COUNT,
+      "How the field game decides its soils: patches (noise patches of sand, gravel and clay in loam, hard edges) or causes (from the rock under it, the height and the water: a mix per cell such as sandy loam or silty clay, in bands). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("fieldWater", "Field water", "World/Field", fieldWater, fieldWaterNames, FIELD_WATER_COUNT,
       "The field game's water: none, ponds (a few puddles and small ponds) or a stream (a spring in the west, off the east edge). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("biome", "Biome", "World/Terrain/Biome", selectedBiome, biomeNames, BIOME_COUNT,
@@ -909,6 +912,10 @@ static const Setting settings[] = {
       "Water units a worked pump lifts per game second (from the cell below it to the cell beside it, one level up).", NULL),
     SET_FLOAT("pumpWorkHours", "Pump Work (GH)", "Simulation/Water", pumpWorkHours, 0.05f, 0.1f, 8.0f,
       "How long one 'work the pump' order lasts, in game hours.", NULL),
+    SET_FLOAT("grassContrast", "Grass contrast", "Rendering & Debug", grassContrast, 0.01f, 0.0f, 1.0f,
+      "How much grass blades stand out: below 1 grass gets a muted green ground and the blades fade toward it, so the ground stays quiet and movers, items and buildings stand out. 1 = bright blades on bare dirt (the old look).", NULL),
+    SET_BOOL("soilView", "Soil view", "Rendering & Debug", soilView,
+      "Colour the ground by its soil mix (soil_mix.h): sand pale yellow, loam brown, silt grey-beige, clay red, peat dark, gravel grey. Only worlds that set mixes (field with fieldSoils causes) show the finer mixes."),
     SET_BOOL("pipeOverlay", "Pipe overlay", "Rendering & Debug", pipeOverlay,
       "Draw pipes under constructed floors too (pipes on bare ground always show)."),
     SET_BOOL("linksOverlay", "Links overlay", "Rendering & Debug", linksOverlay,

@@ -30,6 +30,7 @@
 #include "../simulation/weather.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/moisture.h"
+#include "soil_mix.h"
 #include "../simulation/trees.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/farming.h"
@@ -147,6 +148,7 @@ static const GridLayerDef gridLayerDefs[] = {
     LAYER_DEF(snowAccumGrid, 0),
     LAYER_DEF(wearGrid, 0),
     LAYER_DEF(moistureGrid, 0),
+    LAYER_DEF(soilMixGrid, 0),
     LAYER_DEF(growthTimer, 0),
     LAYER_DEF(targetHeight, 0),
     LAYER_DEF(treeHarvestState, 0),

@@ -9,6 +9,9 @@ typedef enum { FIELD_WATER_NONE, FIELD_WATER_PONDS, FIELD_WATER_STREAM, FIELD_WA
 
 extern int fieldRelief;   // FieldRelief (setting fieldRelief)
 extern int fieldWater;    // FieldWater (setting fieldWater)
+typedef enum { FIELD_SOILS_PATCHES, FIELD_SOILS_CAUSES, FIELD_SOILS_COUNT } FieldSoils;
+extern int fieldSoils;    // FieldSoils (setting fieldSoils)
+extern const char* const fieldSoilsNames[FIELD_SOILS_COUNT];
 extern int fieldSize;     // index into fieldSizes (setting fieldSize): 64, 128 or 256 cells square
 #define FIELD_SIZE_COUNT 3
 extern const int fieldSizes[FIELD_SIZE_COUNT];

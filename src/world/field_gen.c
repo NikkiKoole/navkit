@@ -18,10 +18,13 @@
 //    shows where it is wet and where dry.
 #include "field_gen.h"
 #include "../simulation/moisture.h"
+#include "soil_mix.h"
 
 int fieldRelief = FIELD_RELIEF_GENTLE;
 int fieldWater = FIELD_WATER_STREAM;
 int fieldSize = 0;
+int fieldSoils = FIELD_SOILS_PATCHES;
+const char* const fieldSoilsNames[FIELD_SOILS_COUNT] = { "patches", "causes" };
 const int fieldSizes[FIELD_SIZE_COUNT] = { 64, 128, 256 };
 const char* const fieldSizeNames[FIELD_SIZE_COUNT] = { "64", "128", "256" };
 const char* const fieldReliefNames[FIELD_RELIEF_COUNT] = { "flat", "gentle" };
@@ -307,6 +310,67 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
     free(visited); free(F); free(B); free(queue); free(waterTop); free(banned);
 }
 
+// Soils from causes (fieldSoils causes, docs/todo/world/soil-mixes.md): a sand / clay / organic /
+// stones mix per cell, summed from what makes real top soil, then the nearest named mix.
+// - the rock under it: one slow noise, sandstone-like (sandy) to shale-like (clay) areas
+// - height: rain washes the fine stuff down; rises sandy and stony, hollows clay-rich
+// - water: silt on the stream banks, clay round ponds, organic matter where it stays wet and low
+// - a little small noise
+// All of these change smoothly, so neighbours get neighbouring mixes: bands, not patches.
+static void FieldSoilsByCauses(const int* top, const uint8_t* water, uint8_t* mixOut) {
+    int W = gridWidth, H = gridHeight, N = W * H;
+    uint8_t* mask = (uint8_t*)malloc(N);
+    uint8_t* dStream = (uint8_t*)malloc(N);
+    uint8_t* dPond = (uint8_t*)malloc(N);
+    if (!mask || !dStream || !dPond) { free(mask); free(dStream); free(dPond); memset(mixOut, 0, N); return; }
+    for (int i = 0; i < N; i++) mask[i] = water[i] == FW_STREAM;
+    WaterDistance(mask, dStream);
+    for (int i = 0; i < N; i++) mask[i] = water[i] == FW_POND;
+    WaterDistance(mask, dPond);
+    free(mask);
+    int lo = 1000, hi = -1000;
+    for (int i = 0; i < N; i++) if (!water[i]) { if (top[i] < lo) lo = top[i]; if (top[i] > hi) hi = top[i]; }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            int i = FIDX(x, y);
+            if (water[i] == FW_POND) { mixOut[i] = SOILMIX_CLAY; continue; }
+            if (water[i] == FW_STREAM) { mixOut[i] = SOILMIX_GRAVEL; continue; }
+            float fx = (float)x, fy = (float)y;
+            // the rock under it
+            float g = FieldNoise(fx, fy, 26.0f, 20);
+            float sand = 0.1f + 0.75f * g;
+            float clay = 0.38f - 0.3f * g + (FieldNoise(fx, fy, 17.0f, 21) - 0.5f) * 0.16f;
+            // height: the whole map's range and the cell against its neighbourhood
+            float h = hi > lo ? (float)(top[i] - lo) / (float)(hi - lo) : 0.5f;
+            int sum = 0, cnt = 0;
+            for (int dy = -3; dy <= 3; dy++)
+                for (int dx = -3; dx <= 3; dx++) {
+                    int xx = x + dx, yy = y + dy;
+                    if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+                    sum += top[FIDX(xx, yy)]; cnt++;
+                }
+            float rel = (float)top[i] - (float)sum / (float)cnt;   // + on a rise, - in a hollow
+            float up = (h - 0.5f) + 0.3f * rel;
+            sand += 0.3f * up;
+            clay -= 0.18f * up;
+            float stones = (h > 0.75f ? (h - 0.75f) : 0.0f) + (rel > 0 ? 0.25f * rel : 0.0f)
+                         + (FieldNoise(fx, fy, 6.0f, 22) - 0.5f) * 0.5f + 0.05f;
+            // water: silt on the stream banks, clay round ponds
+            int ds = dStream[i], dp = dPond[i];
+            if (ds <= 4) { float f = (float)(5 - ds) / 5.0f; sand -= 0.4f * f; clay -= 0.05f * f; stones -= 0.3f * f; }
+            if (dp <= 4) { float f = (float)(5 - dp) / 5.0f; clay += 0.3f * f; sand -= 0.25f * f; stones -= 0.3f * f; }
+            // organic: stays wet and low
+            int dw = ds < dp ? ds : dp;
+            float organic = (dw <= 3 ? (float)(4 - dw) / 4.0f * 0.45f : 0.0f) + (1.0f - h) * 0.2f
+                          + (rel < 0 ? -0.1f * rel : 0.0f) + (FieldNoise(fx, fy, 5.0f, 23) - 0.5f) * 0.4f;
+            // a little small noise
+            sand += (FieldNoise(fx, fy, 3.0f, 24) - 0.5f) * 0.08f;
+            mixOut[i] = (uint8_t)SoilMixClassify(sand, clay, organic, stones);
+        }
+    free(dStream); free(dPond);
+}
+
+
 void GenerateField(void) {
     int W = gridWidth, H = gridHeight, N = W * H;
     if (N > FIELD_MAX_N || gridDepth < 8) return;
@@ -408,11 +472,17 @@ void GenerateField(void) {
     WaterDistance(water, dist);
 
     // 4. Soil (top cell) and the ground below it; air above
+    uint8_t* mix = NULL;
+    if (fieldSoils == FIELD_SOILS_CAUSES && (mix = (uint8_t*)malloc(N)) != NULL) {
+        FieldSoilsByCauses(top, water, mix);
+        SoilMixBegin();
+    }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
             int i = FIDX(x, y), t = top[i];
             MaterialType soil = MAT_DIRT;
-            if (water[i] == FW_POND) soil = MAT_CLAY;
+            if (mix && mix[i] != SOILMIX_NONE) soil = soilMixDefs[mix[i]].base;
+            else if (water[i] == FW_POND) soil = MAT_CLAY;
             else if (water[i] == FW_STREAM) soil = MAT_GRAVEL;
             else {
                 float wet = FieldNoise((float)x, (float)y, 6.0f, 2);
@@ -432,7 +502,9 @@ void GenerateField(void) {
                 }
                 SetVegetation(x, y, z, VEG_NONE);
             }
+            if (mix && mix[i] != SOILMIX_NONE) SetSoilMix(x, y, t, (SoilMix)mix[i]);
         }
+    free(mix);
 
     // 3. Ramps: into the higher cell of a step, where its far side holds it up. A ramp's foot and
     // the cell past its top stay plain ground (rampMark 2: crossed ramps made traps), and its sides
@@ -492,6 +564,8 @@ void GenerateField(void) {
             if (water[i] || CellIsRamp(GRID(x, y, t))) continue;
             MaterialType soil = GetWallMaterial(x, y, t);
             float n = FieldNoise((float)x, (float)y, 7.0f, 8), r = FieldHash(x, y, 9);
+            SoilMix sm = SoilMixAt(x, y, t);   // causes soils: richer mixes grow taller grass
+            if (sm != SOILMIX_NONE) n += ((float)soilMixDefs[sm].fertility - 128.0f) / 200.0f;
             VegetationType v = VEG_NONE;
             if (dist[i] == 1 && soil != MAT_GRAVEL && soil != MAT_SAND && r < 0.6f) v = VEG_REEDS;
             else if (soil == MAT_DIRT) v = n > 0.62f ? VEG_GRASS_TALLER : n > 0.45f ? VEG_GRASS_TALL :
@@ -531,14 +605,7 @@ void GenerateField(void) {
             int i = FIDX(x, y), t = top[i];
             if (!IsSoilSurface(x, y, t)) continue;
             if (water[i]) { SetSoilMoisture(x, y, t, MOISTURE_FULL); continue; }
-            int m;
-            switch (GetWallMaterial(x, y, t)) {
-                case MAT_SAND:   m = 70;  break;
-                case MAT_GRAVEL: m = 55;  break;
-                case MAT_CLAY:   m = 130; break;
-                case MAT_PEAT:   m = 170; break;
-                default:         m = MOISTURE_BASELINE; break;
-            }
+            int m = soilMixDefs[SoilMixOrDefault(x, y, t)].moisture;   // patches: the material's row
             if (dist[i] <= 1) m += 60; else if (dist[i] == 2) m += 35; else if (dist[i] == 3) m += 15;
             m -= 8 * (t - lowest);
             m += (int)((FieldNoise((float)x, (float)y, 8.0f, 12) - 0.5f) * 30.0f);

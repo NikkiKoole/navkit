@@ -16,6 +16,7 @@ bool lightingEnabled = true;
 bool skyLightEnabled = true;
 bool blockLightEnabled = true;
 bool forceDaylight = false;
+float grassContrast = 0.3f;
 bool shaderEffects = false;
 int  lightAmbientR = 25;
 int  lightAmbientG = 25;

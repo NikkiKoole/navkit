@@ -1905,6 +1905,7 @@ int main(int argc, char** argv) {
         DrawPlantOverlay();
         DrawCloudShadows();  // Draw cloud shadows first (under everything)
         DrawMud();
+        DrawSoilMixes();     // soil mix veil on bare ground; the soil view (setting soilView)
         DrawSnow();          // Draw snow after mud
         DrawRampOverlay();   // Draw ramps after grass/mud/snow so they're visible
         DrawWater();

@@ -56,5 +56,13 @@ pockets as connected, and tree roots and canopies counted as ground.
   3 days, gentle more as its pools evaporate) and ponds dry over days. With two spring cells it piled
   up too deep to wade near the spring. Options: weather on in the field (rain refills it), a
   stronger spring with a deeper outlet, or accept it.
-- Grass is only drawn on loam: clay, peat and sand show their bare sprite even with plants on them.
-- Silt along the stream and rocky soil on slopes (`soil-moisture.md` talk about the soil matrix).
+- Soil mixes (sandy clay, clay loam, ...) instead of hard edges between soils: plan in `soil-mixes.md`.
+- Silt along the stream and rocky soil on slopes (part of `soil-mixes.md` step 3).
+
+## Grass drawn quiet (2026-11-27)
+
+Grass was bright blades on near-black loam: the loudest thing on screen. Now a muted ground colour
+under the blades (`DrawGrassSprite` / `GrassGroundColor` in `rendering.c`), blades faded toward it
+by setting `grassContrast` (0.3; 1 = the old look). The ground colour follows the moisture (olive
+dry, deeper green moist; the straw / mud veils still go on top) and hints the soil under it (more
+under short grass). Grass is drawn on every soil now, not only loam.
