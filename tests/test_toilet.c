@@ -141,6 +141,27 @@ describe(survival_toilet) {
         expect(movers[mi].needTarget == latrine);
     }
 
+    it("a mover stuck on its way to the toilet plans again instead of standing until it gives up") {
+        // Was: the stuck-path clear for jobless movers left a need-seeker with no path and no
+        // repath; it stood (on a building corner) until the seek timed out, then went in the open.
+        SetupGround();
+        BuildEntrances(); BuildGraph();
+        SpawnFurniture(12, 5, 1, FURNITURE_PIT_LATRINE, MAT_OAK);
+        int mi = SetupNeedyMover(2, 5);
+        ProcessFreetimeNeeds();
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_TOILET);
+        ProcessMoverRepaths();
+        expect(movers[mi].pathLength > 0);
+
+        movers[mi].timeWithoutProgress = STUCK_REPATH_TIME + 1.0f;   // caught on a corner
+        UpdateMovers();
+        expect(movers[mi].needsRepath);
+        movers[mi].repathCooldown = 0;
+        ProcessMoverRepaths();
+        expect(movers[mi].pathLength > 0);
+        expect(movers[mi].freetimeState == FREETIME_SEEKING_TOILET);
+    }
+
     it("a toilet beats a latrine nearby, a latrine wins when the toilet is far") {
         SetupGround();
         SpawnFurniture(6, 5, 1, FURNITURE_PIT_LATRINE, MAT_OAK);     // 1 cell: 1 / 2 = 0.5

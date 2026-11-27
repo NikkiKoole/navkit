@@ -1595,6 +1595,21 @@ static void AssignNewMoverGoal(Mover* m) {
     if (m->pathLength > 0) MaybeTakeTrain(moverIdx);   // a far goal may be quicker by train
 }
 
+// Walking to something a need wants (food, a bed, a toilet, ...): it keeps its goal, so a
+// cleared path must be planned again (nothing else gives it a new one)
+static bool MoverWalkingToNeed(const Mover* m) {
+    switch (m->freetimeState) {
+        case FREETIME_SEEKING_FOOD: case FREETIME_SEEKING_REST: case FREETIME_SEEKING_WARMTH:
+        case FREETIME_SEEKING_DRINK: case FREETIME_SEEKING_NATURAL_WATER:
+        case FREETIME_SEEKING_TOILET: case FREETIME_SEEKING_BUSH: case FREETIME_SEEKING_TAP:
+        case FREETIME_SEEKING_FORAGE: case FREETIME_SEEKING_BIN: case FREETIME_SEEKING_SCROUNGE:
+        case FREETIME_FETCHING_OWN:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void UpdateMovers(void) {
     float dt = gameDeltaTime;  // Use game time so movers scale with gameSpeed
     float dayLengthSpeedScale = 60.0f / dayLength;  // Normalize movement per game-hour
@@ -1800,10 +1815,16 @@ void UpdateMovers(void) {
             continue;
         }
 
-        // Clear stale paths on stuck jobless movers
+        // Clear stale paths on stuck jobless movers. An idle one picks a new goal below; one
+        // walking to a need keeps its goal and plans again from here (it stood on a building
+        // corner with no path until the need gave up: "had to go in the open").
         if (m->currentJobId < 0 && m->pathLength > 0 && m->timeWithoutProgress > STUCK_REPATH_TIME) {
             ClearMoverPath(i);
             m->timeWithoutProgress = 0.0f;
+            if (MoverWalkingToNeed(m)) {
+                m->needsRepath = true;
+                continue;
+            }
         }
 
         // Transport: RIDING movers are moved by TrainsTick — skip all normal movement
@@ -1950,7 +1971,9 @@ void UpdateMovers(void) {
 
             // The path ran out short of a need's goal (a bed, food): plan again rather than
             // stand there until the need's timeout (saves made before the arrival fix above)
-            if (m->freetimeState != FREETIME_NONE && m->currentJobId < 0 && m->pathLength > 0 &&
+            // (or a path that was cleared while walking to one: saves made before the fix above)
+            if (m->freetimeState != FREETIME_NONE && m->currentJobId < 0 &&
+                (m->pathLength > 0 || MoverWalkingToNeed(m)) &&
                 !PointsEqual(m->goal, (Point){currentX, currentY, currentZ})) {
                 m->needsRepath = true;
                 continue;
