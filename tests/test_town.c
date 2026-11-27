@@ -487,7 +487,9 @@ describe(town_jobs) {
         expect(TownMayCraftAt(stove, 0));
         timeOfDay = 12.0f;
         expect(!TownMayCraftAt(stove, 0));
-        townOpenHour = 7; townCloseHour = 17;
+        townOpenHour = 0; townCloseHour = 24;       // the default: round the clock
+        timeOfDay = 3.0f;
+        expect(TownMayCraftAt(stove, 0));
         int other = CreateWorkshop(35, 35, 1, WORKSHOP_STOVE);
         expect(other >= 0 && TownMayCraftAt(other, 5));
     }

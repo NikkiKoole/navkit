@@ -96,7 +96,7 @@ extern float townWeedRate;       // weeds on town farms grow at this share of th
 float TownWeedFactor(int x, int y, int z);   // farming.c: townWeedRate on a town farm, else 1
 extern bool townIrrigation;      // town farms are kept wet (stand-in for a well + watering; setting)
 extern int townGroceries;        // loaves a newcomer brings for the pantry (setting)
-extern int townOpenHour;         // bakeries open at this hour (setting) ...
+extern int townOpenHour;         // workplaces open at this hour (setting; 0-24 = round the clock, the default) ...
 extern int townCloseHour;        // ... and close at this one
 extern int townFlourDelivery;    // flour a bakery imports when it has run out (setting; 0 = never)
 extern int townWheatDelivery;    // wheat a mill imports when it has run out (setting; 0 = never)

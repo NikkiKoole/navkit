@@ -462,7 +462,9 @@ void DescribeMover(int idx, DescDetail detail, DescLines* out) {
         if (home >= 0) DescAdd(out, DESC_INFO, "Lives in home #%d (%d living there)", home, TownResidents(home));
         else DescAdd(out, DESC_WARN, "Homeless");
         int job = TownJobOf(idx);
-        if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)",
+        if (job >= 0 && townOpenHour == 0 && townCloseHour == 24)
+            DescAdd(out, DESC_INFO, "Works at the %s #%d", townLots[job].kind == LOT_MILL ? "mill" : townLots[job].kind == LOT_FARM ? "farm" : "bakery", job);
+        else if (job >= 0) DescAdd(out, DESC_INFO, "Works at the %s #%d (%s, %d-%d h)",
                               townLots[job].kind == LOT_MILL ? "mill" : townLots[job].kind == LOT_FARM ? "farm" : "bakery", job,
                               TownLotOpen(job) ? "open" : "closed", townOpenHour, townCloseHour);
         else if (home >= 0) DescAdd(out, DESC_MUTED, "No job");
@@ -1150,7 +1152,8 @@ void DescribeLot(int lot, DescLines* out) {
         case LOT_WORK:
         case LOT_MILL: {
             bool open = TownLotOpen(lot);
-            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            if (townOpenHour == 0 && townCloseHour == 24) DescAdd(out, DESC_GOOD, "Open round the clock");
+            else DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
             int workers = TownWorkers(lot);
             DescAdd(out, workers < L->beds ? DESC_WARN : DESC_NORMAL, "Jobs: %d of %d filled", workers, L->beds);
             for (int m = 0; m < moverCount; m++)
@@ -1177,7 +1180,8 @@ void DescribeLot(int lot, DescLines* out) {
         }
         case LOT_FARM: {
             bool open = TownLotOpen(lot);
-            DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
+            if (townOpenHour == 0 && townCloseHour == 24) DescAdd(out, DESC_GOOD, "Open round the clock");
+            else DescAdd(out, open ? DESC_GOOD : DESC_MUTED, "%s, %d-%d h", open ? "Open" : "Closed", townOpenHour, townCloseHour);
             int hands = TownWorkers(lot);
             DescAdd(out, hands < L->beds ? DESC_WARN : DESC_NORMAL, "Farmhands: %d of %d", hands, L->beds);
             for (int m = 0; m < moverCount; m++)

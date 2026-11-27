@@ -815,7 +815,7 @@ static const Setting settings[] = {
     SET_BOOL("townIrrigation", "Irrigated farms", "Town", townIrrigation,
       "Town: farm fields are kept wet (a stand-in for a well and watering). Off: rain only, and wheat grows at about a third of its pace."),
     SET_INT("townOpenHour", "Bakeries open (hour)", "Town", townOpenHour, 0.1f, 0, 23,
-      "Town: bakeries open at this hour; their own workers bake only while open.", NULL),
+      "Town: bakeries, mills and farms open at this hour; their own workers work only while open. 0 to 24 (the default) = round the clock: people work whenever they are awake (with 7-17 the workers drifted into sleeping afternoons and stood at closed doors at night: bread 4 instead of 72 on day 5).", NULL),
     SET_INT("townCloseHour", "Bakeries close (hour)", "Town", townCloseHour, 0.1f, 0, 24,
       "Town: bakeries close at this hour (before the opening hour: open through midnight).", NULL),
     SET_INT("townFlourDelivery", "Flour delivery", "Town", townFlourDelivery, 0.2f, 0, 20,

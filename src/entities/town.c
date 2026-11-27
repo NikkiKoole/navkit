@@ -36,8 +36,8 @@ int townBreadPerHome = 8;
 int townFlourTarget = 40;
 bool townIrrigation = true;
 float townWeedRate = 0.2f;
-int townOpenHour = 7;
-int townCloseHour = 17;
+int townOpenHour = 0;     // round the clock: people work when they are awake (the rhythm comes from
+int townCloseHour = 24;   // their needs, not clock rules; shop hours let afternoon sleepers miss the day)
 
 static short townFurnOwner[MAX_FURNITURE];   // TOWN_OWNER_* or a mover index (beds of homes)
 static short townHome[MAX_MOVERS];           // lot a mover lives in, -1 none

@@ -21,8 +21,13 @@ lot for its inspector; the overview bar on top shows the town in one line.
 **What the town does by itself.**
 - Newcomers walk in from the road at the map edge while a bed is free; each gets a home and
   their own bed, and a job if one is free (bakery, mill, farm; one job per stove / two querns /
-  24 field cells). Workplaces are open 7-17; on shift a worker only works at their workplace,
-  off shift and without a job anyone does any work.
+  24 field cells). Workplaces are open round the clock (since 2026-11-27; settings
+  `townOpenHour` / `townCloseHour` can still set shop hours): a worker works at their workplace
+  whenever awake, and without a job anyone does any work. With 7-17 the workers drifted into
+  sleeping afternoons and stood at closed doors at night (starter town of 8 homes, day 5: work 1.6
+  h per person per day, bread 4; round the clock 2.8 h, bread 72). `town list` shows each lot's
+  stock and stacks (`--exec-end "town list"` after a headless run). Setting `townTerrain field`:
+  start on an empty flat field the town's size (soils, trees, ponds).
 - The grain chain, all carried by the existing haul jobs: farm (wheat field, barn, seed store)
   -> mill (querns, granary, flour store) -> bakery (stoves, flour store, bread shelf) -> each
   home's fridge pantry. Granary lots store wheat and flour for the winter. Bills run "until N"
