@@ -879,6 +879,23 @@ static void RunSupport(const CmdValue* v) {
 // ---- rendering toys ----
 static void RunCutscene(const CmdValue* v) { (void)v; PlayTestCutscene(); }
 static const char* const shakeChoices[] = { "small", "medium", "large" };
+// Pick a tool by name, as the find palette does (best matching tool row): "tool farm"
+static void RunTool(const CmdValue* v) {
+    FindBuildIndex();
+    int rows[64];
+    bool dym = false;
+    int n = FindSearch(v[0].s, rows, 64, &dym);
+    for (int i = 0; i < n; i++) {
+        const FindRow* r = FindRowAt(rows[i]);
+        if (!r || r->kind != FIND_TOOL) continue;
+        InputAction a = InputMode_HowOf((InputAction)r->ref);
+        InputMode_SelectAction(a);
+        FindSay(TextFormat("tool: %s", r->label));
+        return;
+    }
+    FindSay(TextFormat("tool: no tool matches '%s'", v[0].s));
+}
+
 static void RunShake(const CmdValue* v) {
     static const float strength[] = { 2.0f, 4.0f, 8.0f }, duration[] = { 0.2f, 0.4f, 0.6f };
     TriggerScreenShake(strength[v[0].choice], duration[v[0].choice]);
@@ -1033,6 +1050,8 @@ static const CommandDef commandTable[] = {
       0, { { 0 } }, RunSupport, NULL },
     { "cutscene", "Rendering & Debug", "Play the test cutscene", 0, { { 0 } }, RunCutscene, NULL },
     { "shake", "Rendering & Debug", "Screen shake: small, medium, large", 1, { ARG_CHOICE("size", shakeChoices) }, RunShake, NULL },
+    { "tool", "Dev", "Pick a tool by name, as the find palette does: tool farm, tool wall",
+      1, { { .name = "name", .type = CARG_TEXT } }, RunTool, NULL },
     { "find", "Dev", "Search every tool, command, setting, item ... (find /path browses)",
       1, { { .name = "text", .type = CARG_TEXT, .optional = true } }, RunFind, NULL },
     { "spawnmovers", "Entities/Movers", "Replace all movers with N wandering ones (add: keep the current ones)",

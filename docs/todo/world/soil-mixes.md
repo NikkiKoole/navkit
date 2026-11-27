@@ -1,7 +1,7 @@
 # Soil mixes: sandy clay, clay loam, silty loam ...
 
 Status: partial (2026-11-27): the table, the saved mix layer (v127), moisture / fertility / trees /
-descriptions read it, the field's "causes" soils make them. Next: the island, the farming soil view.
+descriptions read it, the field's "causes" soils make them, farm tools show fertility. Next: the island.
 
 ## Why
 
@@ -103,3 +103,12 @@ ground (`GrassGroundColor` in `rendering.c`).
 - Not yet: other generators (island, survival terrain); the soil view as a farming tool (auto on
   with the farm plot tool, fertility colouring); building / digging keeps "plain" (a filled cell
   reads its material's plain row).
+
+## Farm soil view (2026-11-27)
+
+Picking a farm tool (farm plots `ACTION_WORK_FARM`, the town's farm lot `ACTION_DRAW_LOT_FARM`)
+colours the soil by its mix's fertility (`FarmSoilViewOn` / `FertilityColor` in `rendering.c`):
+rust poor (gravel, sand 90), straw fair (loam 128), green rich (silt loam 150, peat 165+). Tilled
+plots and cells under water are left alone. The hover text names the soil and its moisture.
+New console command `tool <name>` picks a tool as the find palette does (`tool farm`), for
+screenshots: `--exec "tool farm" --screenshot farm.png`.

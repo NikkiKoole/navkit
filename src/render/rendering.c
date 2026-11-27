@@ -1116,11 +1116,38 @@ static bool GroundMoistureColor(int x, int y, int zSoil, Color* out) {
     return true;
 }
 
+// Farm view: picking a farm tool colours the soil by how fertile it is (its mix's fertility):
+// poor rust, fair straw, good green, rich deep green. Tilled plots are left alone (their crops).
+static bool FarmSoilViewOn(void) {
+    return inputAction == ACTION_WORK_FARM || inputAction == ACTION_DRAW_LOT_FARM;
+}
+
+static Color FertilityColor(int f) {
+    // 90 poor (sand) .. 128 fair (loam) .. 165 rich (peaty loam); gravel and below all poor
+    static const float POOR[3] = {184, 78, 52}, FAIR[3] = {214, 186, 92}, RICH[3] = {48, 160, 64};
+    float t; const float *a, *b;
+    if (f <= 128) { t = (float)(f - 90) / 38.0f; a = POOR; b = FAIR; }
+    else          { t = (float)(f - 128) / 37.0f; a = FAIR; b = RICH; }
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return (Color){(unsigned char)(a[0] + t * (b[0] - a[0])), (unsigned char)(a[1] + t * (b[1] - a[1])),
+                   (unsigned char)(a[2] + t * (b[2] - a[2])), 255};
+}
+
 // Soil mixes (soil_mix.h). Bare ground with a mix other than its material's plain one gets a faint
 // veil of the mix's colour (grass shows it in its ground colour already). The soil view (setting
 // soilView) colours every soil surface clearly by its mix: the farming question "what is here".
 static void DrawSoilMixCell(int x, int y, int zSoil, Rectangle dest, Color light) {
     if (!IsWallNatural(x, y, zSoil) || !IsSoilMaterial(GetWallMaterial(x, y, zSoil))) return;
+    if (FarmSoilViewOn()) {
+        if (zSoil + 1 < gridDepth && (FARM(x, y, zSoil + 1).tilled || WATER(x, y, zSoil + 1).level > 0)) return;
+        const SoilMixDef* d = SoilMixDefAt(x, y, zSoil);
+        if (!d) return;
+        Color c = MultiplyColor(FertilityColor(d->fertility), light);
+        c.a = 170;
+        FastRect(dest, c);
+        return;
+    }
     if (soilView) {
         Color c = soilMixDefs[SoilMixOrDefault(x, y, zSoil)].view;
         c = MultiplyColor(c, light);
@@ -1143,7 +1170,7 @@ static void DrawSoilMixes(void) {
     Color skyColor = (forceDaylight ? WHITE : GetSkyColorForTime(timeOfDay));
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
-    if (soilView) {   // deeper levels too (hillsides below the view level)
+    if (soilView || FarmSoilViewOn()) {   // deeper levels too (hillsides below the view level)
         int zStart = z - MAX_VISIBLE_DEPTH < 0 ? 0 : z - MAX_VISIBLE_DEPTH;
         for (int y = minY; y < maxY; y++)
             for (int x = minX; x < maxX; x++)
