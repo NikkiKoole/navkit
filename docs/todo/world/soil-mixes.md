@@ -1,7 +1,7 @@
 # Soil mixes: sandy clay, clay loam, silty loam ...
 
-Status: prototype (2026-11-27): the table, an unsaved mix layer and the field's "causes" soils, to
-compare with the old patches. User asked for it after the grass was toned down.
+Status: partial (2026-11-27): the table, the saved mix layer (v127), moisture / fertility / trees /
+descriptions read it, the field's "causes" soils make them. Next: the island, the farming soil view.
 
 ## Why
 
@@ -86,5 +86,20 @@ ground (`GrassGroundColor` in `rendering.c`).
   setting `soilView` colours every soil cell by its mix (also deeper levels).
 - Compare: `./build/bin/path --game field --set fieldSoils 1` (0 = patches), console `set soilView 1`.
   Scenario `field --set fieldSoils 1 --check` passes (same 3 cut-off cells as patches).
-- Not yet: saving, farming / moisture / trees reading the mix after generation, the cell
-  description, other generators.
+
+## Made real (2026-11-27, save v127)
+
+- Saved: `soilMixGrid` after the pipe layer (`V127_SOIL_MIX`; `--inspect` skips it); older saves
+  load with no mixes. Every new world clears it (`ClearSoilMixes` in `InitGridWithDimensions`), so
+  the `gridGeneration` trick of the prototype is gone.
+- The table now also holds `capacity` / `soak` / `dry` (moisture.c reads the cell's row through
+  `SoilMixDefAt` instead of its own per-material table) and `tree` (saplings from seed in
+  groundwear.c, field trees). Plain rows carry the old per-material numbers, so worlds without
+  mixes behave exactly as before (`make scenarios-check` all pass, patches field byte-identical).
+- Tilled plots start with the mix's fertility (`CompleteFarmDesignation`).
+- Descriptions: "Soil: Silt loam, Moist (45%)", "Farm Plot (Clay loam)"; plain dirt reads "Loam".
+- Tests: `test_farming` "soil_mixes" (plain rows = old numbers, classify, material change, tilled
+  fertility, rain worth more in sandy loam, save / load, new world clears).
+- Not yet: other generators (island, survival terrain); the soil view as a farming tool (auto on
+  with the farm plot tool, fertility colouring); building / digging keeps "plain" (a filled cell
+  reads its material's plain row).

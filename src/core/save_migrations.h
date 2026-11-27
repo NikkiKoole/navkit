@@ -10,7 +10,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 126
+#define CURRENT_SAVE_VERSION 127
 
 // Minimum supported save version (older saves are rejected)
 #define MIN_SAVE_VERSION 82
@@ -159,6 +159,9 @@ _Static_assert(offsetof(Item, firstChild) == ITEM_V107_SIZE, "Item v107 layout m
 // v126: pipes (pipes.h): the pipe byte per cell (pipeGrid) right after the soil moisture layer.
 // Older saves: no pipes.
 #define V126_PIPES 126
+// v127: soil mixes (soil_mix.h): the mix byte per cell (soilMixGrid) right after the pipe layer.
+// Older saves: no mixes (every soil its plain row).
+#define V127_SOIL_MIX 127
 #define V122_MAX_STOCKPILES 64
 #define V122_ITEM_TYPE_COUNT 86
 #define V122_MAT_COUNT 20

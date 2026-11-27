@@ -26,6 +26,7 @@
 #include "mechanisms.h"
 #include <string.h>
 #include <math.h>
+#include "soil_mix.h"
 
 
 // Active designation count for early-exit optimizations
@@ -2194,9 +2195,10 @@ void CompleteFarmDesignation(int x, int y, int z, int moverIdx) {
 
     // Set farm cell state (preserve desiredCropType set during designation)
     MaterialType mat = (z > 0) ? GetWallMaterial(x, y, z - 1) : MAT_DIRT;
+    const SoilMixDef* soilRow = (z > 0) ? SoilMixDefAt(x, y, z - 1) : NULL;   // sandy clay, silt loam ...
     uint8_t savedCrop = FARM(x, y, z).desiredCropType;
     FARM_MUT(x, y, z).tilled = 1;
-    FARM_MUT(x, y, z).fertility = InitialFertilityForSoil(mat);
+    FARM_MUT(x, y, z).fertility = soilRow ? soilRow->fertility : InitialFertilityForSoil(mat);
     FARM_MUT(x, y, z).weedLevel = 0;
     FARM_MUT(x, y, z).desiredCropType = savedCrop;
     farmActiveCells++;

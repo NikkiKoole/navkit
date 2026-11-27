@@ -10,6 +10,7 @@
 #include "../src/entities/jobs.h"
 #include "../src/simulation/farming.h"
 #include "../src/simulation/moisture.h"
+#include "../src/world/soil_mix.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/balance.h"
 #include "../src/simulation/temperature.h"
@@ -20,6 +21,8 @@
 #include <string.h>
 
 static bool test_verbose = false;
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 
 // Setup a standard test grid: dirt below z=1, air at z=1
 static void SetupFarmGrid(void) {
@@ -1361,11 +1364,94 @@ describe(crop_moisture) {
     }
 }
 
+// Soil mixes (soil_mix.h): finer soils over the 5 soil materials
+describe(soil_mixes) {
+    it("plain rows keep each soil material's old numbers") {
+        expect(SoilMixDefForMaterial(MAT_DIRT)->capacity == 2.0f && SoilMixDefForMaterial(MAT_DIRT)->soak == 0.5f);
+        expect(SoilMixDefForMaterial(MAT_CLAY)->capacity == 2.5f && SoilMixDefForMaterial(MAT_CLAY)->dry == 0.6f);
+        expect(SoilMixDefForMaterial(MAT_SAND)->dry == 2.0f && SoilMixDefForMaterial(MAT_PEAT)->capacity == 4.0f);
+        MaterialType soils[] = {MAT_DIRT, MAT_CLAY, MAT_SAND, MAT_PEAT, MAT_GRAVEL};
+        for (int i = 0; i < 5; i++) {
+            expect(SoilMixDefForMaterial(soils[i])->fertility == InitialFertilityForSoil(soils[i]));
+        }
+        expect(SoilMixDefForMaterial(MAT_GRANITE) == NULL);
+        for (int m = 1; m < SOILMIX_COUNT; m++) {
+            expect(IsSoilMaterial(soilMixDefs[m].base));
+        }
+    }
+
+    it("classifies fractions into named mixes") {
+        expect(SoilMixClassify(0.9f, 0.05f, 0, 0) == SOILMIX_SAND);
+        expect(SoilMixClassify(0.6f, 0.1f, 0, 0) == SOILMIX_SANDY_LOAM);
+        expect(SoilMixClassify(0.4f, 0.2f, 0, 0) == SOILMIX_LOAM);
+        expect(SoilMixClassify(0.15f, 0.15f, 0, 0) == SOILMIX_SILT_LOAM);
+        expect(SoilMixClassify(0.3f, 0.3f, 0, 0) == SOILMIX_CLAY_LOAM);
+        expect(SoilMixClassify(0.5f, 0.45f, 0, 0) == SOILMIX_SANDY_CLAY);
+        expect(SoilMixClassify(0.2f, 0.6f, 0, 0) == SOILMIX_CLAY);
+        expect(SoilMixClassify(0.4f, 0.2f, 0.8f, 0) == SOILMIX_PEAT);
+        expect(SoilMixClassify(0.4f, 0.2f, 0, 0.6f) == SOILMIX_GRAVELLY_LOAM);
+    }
+
+    it("a cell reads its mix while its material matches, else its plain row") {
+        SetupFarmGrid();
+        expect(SoilMixAt(4, 4, 0) == SOILMIX_NONE);
+        expect(SoilMixOrDefault(4, 4, 0) == SOILMIX_LOAM);
+        expect(strcmp(SoilNameAt(4, 4, 0), "Loam") == 0);
+        SetSoilMix(4, 4, 0, SOILMIX_SILT_LOAM);
+        expect(SoilMixAt(4, 4, 0) == SOILMIX_SILT_LOAM);
+        expect(strcmp(SoilNameAt(4, 4, 0), "Silt loam") == 0);
+        SetWallMaterial(4, 4, 0, MAT_CLAY);   // dug out and filled with clay
+        expect(SoilMixAt(4, 4, 0) == SOILMIX_NONE);
+        expect(SoilMixOrDefault(4, 4, 0) == SOILMIX_CLAY);
+    }
+
+    it("tilling silt loam gives the mix's fertility") {
+        SetupFarmGrid();
+        SetSoilMix(3, 3, 0, SOILMIX_SILT_LOAM);
+        expect(DesignateFarm(3, 3, 1));
+        CompleteFarmDesignation(3, 3, 1, 0);
+        expect(GetFarmCell(3, 3, 1)->fertility == soilMixDefs[SOILMIX_SILT_LOAM].fertility);
+        expect(GetFarmCell(3, 3, 1)->fertility > InitialFertilityForSoil(MAT_DIRT));
+    }
+
+    it("a unit of rain is worth more in sandy loam than in loam (it holds less)") {
+        SetupFarmGrid();
+        bool wasOn = soilMoistureEnabled;
+        float speed = moistureSoakSpeed;
+        soilMoistureEnabled = true;
+        moistureSoakSpeed = 10.0f;   // always soaks
+        SetSoilMix(6, 6, 0, SOILMIX_SANDY_LOAM);
+        SetSoilMoisture(5, 5, 0, 0);
+        SetSoilMoisture(6, 6, 0, 0);
+        expect(RainSoaksIn(5, 5, 0));
+        expect(RainSoaksIn(6, 6, 0));
+        expect(MOISTURE(6, 6, 0) > MOISTURE(5, 5, 0));
+        soilMoistureEnabled = wasOn;
+        moistureSoakSpeed = speed;
+    }
+
+    it("mixes are saved and a new world has none") {
+        SetupFarmGrid();
+        SetSoilMix(2, 2, 0, SOILMIX_CLAY_LOAM);
+        SetSoilMix(9, 7, 0, SOILMIX_SANDY_LOAM);
+        expect(SaveWorld("/tmp/test_soil_mix.bin"));
+        ClearSoilMixes();
+        expect(SoilMixAt(2, 2, 0) == SOILMIX_NONE);
+        expect(LoadWorld("/tmp/test_soil_mix.bin"));
+        expect(SoilMixAt(2, 2, 0) == SOILMIX_CLAY_LOAM);
+        expect(SoilMixAt(9, 7, 0) == SOILMIX_SANDY_LOAM);
+        expect(SoilMixAt(3, 3, 0) == SOILMIX_NONE);
+        SetupFarmGrid();   // a new world
+        expect(SoilMixAt(2, 2, 0) == SOILMIX_NONE);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_verbose = c89spec_parse_args(argc, argv);
 
     test(farming);
     test(crop_moisture);
+    test(soil_mixes);
 
     return summary();
 }

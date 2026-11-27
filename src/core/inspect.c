@@ -1494,6 +1494,9 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= V126_PIPES) {
         InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // pipes (pipes.h)
     }
+    if (version >= V127_SOIL_MIX) {
+        InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);  // soil mixes (soil_mix.h)
+    }
 
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);

@@ -475,7 +475,6 @@ void GenerateField(void) {
     uint8_t* mix = NULL;
     if (fieldSoils == FIELD_SOILS_CAUSES && (mix = (uint8_t*)malloc(N)) != NULL) {
         FieldSoilsByCauses(top, water, mix);
-        SoilMixBegin();
     }
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++) {
@@ -577,7 +576,7 @@ void GenerateField(void) {
             // Trees: on loam, clay and peat, away from the water, now and then
             if ((soil == MAT_DIRT || soil == MAT_CLAY || soil == MAT_PEAT) && dist[i] >= 3 &&
                 x > 1 && y > 1 && x < W - 2 && y < H - 2 && FieldHash(x, y, 10) < 0.012f) {
-                PlaceWorldGenTree(x, y, t, PickTreeTypeForSoilSimple(soil), true);
+                PlaceWorldGenTree(x, y, t, SoilMixAt(x, y, t) != SOILMIX_NONE ? soilMixDefs[SoilMixAt(x, y, t)].tree : PickTreeTypeForSoilSimple(soil), true);
             }
             if (soil == MAT_GRAVEL && FieldHash(x, y, 11) < 0.15f)
                 SpawnItemWithMaterial((x + 0.5f) * CELL_SIZE, (y + 0.5f) * CELL_SIZE, (float)(t + 1), ITEM_ROCK, MAT_GRANITE);

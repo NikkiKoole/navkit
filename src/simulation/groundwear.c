@@ -12,6 +12,7 @@
 #include "../entities/items.h"
 #include <string.h>
 #include <stdlib.h>
+#include "../world/soil_mix.h"
 
 // Wear grid storage (3D)
 uint16_t* wearGrid = NULL;   // allocated in grid_layers.c
@@ -286,8 +287,8 @@ static void UpdateGroundWearRow(int y, int z, float vegRate) {
                         if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
                         if ((rand() % 10000) < saplingRegrowthChance) {
                             if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
-                                MaterialType soilMat = GetWallMaterial(x, y, z);
-                                MaterialType treeMat = PickTreeTypeForSoil(soilMat);
+                                const SoilMixDef* soilRow = SoilMixDefAt(x, y, z);   // the soil mix's tree
+                                MaterialType treeMat = soilRow ? soilRow->tree : PickTreeTypeForSoil(GetWallMaterial(x, y, z));
                                 PlaceSapling(x, y, z + 1, treeMat);
                             }
                         }

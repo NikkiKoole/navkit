@@ -1,6 +1,7 @@
 // Soil moisture (moisture.h, docs/todo/world/soil-moisture.md)
 #include "moisture.h"
 #include "water.h"
+#include "../world/soil_mix.h"
 #include "weather.h"
 #include "temperature.h"
 #include "groundwear.h"
@@ -25,23 +26,12 @@ static int moistureSweepRow = 0;
 static unsigned moistureWorld = 0;   // gridGeneration the moisture belongs to (0 = none yet)
 
 // Per soil: how much water a full cell holds, how fast water soaks in (chance per sync pass of
-// one unit), how fast it dries (sand drains, clay and peat hold on)
-typedef struct { MaterialType mat; float capacity, soak, dry; } SoilDef;
-static const SoilDef soilDefs[] = {
-    { MAT_DIRT,   2.0f, 0.50f, 1.0f },
-    { MAT_CLAY,   2.5f, 0.15f, 0.6f },
-    { MAT_SAND,   1.0f, 1.00f, 2.0f },
-    { MAT_GRAVEL, 1.0f, 1.00f, 2.0f },
-    { MAT_PEAT,   4.0f, 0.50f, 0.5f },
-};
-static const SoilDef* SoilDefOf(MaterialType mat) {
-    for (int i = 0; i < (int)(sizeof(soilDefs) / sizeof(soilDefs[0])); i++)
-        if (soilDefs[i].mat == mat) return &soilDefs[i];
-    return NULL;
-}
+// one unit), how fast it dries (sand drains, clay and peat hold on): the cell's soil mix row
+// (soil_mix.c; its material's plain row when it has no mix)
+typedef SoilMixDef SoilDef;
 
 float SoilCapacityUnits(MaterialType mat) {
-    const SoilDef* d = SoilDefOf(mat);
+    const SoilDef* d = SoilMixDefForMaterial(mat);
     return d ? d->capacity : 0.0f;
 }
 
@@ -109,7 +99,7 @@ static int PointsPerUnit(const SoilDef* d) { return (int)(MOISTURE_FULL / d->cap
 bool RainSoaksIn(int x, int y, int z) {
     if (!soilMoistureEnabled || !IsSoilSurface(x, y, z)) return false;
     EnsureMoistureWorld();
-    const SoilDef* d = SoilDefOf(GetWallMaterial(x, y, z));
+    const SoilDef* d = SoilMixDefAt(x, y, z);
     if (!d) return false;
     int per = PointsPerUnit(d);
     if (MOISTURE(x, y, z) > MOISTURE_FULL - per / 2) return false;   // full
@@ -127,7 +117,7 @@ void SoilSoakFrom(int x, int y, int z) {
     if ((w->isSea || w->isSurf) && tideEnabled) return;   // the tide's water
     int sz = z - 1;
     if (!IsSoilSurface(x, y, sz)) return;
-    const SoilDef* d = SoilDefOf(GetWallMaterial(x, y, sz));
+    const SoilDef* d = SoilMixDefAt(x, y, sz);
     if (!d) return;
     int per = PointsPerUnit(d);
     int m = MOISTURE(x, y, sz);
@@ -174,7 +164,7 @@ static float DryingPull(int x, int y, int z, int tempC) {
 
 static void DryCell(int x, int y, int z, float hours) {
     if (z + 1 < gridDepth && WATER(x, y, z + 1).level > 0) return;   // water standing on it
-    const SoilDef* d = SoilDefOf(GetWallMaterial(x, y, z));
+    const SoilDef* d = SoilMixDefAt(x, y, z);
     if (!d) return;
     int tempC = GetTemperature(x, y, z + 1 < gridDepth ? z + 1 : z);
     int m = MOISTURE(x, y, z), floor = MoistureFloor(tempC);

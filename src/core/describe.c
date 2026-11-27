@@ -23,6 +23,7 @@
 #include "../simulation/rooms.h"
 #include "../simulation/farming.h"
 #include "../simulation/moisture.h"
+#include "../world/soil_mix.h"
 #include "../simulation/temperature.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -581,7 +582,7 @@ static void DescribeCellFarm(int x, int y, int z, DescLines* out) {
     if (!fc->tilled) return;
     static const char* cropNames[] = {"None", "Wheat", "Lentils", "Flax"};
     static const char* stageNames[] = {"Bare", "Sprouted", "Growing", "Mature", "Ripe"};
-    DescAdd(out, DESC_NORMAL, "Farm Plot (%s)", MaterialName(GetWallMaterial(x, y, z - 1)));
+    DescAdd(out, DESC_NORMAL, "Farm Plot (%s)", SoilNameAt(x, y, z - 1));
     DescAdd(out, DESC_NORMAL, "Fertility: %d/255", fc->fertility);
     if (fc->cropType != CROP_NONE) {
         const char* cname = (fc->cropType < CROP_TYPE_COUNT) ? cropNames[fc->cropType] : "?";
@@ -714,8 +715,8 @@ void DescribeCell(int x, int y, int z, DescLines* out) {
             SoilState st = SoilMoistureState(m);
             DescTone tone = st == SOIL_PARCHED ? DESC_BAD : st == SOIL_DRY ? DESC_WARN :
                             st >= SOIL_WET ? DESC_INFO : DESC_NORMAL;
-            DescAdd(out, tone, "Soil: %s%s (%d%%)", SoilStateName(st), IsMuddy(x, y, soilZ) ? ", muddy" : "",
-                    m * 100 / MOISTURE_FULL);
+            DescAdd(out, tone, "Soil: %s, %s%s (%d%%)", SoilNameAt(x, y, soilZ), SoilStateName(st),
+                    IsMuddy(x, y, soilZ) ? ", muddy" : "", m * 100 / MOISTURE_FULL);
         }
     }
 

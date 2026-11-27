@@ -24,6 +24,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/groundwear.h"
 #include "../simulation/moisture.h"
 #include "../world/pipes.h"
+#include "../world/soil_mix.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
@@ -507,6 +508,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             SAVE_ROW(f, PIPE, y, z);
+        }
+    }
+
+    // Soil mixes (v127+, soil_mix.h)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            SAVE_ROW(f, SOIL_MIX, y, z);
         }
     }
 
@@ -1230,6 +1238,16 @@ bool LoadWorld(const char* filename) {
             }
         }
         PipesAfterLoad();
+    }
+
+    // Soil mixes (v127+); older saves: none (every soil its plain row)
+    ClearSoilMixes();
+    if (version >= V127_SOIL_MIX) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                LOAD_ROW(f, SOIL_MIX, y, z);
+            }
+        }
     }
 
     if (!loadRleOk) {
