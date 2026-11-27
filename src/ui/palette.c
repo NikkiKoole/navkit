@@ -43,6 +43,7 @@ static struct {
     PalEntry entries[PAL_MAX_ENTRIES];
     int count;
     bool nearMiss;
+    bool selRecent;                               // just opened: start on the most recent row
     float blink;
 } pal = { .cmdRow = -1 };
 
@@ -179,6 +180,7 @@ void Palette_Open(void) {
     pal.sel = 0;
     pal.scroll = 0;
     pal.cmdRow = -1;
+    pal.selRecent = true;
     brushItem = -1;
     PickContext();
     if (cell.valid) CommandSetHere(cell.x, cell.y, cell.z);
@@ -337,6 +339,7 @@ static void BuildEntries(void) {
             for (int i = 0; i < n; i++) Add(PE_ROW, rows[i], FindRowAt(rows[i])->label);
             n = FindRecent(rows, FIND_MAX_RECENT);
             if (n > 0) Add(PE_HEADER, -1, "Recent");
+            if (n > 0 && pal.selRecent) pal.sel = pal.count;   // Enter repeats the last thing done
             for (int i = 0; i < n; i++) Add(PE_ROW, rows[i], FindRowAt(rows[i])->label);
             if (pal.count > 0) Add(PE_HEADER, -1, "Browse");
         } else {
@@ -346,6 +349,7 @@ static void BuildEntries(void) {
         int n = FindTreeChildren(pal.path, kids, PAL_MAX_ENTRIES);
         for (int i = 0; i < n; i++) Add(kids[i].isBranch ? PE_BRANCH : PE_ROW, kids[i].row, kids[i].name);
     }
+    pal.selRecent = false;
     // Keep the selection on a pickable entry
     if (pal.sel >= pal.count) pal.sel = pal.count - 1;
     if (pal.sel < 0) pal.sel = 0;

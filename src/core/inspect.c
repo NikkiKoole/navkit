@@ -106,6 +106,7 @@ static uint8_t* insp_wallNatural = NULL;
 static uint8_t* insp_floorNatural = NULL;
 static uint8_t* insp_wallFinish = NULL;
 static uint8_t* insp_floorFinish = NULL;
+static uint8_t* insp_vegetation = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
@@ -1098,6 +1099,44 @@ static void print_items(const char* filterType) {
     }
 }
 
+// --fires: what is burning, grouped by what feeds the fire there (as GetFuelAt sees it)
+static void print_fires(void) {
+    enum { MAXK = 64 };
+    char keys[MAXK][64]; int cnt[MAXK], lvl[MAXK], fuel[MAXK], zlo[MAXK], zhi[MAXK], nk = 0;
+    int total = 0, sources = 0, bx0 = insp_gridW, by0 = insp_gridH, bx1 = -1, by1 = -1;
+    for (int z = 0; z < insp_gridD; z++)
+    for (int y = 0; y < insp_gridH; y++)
+    for (int x = 0; x < insp_gridW; x++) {
+        int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+        FireCell fc = insp_fireCells[idx];
+        if (fc.level == 0) continue;
+        total++; if (fc.isSource) sources++;
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+        char key[64];
+        uint8_t wm = insp_wallMaterials[idx], fm = insp_floorMaterials[idx];
+        const char* type = CellTypeName(insp_gridCells[idx]);
+        if (insp_vegetation[idx] >= VEG_GRASS_SHORT) snprintf(key, sizeof key, "grass (on %s)", type);
+        else if (wm != MAT_NONE && wm < MAT_COUNT && !insp_wallNatural[idx]) snprintf(key, sizeof key, "%s wall (%s)", MaterialName(wm), type);
+        else if ((insp_cellFlags[idx] & CELL_FLAG_HAS_FLOOR) && fm != MAT_NONE && fm < MAT_COUNT && !insp_floorNatural[idx])
+            snprintf(key, sizeof key, "%s floor", MaterialName(fm));
+        else snprintf(key, sizeof key, "%s%s", type, fc.fuel == 0 ? " (no fuel left)" : "");
+        int k = 0;
+        while (k < nk && strcmp(keys[k], key) != 0) k++;
+        if (k == nk) {
+            if (nk == MAXK) continue;
+            snprintf(keys[nk], sizeof keys[nk], "%s", key); cnt[nk] = lvl[nk] = fuel[nk] = 0; zlo[nk] = z; zhi[nk] = z; nk++;
+        }
+        cnt[k]++; lvl[k] += fc.level; fuel[k] += fc.fuel;
+        if (z < zlo[k]) zlo[k] = z; if (z > zhi[k]) zhi[k] = z;
+    }
+    printf("\n=== FIRES ===\n");
+    if (total == 0) { printf("Nothing is burning.\n"); return; }
+    printf("%d burning cells (%d sources) in x %d-%d, y %d-%d\n", total, sources, bx0, bx1, by0, by1);
+    printf("  %-32s %6s %9s %9s %s\n", "burning", "cells", "avg level", "avg fuel", "z");
+    for (int k = 0; k < nk; k++)
+        printf("  %-32s %6d %9.1f %9.1f %d-%d\n", keys[k], cnt[k], (float)lvl[k] / cnt[k], (float)fuel[k] / cnt[k], zlo[k], zhi[k]);
+}
+
 static void print_temp(int filterZ) {
     printf("\n=== TEMPERATURE ===\n");
     if (insp_saveVersion >= V96_TEMP_OFFSETS)
@@ -1177,6 +1216,7 @@ static void cleanup(void) {
     free(insp_gridCells);
     free(insp_waterCells);
     free(insp_fireCells);
+    free(insp_vegetation);
     free(insp_smokeCells);
     free(insp_steamCells);
     free(insp_cellFlags);
@@ -1230,7 +1270,7 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false, opt_audit = false, opt_transport = false;
+    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_fires = false, opt_orphaned = false, opt_audit = false, opt_transport = false;
     int opt_entrances_z = -1, opt_temp_z = -1;
     const char* opt_items_filter = NULL;
     
@@ -1265,6 +1305,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--orphaned") == 0) opt_orphaned = true;
         else if (strcmp(argv[i], "--transport") == 0) opt_transport = true;
         else if (strcmp(argv[i], "--audit") == 0) opt_audit = true;
+        else if (strcmp(argv[i], "--fires") == 0) opt_fires = true;
         else if (strcmp(argv[i], "--entrances") == 0) {
             opt_entrances = true;
             if (i+1 < argc && argv[i+1][0] != '-') opt_entrances_z = atoi(argv[++i]);
@@ -1381,6 +1422,7 @@ int InspectSaveFile(int argc, char** argv) {
     insp_floorNatural = malloc(totalCells * sizeof(uint8_t));
     insp_wallFinish = malloc(totalCells * sizeof(uint8_t));
     insp_floorFinish = malloc(totalCells * sizeof(uint8_t));
+    insp_vegetation = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
@@ -1406,8 +1448,7 @@ int InspectSaveFile(int argc, char** argv) {
     // Floor source item grid (skip - not inspected)
     InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
 
-    // Vegetation grid (skip - not inspected)
-    InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
+    InspReadLayer(f, insp_vegetation, sizeof(uint8_t), totalCells, rle);
 
     // Snow grid (skip - not inspected)
     InspSkipLayer(f, sizeof(uint8_t), totalCells, rle);
@@ -1867,7 +1908,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances || opt_items || opt_temp || opt_orphaned || opt_transport || opt_audit);
+                     opt_entrances || opt_items || opt_temp || opt_fires || opt_orphaned || opt_transport || opt_audit);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -1980,6 +2021,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_entrances) print_entrances(opt_entrances_z);
     if (opt_items) print_items(opt_items_filter);
     if (opt_temp) print_temp(opt_temp_z);
+    if (opt_fires) print_fires();
     if (opt_orphaned) print_orphaned();
     if (opt_transport) print_transport();
 
