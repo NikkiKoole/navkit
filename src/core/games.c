@@ -756,6 +756,7 @@ static const GameTool townTools[] = {
     {HUD_TAB_BUILD, "Bakery", ACTION_DRAW_LOT_WORK, -1, NULL},
     {HUD_TAB_BUILD, "Mill",   ACTION_DRAW_LOT_MILL, -1, NULL},
     {HUD_TAB_BUILD, "Granary", ACTION_DRAW_LOT_GRANARY, -1, NULL},
+    {HUD_TAB_BUILD, "Barracks", ACTION_DRAW_LOT_BARRACKS, -1, NULL},
     {HUD_TAB_NATURE, "Farm",  ACTION_DRAW_LOT_FARM, -1, NULL},
 };
 #undef BASIC_TOOLS

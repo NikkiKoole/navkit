@@ -212,6 +212,36 @@ describe(town_residents) {
         TownRemoveLot(lot);
         expect(!stockpiles[sp].active);
     }
+    it("a barracks has many beds, a tap and a pantry, no toilet; newcomers move in") {
+        SetupTown();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        InitBalance();
+        TownAddRoad(0, 10, 39, 12, 1, NULL);
+        int lot = TownAddLot(LOT_BARRACKS, 10, 13, 20, 22, 1, NULL);   // 11x10
+        expect(lot >= 0);
+        BuildEntrances();
+        BuildGraph();
+        int beds = 0, toilets = 0, taps = 0;
+        for (int i = 0; i < townLots[lot].furnCount; i++) {
+            FurnitureType t = furniture[townLots[lot].furn[i]].type;
+            beds += t == FURNITURE_PLANK_BED;
+            toilets += t == FURNITURE_TOILET;
+            taps += t == FURNITURE_TAP;
+        }
+        expect(beds == townLots[lot].beds);
+        expect(beds > 6);                      // more than a home's most
+        expect(toilets == 0);
+        expect(taps == 1);
+        expect(townLots[lot].stockpile >= 0);  // the fridge pantry
+        expect(TownFreeBeds() == beds);
+        townArrivalGH = 0.05f;
+        for (int t = 0; t < 600; t++) TownTick(1.0f);
+        expect(moverCount >= 1);
+        expect(TownHomeOf(0) == lot);
+    }
     it("removing a home makes its residents homeless") {
         int lot = SetupStreetWithHome();
         townArrivalGH = 0.05f;

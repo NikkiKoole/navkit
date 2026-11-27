@@ -148,6 +148,7 @@ typedef enum {
     ACTION_DRAW_LOT_GRANARY,    // Draw > Town: a granary (wheat + flour for the winter)
     ACTION_WORK_DRAIN,          // Work > Build: a line of floor drain blueprints (pipes.h, appended)
     ACTION_WORK_DRAIN_OUTLET,   // Work > Build: a drain outlet blueprint (appended)
+    ACTION_DRAW_LOT_BARRACKS,   // Draw > Town: a barracks (many beds, no toilet; appended)
 } InputAction;
 
 // Current input state

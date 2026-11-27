@@ -17,14 +17,16 @@
 #define TOWN_MAX_LOTS 1024
 #define TOWN_LOT_MIN 5          // a lot is at least 5x5 cells (yard row + walls + a 3x2 inside)
 #define TOWN_LOT_MAX 24
-#define TOWN_MAX_LOT_FURN 32
+#define TOWN_MAX_LOT_FURN 64   // a big barracks fills up (saves store each lot's count: raising it is safe)
 #define TOWN_MAX_LOT_WS 24
 #define TOWN_MAX_LOT_STORES 4
 
 typedef struct { int x1, y1, x2, y2, z; } TownRoad;   // z = the walking level on it
 
 // Saved as a number: append only. LOT_WORK is the bakery.
-typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_GRANARY, LOT_KIND_COUNT } LotKind;
+typedef enum { LOT_HOME, LOT_WORK, LOT_MILL, LOT_FARM, LOT_GRANARY, LOT_BARRACKS, LOT_KIND_COUNT } LotKind;
+// Where people live: a home, or a barracks (a dormitory: many beds, a tap and a pantry, no toilet)
+#define TownIsResidence(k) ((k) == LOT_HOME || (k) == LOT_BARRACKS)
 #define TownIsWorkplace(k) ((k) == LOT_WORK || (k) == LOT_MILL || (k) == LOT_FARM)   // jobs, opening hours
 #define TOWN_FARM_CELLS_PER_HAND 24   // a farmhand tends ~24 cells (weeds go heavy in ~21 h; a tend takes 0.4 h)
 typedef enum { SIDE_N, SIDE_E, SIDE_S, SIDE_W } TownSide;

@@ -2288,6 +2288,7 @@ static const ToolHandler toolHandlers[] = {
     [ACTION_DRAW_LOT_MILL]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_MILL, NULL},
     [ACTION_DRAW_LOT_FARM]      = {Tool_TownLot, Tool_TownRemoveLot, LOT_FARM, NULL},
     [ACTION_DRAW_LOT_GRANARY]   = {Tool_TownLot, Tool_TownRemoveLot, LOT_GRANARY, NULL},
+    [ACTION_DRAW_LOT_BARRACKS]  = {Tool_TownLot, Tool_TownRemoveLot, LOT_BARRACKS, NULL},
 
     // Work: designations and blueprints the movers carry out
     [ACTION_WORK_MINE]          = PAIR(ExecuteDesignateMine, ExecuteCancelMine),

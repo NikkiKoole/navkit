@@ -1461,6 +1461,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_DRAW_LOT_BARRACKS,
+        .hints = { "L-drag a barracks lot along a road: many beds, no toilet", "R-drag remove lots" },
+        .name = "BARRACKS",
+        .barDisplayText = "Barracks",
+        .barKey = 'k',
+        .barUnderlinePos = 6,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TOWN,
+        .canDrag = true,
+        .canErase = true
+    },
 
 };
 

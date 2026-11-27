@@ -1136,7 +1136,8 @@ void DescribeLot(int lot, DescLines* out) {
     DescAdd(out, DESC_TITLE, "%s #%d", TownLotKindName(L->kind), lot);
     DescAdd(out, DESC_MUTED, "%dx%d lot", L->x2 - L->x1 + 1, L->y2 - L->y1 + 1);
     switch (L->kind) {
-        case LOT_HOME: {
+        case LOT_HOME:
+        case LOT_BARRACKS: {
             int people = TownResidents(lot);
             DescAdd(out, people < L->beds ? DESC_INFO : DESC_NORMAL, "Beds: %d (%d free)", L->beds, L->beds - people);
             for (int m = 0; m < moverCount; m++)

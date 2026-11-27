@@ -52,6 +52,7 @@ const char* TownLotKindName(LotKind k) {
         case LOT_MILL: return "Mill";
         case LOT_FARM: return "Farm";
         case LOT_GRANARY: return "Granary";
+        case LOT_BARRACKS: return "Barracks";
         default: return "?";
     }
 }
@@ -230,7 +231,7 @@ static void TownLotFurn(TownLot* L, int u, int v, FurnitureType type, uint8_t ma
     int f = SpawnFurniture(x, y, L->z, type, mat);
     if (f < 0) return;
     L->furn[L->furnCount++] = f;
-    townFurnOwner[f] = (L->kind == LOT_HOME && GetFurnitureDef(type)->restRate >= 1.0f) ? TOWN_OWNER_NOBODY : TOWN_OWNER_PUBLIC;
+    townFurnOwner[f] = (TownIsResidence(L->kind) && GetFurnitureDef(type)->restRate >= 1.0f) ? TOWN_OWNER_NOBODY : TOWN_OWNER_PUBLIC;
     if (type == FURNITURE_FRIDGE) L->fridge = f;
 }
 
@@ -238,11 +239,11 @@ static void TownLotFurn(TownLot* L, int u, int v, FurnitureType type, uint8_t ma
 static void TownStampShell(TownLot* L) {
     int bx1, by1, bx2, by2, z = L->z;
     TownBuildingRect(L, &bx1, &by1, &bx2, &by2);
-    MaterialType wallMat = L->kind == LOT_HOME ? MAT_BRICK : (L->kind == LOT_MILL || L->kind == LOT_GRANARY) ? MAT_SANDSTONE : MAT_CONCRETE;
+    MaterialType wallMat = TownIsResidence(L->kind) ? MAT_BRICK : (L->kind == LOT_MILL || L->kind == LOT_GRANARY) ? MAT_SANDSTONE : MAT_CONCRETE;
     for (int y = by1; y <= by2; y++)
         for (int x = bx1; x <= bx2; x++) {
             SET_FLOOR(x, y, z);
-            SetFloorMaterial(x, y, z, L->kind == LOT_HOME ? MAT_OAK : MAT_CONCRETE);
+            SetFloorMaterial(x, y, z, TownIsResidence(L->kind) ? MAT_OAK : MAT_CONCRETE);
             ClearFloorNatural(x, y, z);
             SetVegetation(x, y, z - 1, VEG_NONE);
             if (z + 1 < gridDepth) {
@@ -323,6 +324,28 @@ static void TownFurnishHome(TownLot* L) {
     }
 }
 
+// A barracks: a dormitory. Tap and fridge by the door, an aisle from the door to the back
+// wall, and beds in pairs of rows with an aisle row between (beds slow walking, they don't
+// block it). As many beds as fit (TOWN_MAX_LOT_FURN less the tap and fridge); no toilet.
+static void TownFurnishBarracks(TownLot* L) {
+    int w, d;
+    TownInsideSize(L, &w, &d);
+    int doorU = w / 2;
+    TownLotFurn(L, doorU - 1 >= 0 ? doorU - 1 : w - 1, 0, FURNITURE_TAP, MAT_GRANITE);
+    TownLotFurn(L, doorU + 1 < w ? doorU + 1 : 0, 0, FURNITURE_FRIDGE, MAT_IRON);
+    int placed = 0;
+    for (int v = d - 1; v >= 1; v--) {
+        if ((d - 1 - v) % 3 == 2) continue;   // aisle row after every two bed rows
+        for (int u = 0; u < w && L->furnCount < TOWN_MAX_LOT_FURN; u++) {
+            if (u == doorU) continue;          // the aisle up from the door
+            int before = L->furnCount;
+            TownLotFurn(L, u, v, FURNITURE_PLANK_BED, MAT_OAK);
+            placed += L->furnCount > before;
+        }
+    }
+    L->beds = placed;
+}
+
 // The home's fridge holds the household's bread: a one-cell stockpile that takes only bread
 static void TownHomePantry(TownLot* L) {
     if (L->fridge < 0) return;
@@ -343,7 +366,7 @@ static int TownRecipeIndex(WorkshopType type, const char* name) {
 
 // Bread the bakeries bake up to (counted in stockpiles: the pantries): townBreadPerHome per home
 static int TownBreadTarget(void) {
-    int t = TownLotCount(LOT_HOME) * townBreadPerHome;
+    int t = (TownLotCount(LOT_HOME) + TownLotCount(LOT_BARRACKS)) * townBreadPerHome;
     return t > 0 ? t : townBreadPerHome;
 }
 
@@ -631,6 +654,7 @@ int TownAddLot(LotKind kind, int x1, int y1, int x2, int y2, int z, const char**
                     .fridge = -1, .stockpile = -1, .supplyItem = -1 };
     if (kind != LOT_FARM) TownStampShell(L);
     if (kind == LOT_HOME) { TownFurnishHome(L); TownHomePantry(L); }
+    else if (kind == LOT_BARRACKS) { TownFurnishBarracks(L); TownHomePantry(L); }
     else if (kind == LOT_WORK) TownFurnishBakery(L);
     else if (kind == LOT_MILL) TownFurnishMill(L);
     else if (kind == LOT_GRANARY) TownFurnishGranary(L);
@@ -727,7 +751,7 @@ int TownFreeBeds(void) {
     int n = 0;
     for (int l = 0; l < townLotHighWater; l++) {
         const TownLot* L = &townLots[l];
-        if (!L->active || L->kind != LOT_HOME) continue;
+        if (!L->active || !TownIsResidence(L->kind)) continue;
         for (int i = 0; i < L->furnCount; i++) n += townFurnOwner[L->furn[i]] == TOWN_OWNER_NOBODY;
     }
     return n;
@@ -758,7 +782,7 @@ static bool TownEntryCell(int* ox, int* oy, int* oz) {
 static int TownGiveHome(int moverIdx) {
     for (int l = 0; l < townLotHighWater; l++) {
         TownLot* L = &townLots[l];
-        if (!L->active || L->kind != LOT_HOME) continue;
+        if (!L->active || !TownIsResidence(L->kind)) continue;
         for (int i = 0; i < L->furnCount; i++) {
             if (townFurnOwner[L->furn[i]] != TOWN_OWNER_NOBODY) continue;
             townFurnOwner[L->furn[i]] = (short)moverIdx;
@@ -1030,7 +1054,7 @@ void TownTick(float dt) {
     // Owners who are gone free their bed
     for (int l = 0; l < townLotHighWater; l++) {
         TownLot* L = &townLots[l];
-        if (!L->active || L->kind != LOT_HOME) continue;
+        if (!L->active || !TownIsResidence(L->kind)) continue;
         for (int i = 0; i < L->furnCount; i++) {
             int o = townFurnOwner[L->furn[i]];
             if (o >= 0 && (o >= moverCount || !movers[o].active)) {
@@ -1137,7 +1161,7 @@ static void TownRelinkLot(TownLot* L) {
     for (int sp = 0; sp < stockpileHighWater && L->storeCount < TOWN_MAX_LOT_STORES; sp++) {
         const Stockpile* st = &stockpiles[sp];
         if (!st->active || st->z != L->z || st->x < L->x1 || st->x > L->x2 || st->y < L->y1 || st->y > L->y2) continue;
-        if (L->kind == LOT_HOME) continue;   // a home's only stockpile is the pantry (below)
+        if (TownIsResidence(L->kind)) continue;   // a home's only stockpile is the pantry (below)
         L->stores[L->storeCount++] = sp;
     }
     L->stockpile = -1;
