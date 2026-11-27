@@ -1,14 +1,18 @@
-# The field: a 64x64 starting map with some nature in it
+# The field: a starting map with some nature in it (64, 128 or 256 square)
 
 Status: built 2026-11-27. Game `field` (`src/core/games.c`), generator `src/world/field_gen.c`,
-scenario `field` (checks), settings `fieldRelief` (flat / gentle) and `fieldWater` (none / ponds /
-stream), sandbox rules. The user asked for a "simple but useful and varied" start instead of the
+scenario `field` (checks; `--set scenarioSize 128` for a bigger one), settings `fieldSize` (64 /
+128 / 256 square), `fieldRelief` (flat / gentle) and `fieldWater` (none / ponds / stream), sandbox
+rules, a new random map each start (unless `--seed`). The user asked for a "simple but useful and varied" start instead of the
 empty grass field (which stays as it is: the sandbox and many scenarios use it).
 
 ## What it makes
 
 - **Ground**: flat (top z 2) or gentle (z 2-4 from smooth noise); every neighbour pair at most one
   level apart, one-cell bumps flattened.
+- **Size**: feature sizes stay the same, a bigger field gets more of them: ponds 3-5 per 64x64, tree
+  and rock density per cell, two streams (each in its half, its own spring) from 192 wide. A 256
+  field takes ~1.7 s to make.
 - **Water**: ponds (3-5 round hollows one level down, puddles of level 2 to ponds of 3-4, clay beds)
   or a stream (two-wide channel meandering west to east, gravel bed, a trickling spring at its west
   end, running off the east edge; on flat ground its bed never rises, on gentle ground it follows
@@ -33,10 +37,13 @@ that the pathfinder can reach from the main land and get back from (`IsNavBfs` b
 island's helper). Fixes, in order: the placement rules above; `FieldJoinPockets` (dead ramps back to
 ground; a ramp up or down to the main land, carved or built on top, both ends plain and sides ok;
 else level the cell with a neighbour; else a ramp beside it that only lets one step up onto it
-becomes ground); then the island's `IslandFixPockets`. Scenario `field` fails `--check` if anything
+becomes ground); then the island's `IslandFixPockets`, then mine again (the island's can put a ramp on another
+ramp's foot). Columns a fix took a ramp from or levelled are banned from further fixes (two rules
+undid each other forever on 256 maps), a ramp built on top of a cell becomes its column's top (else
+later checks looked one level too low), and crossed ramps (ending on a ramp) go back to ground. Scenario `field` fails `--check` if anything
 is cut off as generated (later the stream can pool too deep to wade and cut a few cells off: a
-stream crossed at its fords). 192 maps (32 seeds x 6 kinds) pass; `tools/scenarios_check.sh` runs
-four.
+stream crossed at its fords). 192 maps at 64 (32 seeds x 6 kinds), then 300 more across 64, 128 and
+256 pass; `tools/scenarios_check.sh` runs five.
 
 What kept failing on the way, for the next generator: ramps placed half the time (gaps made ramp
 sides one-way traps), ramps ending on other ramps (crossed ramps), a stream bed that never rises

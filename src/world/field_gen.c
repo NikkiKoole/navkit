@@ -21,6 +21,9 @@
 
 int fieldRelief = FIELD_RELIEF_GENTLE;
 int fieldWater = FIELD_WATER_STREAM;
+int fieldSize = 0;
+const int fieldSizes[FIELD_SIZE_COUNT] = { 64, 128, 256 };
+const char* const fieldSizeNames[FIELD_SIZE_COUNT] = { "64", "128", "256" };
 const char* const fieldReliefNames[FIELD_RELIEF_COUNT] = { "flat", "gentle" };
 const char* const fieldWaterNames[FIELD_WATER_COUNT] = { "none", "ponds", "stream" };
 
@@ -200,15 +203,24 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
     int* waterTop = (int*)malloc(sizeof(int) * (size_t)(gridWidth * gridHeight));
     if (!waterTop) { free(visited); free(F); free(B); free(queue); return; }
     for (int i = 0; i < gridWidth * gridHeight; i++) waterTop[i] = water[i] ? top[i] + 1 : -1;
+    // Columns a fix took a ramp from, or levelled, aren't touched again (else two rules undo each
+    // other forever: a ramp turned to ground comes back next pass)
+    unsigned char* banned = (unsigned char*)calloc((size_t)(gridWidth * gridHeight), 1);
+    if (!banned) { free(visited); free(F); free(B); free(queue); free(waterTop); return; }
     for (int pass = 0; pass < 24; pass++) {
         if (FieldNavMain(visited, F, B, queue) < 0) break;
         int fixed = 0, left = 0;
-        // Dead ramps: a ramp outside the main area (its foot lands on another ramp) back to ground
+        // Dead ramps: a ramp outside the main area, or ending on another ramp (crossed), back to ground
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
                 int t = top[FIDX(x, y)];
-                if (!CellIsRamp(GRID(x, y, t)) || visited[NAVI(x, y, t)]) continue;
+                CellType g = GRID(x, y, t);
+                if (!CellIsRamp(g)) continue;
+                int rdx = g == CELL_RAMP_E ? 1 : g == CELL_RAMP_W ? -1 : 0, rdy = g == CELL_RAMP_S ? 1 : g == CELL_RAMP_N ? -1 : 0;
+                bool crossed = !FieldRampEndsPlain(top, x, y, rdx, rdy);   // ends on another ramp
+                if (visited[NAVI(x, y, t)] && !crossed) continue;
                 GRID(x, y, t) = CELL_WALL;
+                banned[FIDX(x, y)] = 1;
                 fixed++;
             }
         if (fixed > 0) continue;   // flood again before joining pockets
@@ -223,6 +235,7 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                     if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
                     int n = FIDX(nx, ny), nz = top[n] + 1;
                     if (nz >= gridDepth || !visited[NAVI(nx, ny, nz)]) continue;   // neighbour in the main area
+                    if (banned[n] || banned[i]) continue;
                     if (top[n] == top[i] + 1 && FieldRampOk(top, water, nx, ny, dx[d], dy[d]) &&
                         IslandRampSidesOk(top, waterTop, nx, ny, d, top[n])) {
                         GRID(nx, ny, top[n]) = FieldRampType(dx[d], dy[d]);   // up into the neighbour
@@ -239,6 +252,7 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                         GRID(x, y, z) = FieldRampType(dx[d], dy[d]);
                         SetWallMaterial(x, y, z, GetWallMaterial(x, y, z - 1));
                         SetWallNatural(x, y, z);
+                        top[i] = z;   // the ramp is the column's top now (as a carved one)
                         fixed++; break;
                     }
                     // or one built on the lower neighbour, up to this cell
@@ -247,6 +261,7 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                         GRID(nx, ny, nz) = FieldRampType(-dx[d], -dy[d]);
                         SetWallMaterial(nx, ny, nz, GetWallMaterial(nx, ny, nz - 1));
                         SetWallNatural(nx, ny, nz);
+                        top[n] = nz;   // the ramp is the column's top now
                         fixed++; break;
                     }
                 }
@@ -256,7 +271,7 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                     int nx = x + dx[d], ny = y + dy[d];
                     if (nx < 0 || ny < 0 || nx >= gridWidth || ny >= gridHeight) continue;
                     int n = FIDX(nx, ny), nz = top[n] + 1;
-                    if (water[n] || nz >= gridDepth || !visited[NAVI(nx, ny, nz)]) continue;
+                    if (water[n] || nz >= gridDepth || !visited[NAVI(nx, ny, nz)] || banned[i]) continue;
                     if (GRID(x, y, top[i] + 1) != CELL_AIR) break;   // a tree or something stands here
                     VegetationType v = GetVegetation(x, y, top[i]);
                     MaterialType m = GetWallMaterial(x, y, top[i]);
@@ -271,6 +286,7 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                     } else continue;
                     SetWallMaterial(x, y, top[i], m);
                     SetVegetation(x, y, top[i], v);
+                    banned[i] = 1;
                     fixed++; break;
                 }
                 if (fixed > fixedBefore) continue;
@@ -282,12 +298,13 @@ static void FieldJoinPockets(int* top, const uint8_t* water) {
                     int n = FIDX(nx, ny);
                     if (top[n] != top[i] || !CellIsRamp(GRID(nx, ny, top[n]))) continue;
                     GRID(nx, ny, top[n]) = CELL_WALL;
+                    banned[n] = 1;
                     fixed++; break;
                 }
             }
         if (left == 0 || fixed == 0) break;
     }
-    free(visited); free(F); free(B); free(queue); free(waterTop);
+    free(visited); free(F); free(B); free(queue); free(waterTop); free(banned);
 }
 
 void GenerateField(void) {
@@ -315,11 +332,12 @@ void GenerateField(void) {
     LimitSteps(top);
 
     // 2. Water: bed cells and their beds, then the land lowered toward them
+    int springY[2] = {-1, -1};   // each stream's spring row at x = 1
     int* bed = (int*)malloc(sizeof(int) * N);
     if (!bed) { free(top); free(water); free(level); free(dist); return; }
     for (int i = 0; i < N; i++) bed[i] = 1000;
     if (fieldWater == FIELD_WATER_PONDS) {
-        int ponds = 3 + (int)(FieldHash(7, 7, 50) * 3.0f);      // 3-5 ponds and puddles
+        int ponds = (3 + (int)(FieldHash(7, 7, 50) * 3.0f)) * N / (64 * 64);   // 3-5 per 64x64
         for (int p = 0; p < ponds; p++) {
             int cx = 8 + (int)(FieldHash(p, 1, 51) * (W - 16)), cy = 8 + (int)(FieldHash(p, 2, 51) * (H - 16));
             float r = 1.5f + FieldHash(p, 3, 51) * 3.0f;            // a puddle up to a small pond
@@ -336,12 +354,16 @@ void GenerateField(void) {
                 }
         }
     } else if (fieldWater == FIELD_WATER_STREAM) {
-        // A two-wide channel from x = 1 to the east edge, meandering; its bed never rises
-        int prevBed = 1000;
+        // A two-wide channel from x = 1 to the east edge, meandering; on flat ground its bed never
+        // rises. A big field (W >= 192) gets two, each in its own band of the map
+        int streams = W >= 192 ? 2 : 1;
+        for (int k = 0; k < streams; k++) {
+        int prevBed = 1000, lastY = -1;
+        float band = 1.0f / (float)streams, mid = band * ((float)k + 0.5f);
         for (int x = 1; x < W; x++) {
-            float wander = sinf((float)x * 0.11f + FieldHash(1, 1, 60) * 6.0f) * 0.22f
-                         + (FieldNoise((float)x, 0.0f, 12.0f, 61) - 0.5f) * 0.35f;
-            int y = (int)(H * (0.5f + wander));
+            float wander = sinf((float)x * 0.11f * 64.0f / (float)W + FieldHash(1, k, 60) * 6.0f) * 0.22f
+                         + (FieldNoise((float)x, (float)(k * 97), 12.0f, 61) - 0.5f) * 0.35f;
+            int y = (int)(H * (mid + wander * band));
             if (y < 4) y = 4;
             if (y > H - 6) y = H - 6;
             for (int w = 0; w < 2; w++) {
@@ -353,13 +375,13 @@ void GenerateField(void) {
                 prevBed = b;
             }
             // keep the channel connected where it steps sideways: fill between this and the last row
-            static int lastY = -1;
-            if (x == 1) lastY = y;
+            if (x == 1) { lastY = y; springY[k] = y; }
             for (int yy = lastY < y ? lastY : y; yy <= (lastY < y ? y : lastY); yy++) {
                 int i = FIDX(x, yy);
                 if (water[i] != FW_STREAM) { bed[i] = prevBed; water[i] = FW_STREAM; level[i] = 3; }
             }
             lastY = y;
+        }
         }
     }
     // Lower the land toward the water: top = min(top, nearest bed + distance) keeps steps <= 1
@@ -457,9 +479,10 @@ void GenerateField(void) {
     waterEdgeOutflow = true;      // water reaching the map edge runs off (the stream's mouth)
     waterEdgeSeaZ = -1;
     springTrickle = true;
-    if (fieldWater == FIELD_WATER_STREAM) {   // its spring: one cell at the channel's west end (two piled
-        for (int y = 0; y < H; y++)           // up water too deep to wade; without rain the stream shrinks slowly)
-            if (water[FIDX(1, y)] == FW_STREAM) { SetWaterSource(1, y, top[FIDX(1, y)] + 1, true); break; }
+    if (fieldWater == FIELD_WATER_STREAM) {   // each stream's spring: one cell at its west end (two piled
+        for (int k = 0; k < 2; k++)           // up water too deep to wade; without rain the stream shrinks slowly)
+            if (springY[k] >= 0 && water[FIDX(1, springY[k])] == FW_STREAM)
+                SetWaterSource(1, springY[k], top[FIDX(1, springY[k])] + 1, true);
     }
 
     // 5. Plants and loose rocks
@@ -497,6 +520,7 @@ void GenerateField(void) {
         }
         free(waterTop); free(seen);
     }
+    FieldJoinPockets(top, water);   // again: the island's fixer can put a ramp on another ramp's foot
 
     // 6. Soil moisture: by soil, wetter near water, drier on higher ground, a little noise
     SoilMoistureInitNow();

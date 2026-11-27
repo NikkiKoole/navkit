@@ -671,7 +671,8 @@ static void StartSandbox(void) {
 static void StartField(void) {
     if (!worldSeedFixed) worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);   // a new field each start
     StartSandbox();
-    ScenarioResetWorldSized(NULL, 64, 64);
+    int size = fieldSizes[fieldSize >= 0 && fieldSize < FIELD_SIZE_COUNT ? fieldSize : 0];
+    ScenarioResetWorldSized(NULL, size, size);
     GenerateField();
     SyncMaterialsToTerrain();
     RebuildSimActivityCounts();
@@ -773,7 +774,7 @@ static const GameDef games[] = {
                   StartIsland,    false, false, TOOLS(survivalTools)},
     {"sandbox",   "Sandbox",   "Flat empty map, no needs, every tool: draw, build and test freely",
                   StartSandbox,   true,  true,  TOOLS(sandboxTools)},
-    {"field",     "Field",     "A 64x64 field with soils, mixed grass, trees, ground moisture; flat or gentle, ponds or a stream (settings fieldRelief, fieldWater): sandbox rules",
+    {"field",     "Field",     "A field with soils, mixed grass, trees, ground moisture: 64, 128 or 256 square, flat or gentle, ponds or a stream (settings fieldSize, fieldRelief, fieldWater): sandbox rules",
                   StartField,     true,  true,  TOOLS(sandboxTools)},
     {"town",      "Town",      "Draw roads, homes and bakeries: they appear at once, people move in and bake their bread",
                   StartTown,      false, true,  TOOLS(townTools)},

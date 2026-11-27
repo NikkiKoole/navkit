@@ -579,6 +579,8 @@ static const Setting settings[] = {
       "Skip placing ruined buildings during terrain generation."),
     SET_CHOICE("fieldRelief", "Field relief", "World/Field", fieldRelief, fieldReliefNames, FIELD_RELIEF_COUNT,
       "The field game's ground: flat, or gentle (a few levels, ramps between). Used when the field starts. Not saved.", NULL),
+    SET_CHOICE("fieldSize", "Field size", "World/Field", fieldSize, fieldSizeNames, FIELD_SIZE_COUNT,
+      "The field game's map: 64, 128 (double) or 256 (4x) cells square; bigger fields get more of everything (ponds, patches, trees; two streams at 256). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("fieldWater", "Field water", "World/Field", fieldWater, fieldWaterNames, FIELD_WATER_COUNT,
       "The field game's water: none, ponds (a few puddles and small ponds) or a stream (a spring in the west, off the east edge). Used when the field starts. Not saved.", NULL),
     SET_CHOICE("biome", "Biome", "World/Terrain/Biome", selectedBiome, biomeNames, BIOME_COUNT,
